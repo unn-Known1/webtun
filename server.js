@@ -52,52 +52,54 @@ app.get('/api/home', checkPin, (req, res) => {
 });
 
 // ── File API ──────────────────────────────────────────────────────────
-function safeStat(p) {
-  try { return fs.statSync(p); } catch { return null; }
+const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT ? path.resolve(process.env.WORKSPACE_ROOT) : os.homedir();
+const fsPromises = fs.promises;
+
+function validatePath(targetPath) {
+  if (!targetPath) return WORKSPACE_ROOT;
+  const resolved = path.resolve(targetPath);
+  const rel = path.relative(WORKSPACE_ROOT, resolved);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    throw new Error('Access denied: Path lies outside workspace root');
+  }
+  return resolved;
 }
 
-function isDescendantOf(dir, child, maxDepth = 10) {
-  const absDir = path.resolve(dir);
-  const absChild = path.resolve(child);
-  const rel = path.relative(absDir, absChild);
-  // Must not go up directories, and respect depth
-  if (rel.startsWith('..')) return false;
-  const depth = rel.split(path.sep).filter(Boolean).length;
-  return depth <= maxDepth;
+async function safeStat(p) {
+  try { return await fsPromises.stat(p); } catch { return null; }
 }
 
-function safeWalk(currentDir, depth, maxDepth, q, results, maxResults) {
+async function asyncSafeWalk(currentDir, depth, maxDepth, q, results, maxResults) {
   if (depth > maxDepth || results.length >= maxResults) return;
   let entries;
-  try { entries = fs.readdirSync(currentDir, { withFileTypes: true }); } catch { return; }
+  try { entries = await fsPromises.readdir(currentDir, { withFileTypes: true }); } catch { return; }
   for (const e of entries) {
     if (results.length >= maxResults) break;
     const full = path.join(currentDir, e.name);
     if (e.name.toLowerCase().includes(q)) {
       try {
-        const st = fs.statSync(full);
+        const st = await fsPromises.stat(full);
         results.push({ path: full, name: e.name, isDir: st.isDirectory(), dir: currentDir });
       } catch {}
     }
     if (e.isDirectory()) {
-      // Prevent symlink loops
       try {
-        const st = fs.lstatSync(full);
+        const st = await fsPromises.lstat(full);
         if (st.isSymbolicLink()) continue;
       } catch {}
-      safeWalk(full, depth + 1, maxDepth, q, results, maxResults);
+      await asyncSafeWalk(full, depth + 1, maxDepth, q, results, maxResults);
     }
   }
 }
 
-app.get('/api/files', checkPin, (req, res) => {
-  const dir = path.resolve(req.query.path || os.homedir());
+app.get('/api/files', checkPin, async (req, res) => {
   try {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    const files = entries
-      .map(e => {
+    const dir = validatePath(req.query.path || WORKSPACE_ROOT);
+    const entries = await fsPromises.readdir(dir, { withFileTypes: true });
+    const files = await Promise.all(
+      entries.map(async e => {
         const full = path.join(dir, e.name);
-        const st = safeStat(full);
+        const st = await safeStat(full);
         return {
           name: e.name,
           path: full,
@@ -108,35 +110,36 @@ app.get('/api/files', checkPin, (req, res) => {
           ext: path.extname(e.name).toLowerCase()
         };
       })
-      .sort((a, b) => {
-        if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
-        return a.name.localeCompare(b.name);
-      });
+    );
+    files.sort((a, b) => {
+      if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
     res.json({ path: dir, parent: path.dirname(dir), files });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-app.post('/api/files/rename', checkPin, (req, res) => {
-  const { oldPath, newName } = req.body;
-  const newPath = path.join(path.dirname(oldPath), newName);
+app.post('/api/files/rename', checkPin, async (req, res) => {
   try {
-    fs.renameSync(oldPath, newPath);
+    const oldPath = validatePath(req.body.oldPath);
+    const newPath = validatePath(path.join(path.dirname(oldPath), req.body.newName));
+    await fsPromises.rename(oldPath, newPath);
     res.json({ success: true, newPath });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-app.delete('/api/files', checkPin, (req, res) => {
-  const p = req.query.path;
+app.delete('/api/files', checkPin, async (req, res) => {
   try {
-    const st = fs.statSync(p);
+    const p = validatePath(req.query.path);
+    const st = await fsPromises.stat(p);
     if (st.isDirectory()) {
-      fs.rmSync(p, { recursive: true, force: true });
+      await fsPromises.rm(p, { recursive: true, force: true });
     } else {
-      fs.unlinkSync(p);
+      await fsPromises.unlink(p);
     }
     res.json({ success: true });
   } catch (e) {
@@ -144,71 +147,97 @@ app.delete('/api/files', checkPin, (req, res) => {
   }
 });
 
-app.post('/api/files/mkdir', checkPin, (req, res) => {
+app.post('/api/files/mkdir', checkPin, async (req, res) => {
   try {
-    fs.mkdirSync(req.body.path, { recursive: true });
+    const p = validatePath(req.body.path);
+    await fsPromises.mkdir(p, { recursive: true });
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-app.post('/api/files/touch', checkPin, (req, res) => {
+app.post('/api/files/touch', checkPin, async (req, res) => {
   try {
-    fs.writeFileSync(req.body.path, '', { flag: 'a' });
+    const p = validatePath(req.body.path);
+    await fsPromises.writeFile(p, '', { flag: 'a' });
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-app.get('/api/files/read', checkPin, (req, res) => {
+app.get('/api/files/read', checkPin, async (req, res) => {
   try {
-    const content = fs.readFileSync(req.query.path, 'utf8');
+    const p = validatePath(req.query.path);
+    const content = await fsPromises.readFile(p, 'utf8');
     res.json({ content });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-app.post('/api/files/write', checkPin, (req, res) => {
+app.post('/api/files/write', checkPin, async (req, res) => {
   try {
-    fs.writeFileSync(req.body.path, req.body.content, 'utf8');
+    const p = validatePath(req.body.path);
+    await fsPromises.writeFile(p, req.body.content, 'utf8');
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-app.get('/api/files/download', checkPin, (req, res) => {
-  const p = req.query.path;
+app.get('/api/files/download', checkPin, async (req, res) => {
   try {
-    const st = fs.statSync(p);
+    const p = validatePath(req.query.path);
+    const st = await fsPromises.stat(p);
     if (st.isDirectory()) {
       res.setHeader('Content-Type', 'application/zip');
       res.setHeader('Content-Disposition', `attachment; filename="${path.basename(p)}.zip"`);
       const archive = archiver('zip', { zlib: { level: 6 } });
-      archive.on('error', err => { res.status(500).json({ error: err.message }); });
+      archive.on('error', err => {
+        if (!res.headersSent) res.status(500).json({ error: err.message });
+      });
       archive.pipe(res);
       archive.directory(p, path.basename(p));
-      archive.finalize();
+      await archive.finalize();
     } else {
       const mimeType = mime.lookup(p) || 'application/octet-stream';
       res.setHeader('Content-Type', mimeType);
       res.setHeader('Content-Disposition', `attachment; filename="${path.basename(p)}"`);
-      fs.createReadStream(p).pipe(res);
+      const stream = fs.createReadStream(p);
+      stream.on('error', err => {
+        if (!res.headersSent) res.status(500).json({ error: err.message });
+      });
+      stream.pipe(res);
     }
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    if (!res.headersSent) res.status(500).json({ error: e.message });
   }
 });
 
 // Upload with multer disk storage – destination resolved per-request
 app.post('/api/files/upload', checkPin, (req, res) => {
-  const destDir = req.query.path || os.homedir();
+  let destDir;
+  try {
+    destDir = validatePath(req.query.path || WORKSPACE_ROOT);
+  } catch (e) {
+    return res.status(403).json({ error: e.message });
+  }
   const storage = multer.diskStorage({
-    destination: (_, __, cb) => cb(null, destDir),
-    filename: (_, file, cb) => cb(null, file.originalname)
+    destination: (req, file, cb) => {
+      try {
+        const finalDest = validatePath(path.join(destDir, file.originalname));
+        const subPath = path.dirname(finalDest);
+        fs.mkdirSync(subPath, { recursive: true });
+        cb(null, subPath);
+      } catch (err) {
+        cb(err);
+      }
+    },
+    filename: (_, file, cb) => {
+      cb(null, path.basename(file.originalname));
+    }
   });
   const upload = multer({ storage }).array('files');
   upload(req, res, err => {
@@ -313,7 +342,12 @@ wss.on('connection', (ws, req) => {
 
   const cols      = parseInt(url.searchParams.get('cols'))  || 80;
   const rows      = parseInt(url.searchParams.get('rows'))  || 24;
-  const cwd       = url.searchParams.get('cwd')             || os.homedir();
+  let cwd;
+  try {
+    cwd = validatePath(url.searchParams.get('cwd') || WORKSPACE_ROOT);
+  } catch {
+    cwd = WORKSPACE_ROOT;
+  }
   const sessionId = (url.searchParams.get('session') || '').replace(/[^a-zA-Z0-9_-]/g, '');
 
   const send = (type, payload) => {
@@ -412,6 +446,32 @@ wss.on('connection', (ws, req) => {
 //   POST /api/exec           – run command, wait, return full output (JSON)
 //   GET  /api/exec/stream    – run command, stream output as SSE
 
+function getShellAndArgs(command) {
+  if (os.platform() === 'win32') {
+    const shell = process.env.SHELL || 'powershell.exe';
+    const isPowerShell = shell.toLowerCase().includes('powershell') || shell.toLowerCase().includes('pwsh');
+    const isCmd = shell.toLowerCase().includes('cmd');
+    const args = isPowerShell ? ['-Command', command] : isCmd ? ['/c', command] : ['-c', command];
+    return { shell, args };
+  } else {
+    const shell = process.env.SHELL || (fs.existsSync('/bin/bash') ? '/bin/bash' : 'sh');
+    return { shell, args: ['-c', command] };
+  }
+}
+
+function killProcessGroup(pid) {
+  if (!pid) return;
+  try {
+    if (os.platform() === 'win32') {
+      execSync(`taskkill /pid ${pid} /T /F`, { stdio: 'ignore' });
+    } else {
+      process.kill(-pid, 'SIGKILL');
+    }
+  } catch (e) {
+    try { process.kill(pid, 'SIGKILL'); } catch {}
+  }
+}
+
 // POST /api/exec
 // Body: { command: string, cwd?: string, timeout?: number (ms, default 60000) }
 // Response: { exitCode, stdout, stderr, duration }
@@ -419,22 +479,42 @@ app.post('/api/exec', rateLimiter, checkPin, (req, res) => {
   const { command, cwd: reqCwd, timeout = 60000 } = req.body;
   if (!command) return res.status(400).json({ error: 'command required' });
 
-  const execCwd = reqCwd || os.homedir();
+  let execCwd;
+  try {
+    execCwd = validatePath(reqCwd || WORKSPACE_ROOT);
+  } catch (e) {
+    return res.status(403).json({ error: e.message });
+  }
+
   let stdout = '', stderr = '';
   const start = Date.now();
+  const maxBufferSize = 10 * 1024 * 1024; // 10MB limit
 
-  const execShell = process.env.SHELL || (fs.existsSync('/bin/bash') ? '/bin/bash' : 'sh');
-  const proc = spawn(execShell, ['-c', command], {
+  const { shell, args } = getShellAndArgs(command);
+  const proc = spawn(shell, args, {
     cwd: execCwd,
     env: { ...process.env },
-    stdio: ['ignore', 'pipe', 'pipe']
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: os.platform() !== 'win32'
   });
 
-  proc.stdout.on('data', d => { stdout += d.toString(); });
-  proc.stderr.on('data', d => { stderr += d.toString(); });
+  proc.stdout.on('data', d => {
+    if (stdout.length + d.length > maxBufferSize) {
+      try { killProcessGroup(proc.pid); } catch {}
+      return;
+    }
+    stdout += d.toString();
+  });
+  proc.stderr.on('data', d => {
+    if (stderr.length + d.length > maxBufferSize) {
+      try { killProcessGroup(proc.pid); } catch {}
+      return;
+    }
+    stderr += d.toString();
+  });
 
   const timer = setTimeout(() => {
-    try { proc.kill('SIGKILL'); } catch {}
+    try { killProcessGroup(proc.pid); } catch {}
     if (!res.headersSent)
       res.status(408).json({ error: 'timeout', stdout, stderr, duration: Date.now() - start });
   }, timeout);
@@ -459,6 +539,13 @@ app.get('/api/exec/stream', checkPin, (req, res) => {
   const { command, cwd: reqCwd } = req.query;
   if (!command) { res.status(400).end('command required'); return; }
 
+  let execCwd;
+  try {
+    execCwd = validatePath(reqCwd || WORKSPACE_ROOT);
+  } catch (e) {
+    return res.status(403).json({ error: e.message });
+  }
+
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -468,11 +555,12 @@ app.get('/api/exec/stream', checkPin, (req, res) => {
     if (!res.writableEnded) res.write(`data: ${JSON.stringify({ type, data })}\n\n`);
   };
 
-  const execShell = process.env.SHELL || (fs.existsSync('/bin/bash') ? '/bin/bash' : 'sh');
-  const proc = spawn(execShell, ['-c', command], {
-    cwd: reqCwd || os.homedir(),
+  const { shell, args } = getShellAndArgs(command);
+  const proc = spawn(shell, args, {
+    cwd: execCwd,
     env: { ...process.env },
-    stdio: ['ignore', 'pipe', 'pipe']
+    stdio: ['ignore', 'pipe', 'pipe'],
+    detached: os.platform() !== 'win32'
   });
 
   proc.stdout.on('data', d => send('stdout', d.toString()));
@@ -482,34 +570,30 @@ app.get('/api/exec/stream', checkPin, (req, res) => {
   proc.on('error', e => { send('error', e.message); res.end(); });
 
   // Kill child if client disconnects
-  req.on('close', () => { try { proc.kill(); } catch {} });
+  req.on('close', () => { try { killProcessGroup(proc.pid); } catch {} });
 });
 
 // ── File search (fuzzy finder) ──────────────────────────────────────
-app.get('/api/search', rateLimiter, checkPin, (req, res) => {
+app.get('/api/search', rateLimiter, checkPin, async (req, res) => {
   const q = (req.query.q || '').trim().toLowerCase();
-  const dir = req.query.path || os.homedir();
+  const dir = req.query.path || WORKSPACE_ROOT;
   if (!q || q.length < 1) return res.json({ results: [] });
 
-  // Validate the search directory is within allowed bounds
-  const searchDir = path.resolve(dir);
-  const home = os.homedir();
-  if (!isDescendantOf(home, searchDir, 20)) {
-    return res.status(403).json({ error: 'Search path outside home directory' });
+  try {
+    const searchDir = validatePath(dir);
+    const maxResults = 50;
+    const results = [];
+    const maxDepth = 4;
+
+    await asyncSafeWalk(searchDir, 0, maxDepth, q, results, maxResults);
+    res.json({ results });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
-
-  const maxResults = 50;
-  const results = [];
-  const maxDepth = 4;
-
-  try { safeWalk(searchDir, 0, maxDepth, q, results, maxResults); } catch {}
-
-  res.json({ results });
 });
 
 // ── System stats ────────────────────────────────────────────────────
 app.get('/api/system', checkPin, async (req, res) => {
-  const { execSync } = require('child_process');
   const cpus = os.cpus();
   const cpuModel = cpus.length > 0 ? cpus[0].model : 'unknown';
   const cpuCount = cpus.length;
@@ -517,20 +601,23 @@ app.get('/api/system', checkPin, async (req, res) => {
 
   let cpuUsage = 0;
   try {
-    const readCpuTimes = () => {
-      const line = fs.readFileSync('/proc/stat', 'utf8').split('\n').find(l => l.startsWith('cpu '));
-      if (!line) return null;
-      const parts = line.trim().split(/\s+/).slice(1).map(Number);
-      return { total: parts.reduce((a, b) => a + b, 0), idle: parts[3] || 0 };
+    const getCpuUsageFromCpus = () => {
+      const currentCpus = os.cpus();
+      let totalIdle = 0, totalTick = 0;
+      currentCpus.forEach(cpu => {
+        for (const type in cpu.times) {
+          totalTick += cpu.times[type];
+        }
+        totalIdle += cpu.times.idle;
+      });
+      return { idle: totalIdle / currentCpus.length, total: totalTick / currentCpus.length };
     };
-    const t1 = readCpuTimes();
+    const c1 = getCpuUsageFromCpus();
     await new Promise(r => setTimeout(r, 100));
-    const t2 = readCpuTimes();
-    if (t1 && t2) {
-      const dTotal = t2.total - t1.total;
-      const dIdle  = t2.idle  - t1.idle;
-      cpuUsage = dTotal > 0 ? Math.round((1 - dIdle / dTotal) * 100) : 0;
-    }
+    const c2 = getCpuUsageFromCpus();
+    const idleDiff = c2.idle - c1.idle;
+    const totalDiff = c2.total - c1.total;
+    cpuUsage = totalDiff > 0 ? Math.round((1 - idleDiff / totalDiff) * 100) : 0;
   } catch {}
 
   const totalMem = os.totalmem();
@@ -540,35 +627,71 @@ app.get('/api/system', checkPin, async (req, res) => {
 
   let disk = [];
   try {
-    const dfOut = execSync('df -h /', { encoding: 'utf8', timeout: 3000 });
-    const lines = dfOut.trim().split('\n');
-    if (lines.length > 1) {
-      const parts = lines[1].split(/\s+/);
-      disk = [{ filesystem: parts[0], size: parts[1], used: parts[2], avail: parts[3], usePercent: parts[4], mounted: parts[5] }];
+    if (os.platform() === 'win32') {
+      const psOut = execSync('powershell.exe -Command "Get-CimInstance -ClassName Win32_LogicalDisk | Where-Object {$_.DriveType -eq 3} | Select-Object DeviceID, Size, FreeSpace | ConvertTo-Json"', { encoding: 'utf8', timeout: 3000 });
+      const data = JSON.parse(psOut);
+      const list = Array.isArray(data) ? data : [data];
+      disk = list.map(d => {
+        const sizeBytes = d.Size || 0;
+        const freeBytes = d.FreeSpace || 0;
+        const usedBytes = sizeBytes - freeBytes;
+        const sizeGB = (sizeBytes / (1024**3)).toFixed(1) + ' GB';
+        const usedGB = (usedBytes / (1024**3)).toFixed(1) + ' GB';
+        const availGB = (freeBytes / (1024**3)).toFixed(1) + ' GB';
+        const usePercent = sizeBytes > 0 ? Math.round((usedBytes / sizeBytes) * 100) + '%' : '0%';
+        return {
+          filesystem: d.DeviceID,
+          size: sizeGB,
+          used: usedGB,
+          avail: availGB,
+          usePercent,
+          mounted: d.DeviceID
+        };
+      });
+    } else {
+      const dfOut = execSync('df -h /', { encoding: 'utf8', timeout: 3000 });
+      const lines = dfOut.trim().split('\n');
+      if (lines.length > 1) {
+        const parts = lines[1].split(/\s+/);
+        disk = [{ filesystem: parts[0], size: parts[1], used: parts[2], avail: parts[3], usePercent: parts[4], mounted: parts[5] }];
+      }
     }
   } catch {}
 
   let processes = [];
   try {
-    const psOut = execSync('ps aux --sort=-%cpu | head -15', { encoding: 'utf8', timeout: 3000 });
-    const lines = psOut.trim().split('\n');
-    if (lines.length > 0) {
-      const header = lines[0].trim().split(/\s+/);
-      const uidIdx = header.indexOf('USER');
-      const pidIdx = header.indexOf('PID');
-      const cpuIdx = header.indexOf('%CPU');
-      const memIdx = header.indexOf('%MEM');
-      const cmdIdx = 10;
-      for (let i = 1; i < lines.length; i++) {
-        const parts = lines[i].trim().split(/\s+/);
-        if (parts.length > cmdIdx) {
-          processes.push({
-            user: parts[uidIdx] || '',
-            pid: parts[pidIdx] || '',
-            cpu: parts[cpuIdx] || '',
-            mem: parts[memIdx] || '',
-            cmd: parts.slice(cmdIdx).join(' ')
-          });
+    if (os.platform() === 'win32') {
+      const psOut = execSync('powershell.exe -Command "Get-Process | Where-Object {$_.CPU -ne $null} | Sort-Object CPU -Descending | Select-Object -First 15 | ForEach-Object { [PSCustomObject]@{ user = \'system\'; pid = $_.Id.ToString(); cpu = [Math]::Round($_.CPU, 1).ToString(); mem = [Math]::Round($_.WorkingSet / 1MB, 1).ToString() + \'MB\'; cmd = $_.ProcessName } } | ConvertTo-Json"', { encoding: 'utf8', timeout: 3000 });
+      const data = JSON.parse(psOut);
+      const list = Array.isArray(data) ? data : [data];
+      processes = list.map(p => ({
+        user: p.user || 'system',
+        pid: p.pid || '',
+        cpu: p.cpu || '',
+        mem: p.mem || '',
+        cmd: p.cmd || ''
+      }));
+    } else {
+      const psOut = execSync('ps aux --sort=-%cpu | head -15', { encoding: 'utf8', timeout: 3000 });
+      const lines = psOut.trim().split('\n');
+      if (lines.length > 0) {
+        const header = lines[0].trim().split(/\s+/);
+        const uidIdx = header.indexOf('USER');
+        const pidIdx = header.indexOf('PID');
+        const cpuIdx = header.indexOf('%CPU');
+        const memIdx = header.indexOf('%MEM');
+        const cmdIdx = 10;
+        for (let i = 1; i < lines.length; i++) {
+          const parts = lines[i].trim().split(/\s+/);
+          if (parts.length > cmdIdx) {
+            processes.push({
+              user: parts[uidIdx] || '',
+              pid: parts[pidIdx] || '',
+              cpu: parts[cpuIdx] || '',
+              mem: parts[memIdx] || '',
+              cmd: parts.slice(cmdIdx).join(' ')
+            });
+          }
         }
       }
     }
@@ -589,6 +712,21 @@ app.get('/api/system', checkPin, async (req, res) => {
 const tunnels = new Map();
 const TUNNEL_FILE = path.join(__dirname, '.tunnels.json');
 
+function isCloudflaredProcess(pid) {
+  if (!pid) return false;
+  try {
+    if (os.platform() === 'win32') {
+      const stdout = execSync(`tasklist /FI "PID eq ${pid}" /FO CSV /NH`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+      return stdout.toLowerCase().includes('cloudflared');
+    } else {
+      const cmdline = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8');
+      return cmdline.toLowerCase().includes('cloudflared');
+    }
+  } catch {
+    return false;
+  }
+}
+
 function saveTunnels() {
   const arr = Array.from(tunnels.entries()).map(([id, t]) => ({
     id, localUrl: t.localUrl, tunnelUrl: t.tunnelUrl, createdAt: t.createdAt, pid: t.pid
@@ -600,10 +738,9 @@ function loadTunnels() {
   try {
     const arr = JSON.parse(fs.readFileSync(TUNNEL_FILE, 'utf8'));
     for (const t of arr) {
-      try {
-        process.kill(t.pid, 0);
+      if (isCloudflaredProcess(t.pid)) {
         tunnels.set(t.id, { proc: null, localUrl: t.localUrl, tunnelUrl: t.tunnelUrl, createdAt: t.createdAt, pid: t.pid });
-      } catch {}
+      }
     }
   } catch {}
 }
@@ -611,7 +748,7 @@ function loadTunnels() {
 app.get('/api/tunnel', checkPin, (req, res) => {
   const list = Array.from(tunnels.entries()).map(([id, t]) => {
     let alive = t.proc !== null;
-    if (!alive && t.pid) { try { process.kill(t.pid, 0); alive = true; } catch {} }
+    if (!alive && t.pid) { alive = isCloudflaredProcess(t.pid); }
     return { id, localUrl: t.localUrl, tunnelUrl: t.tunnelUrl, createdAt: t.createdAt, alive };
   });
   res.json({ tunnels: list });
@@ -621,7 +758,7 @@ app.post('/api/tunnel', checkPin, async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: 'url required' });
 
-  try { require('child_process').execSync('command -v cloudflared', { stdio: 'ignore' }); }
+  try { require('child_process').execSync(os.platform() === 'win32' ? 'where cloudflared' : 'command -v cloudflared', { stdio: 'ignore' }); }
   catch { return res.status(500).json({ error: 'cloudflared not installed' }); }
 
   const proc = spawn('cloudflared', ['tunnel', '--url', url], {
@@ -669,8 +806,11 @@ app.delete('/api/tunnel', checkPin, (req, res) => {
   if (!id || !tunnels.has(id)) return res.status(404).json({ error: 'tunnel not found' });
   const entry = tunnels.get(id);
   try {
-    if (entry.proc) entry.proc.kill('SIGTERM');
-    else process.kill(entry.pid, 'SIGTERM');
+    if (entry.proc) {
+      entry.proc.kill('SIGTERM');
+    } else if (entry.pid && isCloudflaredProcess(entry.pid)) {
+      process.kill(entry.pid, 'SIGTERM');
+    }
   } catch {}
   tunnels.delete(id);
   saveTunnels();
@@ -696,7 +836,7 @@ function cleanup() {
   for (const [id, entry] of tunnels) {
     try {
       if (entry.proc) entry.proc.kill('SIGTERM');
-      else if (entry.pid) process.kill(entry.pid, 'SIGTERM');
+      else if (entry.pid && isCloudflaredProcess(entry.pid)) process.kill(entry.pid, 'SIGTERM');
     } catch {}
   }
   // Kill tmux sessions managed by this server
