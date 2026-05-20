@@ -1049,7 +1049,8 @@ function initTerminal(tab) {
   tab.searchAddon = searchAddon;
   tab.closed = false;
 
-  term.onFocus(() => {
+  // term.onFocus() was removed from xterm.js — use native DOM event instead
+  term.element.addEventListener('focusin', () => {
     if (activeTabId !== tab.id) {
       activateTab(tab.id);
     }
