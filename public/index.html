@@ -41,7 +41,7 @@
 }
 [data-theme="light"] {
   --bg: #f9f9fb; --bg2: #eeeef2; --bg3: #e2e2e8; --bg4: #d5d5de;
-  --border: #c8c8d4; --fg: #2a2a3a; --fg2: #7a7a9a;
+  --border: #c8c8d4; --fg: #2a2a3a; --fg2: #4a4a6a;
   --accent: #4060d0; --accent2: #8050c0; --green: #3a8a2a;
   --red: #c03050; --yellow: #a07010; --cyan: #2080a0;
 }
@@ -100,13 +100,14 @@ svg { display: block; }
 #tab-bar { display: flex; align-items: center; height: var(--tab-h); background: var(--bg2); border-bottom: 1px solid var(--border); overflow-x: auto; overflow-y: hidden; flex-shrink: 0; gap: 2px; padding: 0 4px; }
 #tab-bar::-webkit-scrollbar { height: 3px; }
 #terminals { flex: 1; position: relative; overflow: hidden; }
-.term-wrapper { position: absolute; inset: 0; padding: 4px; display: none; touch-action: none; -webkit-overflow-scrolling: touch; }
+.term-wrapper { position: absolute; inset: 0; padding: 4px; display: none; touch-action: pan-y; -webkit-overflow-scrolling: touch; }
 .term-wrapper.active { display: flex; }
 .xterm { flex: 1; }
 .xterm-viewport { border-radius: 0; }
 #terminals.tiles-mode { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); grid-auto-rows: 1fr; gap: 4px; padding: 4px; position: relative; overflow: auto; }
 #terminals.tiles-mode .term-wrapper { position: relative; inset: unset; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; min-height: 150px; }
-#terminals.tiles-mode .term-wrapper.active { border-color: var(--accent); }
+#terminals.tiles-mode .term-wrapper.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+#terminals.tiles-mode .term-wrapper.active .term-tile-header { background: var(--bg); color: var(--accent); }
 .term-tile-header { display: flex; align-items: center; height: 24px; padding: 0 8px; background: var(--bg3); border-bottom: 1px solid var(--border); font-size: 11px; color: var(--fg2); flex-shrink: 0; gap: 6px; cursor: pointer; user-select: none; }
 .term-tile-header .tth-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .term-tile-header .tth-close { width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; border-radius: 3px; opacity: 0.4; font-size: 12px; line-height: 1; }
@@ -175,6 +176,8 @@ svg { display: block; }
 #search-input { width: 200px; height: 26px; }
 .search-btn { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 4px; color: var(--fg2); }
 .search-btn:hover { background: var(--bg4); color: var(--fg); }
+.search-btn#search-case-btn { font-size: 11px; font-weight: bold; width: 22px; height: 22px; line-height: 22px; }
+.search-btn#search-case-btn.active { background: var(--accent); color: var(--bg); }
 #search-results { font-size: 11px; color: var(--fg2); white-space: nowrap; }
 
 /* ═══════════════════════════════════════════════════════
@@ -334,6 +337,16 @@ svg { display: block; }
 </style>
 </head>
 <body data-theme="light">
+<script>
+  (function() {
+    try {
+      const settings = JSON.parse(localStorage.getItem('wt-settings')) || {};
+      const theme = settings.theme || 'dark';
+      document.body.dataset.theme = theme;
+      document.documentElement.dataset.theme = theme;
+    } catch(e){}
+  })();
+</script>
 
 <!-- PIN Screen -->
 <div id="pin-screen">
@@ -431,6 +444,9 @@ svg { display: block; }
           </button>
           <button class="search-btn" title="Next (Enter)" onclick="searchNext()">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <button class="search-btn" id="search-case-btn" title="Match Case" onclick="toggleSearchCase()">
+            Aa
           </button>
           <button class="search-btn" title="Close (Esc)" onclick="closeSearch()">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -728,19 +744,29 @@ function loadTabState() {
 // ═══════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════
+function handlePinKeydown(e) {
+  if (e.key === 'Enter') submitPin();
+}
+
 async function init() {
   loadSettings();
   applyTheme(settings.theme, false);
 
   const r = await api('/api/auth/required');
-  if (r.required) {
-    document.getElementById('pin-input').addEventListener('keydown', e => {
-      if (e.key === 'Enter') submitPin();
-    });
-    document.getElementById('pin-input').focus();
+  if (r && r.required !== undefined) {
+    document.getElementById('pin-error').textContent = '';
+    if (r.required) {
+      const pinIn = document.getElementById('pin-input');
+      pinIn.removeEventListener('keydown', handlePinKeydown);
+      pinIn.addEventListener('keydown', handlePinKeydown);
+      pinIn.focus();
+    } else {
+      authToken = 'open';
+      unlockApp();
+    }
   } else {
-    authToken = 'open';
-    unlockApp();
+    document.getElementById('pin-error').textContent = 'Server connection failed. Retrying...';
+    setTimeout(init, 3000);
   }
 }
 
@@ -881,6 +907,85 @@ function activateTab(id) {
   if (tab?.fitAddon) setTimeout(() => tab.fitAddon.fit(), 60);
 }
 
+function cleanupWebSocket(tab) {
+  if (tab.ws) {
+    tab.ws.onopen = null;
+    tab.ws.onmessage = null;
+    tab.ws.onerror = null;
+    tab.ws.onclose = null;
+    try { tab.ws.close(); } catch {}
+    tab.ws = null;
+  }
+  if (tab.pingTimer) {
+    clearInterval(tab.pingTimer);
+    tab.pingTimer = null;
+  }
+}
+
+function connectWebSocket(tab, isReconnect = false) {
+  if (tab.closed || !tab.term) return;
+  clearTimeout(tab.reconnectTimer);
+  cleanupWebSocket(tab);
+
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const cols = tab.term.cols, rows = tab.term.rows;
+  const sessionParam = tab.sessionId ? `&session=${encodeURIComponent(tab.sessionId)}` : '';
+  const wsUrl = `${proto}://${location.host}/ws?token=${encodeURIComponent(authToken)}&cols=${cols}&rows=${rows}&cwd=${encodeURIComponent(currentPath)}${sessionParam}`;
+  const ws = new WebSocket(wsUrl);
+  tab.ws = ws;
+  ws.binaryType = 'arraybuffer';
+
+  const sendInput = data => {
+    if (ws.readyState !== WebSocket.OPEN) return;
+    const enc = new TextEncoder().encode(data);
+    const buf = new Uint8Array(1 + enc.length);
+    buf[0] = 0x00; buf.set(enc, 1);
+    ws.send(buf.buffer);
+  };
+  const sendResize = (cols, rows) => {
+    if (ws.readyState !== WebSocket.OPEN) return;
+    const dv = new DataView(new ArrayBuffer(5));
+    dv.setUint8(0, 0x01); dv.setUint16(1, cols, true); dv.setUint16(3, rows, true);
+    ws.send(dv.buffer);
+  };
+
+  ws.onopen = () => {
+    tab.reconnectDelay = 1000;
+    if (isReconnect) {
+      tab.term.writeln('\x1b[32m[Reconnected]\x1b[0m');
+    }
+    tab.pingTimer = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) ws.send(new Uint8Array([0x02]).buffer);
+    }, 20000);
+  };
+
+  ws.onmessage = e => {
+    const buf = new Uint8Array(e.data);
+    const type = buf[0], payload = buf.slice(1);
+    if (type === 0x00) tab.term.write(payload);
+    else if (type === 0x01) tab.term.writeln('\r\n\x1b[31m[Process exited]\x1b[0m');
+    else if (type === 0x02) tab.term.writeln('\r\n\x1b[31m' + new TextDecoder().decode(payload) + '\x1b[0m');
+  };
+
+  ws.onerror = () => {};
+
+  ws.onclose = () => {
+    cleanupWebSocket(tab);
+    if (tab.closed) return;
+    tab.reconnectDelay = Math.min((tab.reconnectDelay || 1000) * 2, 15000);
+    const secs = tab.reconnectDelay / 1000;
+    tab.term.writeln(`\r\n\x1b[33m[Disconnected — reconnecting in ${secs}s…]\x1b[0m`);
+    tab.reconnectTimer = setTimeout(() => {
+      if (!tab.closed) connectWebSocket(tab, true);
+    }, tab.reconnectDelay);
+  };
+
+  tab.dataDisposable?.dispose();
+  tab.resizeDisposable?.dispose();
+  tab.dataDisposable = tab.term.onData(data => sendInput(data));
+  tab.resizeDisposable = tab.term.onResize(({ cols, rows }) => sendResize(cols, rows));
+}
+
 function closeTab(e, id) {
   e.stopPropagation();
   if (settings.confirmclose && tabs.length === 1) { if (!confirm('Close last terminal?')) return; }
@@ -894,9 +999,8 @@ function closeTab(e, id) {
   const tab = tabs.find(t => t.id === id);
   if (!tab) return;
   tab.closed = true;
-  clearInterval(tab.pingTimer);
   clearTimeout(tab.reconnectTimer);
-  tab.ws?.close();
+  cleanupWebSocket(tab);
   tab.term?.dispose();
   tab.el?.remove();
   tab.wrapper?.remove();
@@ -906,28 +1010,6 @@ function closeTab(e, id) {
   saveTabState();
   if (activeTabId === id && tabs.length > 0) activateTab(tabs[tabs.length - 1].id);
   if (tilesMode) layoutTiles();
-}
-
-function reconnectTab(tab) {
-  if (tab.closed || !tab.term) return;
-  clearTimeout(tab.reconnectTimer); // Prevent multiple timers
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const cols = tab.term.cols, rows = tab.term.rows;
-  const sessionParam = tab.sessionId ? `&session=${encodeURIComponent(tab.sessionId)}` : '';
-  const wsUrl = `${proto}://${location.host}/ws?token=${encodeURIComponent(authToken)}&cols=${cols}&rows=${rows}&cwd=${encodeURIComponent(currentPath)}${sessionParam}`;
-  const ws = new WebSocket(wsUrl);
-  tab.ws = ws;
-  ws.binaryType = 'arraybuffer';
-  const sendInput = d => { if (ws.readyState !== WebSocket.OPEN) return; const enc = new TextEncoder().encode(d); const b = new Uint8Array(1+enc.length); b[0]=0; b.set(enc,1); ws.send(b.buffer); };
-  const sendResize = (c,r) => { if (ws.readyState !== WebSocket.OPEN) return; const dv=new DataView(new ArrayBuffer(5)); dv.setUint8(0,1); dv.setUint16(1,c,true); dv.setUint16(3,r,true); ws.send(dv.buffer); };
-  ws.onopen = () => { tab.reconnectDelay=1000; tab.term.writeln('\x1b[32m[Reconnected]\x1b[0m'); tab.pingTimer=setInterval(()=>{ if(ws.readyState===WebSocket.OPEN) ws.send(new Uint8Array([2]).buffer); },20000); };
-  ws.onmessage = e => { const b=new Uint8Array(e.data),t=b[0],p=b.slice(1); if(t===0) tab.term.write(p); else if(t===1) tab.term.writeln('\r\n\x1b[31m[Process exited]\x1b[0m'); else if(t===2) tab.term.writeln('\r\n\x1b[31m'+new TextDecoder().decode(p)+'\x1b[0m'); };
-  ws.onerror = () => {};
-  ws.onclose = () => { clearInterval(tab.pingTimer); if(tab.closed) return; tab.reconnectDelay=Math.min((tab.reconnectDelay||1000)*2,15000); tab.term.writeln(`\r\n\x1b[33m[Disconnected — reconnecting in ${tab.reconnectDelay/1000}s…]\x1b[0m`); tab.reconnectTimer=setTimeout(()=>{ if(!tab.closed) reconnectTab(tab); },tab.reconnectDelay); };
-  tab.dataDisposable?.dispose();
-  tab.resizeDisposable?.dispose();
-  tab.dataDisposable = tab.term.onData(sendInput);
-  tab.resizeDisposable = tab.term.onResize(({cols:c,rows:r})=>sendResize(c,r));
 }
 
 function initTerminal(tab) {
@@ -965,67 +1047,15 @@ function initTerminal(tab) {
   tab.term = term;
   tab.fitAddon = fitAddon;
   tab.searchAddon = searchAddon;
-
-  // WebSocket
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const cols = term.cols, rows = term.rows;
-  const sessionParam = tab.sessionId ? `&session=${encodeURIComponent(tab.sessionId)}` : '';
-  const wsUrl = `${proto}://${location.host}/ws?token=${encodeURIComponent(authToken)}&cols=${cols}&rows=${rows}&cwd=${encodeURIComponent(currentPath)}${sessionParam}`;
-  const ws = new WebSocket(wsUrl);
-  tab.ws = ws;
-
-  // Binary protocol (no JSON per keystroke = much less lag)
-  // S→C: byte 0 = 0x00 data | 0x01 exit | 0x02 error
-  // C→S: byte 0 = 0x00 input | 0x01 resize (4B LE) | 0x02 ping
-  ws.binaryType = 'arraybuffer';
-  tab.reconnectDelay = 1000;
   tab.closed = false;
 
-  const sendInput = data => {
-    if (ws.readyState !== WebSocket.OPEN) return;
-    const enc = new TextEncoder().encode(data);
-    const buf = new Uint8Array(1 + enc.length);
-    buf[0] = 0x00; buf.set(enc, 1);
-    ws.send(buf.buffer);
-  };
-  const sendResize = (cols, rows) => {
-    if (ws.readyState !== WebSocket.OPEN) return;
-    const dv = new DataView(new ArrayBuffer(5));
-    dv.setUint8(0, 0x01); dv.setUint16(1, cols, true); dv.setUint16(3, rows, true);
-    ws.send(dv.buffer);
-  };
+  term.onFocus(() => {
+    if (activeTabId !== tab.id) {
+      activateTab(tab.id);
+    }
+  });
 
-  ws.onopen = () => {
-    tab.reconnectDelay = 1000;
-    // Client keepalive ping every 20s — Cloudflare kills idle WS at 100s
-    tab.pingTimer = setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) ws.send(new Uint8Array([0x02]).buffer);
-    }, 20000);
-  };
-
-  ws.onmessage = e => {
-    const buf = new Uint8Array(e.data);
-    const type = buf[0], payload = buf.slice(1);
-    if (type === 0x00) term.write(payload);
-    else if (type === 0x01) term.writeln('\r\n\x1b[31m[Process exited]\x1b[0m');
-    else if (type === 0x02) term.writeln('\r\n\x1b[31m' + new TextDecoder().decode(payload) + '\x1b[0m');
-  };
-
-  ws.onerror = () => {};
-
-  ws.onclose = () => {
-    clearInterval(tab.pingTimer);
-    if (tab.closed) return;
-    tab.reconnectDelay = Math.min((tab.reconnectDelay || 1000) * 2, 15000);
-    const secs = tab.reconnectDelay / 1000;
-    term.writeln(`\r\n\x1b[33m[Disconnected — reconnecting in ${secs}s…]\x1b[0m`);
-    tab.reconnectTimer = setTimeout(() => { if (!tab.closed) reconnectTab(tab); }, tab.reconnectDelay);
-  };
-
-  tab.dataDisposable?.dispose();
-  tab.resizeDisposable?.dispose();
-  tab.dataDisposable = term.onData(data => sendInput(data));
-  tab.resizeDisposable = term.onResize(({ cols, rows }) => sendResize(cols, rows));
+  connectWebSocket(tab, false);
 
   // Title updates from OSC
   term.onTitleChange(title => {
@@ -1296,9 +1326,19 @@ async function handleUploadInput() {
   input.value = '';
 }
 
-async function uploadFileList(fileList) {
+async function uploadFileList(items) {
   const form = new FormData();
-  for (const f of fileList) form.append('files', f);
+  let count = 0;
+  for (const item of items) {
+    if (item.file && item.path) {
+      form.append('files', item.file, item.path);
+      count++;
+    } else {
+      form.append('files', item, item.webkitRelativePath || item.name);
+      count++;
+    }
+  }
+  if (count === 0) return;
   const r = await fetch(`/api/files/upload?path=${encodeURIComponent(currentPath)}&token=${encodeURIComponent(authToken)}`, {
     method: 'POST', body: form
   }).then(r => r.json());
@@ -1353,6 +1393,20 @@ document.getElementById('editor-textarea').addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveFile(); }
   if (e.key === 'Escape') closeEditor();
   if (e.key === 'Tab') { e.preventDefault(); const t = e.target, s = t.selectionStart, end = t.selectionEnd; t.value = t.value.substring(0, s) + '  ' + t.value.substring(end); t.selectionStart = t.selectionEnd = s + 2; }
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const t = e.target;
+    const start = t.selectionStart;
+    const end = t.selectionEnd;
+    const val = t.value;
+    const lastNewline = val.lastIndexOf('\n', start - 1);
+    const lineStart = lastNewline === -1 ? 0 : lastNewline + 1;
+    const line = val.substring(lineStart, start);
+    const match = line.match(/^([ \t]*)/);
+    const indent = match ? match[1] : '';
+    t.value = val.substring(0, start) + '\n' + indent + val.substring(end);
+    t.selectionStart = t.selectionEnd = start + 1 + indent.length;
+  }
 });
 
 // ═══════════════════════════════════════════════════════
@@ -1374,16 +1428,23 @@ function closeSearch() {
   tab?.term?.focus();
 }
 
+let searchCaseSensitive = false;
+function toggleSearchCase() {
+  searchCaseSensitive = !searchCaseSensitive;
+  document.getElementById('search-case-btn').classList.toggle('active', searchCaseSensitive);
+  doSearch();
+}
+
 function doSearch() {
   const q = document.getElementById('search-input').value;
   const tab = getActiveTab();
   if (!tab?.searchAddon || !q) { document.getElementById('search-results').textContent = ''; return; }
-  const found = tab.searchAddon.findNext(q, { caseSensitive: false, regex: false, wholeWord: false });
+  const found = tab.searchAddon.findNext(q, { caseSensitive: searchCaseSensitive });
   document.getElementById('search-results').textContent = found ? '' : 'No results';
 }
 
-function searchNext() { const t=getActiveTab(); t?.searchAddon?.findNext(document.getElementById('search-input').value, {caseSensitive:false}); }
-function searchPrev() { const t=getActiveTab(); t?.searchAddon?.findPrevious(document.getElementById('search-input').value, {caseSensitive:false}); }
+function searchNext() { const t=getActiveTab(); t?.searchAddon?.findNext(document.getElementById('search-input').value, {caseSensitive: searchCaseSensitive}); }
+function searchPrev() { const t=getActiveTab(); t?.searchAddon?.findPrevious(document.getElementById('search-input').value, {caseSensitive: searchCaseSensitive}); }
 
 function searchKeydown(e) {
   if (e.key === 'Enter') { e.shiftKey ? searchPrev() : searchNext(); }
@@ -1501,6 +1562,7 @@ function copyText(text) {
 
 function applyTheme(theme, save = true) {
   document.body.dataset.theme = theme;
+  document.documentElement.dataset.theme = theme;
   settings.theme = theme;
   document.getElementById('s-theme').value = theme;
   tabs.forEach(t => { if (t.term) { t.term.options.theme = getXtermTheme(); } });
@@ -1588,6 +1650,35 @@ function setupMobileKeys() {
 // ═══════════════════════════════════════════════════════
 // DRAG & DROP
 // ═══════════════════════════════════════════════════════
+async function traverseDirectoryEntry(entry, pathPrefix = '') {
+  const files = [];
+  if (entry.isFile) {
+    const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+    files.push({ file, path: pathPrefix + entry.name });
+  } else if (entry.isDirectory) {
+    const dirReader = entry.createReader();
+    const entries = await new Promise((resolve, reject) => {
+      const allEntries = [];
+      function readAll() {
+        dirReader.readEntries(results => {
+          if (results.length) {
+            allEntries.push(...results);
+            readAll();
+          } else {
+            resolve(allEntries);
+          }
+        }, reject);
+      }
+      readAll();
+    });
+    for (const child of entries) {
+      const childFiles = await traverseDirectoryEntry(child, pathPrefix + entry.name + '/');
+      files.push(...childFiles);
+    }
+  }
+  return files;
+}
+
 function setupDragDrop() {
   const overlay = document.getElementById('drop-overlay');
   let dragCnt = 0;
@@ -1606,7 +1697,25 @@ function setupDragDrop() {
     e.preventDefault();
     dragCnt = 0;
     overlay.classList.remove('active');
-    if (e.dataTransfer.files.length) await uploadFileList(e.dataTransfer.files);
+
+    const items = Array.from(e.dataTransfer.items || []);
+    if (items.length) {
+      const filesToUpload = [];
+      for (const item of items) {
+        if (item.kind === 'file') {
+          const entry = item.webkitGetAsEntry();
+          if (entry) {
+            const traversed = await traverseDirectoryEntry(entry);
+            filesToUpload.push(...traversed);
+          }
+        }
+      }
+      if (filesToUpload.length) {
+        await uploadFileList(filesToUpload);
+      }
+    } else if (e.dataTransfer.files.length) {
+      await uploadFileList(e.dataTransfer.files);
+    }
   });
 }
 
