@@ -22,6 +22,15 @@ const HOST = process.env.HOST || '0.0.0.0';
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Security headers
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  next();
+});
+
 // Trust proxy for proper IP detection behind reverse proxy
 app.set('trust proxy', 1);
 
@@ -37,7 +46,7 @@ app.get('/api/auth/required', (req, res) => {
   res.json({ required: !!PIN });
 });
 
-app.post('/api/auth', (req, res) => {
+app.post('/api/auth', authRateLimiter, (req, res) => {
   const { pin } = req.body;
   if (!PIN || pin === PIN) {
     res.json({ success: true, token: PIN || 'open' });
@@ -232,7 +241,7 @@ app.post('/api/files/write', checkPin, async (req, res) => {
 
 app.get('/api/files/download', checkPin, async (req, res) => {
   try {
-    const p = resolvePath(req.query.path);
+    const p = validatePath(req.query.path);
     const st = await fsPromises.stat(p);
     if (st.isDirectory()) {
       res.setHeader('Content-Type', 'application/zip');
@@ -282,7 +291,7 @@ app.post('/api/files/upload', checkPin, (req, res) => {
       cb(null, path.basename(file.originalname));
     }
   });
-  const upload = multer({ storage }).array('files');
+  const upload = multer({ storage, limits: { fileSize: 500 * 1024 * 1024, files: 100 } }).array('files');
   upload(req, res, err => {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ success: true, count: Array.isArray(req.files) ? req.files.length : 0 });
@@ -294,6 +303,22 @@ app.post('/api/files/upload', checkPin, (req, res) => {
 const { execSync, execFileSync, spawn } = require('child_process');
 
 const TMUX = (() => { try { return execSync('command -v tmux', { stdio: ['ignore','pipe','ignore'] }).toString().trim(); } catch { return null; } })();
+
+// Auth rate limiter (separate, stricter)
+const authReqs = new Map();
+function authRateLimiter(req, res, next) {
+  if (!PIN) return next();
+  const now = Date.now();
+  const key = req.ip || 'default';
+  let win = authReqs.get(key);
+  if (!win || now > win.resetAt) {
+    win = { count: 0, resetAt: now + 10000 };
+    authReqs.set(key, win);
+  }
+  win.count++;
+  if (win.count > 5) return res.status(429).json({ error: 'Too many attempts' });
+  next();
+}
 
 // Simple in-memory rate limiter
 const rateLimiter = (() => {
@@ -723,7 +748,7 @@ app.get('/api/system', checkPin, async (req, res) => {
         const pidIdx = header.indexOf('PID');
         const cpuIdx = header.indexOf('%CPU');
         const memIdx = header.indexOf('%MEM');
-        const cmdIdx = 10;
+        const cmdIdx = header.length - 1;
         for (let i = 1; i < lines.length; i++) {
           const parts = lines[i].trim().split(/\s+/);
           if (parts.length > cmdIdx) {
@@ -870,8 +895,16 @@ server.listen(PORT, HOST, () => {
   if (PIN) console.log(`  PIN protection enabled\n`);
 });
 
-process.on('uncaughtException', e => console.error('Uncaught:', e.message));
-process.on('unhandledRejection', e => console.error('Unhandled:', e));
+process.on('uncaughtException', e => {
+  console.error('Uncaught:', e.message);
+  cleanup();
+  process.exit(1);
+});
+process.on('unhandledRejection', e => {
+  console.error('Unhandled:', e);
+  cleanup();
+  process.exit(1);
+});
 
 // Cleanup spawned processes on exit
 function cleanup() {
