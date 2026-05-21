@@ -1,5 +1,6 @@
 node_modules/
 .env
 *.log
-webterm.pid
+webtun.pid
+webtun.log
 .tunnels.json

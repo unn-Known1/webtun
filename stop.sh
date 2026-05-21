@@ -2,7 +2,7 @@
 set -euo pipefail
 # Stop WebTun server
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PID_FILE="$SCRIPT_DIR/webterm.pid"
+PID_FILE="$SCRIPT_DIR/webtun.pid"
 
 if [ -f "$PID_FILE" ]; then
   PID=$(cat "$PID_FILE" 2>/dev/null || echo "")

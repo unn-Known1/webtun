@@ -381,7 +381,7 @@ function tmuxSessionExists(name) {
   try { execFileSync(TMUX, ['has-session', '-t', name], { stdio: 'ignore' }); return true; } catch { return false; }
 }
 
-// List all webterm-managed tmux sessions: returns [{id, title}]
+// List all webtun-managed tmux sessions: returns [{id, title}]
 app.get('/api/sessions', checkPin, (req, res) => {
   if (!TMUX) return res.json({ tmux: false, sessions: [] });
   try {
