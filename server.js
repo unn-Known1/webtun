@@ -65,6 +65,11 @@ function validatePath(targetPath) {
   return resolved;
 }
 
+function resolvePath(targetPath) {
+  if (!targetPath) return WORKSPACE_ROOT;
+  return path.resolve(targetPath);
+}
+
 async function safeStat(p) {
   try { return await fsPromises.stat(p); } catch { return null; }
 }
@@ -94,7 +99,44 @@ async function asyncSafeWalk(currentDir, depth, maxDepth, q, results, maxResults
 
 app.get('/api/files', checkPin, async (req, res) => {
   try {
-    const dir = validatePath(req.query.path || WORKSPACE_ROOT);
+    const dir = resolvePath(req.query.path || WORKSPACE_ROOT);
+
+    // Windows: at a drive root (e.g. C:\), list all available drives
+    if (os.platform() === 'win32') {
+      const parsed = path.parse(dir);
+      if (dir === parsed.root || dir === '\\') {
+        const files = [];
+        for (let i = 65; i <= 90; i++) {
+          const letter = String.fromCharCode(i);
+          const drive = letter + ':\\';
+          try { await fsPromises.access(drive); } catch { continue; }
+          files.push({
+            name: letter + ':', path: drive, isDir: true,
+            isSymlink: false, size: 0, modified: null, ext: ''
+          });
+        }
+        if (dir !== '\\') {
+          try {
+            const entries = await fsPromises.readdir(dir, { withFileTypes: true });
+            for (const e of entries) {
+              const full = path.join(dir, e.name);
+              const st = await safeStat(full);
+              files.push({
+                name: e.name, path: full, isDir: e.isDirectory(),
+                isSymlink: e.isSymbolicLink(), size: st ? st.size : 0,
+                modified: st ? st.mtime : null, ext: path.extname(e.name).toLowerCase()
+              });
+            }
+          } catch {}
+        }
+        files.sort((a, b) => {
+          if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        });
+        return res.json({ path: dir, parent: null, files });
+      }
+    }
+
     const entries = await fsPromises.readdir(dir, { withFileTypes: true });
     const files = await Promise.all(
       entries.map(async e => {
@@ -115,7 +157,8 @@ app.get('/api/files', checkPin, async (req, res) => {
       if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
       return a.name.localeCompare(b.name);
     });
-    res.json({ path: dir, parent: path.dirname(dir), files });
+    const parent = path.dirname(dir);
+    res.json({ path: dir, parent: parent !== dir ? parent : null, files });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -169,7 +212,7 @@ app.post('/api/files/touch', checkPin, async (req, res) => {
 
 app.get('/api/files/read', checkPin, async (req, res) => {
   try {
-    const p = validatePath(req.query.path);
+    const p = resolvePath(req.query.path);
     const content = await fsPromises.readFile(p, 'utf8');
     res.json({ content });
   } catch (e) {
@@ -189,7 +232,7 @@ app.post('/api/files/write', checkPin, async (req, res) => {
 
 app.get('/api/files/download', checkPin, async (req, res) => {
   try {
-    const p = validatePath(req.query.path);
+    const p = resolvePath(req.query.path);
     const st = await fsPromises.stat(p);
     if (st.isDirectory()) {
       res.setHeader('Content-Type', 'application/zip');
@@ -580,7 +623,7 @@ app.get('/api/search', rateLimiter, checkPin, async (req, res) => {
   if (!q || q.length < 1) return res.json({ results: [] });
 
   try {
-    const searchDir = validatePath(dir);
+    const searchDir = resolvePath(dir);
     const maxResults = 50;
     const results = [];
     const maxDepth = 4;
