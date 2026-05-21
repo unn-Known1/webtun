@@ -227,7 +227,7 @@ echo ""
 # Kill old instance if running
 if [ -f "$SCRIPT_DIR/webterm.pid" ]; then
   OLD_PID=$(cat "$SCRIPT_DIR/webterm.pid" 2>/dev/null || echo "")
-  [ -n "$OLD_PID" ] && kill "$OLD_PID" 2>/dev/null || true
+  [ -n "$OLD_PID" ] && [[ "$OLD_PID" =~ ^[0-9]+$ ]] && kill -- "$OLD_PID" 2>/dev/null || true
 fi
 pkill -f "^node.*server\.js" 2>/dev/null || true
 sleep 0.5
@@ -237,7 +237,7 @@ LOG_FILE="$SCRIPT_DIR/webterm.log"
 NODE_CMD="$(command -v node)"
 nohup "$NODE_CMD" "$SCRIPT_DIR/server.js" >> "$LOG_FILE" 2>&1 &
 SERVER_PID=$!
-echo $SERVER_PID > "$SCRIPT_DIR/webterm.pid"
+echo "$SERVER_PID" > "$SCRIPT_DIR/webterm.pid"
 
 # Wait for server
 SERVER_UP=false
@@ -292,7 +292,7 @@ fi
 if command -v cloudflared &>/dev/null; then
   echo ""
   IFS=$READ_IFS read -rp "  Start Cloudflare Tunnel for remote access? [Y/n]: " START_TUNNEL
-  if [[ "${START_TUNNEL,,}" != "n" ]]; then
+  if [[ "$(echo "$START_TUNNEL" | tr '[:upper:]' '[:lower:]')" != "n" ]]; then
     echo ""
     echo "  ${BOLD}Starting Cloudflare Tunnel...${RESET}"
     echo "  ${YELLOW}Your public URL will appear below (takes a few seconds):${RESET}"
