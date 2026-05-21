@@ -6,7 +6,11 @@ const path = require('path');
 const CF_RELEASES = 'https://github.com/cloudflare/cloudflared/releases/latest/download';
 
 try {
-  execSync('command -v cloudflared', { stdio: 'ignore' });
+  if (os.platform() === 'win32') {
+    execSync('where cloudflared', { stdio: 'ignore' });
+  } else {
+    execSync('command -v cloudflared', { stdio: 'ignore' });
+  }
   process.exit(0);
 } catch {}
 
@@ -59,7 +63,7 @@ try {
     installBin('/tmp/cloudflared', '/usr/local/bin/cloudflared');
     try { fs.unlinkSync(tmp); } catch {}
   } else if (platform === 'win32') {
-    const dest = path.join(process.env.ProgramFiles || 'C:\\Program Files', 'cloudflared', 'cloudflared.exe');
+    const dest = path.join(process.env.ProgramW6432 || process.env.ProgramFiles || process.env.SystemRoot + '\\Program Files', 'cloudflared', 'cloudflared.exe');
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     installBin(tmp, dest);
   } else {

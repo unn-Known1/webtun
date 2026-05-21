@@ -32,8 +32,8 @@ self.addEventListener('fetch', e => {
   if (!e.request.url.startsWith('http://') && !e.request.url.startsWith('https://')) return;
 
   const url = new URL(e.request.url);
-  // Never intercept API or WebSocket calls
-  if (url.pathname.startsWith('/api') || url.protocol === 'ws:' || url.protocol === 'wss:') return;
+  // Never intercept API calls
+  if (url.pathname.startsWith('/api')) return;
 
   // Network-First for HTML/navigation requests to avoid the SPA update trap
   const isNavigation = e.request.mode === 'navigate' || url.pathname === '/' || url.pathname.endsWith('.html');
@@ -60,8 +60,10 @@ self.addEventListener('fetch', e => {
       if (cached) return cached;
       return fetch(e.request).then(res => {
         if (!res || res.status !== 200 || res.type === 'opaque') return res;
-        const clone = res.clone();
-        caches.open(CACHE).then(c => c.put(e.request, clone));
+        if (res.type !== 'opaque') {
+          const clone = res.clone();
+          caches.open(CACHE).then(c => c.put(e.request, clone));
+        }
         return res;
       }).catch(() => cached || new Response('Offline', { status: 503 }));
     })

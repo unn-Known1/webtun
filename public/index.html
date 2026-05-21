@@ -750,7 +750,10 @@ function saveTabState() {
 }
 
 function loadTabState() {
-  try { return JSON.parse(localStorage.getItem('wt-tabs')) || []; } catch { return []; }
+  try {
+    const val = JSON.parse(localStorage.getItem('wt-tabs'));
+    return Array.isArray(val) ? val : [];
+  } catch { return []; }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -778,7 +781,7 @@ async function init() {
     }
   } else {
     document.getElementById('pin-error').textContent = 'Server connection failed. Retrying...';
-    setTimeout(init, 3000);
+    setTimeout(() => { if (!window._appUnlocked) init(); }, 3000);
   }
 }
 
@@ -800,6 +803,8 @@ async function submitPin() {
 }
 
 async function unlockApp() {
+  if (window._appUnlocked) return;
+  window._appUnlocked = true;
   document.getElementById('pin-screen').classList.add('hidden');
   document.getElementById('app').style.display = 'flex';
 
@@ -1401,9 +1406,12 @@ async function uploadFileList(items) {
     }
   }
   if (count === 0) return;
-  const r = await fetch(`/api/files/upload?path=${encodeURIComponent(currentPath)}`, {
-    method: 'POST', headers: { 'x-pin-token': authToken }, body: form
-  }).then(r => r.json());
+  let r;
+  try {
+    r = await fetch(`/api/files/upload?path=${encodeURIComponent(currentPath)}`, {
+      method: 'POST', headers: { 'x-pin-token': authToken }, body: form
+    }).then(r => r.json());
+  } catch { toast('Upload failed', 'error'); return; }
   if (r.success) { toast(`${r.count} file(s) uploaded`, 'success'); refreshFiles(); }
   else toast(r.error || 'Upload failed', 'error');
 }
@@ -1441,6 +1449,7 @@ async function saveFile() {
     body: JSON.stringify({ path: editorPath, content })
   });
   if (r.success) {
+    editorOriginalContent = content;
     document.getElementById('editor-status').textContent = '✓ Saved';
     toast('Saved', 'success');
     setTimeout(() => document.getElementById('editor-status').textContent = '', 2000);
@@ -1802,24 +1811,28 @@ function setupDragDrop() {
     dragCnt = 0;
     overlay.classList.remove('active');
 
-    const items = Array.from(e.dataTransfer.items || []);
-    if (items.length) {
-      const filesToUpload = [];
-      for (const item of items) {
-        if (item.kind === 'file') {
-          const entry = item.webkitGetAsEntry();
-          if (entry) {
-            const traversed = await traverseDirectoryEntry(entry);
-            filesToUpload.push(...traversed);
+    try {
+      const items = Array.from(e.dataTransfer.items || []);
+      if (items.length) {
+        const filesToUpload = [];
+        for (const item of items) {
+          if (item.kind === 'file') {
+            const entry = item.webkitGetAsEntry();
+            if (entry) {
+              try {
+                const traversed = await traverseDirectoryEntry(entry);
+                filesToUpload.push(...traversed);
+              } catch {}
+            }
           }
         }
+        if (filesToUpload.length) {
+          await uploadFileList(filesToUpload);
+        }
+      } else if (e.dataTransfer.files.length) {
+        await uploadFileList(e.dataTransfer.files);
       }
-      if (filesToUpload.length) {
-        await uploadFileList(filesToUpload);
-      }
-    } else if (e.dataTransfer.files.length) {
-      await uploadFileList(e.dataTransfer.files);
-    }
+    } catch (err) { toast('Upload failed', 'error'); }
   });
 }
 
@@ -1830,7 +1843,11 @@ function openOverlay(id) { document.getElementById(id).classList.add('open'); }
 function closeOverlay(id) { document.getElementById(id).classList.remove('open'); }
 
 document.querySelectorAll('.overlay').forEach(o => {
-  o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
+  o.addEventListener('click', e => {
+    if (e.target !== o) return;
+    if (o.id === 'sys-overlay') { closeSystemStats(); return; }
+    o.classList.remove('open');
+  });
 });
 
 function toast(msg, type = 'info') {
@@ -1860,7 +1877,7 @@ function renderBookmarks() {
   document.getElementById('bm-count').textContent = bm.length ? `${bm.length}` : '';
   list.innerHTML = '';
   if (bm.length === 0) { list.classList.remove('open'); return; }
-  list.classList.add('open');
+  list.classList.toggle('open', bookmarksOpen);
   bm.forEach((b, i) => {
     const div = document.createElement('div');
     div.className = 'bookmark-item';
