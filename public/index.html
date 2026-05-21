@@ -1128,6 +1128,11 @@ function getActiveTab() { return tabs.find(t => t.id === activeTabId); }
 function fitTerm(tab) {
   try {
     if (!tab?.term?.element || !tab.wrapper) return;
+    const d = tab.term._core?.viewportRenderer?.dimensions;
+    if (!d || !d.actualCellWidth || !d.actualCellHeight) {
+      if (tab.fitAddon) { tab.fitAddon.fit(); }
+      return;
+    }
     const el = tab.term.element;
     const parent = el.parentElement;
     if (!parent) return;
@@ -1142,12 +1147,10 @@ function fitTerm(tab) {
       const hdr = tab.wrapper.querySelector('.term-tile-header');
       if (hdr) availH -= hdr.offsetHeight;
     }
-    const d = tab.term._core?.viewportRenderer?.dimensions;
-    if (!d || !d.actualCellWidth || !d.actualCellHeight) return;
     const cols = Math.max(1, Math.floor(availW / d.actualCellWidth));
     const rows = Math.max(1, Math.floor(availH / d.actualCellHeight));
     tab.term.resize(cols, rows);
-  } catch {}
+  } catch (e) { console.warn('fitTerm failed:', e); }
 }
 
 function sendKey(key) {
