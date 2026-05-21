@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 IFS=$'\n\t'
+# Restore normal IFS for read commands
+READ_IFS=$' \t\n'
 
 # ─────────────────────────────────────────────────────────────
 #  WebTun Setup Script
@@ -113,7 +115,7 @@ else
   echo "  ${BOLD}Configuration${RESET}"
   echo "  ─────────────"
   
-  read -rp "  Port [3000]: " INPUT_PORT
+  IFS=$READ_IFS read -rp "  Port [3000]: " INPUT_PORT
   PORT="${INPUT_PORT:-3000}"
 
   echo ""
@@ -121,7 +123,7 @@ else
   echo "  Add a PIN to prevent unauthorized access."
   echo "  Leave blank for no PIN (NOT recommended if exposed to the internet)."
   echo ""
-  read -rsp "  PIN (hidden, press Enter for none): " INPUT_PIN
+  IFS=$READ_IFS read -rsp "  PIN (hidden, press Enter for none): " INPUT_PIN
   echo ""
 
   cat > "$ENV_FILE" << EOF
@@ -183,7 +185,7 @@ setup_systemd() {
   if [[ "$OS" != "Linux" ]] || ! command -v systemctl &>/dev/null; then return; fi
   
   echo ""
-  read -rp "  Install as systemd service (auto-start on boot)? [y/N]: " INSTALL_SERVICE
+  IFS=$READ_IFS read -rp "  Install as systemd service (auto-start on boot)? [y/N]: " INSTALL_SERVICE
   local lower; lower="$(echo "$INSTALL_SERVICE" | tr '[:upper:]' '[:lower:]')"
   if [[ "$lower" != "y" ]]; then return; fi
 
@@ -233,7 +235,7 @@ sleep 0.5
 # Start server in background, log to file
 LOG_FILE="$SCRIPT_DIR/webterm.log"
 NODE_CMD="$(command -v node)"
-nohup "$NODE_CMD" "$SCRIPT_DIR/server.js" > "$LOG_FILE" 2>&1 &
+nohup "$NODE_CMD" "$SCRIPT_DIR/server.js" >> "$LOG_FILE" 2>&1 &
 SERVER_PID=$!
 echo $SERVER_PID > "$SCRIPT_DIR/webterm.pid"
 
@@ -241,9 +243,22 @@ echo $SERVER_PID > "$SCRIPT_DIR/webterm.pid"
 SERVER_UP=false
 for i in {1..10}; do
   sleep 0.5
-  if curl -sf "http://localhost:$PORT/api/auth/required" &>/dev/null; then
-    SERVER_UP=true
-    break
+  if command -v curl &>/dev/null; then
+    if curl -sf "http://localhost:$PORT/api/auth/required" &>/dev/null; then
+      SERVER_UP=true
+      break
+    fi
+  elif command -v wget &>/dev/null; then
+    if wget -q "http://localhost:$PORT/api/auth/required" -O /dev/null 2>/dev/null; then
+      SERVER_UP=true
+      break
+    fi
+  else
+    # No curl or wget — try a basic TCP check
+    if (echo > /dev/tcp/localhost/$PORT) 2>/dev/null; then
+      SERVER_UP=true
+      break
+    fi
   fi
 done
 
@@ -267,13 +282,16 @@ echo ""
 
 # Systemd offer
 if [[ "$OS" == "Linux" ]] && command -v systemctl &>/dev/null && [ ! -f "/etc/systemd/system/webtun.service" ]; then
-  setup_systemd
+  # Only offer systemd if we're the only process on the port (don't race with existing server)
+  if ! curl -sf "http://localhost:$PORT/api/auth/required" &>/dev/null; then
+    setup_systemd
+  fi
 fi
 
 # ── Cloudflare Tunnel ──────────────────────────────────────────
 if command -v cloudflared &>/dev/null; then
   echo ""
-  read -rp "  Start Cloudflare Tunnel for remote access? [Y/n]: " START_TUNNEL
+  IFS=$READ_IFS read -rp "  Start Cloudflare Tunnel for remote access? [Y/n]: " START_TUNNEL
   if [[ "${START_TUNNEL,,}" != "n" ]]; then
     echo ""
     echo "  ${BOLD}Starting Cloudflare Tunnel...${RESET}"

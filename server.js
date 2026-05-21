@@ -324,9 +324,16 @@ function authRateLimiter(req, res, next) {
   next();
 }
 
+// Periodic cleanup of rate limiter maps (prevents unbounded memory growth)
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, win] of authReqs) { if (now > win.resetAt) authReqs.delete(key); }
+  for (const [key, win] of rateLimitWindows) { if (now > win.resetAt) rateLimitWindows.delete(key); }
+}, 60000);
+
 // Simple in-memory rate limiter
+const rateLimitWindows = new Map(); // key -> { count, resetAt }
 const rateLimiter = (() => {
-  const windows = new Map(); // key -> { count, resetAt }
   const LIMITS = {
     '/api/exec': { limit: 10, windowMs: 10000 },
     '/api/search': { limit: 20, windowMs: 10000 },
@@ -338,10 +345,10 @@ const rateLimiter = (() => {
     if (!cfg) return next();
     const now = Date.now();
     const key = req.ip || 'default';
-    let win = windows.get(key);
+    let win = rateLimitWindows.get(key);
     if (!win || now > win.resetAt) {
       win = { count: 0, resetAt: now + cfg.windowMs };
-      windows.set(key, win);
+      rateLimitWindows.set(key, win);
     }
     win.count++;
     if (win.count > cfg.limit) {
