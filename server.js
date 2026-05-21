@@ -9,6 +9,7 @@ const path = require('path');
 const os = require('os');
 const mime = require('mime-types');
 const archiver = require('archiver');
+const crypto = require('crypto');
 
 const app = express();
 const server = http.createServer(app);
@@ -19,6 +20,7 @@ const PIN = process.env.PIN || '';
 const SHELL = process.env.SHELL || (os.platform() === 'win32' ? 'powershell.exe' : (fs.existsSync('/bin/bash') ? '/bin/bash' : 'sh'));
 const HOST = process.env.HOST || '0.0.0.0';
 
+app.disable('x-powered-by');
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -28,17 +30,23 @@ app.use((req, res, next) => {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Content-Security-Policy', "default-src 'self'; connect-src 'self' https://*.trycloudflare.com wss:; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:;");
   next();
 });
 
 // Trust proxy for proper IP detection behind reverse proxy
 app.set('trust proxy', 1);
 
+function constantTimeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b.padEnd(a.length, '\0').slice(0, a.length)));
+}
+
 // ── Auth ──────────────────────────────────────────────────────────────
 function checkPin(req, res, next) {
   if (!PIN) return next();
-  const token = req.headers['x-pin-token'] || req.query.token;
-  if (token === PIN) return next();
+  const token = (req.headers['x-pin-token'] || req.query.token || '').trim();
+  if (token && constantTimeEqual(token, PIN)) return next();
   res.status(401).json({ error: 'Unauthorized' });
 }
 
@@ -48,7 +56,7 @@ app.get('/api/auth/required', (req, res) => {
 
 app.post('/api/auth', authRateLimiter, (req, res) => {
   const { pin } = req.body;
-  if (!PIN || pin === PIN) {
+  if (!PIN || (pin && constantTimeEqual(pin, PIN))) {
     res.json({ success: true, token: PIN || 'open' });
   } else {
     res.status(401).json({ error: 'Invalid PIN' });
@@ -67,7 +75,10 @@ const fsPromises = fs.promises;
 function validatePath(targetPath) {
   if (!targetPath) return WORKSPACE_ROOT;
   const resolved = path.resolve(targetPath);
-  const rel = path.relative(WORKSPACE_ROOT, resolved);
+  // Resolve symlinks to prevent symlink escape
+  let real;
+  try { real = fs.realpathSync(resolved); } catch { real = resolved; }
+  const rel = path.relative(WORKSPACE_ROOT, real);
   if (rel.startsWith('..') || path.isAbsolute(rel)) {
     throw new Error('Access denied: Path lies outside workspace root');
   }
@@ -255,7 +266,8 @@ app.get('/api/files/download', checkPin, async (req, res) => {
         if (!res.headersSent) res.status(500).json({ error: err.message });
       });
       archive.pipe(res);
-      archive.directory(p, path.basename(p));
+      // Skip symlinks in directory archives to prevent boundary escape
+      archive.directory(p, path.basename(p), { followSymlinks: false });
       await archive.finalize();
     } else {
       const mimeType = mime.lookup(p) || 'application/octet-stream';
@@ -303,7 +315,6 @@ app.post('/api/files/upload', checkPin, (req, res) => {
 });
 
 // ── Session persistence via tmux ──────────────────────────────────────
-// PATCHED: added `spawn` to child_process imports
 const { execSync, execFileSync, spawn } = require('child_process');
 
 const TMUX = (() => { try { return execSync('command -v tmux', { stdio: ['ignore','pipe','ignore'] }).toString().trim(); } catch { return null; } })();
@@ -313,7 +324,7 @@ const authReqs = new Map();
 function authRateLimiter(req, res, next) {
   if (!PIN) return next();
   const now = Date.now();
-  const key = req.ip || 'default';
+  const key = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || 'default';
   let win = authReqs.get(key);
   if (!win || now > win.resetAt) {
     win = { count: 0, resetAt: now + 10000 };
@@ -332,19 +343,18 @@ setInterval(() => {
 }, 60000);
 
 // Simple in-memory rate limiter
-const rateLimitWindows = new Map(); // key -> { count, resetAt }
+const rateLimitWindows = new Map();
 const rateLimiter = (() => {
   const LIMITS = {
     '/api/exec': { limit: 10, windowMs: 10000 },
     '/api/search': { limit: 20, windowMs: 10000 },
   };
   return (req, res, next) => {
-    // Only rate limit POST /api/exec and GET /api/search
     const path = req.path;
     const cfg = path === '/api/exec' ? LIMITS['/api/exec'] : path === '/api/search' ? LIMITS['/api/search'] : null;
     if (!cfg) return next();
     const now = Date.now();
-    const key = req.ip || 'default';
+    const key = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || 'default';
     let win = rateLimitWindows.get(key);
     if (!win || now > win.resetAt) {
       win = { count: 0, resetAt: now + cfg.windowMs };
@@ -358,6 +368,10 @@ const rateLimiter = (() => {
   };
 })();
 
+function isValidPID(pid) {
+  return typeof pid === 'number' && Number.isInteger(pid) && pid > 0;
+}
+
 // Clean up dead tmux sessions from previous runs on startup
 function cleanupOrphanTmuxSessions() {
   if (!TMUX) return;
@@ -366,22 +380,19 @@ function cleanupOrphanTmuxSessions() {
     const sessions = out.split('\n').filter(s => s.startsWith('wt-'));
     for (const s of sessions) {
       try {
-        // Check if this session has a connected client
         const clients = execFileSync(TMUX, ['list-clients', '-t', s], { stdio: 'pipe', encoding: 'utf8' }).trim();
         if (!clients) {
-          // No clients attached, kill orphaned session
           execFileSync(TMUX, ['kill-session', '-t', s], { stdio: 'ignore' });
         }
-      } catch { /* Session may have no clients or already be gone */ }
+      } catch {}
     }
-  } catch { /* No sessions or tmux error */ }
+  } catch {}
 }
 
 function tmuxSessionExists(name) {
   try { execFileSync(TMUX, ['has-session', '-t', name], { stdio: 'ignore' }); return true; } catch { return false; }
 }
 
-// List all webtun-managed tmux sessions: returns [{id, title}]
 app.get('/api/sessions', checkPin, (req, res) => {
   if (!TMUX) return res.json({ tmux: false, sessions: [] });
   try {
@@ -409,11 +420,27 @@ app.delete('/api/sessions/:id', checkPin, (req, res) => {
 //     0x01 = exit          (1B exit code)
 //     0x02 = error         (UTF-8 message)
 //   Client → Server:
-//     0x00 = input         (UTF-8)
+//     0x00 = input         (UTF-8) – max 64KB per message
 //     0x01 = resize        (4B: cols uint16LE, rows uint16LE)
 //     0x02 = ping          (no payload)
 
+const ALLOWED_WS_ORIGINS = new Set();
+function getWsOrigin(req) {
+  return (req.headers['origin'] || '').replace(/\/$/, '');
+}
+
 wss.on('connection', (ws, req) => {
+  // Origin check to prevent Cross-Site WebSocket Hijacking
+  const origin = getWsOrigin(req);
+  if (origin) {
+    const host = req.headers['host'] || '';
+    const allowedLocal = origin === `http://${host}` || origin === `https://${host}` || origin === `http://localhost` || origin === `https://localhost`;
+    if (!allowedLocal && !ALLOWED_WS_ORIGINS.has(origin)) {
+      ws.close(1008, 'Origin not allowed');
+      return;
+    }
+  }
+
   const url   = new URL(req.url, `http://localhost`);
   const token = url.searchParams.get('token');
 
@@ -428,6 +455,12 @@ wss.on('connection', (ws, req) => {
     cwd = WORKSPACE_ROOT;
   }
   const sessionId = (url.searchParams.get('session') || '').replace(/[^a-zA-Z0-9_-]/g, '');
+
+  const sessionEnv = (() => {
+    const safe = { TERM: 'xterm-256color', COLORTERM: 'truecolor', HOME: process.env.HOME || '', USER: process.env.USER || '', PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin', LANG: process.env.LANG || 'C.UTF-8', SHELL: SHELL };
+    if (process.env.NODE_ENV) safe.NODE_ENV = process.env.NODE_ENV;
+    return safe;
+  })();
 
   const send = (type, payload) => {
     if (ws.readyState !== WebSocket.OPEN) return;
@@ -444,28 +477,25 @@ wss.on('connection', (ws, req) => {
   let proc;
   try {
     if (TMUX && sessionId) {
-      // ── tmux mode: attach or create ──────────────────────────────
       const tmuxName = 'wt-' + sessionId;
       const exists   = tmuxSessionExists(tmuxName);
 
       if (exists) {
-        // Resize existing session first
         try { execFileSync(TMUX, ['resize-window', '-t', tmuxName, '-x', String(cols), '-y', String(rows)], { stdio: 'ignore' }); } catch {}
         proc = pty.spawn(TMUX, ['attach-session', '-t', tmuxName], {
           name: 'xterm-256color', cols, rows, cwd,
-          env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' }
+          env: sessionEnv
         });
       } else {
         proc = pty.spawn(TMUX, ['new-session', '-s', tmuxName], {
           name: 'xterm-256color', cols, rows, cwd,
-          env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor', SHELL }
+          env: { ...sessionEnv, SHELL }
         });
       }
     } else {
-      // ── plain shell (no tmux / no session id) ───────────────────
       proc = pty.spawn(SHELL, [], {
         name: 'xterm-256color', cols, rows, cwd,
-        env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' }
+        env: sessionEnv
       });
     }
   } catch (e) {
@@ -477,13 +507,10 @@ wss.on('connection', (ws, req) => {
   proc.onData(data => send(0x00, data));
 
   proc.onExit(() => {
-    // In tmux mode: detaching is an "exit" but the session lives on.
-    // Only send exit signal for plain shells.
     if (!TMUX || !sessionId) send(0x01, Buffer.from([0]));
     ws.close();
   });
 
-  // Server-side keepalive ping every 30s
   ws.isAlive = true;
   const pingInterval = setInterval(() => {
     if (!ws.isAlive) { clearInterval(pingInterval); ws.terminate(); return; }
@@ -495,25 +522,26 @@ wss.on('connection', (ws, req) => {
   ws.on('message', raw => {
     try {
       const buf  = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+      if (buf.length < 1) return;
       const type = buf[0];
       if (type === 0x00) {
-        proc.write(buf.slice(1).toString('utf8'));
+        // Limit input to 64KB per message
+        const payload = buf.slice(1, Math.min(buf.length, 65537));
+        proc.write(payload.toString('utf8'));
       } else if (type === 0x01 && buf.length >= 5) {
         const c = buf.readUInt16LE(1), r = buf.readUInt16LE(3);
         proc.resize(Math.max(2, c), Math.max(2, r));
-        // Also resize the tmux window so it matches
         if (TMUX && sessionId) {
           try { execFileSync(TMUX, ['resize-window', '-t', 'wt-' + sessionId, '-x', String(c), '-y', String(r)], { stdio: 'ignore' }); } catch {}
         }
       }
-      // 0x02 client ping — no-op
-    } catch {}
+    } catch (e) {
+      console.error('WS message error:', e.message);
+    }
   });
 
   const cleanup = () => {
     clearInterval(pingInterval);
-    // In tmux mode just kill the pty (the session stays alive in tmux).
-    // In plain mode kill the shell process.
     try { proc.kill(); } catch {}
   };
   ws.on('close', cleanup);
@@ -521,10 +549,6 @@ wss.on('connection', (ws, req) => {
 });
 
 // ── MCP Exec API ──────────────────────────────────────────────────────
-// Added for MCP server integration. Two endpoints:
-//   POST /api/exec           – run command, wait, return full output (JSON)
-//   GET  /api/exec/stream    – run command, stream output as SSE
-
 function getShellAndArgs(command) {
   if (os.platform() === 'win32') {
     const shell = process.env.SHELL || 'powershell.exe';
@@ -539,7 +563,7 @@ function getShellAndArgs(command) {
 }
 
 function killProcessGroup(pid) {
-  if (!pid) return;
+  if (!isValidPID(pid)) return;
   try {
     if (os.platform() === 'win32') {
       execSync(`taskkill /pid ${pid} /T /F`, { stdio: 'ignore' });
@@ -551,12 +575,17 @@ function killProcessGroup(pid) {
   }
 }
 
-// POST /api/exec
-// Body: { command: string, cwd?: string, timeout?: number (ms, default 60000) }
-// Response: { exitCode, stdout, stderr, duration }
+const execEnv = (() => {
+  const safe = { HOME: process.env.HOME || '', USER: process.env.USER || '', PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin', LANG: process.env.LANG || 'C.UTF-8', SHELL: SHELL };
+  if (process.env.NODE_ENV) safe.NODE_ENV = process.env.NODE_ENV;
+  return safe;
+})();
+
 app.post('/api/exec', rateLimiter, checkPin, (req, res) => {
   const { command, cwd: reqCwd, timeout = 60000 } = req.body;
   if (!command) return res.status(400).json({ error: 'command required' });
+
+  const execTimeout = Math.min(Math.max(1000, Number(timeout) || 60000), 300000);
 
   let execCwd;
   try {
@@ -567,25 +596,31 @@ app.post('/api/exec', rateLimiter, checkPin, (req, res) => {
 
   let stdout = '', stderr = '';
   const start = Date.now();
-  const maxBufferSize = 10 * 1024 * 1024; // 10MB limit
+  const maxBufferSize = 10 * 1024 * 1024;
 
   const { shell, args } = getShellAndArgs(command);
   const proc = spawn(shell, args, {
     cwd: execCwd,
-    env: { ...process.env },
+    env: execEnv,
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: os.platform() !== 'win32'
   });
 
+  let killed = false;
+
   proc.stdout.on('data', d => {
+    if (killed) return;
     if (stdout.length + d.length > maxBufferSize) {
+      killed = true;
       try { killProcessGroup(proc.pid); } catch {}
       return;
     }
     stdout += d.toString();
   });
   proc.stderr.on('data', d => {
+    if (killed) return;
     if (stderr.length + d.length > maxBufferSize) {
+      killed = true;
       try { killProcessGroup(proc.pid); } catch {}
       return;
     }
@@ -593,10 +628,12 @@ app.post('/api/exec', rateLimiter, checkPin, (req, res) => {
   });
 
   const timer = setTimeout(() => {
+    if (killed) return;
+    killed = true;
     try { killProcessGroup(proc.pid); } catch {}
     if (!res.headersSent)
       res.status(408).json({ error: 'timeout', stdout, stderr, duration: Date.now() - start });
-  }, timeout);
+  }, execTimeout);
 
   proc.on('close', code => {
     clearTimeout(timer);
@@ -611,9 +648,6 @@ app.post('/api/exec', rateLimiter, checkPin, (req, res) => {
   });
 });
 
-// GET /api/exec/stream?command=<cmd>&cwd=<path>   (Server-Sent Events)
-// Each SSE event: data: {"type":"stdout"|"stderr"|"exit"|"error","data":<string|number>}
-// type=exit carries the numeric exit code; stream ends after it.
 app.get('/api/exec/stream', checkPin, (req, res) => {
   const { command, cwd: reqCwd } = req.query;
   if (!command) { res.status(400).end('command required'); return; }
@@ -637,7 +671,7 @@ app.get('/api/exec/stream', checkPin, (req, res) => {
   const { shell, args } = getShellAndArgs(command);
   const proc = spawn(shell, args, {
     cwd: execCwd,
-    env: { ...process.env },
+    env: execEnv,
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: os.platform() !== 'win32'
   });
@@ -648,7 +682,6 @@ app.get('/api/exec/stream', checkPin, (req, res) => {
   proc.on('close', code => { send('exit', code); res.end(); });
   proc.on('error', e => { send('error', e.message); res.end(); });
 
-  // Kill child if client disconnects
   req.on('close', () => { try { killProcessGroup(proc.pid); } catch {} });
 });
 
@@ -792,7 +825,7 @@ const tunnels = new Map();
 const TUNNEL_FILE = path.join(__dirname, '.tunnels.json');
 
 function isCloudflaredProcess(pid) {
-  if (!pid) return false;
+  if (!isValidPID(pid)) return false;
   try {
     if (os.platform() === 'win32') {
       const stdout = execSync(`tasklist /FI "PID eq ${pid}" /FO CSV /NH`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
@@ -908,25 +941,25 @@ server.listen(PORT, HOST, () => {
 
 process.on('uncaughtException', e => {
   console.error('Uncaught:', e.message);
-  cleanup();
+  try { cleanup(); } catch {}
   process.exit(1);
 });
 process.on('unhandledRejection', e => {
   console.error('Unhandled:', e);
-  cleanup();
-  process.exit(1);
+  // Don't exit on unhandled rejection — log and continue
 });
 
-// Cleanup spawned processes on exit
+process.on('SIGTERM', () => { try { cleanup(); } catch {}; process.exit(0); });
+process.on('SIGINT', () => { try { cleanup(); } catch {}; process.exit(0); });
+process.on('exit', () => { try { cleanup(); } catch {} });
+
 function cleanup() {
-  // Kill cloudflared tunnels
   for (const [id, entry] of tunnels) {
     try {
       if (entry.proc) entry.proc.kill('SIGTERM');
       else if (entry.pid && isCloudflaredProcess(entry.pid)) process.kill(entry.pid, 'SIGTERM');
     } catch {}
   }
-  // Kill tmux sessions managed by this server
   if (TMUX) {
     try {
       const out = execFileSync(TMUX, ['list-sessions', '-F', '#{session_name}'], { encoding: 'utf8' }).trim();
@@ -937,7 +970,3 @@ function cleanup() {
     } catch {}
   }
 }
-
-process.on('SIGTERM', cleanup);
-process.on('SIGINT', cleanup);
-process.on('exit', cleanup);

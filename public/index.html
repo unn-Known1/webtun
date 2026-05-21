@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#eeeef2">
+<meta name="theme-color" content="#1a1b26">
 <title>WebTun — Self-Hosted Web Terminal</title>
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/icon-192.png">
@@ -780,8 +780,14 @@ async function init() {
       unlockApp();
     }
   } else {
+    const retries = parseInt(sessionStorage.getItem('wt-init-retries') || '0');
+    if (retries >= 10) {
+      document.getElementById('pin-error').textContent = 'Server unreachable. Refresh to try again.';
+      return;
+    }
+    sessionStorage.setItem('wt-init-retries', String(retries + 1));
     document.getElementById('pin-error').textContent = 'Server connection failed. Retrying...';
-    setTimeout(() => { if (!window._appUnlocked) init(); }, 3000);
+    setTimeout(() => { if (!window._appUnlocked) init(); }, Math.min(3000 * (retries + 1), 30000));
   }
 }
 
@@ -822,6 +828,7 @@ async function unlockApp() {
   setupDragDrop();
   setupKeyboardShortcuts();
   setupMobileKeys();
+  window.addEventListener('resize', setupMobileKeys);
   registerSW();
   restoreTunnels();
 
@@ -831,7 +838,7 @@ async function unlockApp() {
     (async () => {
       for (const s of saved) {
         await new Promise(resolve => setTimeout(resolve, 100));
-        newTab(s.title, s.sessionId);
+        try { newTab(s.title, s.sessionId); } catch (e) { console.warn('Tab restore failed:', e); }
       }
     })();
   } else {
@@ -845,11 +852,15 @@ async function unlockApp() {
 async function api(url, opts = {}) {
   opts.headers = opts.headers || {};
   opts.headers['x-pin-token'] = authToken;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  opts.signal = controller.signal;
   try {
     const r = await fetch(url, opts);
+    clearTimeout(timeoutId);
     if (!r.ok && r.status === 401) { showPinScreen(); return {}; }
     try { return await r.json(); } catch { return {}; }
-  } catch { return {}; }
+  } catch { clearTimeout(timeoutId); return {}; }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -933,7 +944,7 @@ function activateTab(id) {
     if (t.wrapper) t.wrapper.classList.toggle('active', t.id === id);
   });
   const tab = tabs.find(t => t.id === id);
-  if (tab?.fitAddon) setTimeout(() => tab.fitAddon.fit(), 60);
+  if (tab?.fitAddon) setTimeout(() => fitTerm(tab), 60);
 }
 
 function cleanupWebSocket(tab) {
@@ -996,7 +1007,7 @@ function connectWebSocket(tab, isReconnect = false) {
     else if (type === 0x02) tab.term.writeln('\r\n\x1b[31m' + new TextDecoder().decode(payload) + '\x1b[0m');
   };
 
-  ws.onerror = () => {};
+  ws.onerror = (e) => { console.warn('WS error:', e.type); };
 
   ws.onclose = () => {
     cleanupWebSocket(tab);
@@ -1072,7 +1083,7 @@ function initTerminal(tab) {
   term.loadAddon(webLinksAddon);
 
   term.open(tab.wrapper);
-  fitAddon.fit();
+  fitTerm(tab);
 
   tab.term = term;
   tab.fitAddon = fitAddon;
@@ -1096,7 +1107,7 @@ function initTerminal(tab) {
 
   // Resize observer
   tab.resizeObserver = new ResizeObserver(() => {
-    if (activeTabId === tab.id) { try { fitAddon.fit(); } catch {} }
+    if (activeTabId === tab.id) { try { fitTerm(tab); } catch {} }
   });
   tab.resizeObserver.observe(tab.wrapper);
 
@@ -1113,6 +1124,31 @@ function initTerminal(tab) {
 }
 
 function getActiveTab() { return tabs.find(t => t.id === activeTabId); }
+
+function fitTerm(tab) {
+  try {
+    if (!tab?.term?.element || !tab.wrapper) return;
+    const el = tab.term.element;
+    const parent = el.parentElement;
+    if (!parent) return;
+    const ps = getComputedStyle(parent);
+    const pt = parseFloat(ps.paddingTop) || 0;
+    const pb = parseFloat(ps.paddingBottom) || 0;
+    const pl = parseFloat(ps.paddingLeft) || 0;
+    const pr = parseFloat(ps.paddingRight) || 0;
+    let availW = parent.clientWidth - pl - pr;
+    let availH = parent.clientHeight - pt - pb;
+    if (tilesMode) {
+      const hdr = tab.wrapper.querySelector('.term-tile-header');
+      if (hdr) availH -= hdr.offsetHeight;
+    }
+    const d = tab.term._core?.viewportRenderer?.dimensions;
+    if (!d || !d.actualCellWidth || !d.actualCellHeight) return;
+    const cols = Math.max(1, Math.floor(availW / d.actualCellWidth));
+    const rows = Math.max(1, Math.floor(availH / d.actualCellHeight));
+    tab.term.resize(cols, rows);
+  } catch {}
+}
 
 function sendKey(key) {
   const tab = getActiveTab();
@@ -1138,7 +1174,7 @@ function toggleTiles() {
     const termWrap = document.getElementById('terminals');
     termWrap.querySelectorAll('.term-tile-header').forEach(el => el.remove());
     const t = getActiveTab();
-    setTimeout(() => { try { t?.fitAddon?.fit(); } catch {} }, 60);
+    setTimeout(() => { try { fitTerm(t); } catch {} }, 60);
   }
 }
 
@@ -1168,7 +1204,7 @@ function layoutTiles() {
     tab.wrapper.prepend(hdr);
   });
   setTimeout(() => {
-    tabs.forEach(tab => { try { tab.fitAddon?.fit(); } catch {} });
+    tabs.forEach(tab => { try { fitTerm(tab); } catch {} });
   }, 60);
 }
 
@@ -1257,6 +1293,7 @@ function getFileIcon(ext) {
   return map[ext] || '📄';
 }
 
+function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c] || c); }
 function formatSize(bytes) {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
@@ -1291,7 +1328,7 @@ document.getElementById('ctx-open').onclick = () => ctxTarget && loadFiles(ctxTa
 document.getElementById('ctx-edit').onclick = () => ctxTarget && openFileEditor(ctxTarget.path);
 document.getElementById('ctx-download').onclick = () => ctxTarget && downloadFile(ctxTarget.path);
 document.getElementById('ctx-rename').onclick = () => ctxTarget && startRename(ctxTarget.path, ctxTarget.name);
-document.getElementById('ctx-copy-path').onclick = () => ctxTarget && (navigator.clipboard.writeText(ctxTarget.path), toast('Path copied'));
+document.getElementById('ctx-copy-path').onclick = () => { if (!ctxTarget) return; navigator.clipboard.writeText(ctxTarget.path).then(() => toast('Path copied')).catch(() => toast('Copy failed', 'error')); };
 document.getElementById('ctx-delete').onclick = () => ctxTarget && deleteFile(ctxTarget);
 
 // ═══════════════════════════════════════════════════════
@@ -1389,8 +1426,8 @@ function uploadFiles() { document.getElementById('upload-input').click(); }
 async function handleUploadInput() {
   const input = document.getElementById('upload-input');
   if (!input.files.length) return;
-  await uploadFileList(input.files);
   input.value = '';
+  try { await uploadFileList(input.files); } catch { toast('Upload failed', 'error'); }
 }
 
 async function uploadFileList(items) {
@@ -1465,7 +1502,7 @@ function closeEditor() {
   editorPath = '';
   editorOriginalContent = '';
   const tab = getActiveTab();
-  setTimeout(() => { try { tab?.fitAddon?.fit(); tab?.term?.focus(); } catch {} }, 60);
+  setTimeout(() => { try { fitTerm(tab); tab?.term?.focus(); } catch {} }, 60);
 }
 
 // Ctrl+S in editor (delegated — only active when editor is open)
@@ -1524,8 +1561,8 @@ function doSearch() {
   document.getElementById('search-results').textContent = found ? '' : 'No results';
 }
 
-function searchNext() { const t=getActiveTab(); t?.searchAddon?.findNext(document.getElementById('search-input').value, {caseSensitive: searchCaseSensitive}); }
-function searchPrev() { const t=getActiveTab(); t?.searchAddon?.findPrevious(document.getElementById('search-input').value, {caseSensitive: searchCaseSensitive}); }
+function searchNext() { const q=document.getElementById('search-input').value; if (!q) return; const t=getActiveTab(); t?.searchAddon?.findNext(q, {caseSensitive: searchCaseSensitive}); }
+function searchPrev() { const q=document.getElementById('search-input').value; if (!q) return; const t=getActiveTab(); t?.searchAddon?.findPrevious(q, {caseSensitive: searchCaseSensitive}); }
 
 function searchKeydown(e) {
   if (e.key === 'Enter') { e.shiftKey ? searchPrev() : searchNext(); }
@@ -1536,7 +1573,20 @@ function searchKeydown(e) {
 // SETTINGS
 // ═══════════════════════════════════════════════════════
 function loadSettings() {
-  try { const s = JSON.parse(localStorage.getItem('wt-settings')); if (s) Object.assign(settings, s); } catch {}
+  try {
+    const s = JSON.parse(localStorage.getItem('wt-settings'));
+    if (s && typeof s === 'object' && !Array.isArray(s)) {
+      if (typeof s.theme === 'string' && ['tokyonight','light','solarized'].includes(s.theme)) settings.theme = s.theme;
+      if (typeof s.fontSize === 'number' && s.fontSize >= 8 && s.fontSize <= 32) settings.fontSize = s.fontSize;
+      if (typeof s.scrollback === 'number' && s.scrollback >= 100 && s.scrollback <= 50000) settings.scrollback = s.scrollback;
+      if (typeof s.font === 'string') settings.font = s.font;
+      if (typeof s.cursor === 'string' && ['block','underline','bar'].includes(s.cursor)) settings.cursor = s.cursor;
+      if (typeof s.blink === 'boolean') settings.blink = s.blink;
+      if (typeof s.bell === 'boolean') settings.bell = s.bell;
+      if (typeof s.mobilekeys === 'boolean') settings.mobilekeys = s.mobilekeys;
+      if (typeof s.confirmclose === 'boolean') settings.confirmclose = s.confirmclose;
+    }
+  } catch {}
   document.getElementById('s-theme').value = settings.theme;
   document.getElementById('s-fontsize').value = settings.fontSize;
   document.getElementById('s-scrollback').value = settings.scrollback;
@@ -1675,12 +1725,14 @@ function applyTheme(theme, save = true) {
 }
 
 function applyFontSize(size) {
+  size = Math.max(8, Math.min(32, Number(size) || 14));
   settings.fontSize = size;
-  tabs.forEach(t => { if (t.term) { t.term.options.fontSize = size; t.fitAddon?.fit(); } });
+  tabs.forEach(t => { if (t.term) { t.term.options.fontSize = size; fitTerm(t); } });
   saveSettings();
 }
 
 function applyScrollback(lines) {
+  lines = Math.max(100, Math.min(50000, Number(lines) || 1000));
   settings.scrollback = lines;
   tabs.forEach(t => { if (t.term) t.term.options.scrollback = lines; });
   saveSettings();
@@ -1688,7 +1740,7 @@ function applyScrollback(lines) {
 
 function applyFont(font) {
   settings.font = font;
-  tabs.forEach(t => { if (t.term) { t.term.options.fontFamily = font; t.fitAddon?.fit(); } });
+  tabs.forEach(t => { if (t.term) { t.term.options.fontFamily = font; fitTerm(t); } });
   saveSettings();
 }
 
@@ -1711,7 +1763,7 @@ function toggleSidebar() {
     sidebarOpen = !sidebarOpen;
     sb.classList.toggle('hidden', !sidebarOpen);
     sb.classList.remove('mobile-open');
-    setTimeout(() => { const t = getActiveTab(); try { t?.fitAddon?.fit(); } catch {} }, 220);
+    setTimeout(() => { const t = getActiveTab(); try { fitTerm(t); } catch {} }, 220);
   }
 }
 
@@ -1766,8 +1818,10 @@ async function traverseDirectoryEntry(entry, pathPrefix = '', depth = 0) {
   if (depth > 20) return [];
   const files = [];
   if (entry.isFile) {
-    const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
-    files.push({ file, path: pathPrefix + entry.name });
+    try {
+      const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+      files.push({ file, path: pathPrefix + entry.name });
+    } catch (e) { console.warn('Skipping file:', entry.name, e); }
   } else if (entry.isDirectory) {
     const dirReader = entry.createReader();
     const entries = await new Promise((resolve, reject) => {
@@ -1861,6 +1915,8 @@ function toast(msg, type = 'info') {
 function showPinScreen() {
   document.getElementById('app').style.display = 'none';
   document.getElementById('pin-screen').classList.remove('hidden');
+  // Close all active WebSocket connections
+  tabs.forEach(t => { cleanupWebSocket(t); });
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1895,7 +1951,7 @@ function renderBookmarks() {
     rmBtn.title = 'Remove';
     div.appendChild(rmBtn);
     div.querySelector('.bm-name').addEventListener('click', () => loadFiles(b.path));
-    div.querySelector('.bm-remove').addEventListener('click', e => { e.stopPropagation(); const bm2 = getBookmarks(); bm2.splice(i,1); saveBookmarks(bm2); });
+    div.querySelector('.bm-remove').addEventListener('click', e => { e.stopPropagation(); const bm2 = getBookmarks(); const idx = bm2.findIndex(x => x.path === b.path); if (idx !== -1) bm2.splice(idx,1); saveBookmarks(bm2); });
     list.appendChild(div);
   });
 }
@@ -2014,7 +2070,7 @@ async function refreshSystemStats() {
 
   if (data.disk && data.disk.length > 0) {
     const d = data.disk[0];
-    const pct = parseInt(d.usePercent);
+    const pct = parseInt(d.usePercent) || 0;
     document.getElementById('sys-disk-val').textContent = d.usePercent;
     document.getElementById('sys-disk-sub').textContent = `${d.used} / ${d.size}`;
     document.getElementById('sys-disk-bar').style.width = Math.min(pct, 100) + '%';
@@ -2043,7 +2099,11 @@ async function refreshSystemStats() {
 function registerSW() {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js')
-      .then(() => toast('Service worker registered', 'success'))
+      .then(reg => {
+        if (reg.active && !navigator.serviceWorker.controller) {
+          toast('Offline support ready', 'success');
+        }
+      })
       .catch(err => console.warn('SW registration failed:', err));
   }
 }
@@ -2056,12 +2116,9 @@ init();
 // Warn before closing if there are unsaved changes or active terminals
 window.addEventListener('beforeunload', e => {
   const editorOpen = document.getElementById('editor-view').classList.contains('open');
-  if (editorOpen && document.getElementById('editor-textarea').value !== editorOriginalContent) {
-    e.preventDefault();
-    e.returnValue = '';
-    return;
-  }
-  if (tabs.some(t => t.ws && t.ws.readyState === WebSocket.OPEN)) {
+  const editorDirty = editorOpen && document.getElementById('editor-textarea').value !== editorOriginalContent;
+  const hasActiveSessions = tabs.some(t => t.ws && t.ws.readyState === WebSocket.OPEN);
+  if (editorDirty || hasActiveSessions) {
     e.preventDefault();
     e.returnValue = '';
   }
