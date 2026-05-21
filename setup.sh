@@ -184,7 +184,8 @@ setup_systemd() {
   
   echo ""
   read -rp "  Install as systemd service (auto-start on boot)? [y/N]: " INSTALL_SERVICE
-  if [[ "${INSTALL_SERVICE,,}" != "y" ]]; then return; fi
+  local lower; lower="$(echo "$INSTALL_SERVICE" | tr '[:upper:]' '[:lower:]')"
+  if [[ "$lower" != "y" ]]; then return; fi
 
   SERVICE_FILE="/etc/systemd/system/webtun.service"
   NODE_PATH="$(command -v node)"
@@ -222,7 +223,11 @@ echo ""
   echo "  Starting WebTun server..."
 
 # Kill old instance if running
-pkill -f "node.*server.js" 2>/dev/null || true
+if [ -f "$SCRIPT_DIR/webterm.pid" ]; then
+  OLD_PID=$(cat "$SCRIPT_DIR/webterm.pid" 2>/dev/null || echo "")
+  [ -n "$OLD_PID" ] && kill "$OLD_PID" 2>/dev/null || true
+fi
+pkill -f "^node.*server\.js" 2>/dev/null || true
 sleep 0.5
 
 # Start server in background, log to file
@@ -233,12 +238,20 @@ SERVER_PID=$!
 echo $SERVER_PID > "$SCRIPT_DIR/webterm.pid"
 
 # Wait for server
+SERVER_UP=false
 for i in {1..10}; do
   sleep 0.5
   if curl -sf "http://localhost:$PORT/api/auth/required" &>/dev/null; then
+    SERVER_UP=true
     break
   fi
 done
+
+if [ "$SERVER_UP" != "true" ]; then
+  echo "  ${RED}${BOLD}Server failed to start. Check $LOG_FILE for details.${RESET}"
+  echo "  ${YELLOW}Run manually: node server.js${RESET}"
+  exit 1
+fi
 
 echo ""
 echo "  ┌─────────────────────────────────────────┐"

@@ -222,6 +222,10 @@ app.post('/api/files/touch', checkPin, async (req, res) => {
 app.get('/api/files/read', checkPin, async (req, res) => {
   try {
     const p = resolvePath(req.query.path);
+    if (req.query.head) {
+      const st = await fsPromises.stat(p);
+      return res.json({ length: st.size });
+    }
     const content = await fsPromises.readFile(p, 'utf8');
     res.json({ content });
   } catch (e) {

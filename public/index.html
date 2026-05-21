@@ -182,9 +182,9 @@ svg { display: block; }
 #search-results { font-size: 11px; color: var(--fg2); white-space: nowrap; }
 
 /* ═══════════════════════════════════════════════════════
-   MODALS
+   OVERLAY
    ═══════════════════════════════════════════════════════ */
-.overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
+.overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 400; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
 .overlay.open { display: flex; }
 .modal { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 24px; min-width: 320px; max-width: 90vw; max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 40px rgba(0,0,0,0.6); }
 .modal h2 { font-size: 16px; margin-bottom: 20px; color: var(--fg); }
@@ -237,7 +237,7 @@ svg { display: block; }
 /* ═══════════════════════════════════════════════════════
    CONTEXT MENU
    ═══════════════════════════════════════════════════════ */
-#ctx-menu { position: fixed; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.5); z-index: 300; display: none; min-width: 160px; overflow: hidden; }
+#ctx-menu { position: fixed; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.5); z-index: 500; display: none; min-width: 160px; overflow: hidden; }
 #ctx-menu.open { display: block; }
 .ctx-item { padding: 8px 14px; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
 .ctx-item:hover { background: var(--bg4); }
@@ -247,7 +247,7 @@ svg { display: block; }
 /* ═══════════════════════════════════════════════════════
    TOAST
    ═══════════════════════════════════════════════════════ */
-#toast-container { position: fixed; bottom: calc(60px + env(safe-area-inset-bottom)); right: 16px; z-index: 400; display: flex; flex-direction: column; gap: 8px; }
+#toast-container { position: fixed; bottom: calc(60px + env(safe-area-inset-bottom)); right: 16px; z-index: 450; display: flex; flex-direction: column; gap: 8px; }
 .toast { padding: 10px 16px; background: var(--bg4); border: 1px solid var(--border); border-radius: var(--radius); font-size: 12px; color: var(--fg); box-shadow: 0 4px 16px rgba(0,0,0,0.4); animation: slideIn 0.2s ease; max-width: 280px; }
 .toast.success { border-left: 3px solid var(--green); }
 .toast.error { border-left: 3px solid var(--red); }
@@ -344,14 +344,13 @@ svg { display: block; }
 }
 </style>
 </head>
-<body data-theme="light">
+<body data-theme="tokyonight">
 <script>
   (function() {
     try {
       const settings = JSON.parse(localStorage.getItem('wt-settings')) || {};
-      const theme = settings.theme || 'dark';
+      const theme = settings.theme || 'tokyonight';
       document.body.dataset.theme = theme;
-      document.documentElement.dataset.theme = theme;
     } catch(e){}
   })();
 </script>
@@ -657,7 +656,7 @@ svg { display: block; }
     </div>
     <div class="modal-actions">
       <button class="btn btn-primary" onclick="refreshSystemStats()">Refresh</button>
-      <button class="btn btn-ghost" onclick="closeOverlay('sys-overlay')">Close</button>
+      <button class="btn btn-ghost" onclick="closeSystemStats()">Close</button>
     </div>
   </div>
 </div>
@@ -823,8 +822,7 @@ async function unlockApp() {
 
   // Restore tabs from last session, or open a fresh one
   const saved = loadTabState();
-  if (hasTmux && saved.length > 0) {
-    // Restore each saved tab sequentially to avoid race conditions
+  if (saved.length > 0) {
     (async () => {
       for (const s of saved) {
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -1100,6 +1098,9 @@ function initTerminal(tab) {
   // Ensure wheel events scroll the terminal even when mouse events are captured by apps
   tab.wrapper.addEventListener('wheel', e => {
     if (e.ctrlKey || e.metaKey) return; // Let pinch-zoom work
+    const atTop = term.buffer.active.baseY === 0;
+    const atBottom = term.buffer.active.baseY + term.rows >= term.buffer.active.length;
+    if (tilesMode && ((e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom))) return; // Let container scroll at boundaries in tiles mode
     e.preventDefault();
     if (e.deltaY < 0) term.scrollLines(-Math.ceil(Math.abs(e.deltaY) / 50));
     else if (e.deltaY > 0) term.scrollLines(Math.ceil(e.deltaY / 50));
@@ -1410,12 +1411,21 @@ async function uploadFileList(items) {
 // ═══════════════════════════════════════════════════════
 // EDITOR
 // ═══════════════════════════════════════════════════════
+const MAX_EDITOR_SIZE = 10 * 1024 * 1024; // 10MB
+
 async function openFileEditor(path) {
+  const head = await api(`/api/files/read?path=${encodeURIComponent(path)}&head=1`);
+  if (head.error) { toast(head.error, 'error'); return; }
+  if (head.length > MAX_EDITOR_SIZE) {
+    if (!confirm(`File is ${(head.length / 1024 / 1024).toFixed(1)}MB. Open anyway?`)) return;
+  }
   const r = await api(`/api/files/read?path=${encodeURIComponent(path)}`);
   if (r.error) { toast(r.error, 'error'); return; }
   editorPath = path;
   editorOriginalContent = r.content;
-  document.getElementById('editor-filename').textContent = path.split('/').pop() + '  ' + path;
+  const sep = path.includes('\\') ? '\\' : '/';
+  const fileName = path.split(sep).pop() || path;
+  document.getElementById('editor-filename').textContent = fileName + '  ' + path;
   document.getElementById('editor-textarea').value = r.content;
   document.getElementById('editor-status').textContent = '';
   document.getElementById('editor-view').classList.add('open');
@@ -1449,8 +1459,9 @@ function closeEditor() {
   setTimeout(() => { try { tab?.fitAddon?.fit(); tab?.term?.focus(); } catch {} }, 60);
 }
 
-// Ctrl+S in editor
+// Ctrl+S in editor (delegated — only active when editor is open)
 document.getElementById('editor-textarea').addEventListener('keydown', e => {
+  if (!document.getElementById('editor-view').classList.contains('open')) return;
   if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveFile(); }
   if (e.key === 'Escape') closeEditor();
   if (e.key === 'Tab') { e.preventDefault(); const t = e.target, s = t.selectionStart, end = t.selectionEnd; t.value = t.value.substring(0, s) + '  ' + t.value.substring(end); t.selectionStart = t.selectionEnd = s + 2; }
@@ -1713,7 +1724,8 @@ function setupKeyboardShortcuts() {
       document.querySelectorAll('.overlay.open').forEach(el => {
         const id = el.id;
         if (id === 'settings-overlay') closeSettings();
-        else if (id === 'finder-overlay' || id === 'newfolder-overlay' || id === 'newfile-overlay' || id === 'rename-overlay' || id === 'sys-stats-overlay') closeOverlay(id);
+        else if (id === 'sys-overlay') closeSystemStats();
+        else if (id === 'finder-overlay' || id === 'newfolder-overlay' || id === 'newfile-overlay' || id === 'rename-overlay') closeOverlay(id);
       });
     }
   });
@@ -1733,13 +1745,16 @@ function setupMobileKeys() {
   const mk = document.getElementById('mobile-keys');
   if (window.innerWidth <= 768) {
     mk.style.display = settings.mobilekeys ? 'flex' : 'none';
+  } else {
+    mk.style.display = 'none';
   }
 }
 
 // ═══════════════════════════════════════════════════════
 // DRAG & DROP
 // ═══════════════════════════════════════════════════════
-async function traverseDirectoryEntry(entry, pathPrefix = '') {
+async function traverseDirectoryEntry(entry, pathPrefix = '', depth = 0) {
+  if (depth > 20) return [];
   const files = [];
   if (entry.isFile) {
     const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
@@ -1761,7 +1776,7 @@ async function traverseDirectoryEntry(entry, pathPrefix = '') {
       readAll();
     });
     for (const child of entries) {
-      const childFiles = await traverseDirectoryEntry(child, pathPrefix + entry.name + '/');
+      const childFiles = await traverseDirectoryEntry(child, pathPrefix + entry.name + '/', depth + 1);
       files.push(...childFiles);
     }
   }
@@ -1945,10 +1960,20 @@ function finderKeydown(e) {
 // ═══════════════════════════════════════════════════════
 // SYSTEM STATS
 // ═══════════════════════════════════════════════════════
+let sysStatsTimer = null;
+
 function openSystemStats() {
   openOverlay('sys-overlay');
   document.getElementById('sys-loading').style.display = 'block';
   refreshSystemStats();
+  clearInterval(sysStatsTimer);
+  sysStatsTimer = setInterval(refreshSystemStats, 5000);
+}
+
+function closeSystemStats() {
+  clearInterval(sysStatsTimer);
+  sysStatsTimer = null;
+  closeOverlay('sys-overlay');
 }
 
 async function refreshSystemStats() {
