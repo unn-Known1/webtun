@@ -39,22 +39,34 @@ if (!download()) {
   process.exit(0);
 }
 
+function installBin(src, dest) {
+  try {
+    fs.renameSync(src, dest);
+  } catch (e) {
+    if (e.code === 'EXDEV') {
+      fs.copyFileSync(src, dest);
+      fs.chmodSync(dest, 0o755);
+      try { fs.unlinkSync(src); } catch {}
+    } else {
+      throw e;
+    }
+  }
+}
+
 try {
   if (platform === 'darwin') {
     spawnSync('tar', ['xzf', tmp, '-C', '/tmp'], { stdio: 'inherit' });
-    fs.renameSync('/tmp/cloudflared', '/usr/local/bin/cloudflared');
-    fs.chmodSync('/usr/local/bin/cloudflared', 0o755);
-    fs.unlinkSync(tmp);
+    installBin('/tmp/cloudflared', '/usr/local/bin/cloudflared');
+    try { fs.unlinkSync(tmp); } catch {}
   } else if (platform === 'win32') {
     const dest = path.join(process.env.ProgramFiles || 'C:\\Program Files', 'cloudflared', 'cloudflared.exe');
     fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.copyFileSync(tmp, dest);
-    fs.unlinkSync(tmp);
+    installBin(tmp, dest);
   } else {
-    fs.renameSync(tmp, '/usr/local/bin/cloudflared');
-    fs.chmodSync('/usr/local/bin/cloudflared', 0o755);
+    installBin(tmp, '/usr/local/bin/cloudflared');
   }
   console.log('  cloudflared installed');
 } catch (e) {
   console.log('  cloudflared install skipped: ' + e.message);
+  try { fs.unlinkSync(tmp); } catch {}
 }
