@@ -225,19 +225,19 @@ echo ""
   echo "  Starting WebTun server..."
 
 # Kill old instance if running
-if [ -f "$SCRIPT_DIR/webterm.pid" ]; then
-  OLD_PID=$(cat "$SCRIPT_DIR/webterm.pid" 2>/dev/null || echo "")
+if [ -f "$SCRIPT_DIR/webtun.pid" ]; then
+  OLD_PID=$(cat "$SCRIPT_DIR/webtun.pid" 2>/dev/null || echo "")
   [ -n "$OLD_PID" ] && [[ "$OLD_PID" =~ ^[0-9]+$ ]] && kill -- "$OLD_PID" 2>/dev/null || true
 fi
 pkill -f "^node.*server\.js" 2>/dev/null || true
 sleep 0.5
 
 # Start server in background, log to file
-LOG_FILE="$SCRIPT_DIR/webterm.log"
+LOG_FILE="$SCRIPT_DIR/webtun.log"
 NODE_CMD="$(command -v node)"
 nohup "$NODE_CMD" "$SCRIPT_DIR/server.js" >> "$LOG_FILE" 2>&1 &
 SERVER_PID=$!
-echo "$SERVER_PID" > "$SCRIPT_DIR/webterm.pid"
+echo "$SERVER_PID" > "$SCRIPT_DIR/webtun.pid"
 
 # Wait for server
 SERVER_UP=false
@@ -324,5 +324,5 @@ else
 fi
 
 echo ""
-echo "  ${GREEN}Done.${RESET} To stop the server: kill \$(cat webterm.pid)"
+echo "  ${GREEN}Done.${RESET} To stop the server: kill \$(cat webtun.pid)"
 echo ""
