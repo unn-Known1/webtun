@@ -1083,7 +1083,7 @@ function initTerminal(tab) {
   term.loadAddon(webLinksAddon);
 
   term.open(tab.wrapper);
-  fitTerm(tab);
+  requestAnimationFrame(() => fitTerm(tab));
 
   tab.term = term;
   tab.fitAddon = fitAddon;
