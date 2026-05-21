@@ -72,22 +72,17 @@ app.get('/api/home', checkPin, (req, res) => {
 const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT ? path.resolve(process.env.WORKSPACE_ROOT) : os.homedir();
 const fsPromises = fs.promises;
 
-function validatePath(targetPath) {
-  if (!targetPath) return WORKSPACE_ROOT;
-  const resolved = path.resolve(targetPath);
-  // Resolve symlinks to prevent symlink escape
-  let real;
-  try { real = fs.realpathSync(resolved); } catch { real = resolved; }
-  const rel = path.relative(WORKSPACE_ROOT, real);
-  if (rel.startsWith('..') || path.isAbsolute(rel)) {
-    throw new Error('Access denied: Path lies outside workspace root');
-  }
-  return resolved;
-}
-
 function resolvePath(targetPath) {
   if (!targetPath) return WORKSPACE_ROOT;
   return path.resolve(targetPath);
+}
+
+// Resolve path and follow symlinks to their real location.
+// Used for write operations so files end up at the intended real path.
+function realPath(targetPath) {
+  if (!targetPath) return WORKSPACE_ROOT;
+  const resolved = path.resolve(targetPath);
+  try { return fs.realpathSync(resolved); } catch { return resolved; }
 }
 
 async function safeStat(p) {
@@ -186,8 +181,8 @@ app.get('/api/files', checkPin, async (req, res) => {
 
 app.post('/api/files/rename', checkPin, async (req, res) => {
   try {
-    const oldPath = validatePath(req.body.oldPath);
-    const newPath = validatePath(path.join(path.dirname(oldPath), req.body.newName));
+    const oldPath = realPath(req.body.oldPath);
+    const newPath = realPath(path.join(path.dirname(oldPath), req.body.newName));
     await fsPromises.rename(oldPath, newPath);
     res.json({ success: true, newPath });
   } catch (e) {
@@ -197,7 +192,7 @@ app.post('/api/files/rename', checkPin, async (req, res) => {
 
 app.delete('/api/files', checkPin, async (req, res) => {
   try {
-    const p = validatePath(req.query.path);
+    const p = realPath(req.query.path);
     const st = await fsPromises.stat(p);
     if (st.isDirectory()) {
       await fsPromises.rm(p, { recursive: true, force: true });
@@ -212,7 +207,7 @@ app.delete('/api/files', checkPin, async (req, res) => {
 
 app.post('/api/files/mkdir', checkPin, async (req, res) => {
   try {
-    const p = validatePath(req.body.path);
+    const p = realPath(req.body.path);
     await fsPromises.mkdir(p, { recursive: true });
     res.json({ success: true });
   } catch (e) {
@@ -222,7 +217,7 @@ app.post('/api/files/mkdir', checkPin, async (req, res) => {
 
 app.post('/api/files/touch', checkPin, async (req, res) => {
   try {
-    const p = validatePath(req.body.path);
+    const p = realPath(req.body.path);
     await fsPromises.writeFile(p, '', { flag: 'a' });
     res.json({ success: true });
   } catch (e) {
@@ -246,7 +241,7 @@ app.get('/api/files/read', checkPin, async (req, res) => {
 
 app.post('/api/files/write', checkPin, async (req, res) => {
   try {
-    const p = validatePath(req.body.path);
+    const p = realPath(req.body.path);
     await fsPromises.writeFile(p, req.body.content, 'utf8');
     res.json({ success: true });
   } catch (e) {
@@ -256,7 +251,7 @@ app.post('/api/files/write', checkPin, async (req, res) => {
 
 app.get('/api/files/download', checkPin, async (req, res) => {
   try {
-    const p = validatePath(req.query.path);
+    const p = realPath(req.query.path);
     const st = await fsPromises.stat(p);
     if (st.isDirectory()) {
       res.setHeader('Content-Type', 'application/zip');
@@ -288,14 +283,14 @@ app.get('/api/files/download', checkPin, async (req, res) => {
 app.post('/api/files/upload', checkPin, (req, res) => {
   let destDir;
   try {
-    destDir = validatePath(req.query.path || WORKSPACE_ROOT);
+    destDir = realPath(req.query.path || WORKSPACE_ROOT);
   } catch (e) {
     return res.status(403).json({ error: e.message });
   }
   const storage = multer.diskStorage({
     destination: (req, file, cb) => {
       try {
-        const finalDest = validatePath(path.join(destDir, file.originalname));
+        const finalDest = realPath(path.join(destDir, file.originalname));
         const subPath = path.dirname(finalDest);
         fs.mkdirSync(subPath, { recursive: true });
         cb(null, subPath);
@@ -450,7 +445,7 @@ wss.on('connection', (ws, req) => {
   const rows      = parseInt(url.searchParams.get('rows'))  || 24;
   let cwd;
   try {
-    cwd = validatePath(url.searchParams.get('cwd') || WORKSPACE_ROOT);
+    cwd = realPath(url.searchParams.get('cwd') || WORKSPACE_ROOT);
   } catch {
     cwd = WORKSPACE_ROOT;
   }
@@ -589,7 +584,7 @@ app.post('/api/exec', rateLimiter, checkPin, (req, res) => {
 
   let execCwd;
   try {
-    execCwd = validatePath(reqCwd || WORKSPACE_ROOT);
+    execCwd = realPath(reqCwd || WORKSPACE_ROOT);
   } catch (e) {
     return res.status(403).json({ error: e.message });
   }
@@ -654,7 +649,7 @@ app.get('/api/exec/stream', checkPin, (req, res) => {
 
   let execCwd;
   try {
-    execCwd = validatePath(reqCwd || WORKSPACE_ROOT);
+    execCwd = realPath(reqCwd || WORKSPACE_ROOT);
   } catch (e) {
     return res.status(403).json({ error: e.message });
   }
