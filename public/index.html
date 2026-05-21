@@ -715,6 +715,7 @@ let activeTabId = null;
 let tilesMode = false;
 let tabCounter = 0;
 let currentPath = '';
+let currentParent = '';
 let homeDir = '';
 let ctxTarget = null;
 let renamePath = '';
@@ -1160,6 +1161,8 @@ async function loadFiles(dir) {
   const data = await api(`/api/files?path=${encodeURIComponent(dir)}`);
   if (!data.files) return;
 
+  currentParent = data.parent || '';
+
   const list = document.getElementById('file-list');
   list.innerHTML = '';
 
@@ -1195,8 +1198,9 @@ function makeFileItem(name, isDir, fullPath, size, icon) {
 function refreshFiles() { loadFiles(currentPath); }
 function navigateTo(p) { loadFiles(p || homeDir); }
 function navigateUp() {
-  const parent = currentPath.split('/').slice(0, -1).join('/') || '/';
-  loadFiles(parent);
+  if (currentParent && currentParent !== currentPath) {
+    loadFiles(currentParent);
+  }
 }
 
 function getFileIcon(ext) {
@@ -1279,6 +1283,11 @@ function downloadFile(path) {
   a.click();
 }
 
+function joinPath(parent, child) {
+  const sep = parent.includes('\\') ? '\\' : '/';
+  return parent.replace(/[\\/]$/, '') + sep + child;
+}
+
 function newFolder() {
   document.getElementById('newfolder-input').value = '';
   openOverlay('newfolder-overlay');
@@ -1291,7 +1300,7 @@ async function confirmNewFolder() {
   const r = await api('/api/files/mkdir', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: currentPath + '/' + name })
+    body: JSON.stringify({ path: joinPath(currentPath, name) })
   });
   if (r.success) { toast('Folder created', 'success'); refreshFiles(); }
   else toast(r.error, 'error');
@@ -1307,7 +1316,7 @@ function newFile() {
 async function confirmNewFile() {
   const name = document.getElementById('newfile-input').value.trim();
   if (!name) return;
-  const filePath = currentPath + '/' + name;
+  const filePath = joinPath(currentPath, name);
   const r = await api('/api/files/touch', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1771,7 +1780,8 @@ function renderBookmarks() {
 function bookmarkCurrentDir() {
   const bm = getBookmarks();
   if (bm.some(b => b.path === currentPath)) { toast('Already bookmarked', 'info'); return; }
-  bm.push({ name: currentPath.split('/').filter(Boolean).pop() || '/', path: currentPath });
+  const sep = currentPath.includes('\\') ? '\\' : '/';
+  bm.push({ name: currentPath.split(sep).filter(Boolean).pop() || currentPath, path: currentPath });
   saveBookmarks(bm);
   toast('Bookmarked', 'success');
 }
