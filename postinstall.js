@@ -29,18 +29,44 @@ if (!file) process.exit(0);
 console.log('  installing cloudflared...');
 
 const url = CF_RELEASES + '/' + file;
-const tmp = path.join(os.tmpdir(), 'cloudflared' + (platform === 'win32' ? '.exe' : ''));
+const tmpDir = os.tmpdir();
+const tmp = path.join(tmpDir, 'cloudflared-' + process.pid + (platform === 'win32' ? '.exe' : ''));
+const tmpExtracted = path.join(tmpDir, 'cloudflared-' + process.pid + '-bin' + (platform === 'win32' ? '.exe' : ''));
+
+function cleanup() {
+  try { fs.unlinkSync(tmp); } catch {}
+  try { fs.unlinkSync(tmpExtracted); } catch {}
+}
 
 function download() {
-  const r = spawnSync('curl', ['-#fL', url, '-o', tmp], { stdio: 'inherit', timeout: 30000 });
+  const r = spawnSync('curl', ['-#fL', url, '-o', tmp], { stdio: 'inherit', timeout: 60000 });
   if (r.status === 0) return true;
-  const r2 = spawnSync('wget', ['-q', url, '-O', tmp], { stdio: 'inherit', timeout: 30000 });
+  const r2 = spawnSync('wget', ['-q', url, '-O', tmp], { stdio: 'inherit', timeout: 60000 });
   return r2.status === 0;
 }
 
 if (!download()) {
   console.log('  cloudflared install failed (download error)');
-  process.exit(0);
+  cleanup();
+  process.exit(1);
+}
+
+// Validate downloaded file is not HTML (e.g. 404 page)
+try {
+  const buf = Buffer.alloc(1024);
+  const fd = fs.openSync(tmp, 'r');
+  const bytesRead = fs.readSync(fd, buf, 0, 1024, 0);
+  fs.closeSync(fd);
+  const head = buf.slice(0, bytesRead).toString('utf8').trim();
+  if (/^<!doctype\s+html/i.test(head) || /^<html/i.test(head)) {
+    console.log('  cloudflared install failed (downloaded file is not a binary)');
+    cleanup();
+    process.exit(1);
+  }
+} catch (e) {
+  console.log('  cloudflared install failed (cannot validate download): ' + e.message);
+  cleanup();
+  process.exit(1);
 }
 
 function installBin(src, dest) {
@@ -49,28 +75,33 @@ function installBin(src, dest) {
   } catch (e) {
     if (e.code === 'EXDEV') {
       fs.copyFileSync(src, dest);
-      fs.chmodSync(dest, 0o755);
       try { fs.unlinkSync(src); } catch {}
     } else {
       throw e;
     }
   }
+  // Always set executable bit regardless of rename or copy path
+  try { fs.chmodSync(dest, 0o755); } catch {}
 }
 
 try {
   if (platform === 'darwin') {
-    spawnSync('tar', ['xzf', tmp, '-C', '/tmp'], { stdio: 'inherit' });
-    installBin('/tmp/cloudflared', '/usr/local/bin/cloudflared');
+    const result = spawnSync('tar', ['xzf', tmp, '-C', tmpDir], { stdio: 'inherit' });
+    if (result.status !== 0) throw new Error('tar extraction failed');
+    installBin(path.join(tmpDir, 'cloudflared'), '/usr/local/bin/cloudflared');
     try { fs.unlinkSync(tmp); } catch {}
   } else if (platform === 'win32') {
-    const dest = path.join(process.env.ProgramW6432 || process.env.ProgramFiles || process.env.SystemRoot + '\\Program Files', 'cloudflared', 'cloudflared.exe');
+    const progFiles = process.env.ProgramW6432 || process.env.ProgramFiles || (process.env.SystemRoot + '\\Program Files');
+    const dest = path.join(progFiles, 'cloudflared', 'cloudflared.exe');
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     installBin(tmp, dest);
   } else {
     installBin(tmp, '/usr/local/bin/cloudflared');
   }
   console.log('  cloudflared installed');
+  cleanup();
 } catch (e) {
-  console.log('  cloudflared install skipped: ' + e.message);
-  try { fs.unlinkSync(tmp); } catch {}
+  console.log('  cloudflared install failed: ' + e.message);
+  cleanup();
+  process.exit(1);
 }

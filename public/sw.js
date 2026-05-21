@@ -5,16 +5,11 @@ const PRECACHE = [
   '/manifest.json',
   '/icon-192.png',
   '/icon-512.png',
-  'https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css',
-  'https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js',
-  'https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js',
-  'https://cdn.jsdelivr.net/npm/@xterm/addon-search@0.15.0/lib/addon-search.min.js',
-  'https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0.11.0/lib/addon-web-links.min.js',
 ];
 
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(PRECACHE).catch(() => {})).then(() => self.skipWaiting())
+    caches.open(CACHE).then(c => c.addAll(PRECACHE)).then(() => self.skipWaiting())
   );
 });
 
@@ -26,23 +21,27 @@ self.addEventListener('activate', e => {
   );
 });
 
+self.addEventListener('message', e => {
+  if (e.data === 'skipWaiting') {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener('fetch', e => {
-  // Only handle GET requests and standard HTTP/HTTPS protocols
   if (e.request.method !== 'GET') return;
   if (!e.request.url.startsWith('http://') && !e.request.url.startsWith('https://')) return;
 
   const url = new URL(e.request.url);
-  // Never intercept API calls
   if (url.pathname.startsWith('/api')) return;
 
-  // Network-First for HTML/navigation requests to avoid the SPA update trap
-  const isNavigation = e.request.mode === 'navigate' || url.pathname === '/' || url.pathname.endsWith('.html');
+  // Network-First for HTML/navigation
+  const isNavigation = e.request.mode === 'navigate' || (url.pathname === '/') || (url.pathname.endsWith('.html') && e.request.mode === 'same-origin');
   if (isNavigation) {
     e.respondWith(
       fetch(e.request).then(res => {
-        if (res && res.status === 200) {
+        if (res && res.status === 200 && res.type !== 'opaque') {
           const clone = res.clone();
-          caches.open(CACHE).then(c => c.put(e.request, clone));
+          caches.open(CACHE).then(c => { try { c.put(e.request, clone); } catch {} });
         }
         return res;
       }).catch(() =>
@@ -55,14 +54,14 @@ self.addEventListener('fetch', e => {
   }
 
   // Cache-First for static assets
+  // CDN resources are fetched from network (not precached) to avoid opaque response failures
   e.respondWith(
     caches.match(e.request).then(cached => {
       if (cached) return cached;
       return fetch(e.request).then(res => {
-        if (!res || res.status !== 200 || res.type === 'opaque') return res;
-        if (res.type !== 'opaque') {
+        if (res && res.status === 200 && res.type !== 'opaque') {
           const clone = res.clone();
-          caches.open(CACHE).then(c => c.put(e.request, clone));
+          caches.open(CACHE).then(c => { try { c.put(e.request, clone); } catch {} });
         }
         return res;
       }).catch(() => cached || new Response('Offline', { status: 503 }));
