@@ -130,7 +130,8 @@ svg { display: block; }
 /* ═══════════════════════════════════════════════════════
    TABS
    ═══════════════════════════════════════════════════════ */
-.tab { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 12px; border-radius: var(--radius); background: var(--bg3); color: var(--fg2); cursor: pointer; flex-shrink: 0; font-size: 12px; transition: background 0.15s, color 0.15s; white-space: nowrap; user-select: none; }
+.tab { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 12px; border-radius: var(--radius); background: var(--bg3); color: var(--fg2); cursor: pointer; flex-shrink: 0; font-size: 12px; transition: background 0.15s, color 0.15s; white-space: nowrap; user-select: none; min-width: 0; }
+.tab .tab-title { overflow: hidden; text-overflow: ellipsis; }
 .tab:hover { background: var(--bg4); color: var(--fg); }
 .tab.active { background: var(--bg4); color: var(--accent); border-bottom: 2px solid var(--accent); }
 .tab-close { width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; border-radius: 3px; opacity: 0.5; }
@@ -255,7 +256,7 @@ svg { display: block; }
 /* ═══════════════════════════════════════════════════════
    DRAG & DROP
    ═══════════════════════════════════════════════════════ */
-#drop-overlay { position: fixed; inset: 0; background: rgba(122,162,247,0.15); border: 3px dashed var(--accent); z-index: 50; display: none; align-items: center; justify-content: center; font-size: 24px; color: var(--accent); }
+#drop-overlay { position: fixed; inset: 0; background: color-mix(in srgb, var(--accent) 15%, transparent); border: 3px dashed var(--accent); z-index: 50; display: none; align-items: center; justify-content: center; font-size: 24px; color: var(--accent); }
 #drop-overlay.active { display: flex; }
 
 /* ═══════════════════════════════════════════════════════
@@ -332,7 +333,14 @@ svg { display: block; }
   .sys-grid { grid-template-columns: 1fr; }
 }
 @media (min-width: 769px) {
-  #sidebar-toggle-mobile { display: none; }
+}
+
+@media print {
+  body { background: #fff !important; color: #000 !important; }
+  #sidebar, #header, #tab-bar, #search-bar, #toast-container, #mobile-keys, .overlay, #drop-overlay { display: none !important; }
+  #editor-view { position: static !important; z-index: auto !important; }
+  .terminal { background: #fff !important; color: #000 !important; }
+  #file-breadcrumb, #file-list-wrap { overflow: visible !important; }
 }
 </style>
 </head>
@@ -729,8 +737,12 @@ let settings = {
 };
 
 function uuid() {
-  return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
-    (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
+  try {
+    return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+      (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
+  } catch {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
 }
 
 function saveTabState() {
@@ -843,19 +855,32 @@ async function api(url, opts = {}) {
 function newTab(title, sessionId) {
   const id = ++tabCounter;
   const sid = sessionId || (hasTmux ? uuid() : null);
-  const tab = { id, sessionId: sid, title: title || `Term ${id}`, term: null, fitAddon: null, searchAddon: null, ws: null, el: null, wrapper: null, closed: false, reconnectDelay: 1000, dataDisposable: null, resizeDisposable: null };
+  const tab = { id, sessionId: sid, title: title || `Term ${id}`, term: null, fitAddon: null, searchAddon: null, ws: null, el: null, wrapper: null, closed: false, reconnectDelay: 1000, dataDisposable: null, resizeDisposable: null, resizeObserver: null };
   tabs.push(tab);
 
   // Tab button
   const tabEl = document.createElement('div');
   tabEl.className = 'tab';
   tabEl.dataset.id = id;
-  tabEl.innerHTML = `
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-    <span class="tab-title">${tab.title}</span>
-    <button class="tab-close" onclick="closeTab(event,${id})" title="Close">
-      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-    </button>`;
+  const tabIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  tabIcon.setAttribute('width', '12'); tabIcon.setAttribute('height', '12'); tabIcon.setAttribute('viewBox', '0 0 24 24');
+  tabIcon.setAttribute('fill', 'none'); tabIcon.setAttribute('stroke', 'currentColor'); tabIcon.setAttribute('stroke-width', '2');
+  tabIcon.innerHTML = '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>';
+  tabEl.appendChild(tabIcon);
+  const tabTitleSpan = document.createElement('span');
+  tabTitleSpan.className = 'tab-title';
+  tabTitleSpan.textContent = tab.title;
+  tabEl.appendChild(tabTitleSpan);
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'tab-close';
+  closeBtn.onclick = e => closeTab(e, id);
+  closeBtn.title = 'Close';
+  const closeSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  closeSvg.setAttribute('width', '10'); closeSvg.setAttribute('height', '10'); closeSvg.setAttribute('viewBox', '0 0 24 24');
+  closeSvg.setAttribute('fill', 'none'); closeSvg.setAttribute('stroke', 'currentColor'); closeSvg.setAttribute('stroke-width', '2.5');
+  closeSvg.innerHTML = '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>';
+  closeBtn.appendChild(closeSvg);
+  tabEl.appendChild(closeBtn);
   tabEl.addEventListener('click', e => { if (!e.target.closest('.tab-close')) activateTab(id); });
   tabEl.querySelector('.tab-title').addEventListener('dblclick', e => {
     e.stopPropagation();
@@ -1002,6 +1027,7 @@ function closeTab(e, id) {
   tab.closed = true;
   clearTimeout(tab.reconnectTimer);
   cleanupWebSocket(tab);
+  tab.resizeObserver?.disconnect();
   tab.term?.dispose();
   tab.el?.remove();
   tab.wrapper?.remove();
@@ -1066,10 +1092,10 @@ function initTerminal(tab) {
   });
 
   // Resize observer
-  const ro = new ResizeObserver(() => {
+  tab.resizeObserver = new ResizeObserver(() => {
     if (activeTabId === tab.id) { try { fitAddon.fit(); } catch {} }
   });
-  ro.observe(tab.wrapper);
+  tab.resizeObserver.observe(tab.wrapper);
 
   // Ensure wheel events scroll the terminal even when mouse events are captured by apps
   tab.wrapper.addEventListener('wheel', e => {
@@ -1117,7 +1143,14 @@ function layoutTiles() {
     if (!tab.wrapper) return;
     const hdr = document.createElement('div');
     hdr.className = 'term-tile-header';
-    hdr.innerHTML = `<span class="tth-name">${tab.title}</span><button class="tth-close" data-id="${tab.id}">×</button>`;
+    const tthName = document.createElement('span');
+    tthName.className = 'tth-name';
+    tthName.textContent = tab.title;
+    hdr.appendChild(tthName);
+    const tthClose = document.createElement('button');
+    tthClose.className = 'tth-close';
+    tthClose.textContent = '×';
+    hdr.appendChild(tthClose);
     hdr.addEventListener('click', e => {
       if (e.target.closest('.tth-close')) return;
       activateTab(tab.id);
@@ -1157,6 +1190,7 @@ async function loadFiles(dir) {
   currentPath = dir;
   document.getElementById('path-input').value = dir;
   document.getElementById('file-breadcrumb').textContent = dir;
+  document.getElementById('file-list').innerHTML = '<div style="padding:10px;text-align:center;font-size:11px;color:var(--fg2)">Loading…</div>';
 
   const data = await api(`/api/files?path=${encodeURIComponent(dir)}`);
   if (!data.files) return;
@@ -1180,13 +1214,14 @@ async function loadFiles(dir) {
   });
 }
 
+function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
 function makeFileItem(name, isDir, fullPath, size, icon) {
   const div = document.createElement('div');
   div.className = 'file-item';
   div.innerHTML = `
     <span class="file-icon">${icon}</span>
-    <span class="file-name ${isDir ? 'file-dir' : ''}" title="${fullPath}">${name}</span>
-    ${size ? `<span class="file-size">${size}</span>` : ''}
+    <span class="file-name ${isDir ? 'file-dir' : ''}" title="${escHtml(fullPath)}">${escHtml(name)}</span>
+    ${size ? `<span class="file-size">${escHtml(size)}</span>` : ''}
   `;
   div.addEventListener('click', () => {
     if (isDir) loadFiles(fullPath);
@@ -1230,11 +1265,18 @@ function showCtxMenu(e, file) {
   e.preventDefault();
   ctxTarget = file;
   const menu = document.getElementById('ctx-menu');
+  menu.style.display = 'block';
   document.getElementById('ctx-open').style.display = file.isDir ? '' : 'none';
   document.getElementById('ctx-edit').style.display = file.isDir ? 'none' : '';
-  menu.style.left = Math.min(e.clientX, window.innerWidth - 180) + 'px';
-  menu.style.top = Math.min(e.clientY, window.innerHeight - 200) + 'px';
+  const mw = menu.offsetWidth, mh = menu.offsetHeight;
+  let left = Math.min(e.clientX, window.innerWidth - mw - 8);
+  let top = Math.min(e.clientY, window.innerHeight - mh - 8);
+  if (left < 0) left = 8;
+  if (top < 0) top = 8;
+  menu.style.left = left + 'px';
+  menu.style.top = top + 'px';
   menu.classList.add('open');
+  menu.style.display = '';
 }
 
 document.addEventListener('click', () => document.getElementById('ctx-menu').classList.remove('open'));
@@ -1276,11 +1318,20 @@ async function deleteFile(file) {
   else toast(r.error, 'error');
 }
 
-function downloadFile(path) {
-  const a = document.createElement('a');
-  a.href = `/api/files/download?path=${encodeURIComponent(path)}&token=${encodeURIComponent(authToken)}`;
-  a.download = '';
-  a.click();
+async function downloadFile(path) {
+  try {
+    const r = await fetch(`/api/files/download?path=${encodeURIComponent(path)}`, {
+      headers: { 'x-pin-token': authToken }
+    });
+    if (!r.ok) { toast('Download failed', 'error'); return; }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = path.split(/[\\/]/).pop() || 'download';
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch { toast('Download failed', 'error'); }
 }
 
 function joinPath(parent, child) {
@@ -1349,8 +1400,8 @@ async function uploadFileList(items) {
     }
   }
   if (count === 0) return;
-  const r = await fetch(`/api/files/upload?path=${encodeURIComponent(currentPath)}&token=${encodeURIComponent(authToken)}`, {
-    method: 'POST', body: form
+  const r = await fetch(`/api/files/upload?path=${encodeURIComponent(currentPath)}`, {
+    method: 'POST', headers: { 'x-pin-token': authToken }, body: form
   }).then(r => r.json());
   if (r.success) { toast(`${r.count} file(s) uploaded`, 'success'); refreshFiles(); }
   else toast(r.error || 'Upload failed', 'error');
@@ -1503,6 +1554,13 @@ async function restoreTunnels() {
   renderTunnels();
 }
 
+function mkSvg(w, h, view, inner) {
+  const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  s.setAttribute('width', w); s.setAttribute('height', h); s.setAttribute('viewBox', view);
+  s.setAttribute('fill', 'none'); s.setAttribute('stroke', 'currentColor'); s.setAttribute('stroke-width', '2.5');
+  s.innerHTML = inner;
+  return s;
+}
 function renderTunnels() {
   const list = document.getElementById('tunnel-list');
   list.innerHTML = '';
@@ -1512,17 +1570,32 @@ function renderTunnels() {
     const row = document.createElement('div');
     row.className = 'setting-row';
     row.style.marginBottom = '0';
-    row.innerHTML = `
-      <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
-        <span style="font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${t.tunnelUrl}">${t.tunnelUrl}</span>
-        <span style="font-size:10px;padding:1px 6px;border-radius:4px;flex-shrink:0;background:${t.alive ? 'var(--green)' : 'var(--yellow)'};color:var(--bg)">${t.alive ? 'Live' : 'Orphan'}</span>
-        <button class="icon-btn" onclick="copyText('${t.tunnelUrl}')" title="Copy" style="width:24px;height:24px;flex-shrink:0">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-        </button>
-        <button class="icon-btn" onclick="stopTunnelById('${t.id}')" title="Stop" style="width:24px;height:24px;flex-shrink:0;color:var(--red)">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
-        </button>
-      </div>`;
+    const inner = document.createElement('div');
+    inner.style.cssText = 'display:flex;align-items:center;gap:6px;flex:1;min-width:0';
+    const urlSpan = document.createElement('span');
+    urlSpan.style.cssText = 'font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+    urlSpan.textContent = t.tunnelUrl;
+    urlSpan.title = t.tunnelUrl;
+    inner.appendChild(urlSpan);
+    const status = document.createElement('span');
+    status.style.cssText = `font-size:10px;padding:1px 6px;border-radius:4px;flex-shrink:0;background:${t.alive ? 'var(--green)' : 'var(--yellow)'};color:var(--bg)`;
+    status.textContent = t.alive ? 'Live' : 'Orphan';
+    inner.appendChild(status);
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'icon-btn';
+    copyBtn.style.cssText = 'width:24px;height:24px;flex-shrink:0';
+    copyBtn.title = 'Copy';
+    copyBtn.appendChild(mkSvg('11','11','0 0 24 24','<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>'));
+    copyBtn.addEventListener('click', () => copyText(t.tunnelUrl));
+    inner.appendChild(copyBtn);
+    const stopBtn = document.createElement('button');
+    stopBtn.className = 'icon-btn';
+    stopBtn.style.cssText = 'width:24px;height:24px;flex-shrink:0;color:var(--red)';
+    stopBtn.title = 'Stop';
+    stopBtn.appendChild(mkSvg('11','11','0 0 24 24','<rect x="6" y="6" width="12" height="12" rx="1"/>'));
+    stopBtn.addEventListener('click', () => stopTunnelById(t.id));
+    inner.appendChild(stopBtn);
+    row.appendChild(inner);
     list.appendChild(row);
   });
 }
@@ -1613,9 +1686,11 @@ function toggleSidebar() {
   const sb = document.getElementById('sidebar');
   if (window.innerWidth <= 768) {
     sb.classList.toggle('mobile-open');
+    sb.classList.remove('hidden');
   } else {
     sidebarOpen = !sidebarOpen;
     sb.classList.toggle('hidden', !sidebarOpen);
+    sb.classList.remove('mobile-open');
     setTimeout(() => { const t = getActiveTab(); try { t?.fitAddon?.fit(); } catch {} }, 220);
   }
 }
@@ -1635,7 +1710,11 @@ function setupKeyboardShortcuts() {
     if (ctrl && e.shiftKey && e.key === 'ArrowLeft') { e.preventDefault(); cycleTab(-1); }
     if (e.key === 'Escape') {
       if (document.getElementById('search-bar').classList.contains('open')) closeSearch();
-      if (document.getElementById('finder-overlay').classList.contains('open')) closeOverlay('finder-overlay');
+      document.querySelectorAll('.overlay.open').forEach(el => {
+        const id = el.id;
+        if (id === 'settings-overlay') closeSettings();
+        else if (id === 'finder-overlay' || id === 'newfolder-overlay' || id === 'newfile-overlay' || id === 'rename-overlay' || id === 'sys-stats-overlay') closeOverlay(id);
+      });
     }
   });
 }
@@ -1770,7 +1849,19 @@ function renderBookmarks() {
   bm.forEach((b, i) => {
     const div = document.createElement('div');
     div.className = 'bookmark-item';
-    div.innerHTML = `<span class="bm-name">${b.name}</span><span style="font-size:10px;color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px">${b.path}</span><span class="bm-remove" title="Remove">×</span>`;
+    const bmName = document.createElement('span');
+    bmName.className = 'bm-name';
+    bmName.textContent = b.name;
+    div.appendChild(bmName);
+    const bmPath = document.createElement('span');
+    bmPath.style.cssText = 'font-size:10px;color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px';
+    bmPath.textContent = b.path;
+    div.appendChild(bmPath);
+    const rmBtn = document.createElement('span');
+    rmBtn.className = 'bm-remove';
+    rmBtn.textContent = '×';
+    rmBtn.title = 'Remove';
+    div.appendChild(rmBtn);
     div.querySelector('.bm-name').addEventListener('click', () => loadFiles(b.path));
     div.querySelector('.bm-remove').addEventListener('click', e => { e.stopPropagation(); const bm2 = getBookmarks(); bm2.splice(i,1); saveBookmarks(bm2); });
     list.appendChild(div);
@@ -1824,7 +1915,18 @@ function doFinderSearch() {
       const div = document.createElement('div');
       div.className = 'finder-item';
       div.dataset.idx = i;
-      div.innerHTML = `<span class="fi-icon">${r.isDir ? '📁' : '📄'}</span><span class="fi-name">${r.name}</span><span class="fi-dir">${r.dir}</span>`;
+      const fiIcon = document.createElement('span');
+      fiIcon.className = 'fi-icon';
+      fiIcon.textContent = r.isDir ? '📁' : '📄';
+      div.appendChild(fiIcon);
+      const fiName = document.createElement('span');
+      fiName.className = 'fi-name';
+      fiName.textContent = r.name;
+      div.appendChild(fiName);
+      const fiDir = document.createElement('span');
+      fiDir.className = 'fi-dir';
+      fiDir.textContent = r.dir;
+      div.appendChild(fiDir);
       div.addEventListener('click', () => { closeOverlay('finder-overlay'); if (r.isDir) loadFiles(r.path); else openFileEditor(r.path); });
       div.addEventListener('mouseenter', () => { document.querySelectorAll('.finder-item.selected').forEach(el => el.classList.remove('selected')); div.classList.add('selected'); finderIdx = i; });
       results.appendChild(div);
@@ -1885,7 +1987,9 @@ async function refreshSystemStats() {
   if (data.processes) {
     data.processes.forEach(p => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${p.pid}</td><td>${p.user}</td><td>${p.cpu}</td><td>${p.mem}</td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.cmd}</td>`;
+      const addTd = (txt, extra) => { const td = document.createElement('td'); if (extra) td.style.cssText = extra; td.textContent = txt; tr.appendChild(td); };
+      addTd(p.pid); addTd(p.user); addTd(p.cpu); addTd(p.mem);
+      addTd(p.cmd, 'max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap');
       tbody.appendChild(tr);
     });
   }
@@ -1897,7 +2001,7 @@ async function refreshSystemStats() {
 function registerSW() {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js')
-      .then(() => toast('App installed for offline use', 'success'))
+      .then(() => toast('Service worker registered', 'success'))
       .catch(err => console.warn('SW registration failed:', err));
   }
 }
@@ -1907,10 +2011,15 @@ function registerSW() {
 // ═══════════════════════════════════════════════════════
 init();
 
-// Warn before closing if there are unsaved changes
+// Warn before closing if there are unsaved changes or active terminals
 window.addEventListener('beforeunload', e => {
   const editorOpen = document.getElementById('editor-view').classList.contains('open');
   if (editorOpen && document.getElementById('editor-textarea').value !== editorOriginalContent) {
+    e.preventDefault();
+    e.returnValue = '';
+    return;
+  }
+  if (tabs.some(t => t.ws && t.ws.readyState === WebSocket.OPEN)) {
     e.preventDefault();
     e.returnValue = '';
   }
