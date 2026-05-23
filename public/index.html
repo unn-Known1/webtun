@@ -14,6 +14,23 @@
 <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-search@0.15.0/lib/addon-search.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0.11.0/lib/addon-web-links.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/lib/codemirror.min.css">
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/lib/codemirror.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/addon/edit/matchbrackets.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/javascript/javascript.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/python/python.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/htmlmixed/htmlmixed.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/xml/xml.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/css/css.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/clike/clike.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/shell/shell.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/markdown/markdown.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/yaml/yaml.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/sql/sql.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/go/go.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/rust/rust.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/properties/properties.min.js"></script>
 <style>
 /* ═══════════════════════════════════════════════════════
    CSS VARIABLES / THEMES
@@ -232,7 +249,63 @@ svg { display: block; }
 #editor-filename { flex: 1; color: var(--fg); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #editor-status { font-size: 11px; color: var(--fg2); }
 #editor-area { flex: 1; overflow: hidden; position: relative; }
-#editor-textarea { width: 100%; height: 100%; background: var(--bg); color: var(--fg); border: none; padding: 12px; font-family: var(--font); font-size: 14px; line-height: 1.6; resize: none; outline: none; tab-size: 2; }
+#editor-preview { width: 100%; height: 100%; overflow-y: auto; padding: 12px 24px; font-size: 14px; line-height: 1.7; color: var(--fg); display: none; box-sizing: border-box; }
+#editor-preview.active { display: block; }
+#editor-preview h1, #editor-preview h2, #editor-preview h3, #editor-preview h4, #editor-preview h5, #editor-preview h6 { color: var(--fg); margin: 1em 0 0.5em; font-weight: 700; }
+#editor-preview h1 { font-size: 1.8em; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
+#editor-preview h2 { font-size: 1.5em; border-bottom: 1px solid var(--border); padding-bottom: 0.25em; }
+#editor-preview h3 { font-size: 1.25em; }
+#editor-preview h4 { font-size: 1.1em; }
+#editor-preview p { margin: 0.75em 0; }
+#editor-preview ul, #editor-preview ol { margin: 0.5em 0; padding-left: 2em; }
+#editor-preview li { margin: 0.25em 0; }
+#editor-preview blockquote { margin: 0.75em 0; padding: 4px 16px; border-left: 4px solid var(--accent); background: var(--bg2); color: var(--fg2); border-radius: 0 var(--radius) var(--radius) 0; }
+#editor-preview code { font-family: var(--font); background: var(--bg3); padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+#editor-preview pre { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; overflow-x: auto; margin: 0.75em 0; }
+#editor-preview pre code { background: none; padding: 0; border-radius: 0; font-size: 0.85em; }
+#editor-preview table { border-collapse: collapse; width: 100%; margin: 0.75em 0; }
+#editor-preview th, #editor-preview td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; }
+#editor-preview th { background: var(--bg3); font-weight: 600; }
+#editor-preview hr { border: none; border-top: 1px solid var(--border); margin: 1.5em 0; }
+#editor-preview a { color: var(--accent); text-decoration: none; }
+#editor-preview a:hover { text-decoration: underline; }
+#editor-preview img { max-width: 100%; border-radius: var(--radius); }
+
+/* ═══════════════════════════════════════════════════════
+   CODEMIRROR
+   ═══════════════════════════════════════════════════════ */
+#editor-area .CodeMirror { height: 100%; font-family: var(--font); font-size: 14px; line-height: 1.6; }
+#editor-area .CodeMirror-wrap { height: 100%; }
+#editor-area .CodeMirror.cm-s-webtun { background: var(--bg); color: var(--fg); }
+#editor-area .cm-s-webtun .CodeMirror-gutters { background: var(--bg2); border-right: 1px solid var(--border); }
+#editor-area .cm-s-webtun .CodeMirror-linenumber { color: var(--fg2); padding: 0 8px; font-size: 12px; }
+#editor-area .cm-s-webtun .CodeMirror-cursor { border-color: var(--fg); border-width: 2px; }
+#editor-area .cm-s-webtun .CodeMirror-selected { background: rgba(122,162,247,0.2); }
+#editor-area .cm-s-webtun .CodeMirror-activeline-background { background: var(--bg3); }
+#editor-area .cm-s-webtun .cm-keyword { color: var(--accent2); }
+#editor-area .cm-s-webtun .cm-atom { color: var(--cyan); }
+#editor-area .cm-s-webtun .cm-number { color: var(--cyan); }
+#editor-area .cm-s-webtun .cm-def { color: var(--accent); }
+#editor-area .cm-s-webtun .cm-variable { color: var(--fg); }
+#editor-area .cm-s-webtun .cm-variable-2 { color: var(--fg); }
+#editor-area .cm-s-webtun .cm-variable-3 { color: var(--fg); }
+#editor-area .cm-s-webtun .cm-property { color: var(--cyan); }
+#editor-area .cm-s-webtun .cm-operator { color: var(--fg); }
+#editor-area .cm-s-webtun .cm-comment { color: var(--fg2); font-style: italic; }
+#editor-area .cm-s-webtun .cm-string { color: var(--green); }
+#editor-area .cm-s-webtun .cm-string-2 { color: var(--green); }
+#editor-area .cm-s-webtun .cm-meta { color: var(--fg2); }
+#editor-area .cm-s-webtun .cm-qualifier { color: var(--yellow); }
+#editor-area .cm-s-webtun .cm-builtin { color: var(--yellow); }
+#editor-area .cm-s-webtun .cm-bracket { color: var(--fg2); }
+#editor-area .cm-s-webtun .cm-tag { color: var(--red); }
+#editor-area .cm-s-webtun .cm-attribute { color: var(--yellow); }
+#editor-area .cm-s-webtun .cm-hr { color: var(--fg2); }
+#editor-area .cm-s-webtun .cm-link { color: var(--accent); }
+#editor-area .cm-s-webtun .cm-error { color: var(--red); }
+#editor-area .CodeMirror.cm-s-webtun.CodeMirror-fullscreen { z-index: 100; }
+/* Hide textarea overlay when CM is active */
+#editor-textarea { display: none; }
 
 /* ═══════════════════════════════════════════════════════
    SETTINGS
@@ -488,10 +561,12 @@ svg { display: block; }
             </button>
             <span id="editor-filename">—</span>
             <span id="editor-status"></span>
+            <button class="btn" id="md-preview-toggle" style="height:26px;padding:0 12px;font-size:12px;display:none" onclick="toggleMdPreview()">Preview</button>
             <button class="btn btn-primary" style="height:26px;padding:0 12px;font-size:12px" onclick="saveFile()">Save</button>
           </div>
           <div id="editor-area">
             <textarea id="editor-textarea" spellcheck="false"></textarea>
+            <div id="editor-preview"></div>
           </div>
         </div>
       </div>
@@ -1480,6 +1555,65 @@ async function uploadFileList(items) {
 // EDITOR
 // ═══════════════════════════════════════════════════════
 const MAX_EDITOR_SIZE = 10 * 1024 * 1024; // 10MB
+let editor = null;
+let mdPreviewActive = false;
+
+function initCodeMirror() {
+  if (editor) return editor;
+  const ta = document.getElementById('editor-textarea');
+  editor = CodeMirror.fromTextArea(ta, {
+    theme: 'webtun',
+    lineNumbers: true,
+    matchBrackets: true,
+    indentUnit: 2,
+    tabSize: 2,
+    indentWithTabs: false,
+    lineWrapping: false,
+    viewportMargin: 100,
+    extraKeys: {
+      'Ctrl-S': () => saveFile(),
+      'Cmd-S': () => saveFile(),
+      'Esc': () => closeEditor(),
+    }
+  });
+  return editor;
+}
+
+function getCMmode(fileName) {
+  const m = fileName.match(/\.([^.]+)$/);
+  if (!m) return null;
+  switch (m[1].toLowerCase()) {
+    case 'js': case 'jsx': case 'mjs': case 'cjs': return 'javascript';
+    case 'ts': case 'tsx': return {name: 'javascript', typescript: true};
+    case 'json': return {name: 'javascript', json: true};
+    case 'py': return 'python';
+    case 'html': case 'htm': return 'htmlmixed';
+    case 'css': return 'css';
+    case 'xml': case 'svg': return 'xml';
+    case 'c': case 'h': return 'text/x-csrc';
+    case 'cpp': case 'cc': case 'hpp': case 'cxx': return 'text/x-c++src';
+    case 'java': return 'text/x-java';
+    case 'cs': return 'text/x-csharp';
+    case 'sh': case 'bash': case 'zsh': case 'fish': return 'shell';
+    case 'md': case 'markdown': return 'markdown';
+    case 'yaml': case 'yml': return 'yaml';
+    case 'sql': return 'sql';
+    case 'go': return 'go';
+    case 'rs': return 'rust';
+    case 'rb': return 'ruby';
+    case 'php': return 'php';
+    case 'pl': case 'pm': return 'perl';
+    case 'swift': return 'swift';
+    case 'kt': case 'kts': return 'text/x-kotlin';
+    case 'dart': return 'dart';
+    case 'lua': return 'lua';
+    case 'r': return 'r';
+    case 'toml': return 'toml';
+    case 'ini': case 'cfg': case 'conf': case 'env': return 'properties';
+    case 'ps1': case 'psm1': return 'powershell';
+    default: return null;
+  }
+}
 
 async function openFileEditor(path) {
   const head = await api(`/api/files/read?path=${encodeURIComponent(path)}&head=1`);
@@ -1493,16 +1627,32 @@ async function openFileEditor(path) {
   editorOriginalContent = r.content;
   const sep = path.includes('\\') ? '\\' : '/';
   const fileName = path.split(sep).pop() || path;
+  const isMd = /\.md$/i.test(fileName);
+
+  const cm = initCodeMirror();
+  cm.setValue(r.content);
+  cm.setOption('mode', getCMmode(fileName) || 'text/plain');
+  document.querySelector('.CodeMirror').style.display = '';
+  cm.refresh();
+
+  const preview = document.getElementById('editor-preview');
+  const toggleBtn = document.getElementById('md-preview-toggle');
+  preview.classList.remove('active');
+  if (isMd && typeof marked !== 'undefined') {
+    toggleBtn.style.display = '';
+    toggleBtn.textContent = 'Preview';
+  } else {
+    toggleBtn.style.display = 'none';
+  }
   document.getElementById('editor-filename').textContent = fileName + '  ' + path;
-  document.getElementById('editor-textarea').value = r.content;
   document.getElementById('editor-status').textContent = '';
   document.getElementById('editor-view').classList.add('open');
-  document.getElementById('editor-textarea').focus();
+  cm.focus();
 }
 
 async function saveFile() {
   if (!editorPath) { toast('No file open', 'error'); return; }
-  const content = document.getElementById('editor-textarea').value;
+  const content = editor ? editor.getValue() : document.getElementById('editor-textarea').value;
   const r = await api('/api/files/write', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1517,38 +1667,39 @@ async function saveFile() {
 }
 
 function closeEditor() {
-  const currentContent = document.getElementById('editor-textarea').value;
+  const currentContent = editor ? editor.getValue() : document.getElementById('editor-textarea').value;
   if (currentContent !== editorOriginalContent) {
     if (!confirm('You have unsaved changes. Close anyway?')) return;
   }
   document.getElementById('editor-view').classList.remove('open');
+  document.getElementById('editor-preview').classList.remove('active');
+  document.getElementById('md-preview-toggle').style.display = 'none';
+  const cm = document.querySelector('.CodeMirror');
+  if (cm) cm.style.display = '';
+  mdPreviewActive = false;
   editorPath = '';
   editorOriginalContent = '';
   const tab = getActiveTab();
   setTimeout(() => { try { fitTerm(tab); tab?.term?.focus(); } catch {} }, 60);
 }
 
-// Ctrl+S in editor (delegated — only active when editor is open)
-document.getElementById('editor-textarea').addEventListener('keydown', e => {
-  if (!document.getElementById('editor-view').classList.contains('open')) return;
-  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveFile(); }
-  if (e.key === 'Escape') closeEditor();
-  if (e.key === 'Tab') { e.preventDefault(); const t = e.target, s = t.selectionStart, end = t.selectionEnd; t.value = t.value.substring(0, s) + '  ' + t.value.substring(end); t.selectionStart = t.selectionEnd = s + 2; }
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    const t = e.target;
-    const start = t.selectionStart;
-    const end = t.selectionEnd;
-    const val = t.value;
-    const lastNewline = val.lastIndexOf('\n', start - 1);
-    const lineStart = lastNewline === -1 ? 0 : lastNewline + 1;
-    const line = val.substring(lineStart, start);
-    const match = line.match(/^([ \t]*)/);
-    const indent = match ? match[1] : '';
-    t.value = val.substring(0, start) + '\n' + indent + val.substring(end);
-    t.selectionStart = t.selectionEnd = start + 1 + indent.length;
+function toggleMdPreview() {
+  const cmWrapper = document.querySelector('.CodeMirror');
+  const preview = document.getElementById('editor-preview');
+  const btn = document.getElementById('md-preview-toggle');
+  mdPreviewActive = !mdPreviewActive;
+  if (mdPreviewActive) {
+    preview.innerHTML = marked.parse(editor.getValue(), { breaks: true, gfm: true });
+    if (cmWrapper) cmWrapper.style.display = 'none';
+    preview.classList.add('active');
+    btn.textContent = 'Edit';
+  } else {
+    if (cmWrapper) cmWrapper.style.display = '';
+    preview.classList.remove('active');
+    btn.textContent = 'Preview';
+    editor.focus();
   }
-});
+}
 
 // ═══════════════════════════════════════════════════════
 // SEARCH
