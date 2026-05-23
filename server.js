@@ -190,6 +190,33 @@ app.post('/api/files/rename', checkPin, async (req, res) => {
   }
 });
 
+app.post('/api/files/copy', checkPin, async (req, res) => {
+  try {
+    const src = realPath(req.body.source);
+    const dst = resolvePath(req.body.destination);
+    const st = await fsPromises.stat(src);
+    if (st.isDirectory()) {
+      await fsPromises.cp(src, dst, { recursive: true, errorOnExist: false });
+    } else {
+      await fsPromises.copyFile(src, dst);
+    }
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/files/move', checkPin, async (req, res) => {
+  try {
+    const src = realPath(req.body.source);
+    const dst = resolvePath(req.body.destination);
+    await fsPromises.rename(src, dst);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.delete('/api/files', checkPin, async (req, res) => {
   try {
     const p = realPath(req.query.path);
