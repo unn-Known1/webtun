@@ -525,6 +525,10 @@ svg { display: block; }
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
           New File
         </button>
+        <button class="sidebar-action-btn" id="footer-paste-btn" onclick="pasteFile(currentPath)" title="Paste" style="display:none">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="14" y="2" width="8" height="8" rx="2"/><path d="M16 14H8M8 18h8"/><path d="M5 4h4"/><rect x="2" y="6" width="16" height="16" rx="2"/></svg>
+          Paste
+        </button>
       </div>
     </div>
 
@@ -611,8 +615,13 @@ svg { display: block; }
   <div class="ctx-item" id="ctx-open">📂 Open</div>
   <div class="ctx-item" id="ctx-edit">✏️ Edit</div>
   <div class="ctx-item" id="ctx-download">⬇️ Download</div>
-  <div class="ctx-item" id="ctx-rename">🏷️ Rename</div>
   <div class="ctx-item" id="ctx-copy-path">📋 Copy Path</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" id="ctx-copy">📋 Copy</div>
+  <div class="ctx-item" id="ctx-cut">✂️ Cut</div>
+  <div class="ctx-item" id="ctx-paste" style="display:none">📄 Paste</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" id="ctx-rename">🏷️ Rename</div>
   <div class="ctx-sep"></div>
   <div class="ctx-item danger" id="ctx-delete">🗑️ Delete</div>
 </div>
@@ -1402,6 +1411,8 @@ function formatSize(bytes) {
 // ═══════════════════════════════════════════════════════
 // CONTEXT MENU
 // ═══════════════════════════════════════════════════════
+let fsClipboard = null;
+
 function showCtxMenu(e, file) {
   e.preventDefault();
   ctxTarget = file;
@@ -1409,6 +1420,7 @@ function showCtxMenu(e, file) {
   menu.style.display = 'block';
   document.getElementById('ctx-open').style.display = file.isDir ? '' : 'none';
   document.getElementById('ctx-edit').style.display = file.isDir ? 'none' : '';
+  document.getElementById('ctx-paste').style.display = fsClipboard ? '' : 'none';
   const mw = menu.offsetWidth, mh = menu.offsetHeight;
   let left = Math.min(e.clientX, window.innerWidth - mw - 8);
   let top = Math.min(e.clientY, window.innerHeight - mh - 8);
@@ -1428,6 +1440,30 @@ document.getElementById('ctx-download').onclick = () => ctxTarget && downloadFil
 document.getElementById('ctx-rename').onclick = () => ctxTarget && startRename(ctxTarget.path, ctxTarget.name);
 document.getElementById('ctx-copy-path').onclick = () => { if (!ctxTarget) return; navigator.clipboard.writeText(ctxTarget.path).then(() => toast('Path copied')).catch(() => toast('Copy failed', 'error')); };
 document.getElementById('ctx-delete').onclick = () => ctxTarget && deleteFile(ctxTarget);
+document.getElementById('ctx-copy').onclick = () => { if (!ctxTarget) return; fsClipboard = { action: 'copy', path: ctxTarget.path, name: ctxTarget.name }; updatePasteUI(); toast('Copied: ' + ctxTarget.name, 'success'); };
+document.getElementById('ctx-cut').onclick = () => { if (!ctxTarget) return; fsClipboard = { action: 'cut', path: ctxTarget.path, name: ctxTarget.name }; updatePasteUI(); toast('Cut: ' + ctxTarget.name, 'success'); };
+document.getElementById('ctx-paste').onclick = () => { if (fsClipboard) pasteFile(currentPath); };
+
+function updatePasteUI() {
+  const el = document.getElementById('footer-paste-btn');
+  if (el) el.style.display = fsClipboard ? '' : 'none';
+}
+
+async function pasteFile(destDir) {
+  if (!fsClipboard) return;
+  const dest = joinPath(destDir, fsClipboard.name);
+  const ep = fsClipboard.action === 'copy' ? '/api/files/copy' : '/api/files/move';
+  const r = await api(ep, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source: fsClipboard.path, destination: dest })
+  });
+  if (r.success) {
+    toast(fsClipboard.action === 'copy' ? 'Pasted' : 'Moved', 'success');
+    if (fsClipboard.action === 'cut') { fsClipboard = null; updatePasteUI(); }
+    refreshFiles();
+  } else toast(r.error, 'error');
+}
 
 // ═══════════════════════════════════════════════════════
 // FILE OPERATIONS
