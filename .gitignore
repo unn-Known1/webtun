@@ -4,3 +4,5 @@ node_modules/
 webtun.pid
 webtun.log
 .tunnels.json
+dist/
+release/

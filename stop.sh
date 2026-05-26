@@ -21,11 +21,11 @@ if [ -f "$PID_FILE" ]; then
     rm -f "$PID_FILE"
   fi
 elif command -v pkill &>/dev/null; then
-  if pkill -f "node.*webtun.*server\.js" 2>/dev/null || pkill -f "node.*server\.js" 2>/dev/null; then
+  if pkill -f "node.*webtun.*server\.js" 2>/dev/null; then
     echo "✓ WebTun stopped"
   else
     echo "⚠ Not running"
   fi
 else
-  echo "⚠ pkill not found and no PID file — try: kill \$(pgrep -f 'node.*server.js')"
+  echo "⚠ pkill not found and no PID file — try: kill \$(pgrep -f 'webtun.*server.js')"
 fi

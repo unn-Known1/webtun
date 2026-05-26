@@ -3,11 +3,13 @@
 ![Terminal](https://img.shields.io/badge/Terminal-Web--Native-2D5B8E?style=for-the-badge)
 ![PWA](https://img.shields.io/badge/PWA-Installable-6BA428?style=for-the-badge)
 ![Cloudflare](https://img.shields.io/badge/Tunnel-Cloudflare-F38020?style=for-the-badge)
+![Desktop](https://img.shields.io/badge/Desktop-Electron-47848F?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
 **Access your Linux server from any browser — no VPN, no SSH client, no installing anything.**
 
-[![Deploy to Cloudflare](https://img.shields.io/badge/Quick_Start-One_Command-2D5B8E?style=for-the-badge&logo=gnu-bash)](install.sh)
+[![Quick Start](https://img.shields.io/badge/Quick_Start-One_Command-2D5B8E?style=for-the-badge&logo=gnu-bash)](install.sh)
+[![Download](https://img.shields.io/github/v/release/unn-known1/webtun?style=for-the-badge&logo=github)](https://github.com/unn-known1/webtun/releases/latest)
 
 ---
 
@@ -30,6 +32,13 @@
 - **Multi-tab terminal** — side-by-side sessions like your desktop
 - **File explorer** — browse, upload, download files without leaving the browser
 - **WebSocket + xterm.js** — responsive, low-latency typing
+
+### Desktop App (Electron)
+- Cross-platform app for Linux & Windows
+- Runs the server as a child process — no terminal needed
+- Native window with system tray, copy/paste, and file dialogs
+- Download the latest release from [GitHub Releases](https://github.com/unn-known1/webtun/releases/latest)
+- Or build from source: `npm run dist:linux` / `npm run dist:win`
 
 ### PWA (Install as App)
 - Add to iOS home screen → looks and feels like native app
@@ -139,6 +148,7 @@ kill $(pgrep -f 'cloudflared tunnel')
 | Terminal | xterm.js |
 | Protocol | WebSocket |
 | Tunnel | Cloudflare Tunnel (cloudflared) |
+| Desktop | Electron + electron-builder |
 
 ---
 
