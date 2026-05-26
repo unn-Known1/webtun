@@ -93,23 +93,28 @@ async function asyncSafeWalk(currentDir, depth, maxDepth, q, results, maxResults
   if (depth > maxDepth || results.length >= maxResults) return;
   let entries;
   try { entries = await fsPromises.readdir(currentDir, { withFileTypes: true }); } catch { return; }
-  for (const e of entries) {
-    if (results.length >= maxResults) break;
+
+  const matching = entries.filter(e => e.name.toLowerCase().includes(q));
+  const dirs = entries.filter(e => e.isDirectory());
+
+  await Promise.all(matching.map(async e => {
+    if (results.length >= maxResults) return;
     const full = path.join(currentDir, e.name);
-    if (e.name.toLowerCase().includes(q)) {
-      try {
-        const st = await fsPromises.stat(full);
-        results.push({ path: full, name: e.name, isDir: st.isDirectory(), dir: currentDir });
-      } catch {}
-    }
-    if (e.isDirectory()) {
-      try {
-        const st = await fsPromises.lstat(full);
-        if (st.isSymbolicLink()) continue;
-      } catch {}
-      await asyncSafeWalk(full, depth + 1, maxDepth, q, results, maxResults);
-    }
-  }
+    try {
+      const st = await fsPromises.stat(full);
+      if (results.length < maxResults) results.push({ path: full, name: e.name, isDir: st.isDirectory(), dir: currentDir });
+    } catch {}
+  }));
+
+  await Promise.all(dirs.map(async e => {
+    if (results.length >= maxResults) return;
+    const full = path.join(currentDir, e.name);
+    try {
+      const st = await fsPromises.lstat(full);
+      if (st.isSymbolicLink()) return;
+    } catch {}
+    await asyncSafeWalk(full, depth + 1, maxDepth, q, results, maxResults);
+  }));
 }
 
 app.get('/api/files', checkPin, async (req, res) => {
@@ -255,12 +260,11 @@ app.post('/api/files/touch', checkPin, async (req, res) => {
 app.get('/api/files/read', checkPin, async (req, res) => {
   try {
     const p = resolvePath(req.query.path);
-    if (req.query.head) {
-      const st = await fsPromises.stat(p);
-      return res.json({ length: st.size });
-    }
-    const content = await fsPromises.readFile(p, 'utf8');
-    res.json({ content });
+    const [content, st] = await Promise.all([
+      fsPromises.readFile(p, 'utf8'),
+      fsPromises.stat(p)
+    ]);
+    res.json({ content, length: st.size });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -686,8 +690,25 @@ app.get('/api/exec/stream', checkPin, (req, res) => {
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 
+  let sendQueue = [];
+  let draining = false;
+
   const send = (type, data) => {
-    if (!res.writableEnded) res.write(`data: ${JSON.stringify({ type, data })}\n\n`);
+    if (res.writableEnded) return;
+    const chunk = `data: ${JSON.stringify({ type, data })}\n\n`;
+    if (draining) { sendQueue.push(chunk); return; }
+    const canContinue = res.write(chunk);
+    if (!canContinue) {
+      draining = true;
+      res.once('drain', () => {
+        draining = false;
+        while (sendQueue.length > 0) {
+          const q = sendQueue.shift();
+          if (res.writableEnded) { sendQueue = []; return; }
+          if (!res.write(q)) { draining = true; return; }
+        }
+      });
+    }
   };
 
   const { shell, args } = getShellAndArgs(command);
@@ -726,6 +747,17 @@ app.get('/api/search', rateLimiter, checkPin, async (req, res) => {
   }
 });
 
+function spawnRead(cmd, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], timeout: 5000 });
+    let stdout = '', stderr = '';
+    child.stdout.on('data', d => stdout += d.toString());
+    child.stderr.on('data', d => stderr += d.toString());
+    child.on('close', code => code === 0 ? resolve(stdout) : reject(new Error(stderr)));
+    child.on('error', reject);
+  });
+}
+
 // ── System stats ────────────────────────────────────────────────────
 app.get('/api/system', checkPin, async (req, res) => {
   const cpus = os.cpus();
@@ -762,7 +794,7 @@ app.get('/api/system', checkPin, async (req, res) => {
   let disk = [];
   try {
     if (os.platform() === 'win32') {
-      const psOut = execSync('powershell.exe -Command "Get-CimInstance -ClassName Win32_LogicalDisk | Where-Object {$_.DriveType -eq 3} | Select-Object DeviceID, Size, FreeSpace | ConvertTo-Json"', { encoding: 'utf8', timeout: 3000 });
+      const psOut = await spawnRead('powershell.exe', ['-Command', "Get-CimInstance -ClassName Win32_LogicalDisk | Where-Object {$_.DriveType -eq 3} | Select-Object DeviceID, Size, FreeSpace | ConvertTo-Json"]);
       const data = JSON.parse(psOut);
       const list = Array.isArray(data) ? data : [data];
       disk = list.map(d => {
@@ -783,7 +815,7 @@ app.get('/api/system', checkPin, async (req, res) => {
         };
       });
     } else {
-      const dfOut = execSync('df -h /', { encoding: 'utf8', timeout: 3000 });
+      const dfOut = await spawnRead('df', ['-h', '/']);
       const lines = dfOut.trim().split('\n');
       if (lines.length > 1) {
         const parts = lines[1].split(/\s+/);
@@ -795,7 +827,7 @@ app.get('/api/system', checkPin, async (req, res) => {
   let processes = [];
   try {
     if (os.platform() === 'win32') {
-      const psOut = execSync('powershell.exe -Command "Get-Process | Where-Object {$_.CPU -ne $null} | Sort-Object CPU -Descending | Select-Object -First 15 | ForEach-Object { [PSCustomObject]@{ user = \'system\'; pid = $_.Id.ToString(); cpu = [Math]::Round($_.CPU, 1).ToString(); mem = [Math]::Round($_.WorkingSet / 1MB, 1).ToString() + \'MB\'; cmd = $_.ProcessName } } | ConvertTo-Json"', { encoding: 'utf8', timeout: 3000 });
+      const psOut = await spawnRead('powershell.exe', ['-Command', "Get-Process | Where-Object {$_.CPU -ne $null} | Sort-Object CPU -Descending | Select-Object -First 15 | ForEach-Object { [PSCustomObject]@{ user = 'system'; pid = $_.Id.ToString(); cpu = [Math]::Round($_.CPU, 1).ToString(); mem = [Math]::Round($_.WorkingSet / 1MB, 1).ToString() + 'MB'; cmd = $_.ProcessName } } | ConvertTo-Json"]);
       const data = JSON.parse(psOut);
       const list = Array.isArray(data) ? data : [data];
       processes = list.map(p => ({
@@ -806,26 +838,12 @@ app.get('/api/system', checkPin, async (req, res) => {
         cmd: p.cmd || ''
       }));
     } else {
-      const psOut = execSync('ps aux --sort=-%cpu | head -15', { encoding: 'utf8', timeout: 3000 });
-      const lines = psOut.trim().split('\n');
-      if (lines.length > 0) {
-        const header = lines[0].trim().split(/\s+/);
-        const uidIdx = header.indexOf('USER');
-        const pidIdx = header.indexOf('PID');
-        const cpuIdx = header.indexOf('%CPU');
-        const memIdx = header.indexOf('%MEM');
-        const cmdIdx = header.length - 1;
-        for (let i = 1; i < lines.length; i++) {
-          const parts = lines[i].trim().split(/\s+/);
-          if (parts.length > cmdIdx) {
-            processes.push({
-              user: parts[uidIdx] || '',
-              pid: parts[pidIdx] || '',
-              cpu: parts[cpuIdx] || '',
-              mem: parts[memIdx] || '',
-              cmd: parts.slice(cmdIdx).join(' ')
-            });
-          }
+      const psOut = await spawnRead('ps', ['-eo', 'pid,user,%cpu,%mem,cmd', '--no-headers', '--sort=-%cpu']);
+      const lines = psOut.trim().split('\n').slice(0, 15);
+      for (const line of lines) {
+        const m = line.match(/^\s*(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(.*)/);
+        if (m) {
+          processes.push({ user: m[2], pid: m[1], cpu: m[3], mem: m[4], cmd: m[5] });
         }
       }
     }

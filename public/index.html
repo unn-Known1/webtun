@@ -145,15 +145,15 @@ svg { display: block; }
 
 .keep-awake { display: flex; align-items: center; justify-content: center; margin-left: 4px; cursor: pointer; }
 .keep-awake input { display: none; }
-.keep-awake-box { width: 18px; height: 18px; border: 1.5px solid var(--border); border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; background: var(--bg2); }
+.keep-awake-box { width: 18px; height: 18px; border: 1.5px solid var(--border); border-radius: 4px; position: relative; transition: all 0.2s ease; background: var(--bg2); }
 .keep-awake:hover .keep-awake-box { border-color: var(--fg2); }
-.keep-awake-dot { width: 8px; height: 8px; border-radius: 50%; background: transparent; transition: all 0.25s ease; }
-.keep-awake input:checked + .keep-awake-box { border-color: var(--accent); background: rgba(122, 162, 247, 0.15); }
-.keep-awake input:checked + .keep-awake-box .keep-awake-dot { background: var(--accent); box-shadow: 0 0 6px var(--accent); animation: pulse-glow 1.5s ease-in-out infinite; }
+.keep-awake-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--fg2); position: absolute; top: 4px; left: 3px; transition: all 0.2s ease; }
+.keep-awake input:checked + .keep-awake-box { border-color: var(--accent); background: var(--accent); }
+.keep-awake input:checked + .keep-awake-box .keep-awake-dot { background: var(--bg); left: calc(100% - 11px); animation: keepawake-bounce 0.8s ease-in-out infinite; }
 
-@keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 4px var(--accent); transform: scale(1); }
-  50% { box-shadow: 0 0 10px var(--accent); transform: scale(1.1); }
+@keyframes keepawake-bounce {
+  0%, 100% { left: 3px; }
+  50% { left: calc(100% - 11px); }
 }
 
 #hostname-badge { font-size: 11px; color: var(--fg2); padding: 2px 8px; background: var(--bg3); border-radius: 999px; }
@@ -162,9 +162,10 @@ svg { display: block; }
    TABS
    ═══════════════════════════════════════════════════════ */
 .tab { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 12px; border-radius: var(--radius); background: var(--bg3); color: var(--fg2); cursor: pointer; flex-shrink: 0; font-size: 12px; transition: background 0.15s, color 0.15s; white-space: nowrap; user-select: none; min-width: 0; }
-.tab .tab-title { overflow: hidden; text-overflow: ellipsis; }
+.tab .tab-title { overflow: hidden; text-overflow: ellipsis; color: var(--fg); }
 .tab:hover { background: var(--bg4); color: var(--fg); }
 .tab.active { background: var(--bg4); color: var(--accent); border-bottom: 2px solid var(--accent); }
+.tab.active .tab-title { color: var(--accent); }
 .tab-close { width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; border-radius: 3px; opacity: 0.5; }
 .tab-close:hover { opacity: 1; background: var(--border); }
 #new-tab-btn { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius); color: var(--fg2); flex-shrink: 0; }
@@ -431,12 +432,12 @@ svg { display: block; }
 }
 </style>
 </head>
-<body data-theme="tokyonight">
+<body data-theme="light">
 <script>
   (function() {
     try {
       const settings = JSON.parse(localStorage.getItem('wt-settings')) || {};
-      const theme = settings.theme || 'tokyonight';
+      const theme = settings.theme || 'light';
       document.body.dataset.theme = theme;
     } catch(e){}
   })();
@@ -462,23 +463,20 @@ svg { display: block; }
     <span id="logo">⌨ WebTun</span>
     <span id="hostname-badge">—</span>
     <div class="header-spacer"></div>
-    <button class="icon-btn" id="sidebar-toggle" title="Toggle Explorer (Ctrl+B)" onclick="toggleSidebar()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
-    </button>
     <label id="keep-awake-toggle" class="keep-awake" title="Keep Screen Awake">
       <input type="checkbox" id="keep-awake-cb" onchange="toggleKeepAwake(this.checked)">
       <span class="keep-awake-box">
         <span class="keep-awake-dot"></span>
       </span>
     </label>
+    <button class="icon-btn" id="sidebar-toggle" title="Toggle Explorer (Ctrl+B)" onclick="toggleSidebar()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+    </button>
     <button class="icon-btn" id="search-toggle" title="Search (Ctrl+F)" onclick="toggleSearch()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
     </button>
-    <button class="icon-btn" title="New Terminal (Ctrl+T)" onclick="newTab()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-    </button>
     <button class="icon-btn" title="System Stats" onclick="openSystemStats()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><path d="M6 6h.01M6 18h.01"/></svg>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/><path d="M21 3v6h-6"/><path d="M12 8v4l3 3"/></svg>
     </button>
     <button class="icon-btn" id="tilesBtn" title="Tiles Mode" onclick="toggleTiles()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
@@ -635,8 +633,8 @@ svg { display: block; }
       <div class="setting-row">
         <label>Theme</label>
         <select id="s-theme" onchange="applyTheme(this.value)">
-          <option value="tokyonight">Tokyo Night</option>
           <option value="light">Light</option>
+          <option value="tokyonight">Tokyo Night</option>
           <option value="solarized">Solarized Dark</option>
           <option value="gruvbox">Gruvbox</option>
           <option value="dracula">Dracula</option>
@@ -834,7 +832,7 @@ let editorPath = '';
 let editorOriginalContent = '';
 let hasTmux = false;
 let settings = {
-  theme: 'tokyonight', fontSize: 14, font: "'SF Mono', 'Fira Code', Consolas, monospace",
+  theme: 'light', fontSize: 14, font: "'SF Mono', 'Fira Code', Consolas, monospace",
   cursor: 'block', blink: true, scrollback: 5000, bell: false,
   mobilekeys: false, confirmclose: true
 };
@@ -970,10 +968,20 @@ async function api(url, opts = {}) {
 // ═══════════════════════════════════════════════════════
 // TERMINAL TABS
 // ═══════════════════════════════════════════════════════
+function nextTermNumber() {
+  const used = new Set(tabs.map(t => {
+    const m = t.title.match(/^Term (\d+)$/);
+    return m ? parseInt(m[1]) : 0;
+  }));
+  let n = 1;
+  while (used.has(n)) n++;
+  return n;
+}
+
 function newTab(title, sessionId) {
   const id = ++tabCounter;
   const sid = sessionId || (hasTmux ? uuid() : null);
-  const tab = { id, sessionId: sid, title: title || `Term ${id}`, term: null, fitAddon: null, searchAddon: null, ws: null, el: null, wrapper: null, closed: false, reconnectDelay: 1000, dataDisposable: null, resizeDisposable: null, resizeObserver: null };
+  const tab = { id, sessionId: sid, title: title || `Term ${nextTermNumber()}`, term: null, fitAddon: null, searchAddon: null, ws: null, el: null, wrapper: null, closed: false, reconnectDelay: 1000, dataDisposable: null, resizeDisposable: null, resizeObserver: null };
   tabs.push(tab);
 
   // Tab button
@@ -1187,7 +1195,6 @@ function initTerminal(tab) {
   term.loadAddon(webLinksAddon);
 
   term.open(tab.wrapper);
-  requestAnimationFrame(() => fitTerm(tab));
 
   tab.term = term;
   tab.fitAddon = fitAddon;
@@ -1201,8 +1208,6 @@ function initTerminal(tab) {
     }
   });
 
-  connectWebSocket(tab, false);
-
   // Title updates from OSC
   term.onTitleChange(title => {
     tab.title = title || `Term ${tab.id}`;
@@ -1214,6 +1219,25 @@ function initTerminal(tab) {
     if (activeTabId === tab.id) { try { fitTerm(tab); } catch {} }
   });
   tab.resizeObserver.observe(tab.wrapper);
+
+  // Copy selection to clipboard using modern API
+  term.element.addEventListener('copy', e => {
+    const sel = term.getSelection();
+    if (sel) {
+      e.preventDefault();
+      navigator.clipboard.writeText(sel).then(() => {
+        toast('Copied to clipboard', 'success');
+      }).catch(() => {
+        document.execCommand('copy');
+      });
+    }
+  });
+
+  // Fit terminal then connect WebSocket — ensures WS uses correct dimensions
+  requestAnimationFrame(() => {
+    fitTerm(tab);
+    if (!tab.closed) connectWebSocket(tab, false);
+  });
 
   // Ensure wheel events scroll the terminal even when mouse events are captured by apps
   tab.wrapper.addEventListener('wheel', e => {
@@ -1287,10 +1311,14 @@ function toggleTiles() {
 
 function layoutTiles() {
   const termWrap = document.getElementById('terminals');
-  termWrap.querySelectorAll('.term-tile-header').forEach(el => el.remove());
   tabs.forEach(tab => {
     if (!tab.wrapper) return;
-    const hdr = document.createElement('div');
+    let hdr = tab.wrapper.querySelector('.term-tile-header');
+    if (hdr) {
+      hdr.querySelector('.tth-name').textContent = tab.title;
+      return;
+    }
+    hdr = document.createElement('div');
     hdr.className = 'term-tile-header';
     const tthName = document.createElement('span');
     tthName.className = 'tth-name';
@@ -1652,13 +1680,11 @@ function getCMmode(fileName) {
 }
 
 async function openFileEditor(path) {
-  const head = await api(`/api/files/read?path=${encodeURIComponent(path)}&head=1`);
-  if (head.error) { toast(head.error, 'error'); return; }
-  if (head.length > MAX_EDITOR_SIZE) {
-    if (!confirm(`File is ${(head.length / 1024 / 1024).toFixed(1)}MB. Open anyway?`)) return;
-  }
   const r = await api(`/api/files/read?path=${encodeURIComponent(path)}`);
   if (r.error) { toast(r.error, 'error'); return; }
+  if (r.length > MAX_EDITOR_SIZE) {
+    if (!confirm(`File is ${(r.length / 1024 / 1024).toFixed(1)}MB. Open anyway?`)) return;
+  }
   editorPath = path;
   editorOriginalContent = r.content;
   const sep = path.includes('\\') ? '\\' : '/';
@@ -1848,31 +1874,41 @@ function renderTunnels() {
   list.style.display = 'block';
   tunnelList.forEach(t => {
     const row = document.createElement('div');
-    row.className = 'setting-row';
-    row.style.marginBottom = '0';
+    row.style.cssText = 'padding:6px 0;border-bottom:1px solid var(--border)';
+    const label = document.createElement('div');
+    label.style.cssText = 'font-size:10px;color:var(--fg2);margin-bottom:3px';
+    label.textContent = t.localUrl;
+    row.appendChild(label);
     const inner = document.createElement('div');
-    inner.style.cssText = 'display:flex;align-items:center;gap:6px;flex:1;min-width:0';
+    inner.style.cssText = 'display:flex;align-items:center;gap:5px;min-width:0';
     const urlSpan = document.createElement('span');
     urlSpan.style.cssText = 'font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
     urlSpan.textContent = t.tunnelUrl;
     urlSpan.title = t.tunnelUrl;
     inner.appendChild(urlSpan);
     const status = document.createElement('span');
-    status.style.cssText = `font-size:10px;padding:1px 6px;border-radius:4px;flex-shrink:0;background:${t.alive ? 'var(--green)' : 'var(--yellow)'};color:var(--bg)`;
+    status.style.cssText = `font-size:9px;padding:1px 5px;border-radius:4px;flex-shrink:0;background:${t.alive ? 'var(--green)' : 'var(--yellow)'};color:var(--bg)`;
     status.textContent = t.alive ? 'Live' : 'Orphan';
     inner.appendChild(status);
     const copyBtn = document.createElement('button');
     copyBtn.className = 'icon-btn';
-    copyBtn.style.cssText = 'width:24px;height:24px;flex-shrink:0';
+    copyBtn.style.cssText = 'width:22px;height:22px;flex-shrink:0';
     copyBtn.title = 'Copy';
-    copyBtn.appendChild(mkSvg('11','11','0 0 24 24','<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>'));
+    copyBtn.appendChild(mkSvg('10','10','0 0 24 24','<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>'));
     copyBtn.addEventListener('click', () => copyText(t.tunnelUrl));
     inner.appendChild(copyBtn);
+    const openBtn = document.createElement('button');
+    openBtn.className = 'icon-btn';
+    openBtn.style.cssText = 'width:22px;height:22px;flex-shrink:0';
+    openBtn.title = 'Open in new tab';
+    openBtn.appendChild(mkSvg('10','10','0 0 24 24','<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>'));
+    openBtn.addEventListener('click', () => window.open(t.tunnelUrl, '_blank'));
+    inner.appendChild(openBtn);
     const stopBtn = document.createElement('button');
     stopBtn.className = 'icon-btn';
-    stopBtn.style.cssText = 'width:24px;height:24px;flex-shrink:0;color:var(--red)';
+    stopBtn.style.cssText = 'width:22px;height:22px;flex-shrink:0;color:var(--red)';
     stopBtn.title = 'Stop';
-    stopBtn.appendChild(mkSvg('11','11','0 0 24 24','<rect x="6" y="6" width="12" height="12" rx="1"/>'));
+    stopBtn.appendChild(mkSvg('10','10','0 0 24 24','<rect x="6" y="6" width="12" height="12" rx="1"/>'));
     stopBtn.addEventListener('click', () => stopTunnelById(t.id));
     inner.appendChild(stopBtn);
     row.appendChild(inner);
@@ -2127,6 +2163,7 @@ document.querySelectorAll('.overlay').forEach(o => {
   o.addEventListener('click', e => {
     if (e.target !== o) return;
     if (o.id === 'sys-overlay') { closeSystemStats(); return; }
+    if (o.id === 'finder-overlay') { clearTimeout(finderTimer); }
     o.classList.remove('open');
   });
 });
@@ -2164,6 +2201,10 @@ function renderBookmarks() {
   bm.forEach((b, i) => {
     const div = document.createElement('div');
     div.className = 'bookmark-item';
+    div.addEventListener('click', e => {
+      if (e.target.closest('.bm-remove')) return;
+      loadFiles(b.path);
+    });
     const bmName = document.createElement('span');
     bmName.className = 'bm-name';
     bmName.textContent = b.name;
@@ -2176,9 +2217,14 @@ function renderBookmarks() {
     rmBtn.className = 'bm-remove';
     rmBtn.textContent = '×';
     rmBtn.title = 'Remove';
+    rmBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      const bm2 = getBookmarks();
+      const idx = bm2.findIndex(x => x.path === b.path);
+      if (idx !== -1) bm2.splice(idx, 1);
+      saveBookmarks(bm2);
+    });
     div.appendChild(rmBtn);
-    div.querySelector('.bm-name').addEventListener('click', () => loadFiles(b.path));
-    div.querySelector('.bm-remove').addEventListener('click', e => { e.stopPropagation(); const bm2 = getBookmarks(); const idx = bm2.findIndex(x => x.path === b.path); if (idx !== -1) bm2.splice(idx,1); saveBookmarks(bm2); });
     list.appendChild(div);
   });
 }
@@ -2192,10 +2238,11 @@ function bookmarkCurrentDir() {
   toast('Bookmarked', 'success');
 }
 
-let bookmarksOpen = true;
+let bookmarksOpen = (() => { try { const v = localStorage.getItem('wt-bm-open'); return v !== null ? v === 'true' : true; } catch { return true; } })();
 function toggleBookmarks() {
   bookmarksOpen = !bookmarksOpen;
   document.getElementById('bookmarks-list').classList.toggle('open', bookmarksOpen);
+  try { localStorage.setItem('wt-bm-open', bookmarksOpen); } catch {}
 }
 
 // ═══════════════════════════════════════════════════════
@@ -2265,9 +2312,10 @@ let sysStatsTimer = null;
 function openSystemStats() {
   openOverlay('sys-overlay');
   document.getElementById('sys-loading').style.display = 'block';
-  refreshSystemStats();
+  document.getElementById('sys-content').style.display = 'none';
+  refreshSystemStats(true);
   clearInterval(sysStatsTimer);
-  sysStatsTimer = setInterval(refreshSystemStats, 5000);
+  sysStatsTimer = setInterval(() => refreshSystemStats(false), 5000);
 }
 
 function closeSystemStats() {
@@ -2276,10 +2324,16 @@ function closeSystemStats() {
   closeOverlay('sys-overlay');
 }
 
-async function refreshSystemStats() {
-  document.getElementById('sys-loading').style.display = 'block';
+async function refreshSystemStats(showLoading) {
+  if (showLoading) {
+    document.getElementById('sys-loading').style.display = 'block';
+    document.getElementById('sys-content').style.display = 'none';
+  }
   const data = await api('/api/system');
-  document.getElementById('sys-loading').style.display = 'none';
+  if (showLoading) {
+    document.getElementById('sys-loading').style.display = 'none';
+    document.getElementById('sys-content').style.display = '';
+  }
   if (!data || !data.cpu) { toast('Failed to load system stats', 'error'); return; }
 
   const fmt = (bytes) => { if (bytes < 1024) return bytes + ' B'; if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB'; if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB'; return (bytes / 1073741824).toFixed(1) + ' GB'; };
