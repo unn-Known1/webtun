@@ -80,6 +80,12 @@
   --accent: #bd93f9; --accent2: #ff79c6; --green: #50fa7b;
   --red: #ff5555; --yellow: #f1fa8c; --cyan: #8be9fd;
 }
+[data-theme="tokyonight"] {
+  --bg: #1a1b26; --bg2: #16161e; --bg3: #24283b; --bg4: #2a2d3e;
+  --border: #3b3f52; --fg: #c0caf5; --fg2: #787c99;
+  --accent: #7aa2f7; --accent2: #bb9af7; --green: #9ece6a;
+  --red: #f7768e; --yellow: #e0af68; --cyan: #7dcfff;
+}
 [data-theme="monokai"] {
   --bg: #272822; --bg2: #1e1f1c; --bg3: #31322b; --bg4: #3a3c32;
   --border: #49483e; --fg: #f8f8f2; --fg2: #75715e;
@@ -1071,6 +1077,7 @@ async function unlockApp() {
   renderBookmarks();
   setupDragDrop();
   setupKeyboardShortcuts();
+  startFileWatcher();
   setupMobileKeys();
   window.addEventListener('resize', setupMobileKeys);
   registerSW();
@@ -1119,15 +1126,23 @@ async function unlockApp() {
 async function api(url, opts = {}) {
   opts.headers = opts.headers || {};
   opts.headers['x-pin-token'] = authToken;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000);
-  opts.signal = controller.signal;
+  const timeoutCtrl = new AbortController();
+  const timeoutId = setTimeout(() => timeoutCtrl.abort(), 30000);
+  const userSignal = opts.signal || null;
+  if (userSignal) {
+    userSignal.addEventListener('abort', () => timeoutCtrl.abort(), { once: true });
+  }
+  const combinedSignal = opts.signal = timeoutCtrl.signal;
   try {
     const r = await fetch(url, opts);
     clearTimeout(timeoutId);
     if (!r.ok && r.status === 401) { showPinScreen(); return {}; }
     try { return await r.json(); } catch { return {}; }
-  } catch { clearTimeout(timeoutId); return {}; }
+  } catch {
+    clearTimeout(timeoutId);
+    if (userSignal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    return {};
+  }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1223,9 +1238,11 @@ function newTab(title, sessionId) {
   tabEl.addEventListener('touchmove', e => {
     if (tabSwipeStartX === 0) return;
     const dx = e.touches[0].clientX - tabSwipeStartX;
-    if (Math.abs(dx) > 20) {
+    if (Math.abs(dx) > 2) {
       tabEl.style.transform = `translateX(${dx}px)`;
-      tabEl.style.opacity = Math.max(0, 1 - Math.abs(dx) / 200);
+      tabEl.style.opacity = Math.max(0.3, 1 - Math.abs(dx) / 200);
+      const pct = Math.min(Math.abs(dx) / 80, 1);
+      tabEl.style.background = `rgba(247,118,142,${pct * 0.2})`;
     }
   }, { passive: true });
   tabEl.addEventListener('touchend', e => {
@@ -1233,6 +1250,7 @@ function newTab(title, sessionId) {
     const dx = e.changedTouches[0].clientX - tabSwipeStartX;
     tabEl.style.transform = '';
     tabEl.style.opacity = '';
+    tabEl.style.background = '';
     if (Math.abs(dx) > 80) {
       closeTab({ stopPropagation() {} }, id);
     }
@@ -1658,7 +1676,13 @@ async function loadFiles(dir) {
   document.getElementById('file-list').innerHTML = '<div style="padding:10px;text-align:center;font-size:11px;color:var(--fg2)">Loading…</div>';
 
   const data = await api(`/api/files?path=${encodeURIComponent(dir)}`);
-  if (!data.files) return;
+  if (!data.files) {
+    if (dir !== homeDir) {
+      toast('Directory not accessible, returning to home', 'warning');
+      loadFiles(homeDir);
+    }
+    return;
+  }
 
   currentParent = data.parent || '';
 
@@ -1715,12 +1739,28 @@ function makeFileItem(name, isDir, fullPath, size, icon) {
   return div;
 }
 
-function refreshFiles() { loadFiles(currentPath); }
+function refreshFiles() {
+  if (currentPath) loadFiles(currentPath);
+}
 function navigateTo(p) { loadFiles(p || homeDir); }
 function navigateUp() {
   if (currentParent && currentParent !== currentPath) {
     loadFiles(currentParent);
   }
+}
+
+let fileWatchTimer = null;
+function startFileWatcher() {
+  if (fileWatchTimer) return;
+  const watch = () => {
+    const sb = document.getElementById('sidebar');
+    if (!sb || sb.classList.contains('hidden') || document.hidden) return;
+    if (currentPath) loadFiles(currentPath);
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && currentPath) loadFiles(currentPath);
+  }, { passive: true });
+  fileWatchTimer = setInterval(watch, 10000);
 }
 
 function getFileIcon(ext) {
@@ -2108,7 +2148,10 @@ function initCodeMirror() {
     extraKeys: {
       'Ctrl-S': () => saveFile(),
       'Cmd-S': () => saveFile(),
-      'Esc': () => closeEditor(),
+      'Esc': () => {
+        if (document.querySelector('.overlay.open')) return;
+        closeEditor();
+      },
     }
   });
   return editor;
@@ -3071,6 +3114,7 @@ function toggleBookmarks() {
 // ═══════════════════════════════════════════════════════
 let finderTimer = null;
 let finderIdx = -1;
+let finderAbort = null;
 
 function openFinder() {
   document.getElementById('finder-input').value = '';
@@ -3083,13 +3127,17 @@ function openFinder() {
 
 function doFinderSearch() {
   clearTimeout(finderTimer);
+  if (finderAbort) { finderAbort.abort(); finderAbort = null; }
   const q = document.getElementById('finder-input').value.trim();
   const results = document.getElementById('finder-results');
   const empty = document.getElementById('finder-empty');
   if (q.length < 2) { results.innerHTML = ''; empty.textContent = 'Type at least 2 characters'; return; }
   empty.textContent = 'Searching…';
   finderTimer = setTimeout(async () => {
-    const data = await api(`/api/search?q=${encodeURIComponent(q)}&path=${encodeURIComponent(currentPath)}`);
+    finderAbort = new AbortController();
+    const data = await api(`/api/search?q=${encodeURIComponent(q)}&path=${encodeURIComponent(currentPath)}`, { signal: finderAbort.signal });
+    if (finderAbort?.signal.aborted) return;
+    finderAbort = null;
     results.innerHTML = '';
     if (!data.results || data.results.length === 0) { empty.textContent = 'No results found'; return; }
     empty.textContent = '';
