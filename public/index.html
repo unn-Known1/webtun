@@ -224,6 +224,8 @@ svg { display: block; }
 .mkey.wide { min-width: 64px; }
 .mkey-sep { display: inline-block; width: 1px; height: 24px; background: var(--border); margin: 0 2px; flex-shrink: 0; vertical-align: middle; }
 .mkey.sel-mode { background: var(--accent); color: var(--bg); }
+.mkey.sel-done { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+#mkey-sel-row { display:none;gap:4px;padding:4px 6px;padding-bottom:calc(4px + env(safe-area-inset-bottom));background:var(--bg3);border-top:1px solid var(--border);overflow-x:auto;white-space:nowrap;flex-shrink:0;align-items:center }
 
 /* Touch feedback */
 .sidebar-action-btn:active { transform: scale(0.96); }
@@ -704,6 +706,14 @@ svg { display: block; }
         <button class="mkey" onclick="sendKey('\x01')" title="Ctrl+A (Home)">^A</button>
         <button class="mkey" onclick="sendKey('\x05')" title="Ctrl+E (End)">^E</button>
         <button class="mkey" onclick="sendKey('\x12')" title="Ctrl+R (Reverse search)">^R</button>
+      </div>
+      <!-- Selection mode action bar -->
+      <div id="mkey-sel-row">
+        <button class="mkey" onclick="copyTermSelection()" title="Copy selected text">Copy</button>
+        <button class="mkey" onclick="pasteToTerminal()" title="Paste text into terminal">Paste</button>
+        <button class="mkey" onclick="selectAllTerm()" title="Select all terminal content">Select All</button>
+        <span class="mkey-sep"></span>
+        <button class="mkey sel-done" onclick="toggleTermSelect()" title="Exit selection mode">Done</button>
       </div>
     </div>
   </div>
@@ -2537,16 +2547,150 @@ function cycleTab(dir) {
 // MOBILE KEYS
 // ═══════════════════════════════════════════════════════
 let termSelectMode = false;
+let _selHandlers = [];
+
 function toggleTermSelect() {
   termSelectMode = !termSelectMode;
   const btn = document.getElementById('sel-toggle-btn');
   if (btn) btn.classList.toggle('sel-mode', termSelectMode);
-  tabs.forEach(t => {
-    if (t.term) {
-      t.term.element.style.userSelect = termSelectMode ? 'text' : 'none';
-      t.term.element.style.webkitUserSelect = termSelectMode ? 'text' : 'none';
+  document.getElementById('mkey-sel-row').style.display = termSelectMode ? 'flex' : 'none';
+  const mk = document.getElementById('mobile-keys');
+  if (mk) {
+    if (termSelectMode) {
+      mk.dataset.prevDisplay = mk.style.display;
+      mk.style.display = 'none';
+    } else {
+      mk.style.display = mk.dataset.prevDisplay || '';
     }
+  }
+
+  if (termSelectMode) {
+    tabs.forEach(t => {
+      if (!t.term) return;
+      t.term.options.disableStdin = true;
+      const handler = attachSelectionHandlers(t);
+      if (handler) _selHandlers.push(handler);
+    });
+  } else {
+    _selHandlers.forEach(h => {
+      if (!h || !h.handler) return;
+      const { el, onTouchStart, onTouchMove, onTouchEnd, onTouchCancel } = h.handler;
+      el.removeEventListener('touchstart', onTouchStart, { capture: true });
+      el.removeEventListener('touchmove', onTouchMove, { capture: true });
+      el.removeEventListener('touchend', onTouchEnd, { capture: true });
+      el.removeEventListener('touchcancel', onTouchCancel, { capture: true });
+    });
+    _selHandlers = [];
+    tabs.forEach(t => {
+      if (!t.term) return;
+      t.term.options.disableStdin = false;
+      t.term.clearSelection();
+    });
+  }
+}
+
+function attachSelectionHandlers(tab) {
+  const el = tab.wrapper;
+  const term = tab.term;
+  if (!el || !term) return null;
+
+  let active = false;
+  function onTouchStart(e) {
+    if (e.touches.length > 1) return;
+    active = true;
+    e.preventDefault();
+    e.stopPropagation();
+    const touch = e.touches[0];
+    const pe = new PointerEvent('pointerdown', {
+      clientX: touch.clientX, clientY: touch.clientY,
+      button: 0, buttons: 1, pointerId: 1, pointerType: 'touch', bubbles: true, cancelable: true
+    });
+    const screen = term.element.querySelector('.xterm-screen');
+    if (screen) screen.dispatchEvent(pe);
+  }
+  function onTouchMove(e) {
+    if (!active || e.touches.length > 1) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const touch = e.touches[0];
+    const pe = new PointerEvent('pointermove', {
+      clientX: touch.clientX, clientY: touch.clientY,
+      button: 0, buttons: 1, pointerId: 1, pointerType: 'touch', bubbles: true, cancelable: true
+    });
+    const screen = term.element.querySelector('.xterm-screen');
+    if (screen) screen.dispatchEvent(pe);
+  }
+  function onTouchEnd(e) {
+    if (!active) return;
+    active = false;
+    e.preventDefault();
+    e.stopPropagation();
+    const touch = e.changedTouches[0];
+    const pe = new PointerEvent('pointerup', {
+      clientX: touch.clientX, clientY: touch.clientY,
+      button: 0, buttons: 0, pointerId: 1, pointerType: 'touch', bubbles: true, cancelable: true
+    });
+    const screen = term.element.querySelector('.xterm-screen');
+    if (screen) screen.dispatchEvent(pe);
+  }
+  function onTouchCancel(e) {
+    if (!active) return;
+    active = false;
+    const pe = new PointerEvent('pointerup', {
+      button: 0, buttons: 0, pointerId: 1, pointerType: 'touch', bubbles: true, cancelable: true
+    });
+    const screen = term.element.querySelector('.xterm-screen');
+    if (screen) screen.dispatchEvent(pe);
+  }
+
+  el.addEventListener('touchstart', onTouchStart, { capture: true, passive: false });
+  el.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
+  el.addEventListener('touchend', onTouchEnd, { capture: true, passive: false });
+  el.addEventListener('touchcancel', onTouchCancel, { capture: true, passive: false });
+
+  return { handler: { el, onTouchStart, onTouchMove, onTouchEnd, onTouchCancel }, tab };
+}
+
+function copyTermSelection() {
+  const tab = getActiveTab();
+  if (!tab?.term) return;
+  const sel = tab.term.getSelection();
+  if (sel) {
+    navigator.clipboard.writeText(sel).then(() => {
+      toast('Copied to clipboard', 'success');
+    }).catch(() => {
+      toast('Copy failed', 'error');
+    });
+    tab.term.clearSelection();
+  } else {
+    toast('No text selected', 'info');
+  }
+}
+
+function pasteToTerminal() {
+  navigator.clipboard.readText().then(text => {
+    if (text) {
+      const tab = getActiveTab();
+      if (tab?.ws && tab.ws.readyState === WebSocket.OPEN) {
+        const enc = new TextEncoder().encode(text);
+        const buf = new Uint8Array(1 + enc.length);
+        buf[0] = 0x00; buf.set(enc, 1);
+        tab.ws.send(buf.buffer);
+        toast('Pasted to terminal', 'success');
+      }
+    }
+  }).catch(() => {
+    toast('Paste failed: clipboard access denied', 'error');
   });
+}
+
+function selectAllTerm() {
+  const tab = getActiveTab();
+  if (tab?.term) {
+    tab.term.focus();
+    tab.term.selectAll();
+    toast('All text selected', 'success');
+  }
 }
 
 function toggleCtrlRow() {
@@ -2566,12 +2710,14 @@ function setupVisualViewport() {
     const handler = () => {
       const diff = window.visualViewport.height - window.innerHeight;
       const mobileKeys = document.getElementById('mobile-keys');
+      const selRow = document.getElementById('mkey-sel-row');
       const terminals = document.getElementById('terminals');
       if (diff < -50) {
         terminals.style.marginBottom = Math.abs(diff) + 'px';
         if (mobileKeys) mobileKeys.style.display = 'none';
         const ctrlRow = document.getElementById('mkey-ctrl-row');
         if (ctrlRow) ctrlRow.style.display = 'none';
+        if (selRow) selRow.style.display = 'none';
       } else {
         terminals.style.marginBottom = '0';
         if (mobileKeys && window.innerWidth <= 768 && settings.mobilekeys !== false) {
@@ -2580,6 +2726,9 @@ function setupVisualViewport() {
         if (window.innerWidth <= 768 && settings.mobilekeys !== false) {
           const ctrlRow = document.getElementById('mkey-ctrl-row');
           if (ctrlRow) ctrlRow.style.display = 'none';
+        }
+        if (selRow && window.innerWidth <= 768) {
+          selRow.style.display = termSelectMode ? 'flex' : 'none';
         }
       }
     };
