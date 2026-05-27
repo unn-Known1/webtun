@@ -897,13 +897,30 @@ function loadTunnels() {
   } catch {}
 }
 
-app.get('/api/tunnel', checkPin, (req, res) => {
-  const list = Array.from(tunnels.entries()).map(([id, t]) => {
+app.get('/api/tunnel', checkPin, async (req, res) => {
+  const entries = Array.from(tunnels.entries());
+  // Quick health check on each tunnel's target server
+  const results = await Promise.allSettled(entries.map(async ([id, t]) => {
     let alive = t.proc !== null;
     if (!alive && t.pid) { alive = isCloudflaredProcess(t.pid); }
-    return { id, localUrl: t.localUrl, tunnelUrl: t.tunnelUrl, createdAt: t.createdAt, alive };
-  });
-  res.json({ tunnels: list });
+    let targetAlive = false;
+    if (alive) {
+      try {
+        const ac = new AbortController();
+        const timer = setTimeout(() => ac.abort(), 2000);
+        const proto = t.localUrl.startsWith('https') ? 'https' : 'http';
+        // Only check http/https targets
+        if (proto === 'http' || proto === 'https') {
+          await fetch(t.localUrl, { method: 'HEAD', signal: ac.signal });
+          clearTimeout(timer);
+          targetAlive = true;
+        }
+      } catch {}
+    }
+    return { id, localUrl: t.localUrl, tunnelUrl: t.tunnelUrl, createdAt: t.createdAt, alive, targetAlive };
+  }));
+  const tunnels_list = results.map(r => r.status === 'fulfilled' ? r.value : null).filter(Boolean);
+  res.json({ tunnels: tunnels_list });
 });
 
 app.post('/api/tunnel', checkPin, async (req, res) => {
@@ -912,6 +929,17 @@ app.post('/api/tunnel', checkPin, async (req, res) => {
 
   try { require('child_process').execSync(os.platform() === 'win32' ? 'where cloudflared' : 'command -v cloudflared', { stdio: 'ignore' }); }
   catch { return res.status(500).json({ error: 'cloudflared not installed' }); }
+
+  // health check — warn if local server is unreachable, but proceed regardless
+  let healthWarning = null;
+  try {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 3000);
+    await fetch(url, { method: 'HEAD', signal: ac.signal });
+    clearTimeout(timer);
+  } catch {
+    healthWarning = `Local server at ${url} is not responding. The tunnel may not work until the server is running.`;
+  }
 
   const proc = spawn('cloudflared', ['tunnel', '--url', url], {
     detached: true, stdio: ['ignore', 'pipe', 'pipe']
@@ -946,7 +974,7 @@ app.post('/api/tunnel', checkPin, async (req, res) => {
     const id = tunnelUrl.replace(/^https:\/\//, '').replace(/\.trycloudflare\.com$/, '');
     tunnels.set(id, { proc, pid: proc.pid, localUrl: url, tunnelUrl, createdAt: Date.now() });
     saveTunnels();
-    res.json({ success: true, id, url: tunnelUrl });
+    res.json({ success: true, id, url: tunnelUrl, warning: healthWarning });
   } catch (e) {
     try { proc.kill(); } catch {}
     res.status(500).json({ error: e.message === 'timeout' ? 'Timed out waiting for tunnel URL' : e.message });

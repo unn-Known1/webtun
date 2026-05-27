@@ -339,6 +339,7 @@ svg { display: block; }
 .toast { padding: 10px 16px; background: var(--bg4); border: 1px solid var(--border); border-radius: var(--radius); font-size: 12px; color: var(--fg); box-shadow: 0 4px 16px rgba(0,0,0,0.4); animation: slideIn 0.2s ease; max-width: 280px; }
 .toast.success { border-left: 3px solid var(--green); }
 .toast.error { border-left: 3px solid var(--red); }
+.toast.warning { border-left: 3px solid var(--yellow); }
 @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
 /* ═══════════════════════════════════════════════════════
@@ -1889,7 +1890,16 @@ function renderTunnels() {
     const status = document.createElement('span');
     status.style.cssText = `font-size:9px;padding:1px 5px;border-radius:4px;flex-shrink:0;background:${t.alive ? 'var(--green)' : 'var(--yellow)'};color:var(--bg)`;
     status.textContent = t.alive ? 'Live' : 'Orphan';
+    status.title = t.alive ? 'cloudflared is running' : 'cloudflared process not found';
     inner.appendChild(status);
+    if (t.alive && t.targetAlive !== undefined) {
+      const targetStatus = document.createElement('span');
+      const ok = t.targetAlive;
+      targetStatus.style.cssText = `font-size:9px;padding:1px 5px;border-radius:4px;flex-shrink:0;background:${ok ? 'var(--green)' : 'var(--red)'};color:var(--bg);opacity:0.8`;
+      targetStatus.textContent = ok ? '✓' : '✗';
+      targetStatus.title = ok ? `Target ${t.localUrl} is responding` : `Target ${t.localUrl} is not responding`;
+      inner.appendChild(targetStatus);
+    }
     const copyBtn = document.createElement('button');
     copyBtn.className = 'icon-btn';
     copyBtn.style.cssText = 'width:22px;height:22px;flex-shrink:0';
@@ -1928,8 +1938,13 @@ async function createTunnel() {
   if (r.success) {
     tunnelList.push({ id: r.id, tunnelUrl: r.url, localUrl: url, alive: true, createdAt: Date.now() });
     renderTunnels();
-    document.getElementById('tunnel-status').textContent = '';
-    toast('Tunnel ready: ' + r.url, 'success');
+    if (r.warning) {
+      document.getElementById('tunnel-status').textContent = '⚠️ ' + r.warning;
+      toast(r.warning, 'warning');
+    } else {
+      document.getElementById('tunnel-status').textContent = '';
+      toast('Tunnel ready: ' + r.url, 'success');
+    }
   } else {
     document.getElementById('tunnel-status').textContent = '';
     toast(r.error || 'Failed to create tunnel', 'error');
