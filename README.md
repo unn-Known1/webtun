@@ -46,6 +46,7 @@
 - **Upload with progress** — per-file progress bar via XHR
 - **Breadcrumb navigation** — tappable directory segments for quick navigation
 - **Long-press context menu** — rename, delete, download, copy on touch devices
+- **Text selection** — long-press file names to select and copy text on touch devices
 
 ### Desktop App (Electron)
 - Cross-platform app for Linux & Windows

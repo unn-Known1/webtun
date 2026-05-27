@@ -203,8 +203,8 @@ svg { display: block; }
 .file-item:hover { background: var(--bg3); }
 .file-item.selected { background: var(--bg4); }
 .file-icon { font-size: 14px; width: 16px; text-align: center; flex-shrink: 0; }
-.file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-size { font-size: 10px; color: var(--fg2); flex-shrink: 0; }
+.file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; -webkit-user-select: text; }
+.file-size { font-size: 10px; color: var(--fg2); flex-shrink: 0; user-select: text; -webkit-user-select: text; }
 .file-dir { color: var(--accent); }
 .file-item .file-actions { display: none; position: absolute; right: 6px; top: 50%; transform: translateY(-50%); gap: 2px; background: var(--bg4); border-radius: var(--radius); padding: 2px; }
 .file-item:hover .file-actions { display: flex; }
@@ -1083,6 +1083,7 @@ async function unlockApp() {
   registerSW();
   restoreTunnels();
   setupSwipeGestures();
+  setupFileListTouch();
   document.getElementById('tab-bar').setAttribute('role', 'tablist');
   document.getElementById('file-list-wrap').setAttribute('role', 'listbox');
 
@@ -1673,7 +1674,14 @@ async function loadFiles(dir) {
   currentPath = dir;
   document.getElementById('path-input').value = dir;
   renderBreadcrumb(dir);
-  document.getElementById('file-list').innerHTML = '<div style="padding:10px;text-align:center;font-size:11px;color:var(--fg2)">Loading…</div>';
+
+  const list = document.getElementById('file-list');
+
+  // Show loading only when list has no prior content (first load)
+  const isEmpty = list.children.length === 0;
+  if (isEmpty) {
+    list.innerHTML = '<div style="padding:10px;text-align:center;font-size:11px;color:var(--fg2)">Loading…</div>';
+  }
 
   const data = await api(`/api/files?path=${encodeURIComponent(dir)}`);
   if (!data.files) {
@@ -1686,35 +1694,79 @@ async function loadFiles(dir) {
 
   currentParent = data.parent || '';
 
-  const list = document.getElementById('file-list');
-  list.innerHTML = '';
+  // Map existing DOM children by dataset.path
+  const oldMap = new Map();
+  for (const child of Array.from(list.children)) {
+    const p = child.dataset.path;
+    if (p) oldMap.set(p, child);
+  }
 
-  // Parent dir
+  const fragment = document.createDocumentFragment();
+
+  // Build new file list, reusing existing nodes when paths match
+  function addItem(key, make) {
+    const existing = oldMap.get(key);
+    if (existing) {
+      fragment.appendChild(existing);
+      oldMap.delete(key);
+      return existing;
+    }
+    const item = make();
+    item.dataset.path = key;
+    fragment.appendChild(item);
+    return item;
+  }
+
+  // Parent dir entry
   if (data.parent && data.parent !== dir) {
-    const item = makeFileItem('..', true, data.parent, null, '📁');
-    list.appendChild(item);
+    addItem(data.parent, () => makeFileItem('..', true, data.parent, null, '📁'));
   }
 
   data.files.forEach(f => {
+    const key = f.path;
     const icon = f.isDir ? '📁' : getFileIcon(f.ext);
-    const item = makeFileItem(f.name, f.isDir, f.path, f.isDir ? null : formatSize(f.size), icon);
-    item.addEventListener('contextmenu', e => showCtxMenu(e, f));
-    let longPressTimer = null;
-    item.addEventListener('touchstart', e => {
-      longPressTimer = setTimeout(() => {
-        longPressTimer = null;
-        e.preventDefault();
-        showCtxMenu({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY, preventDefault() { e.preventDefault(); } }, f);
-      }, 500);
-    }, { passive: false });
-    item.addEventListener('touchmove', () => {
-      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-    }, { passive: true });
-    item.addEventListener('touchend', () => {
-      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-    }, { passive: true });
-    list.appendChild(item);
+    const sizeStr = f.isDir ? null : formatSize(f.size);
+
+    const existing = oldMap.get(key);
+    if (existing) {
+      // Update name/size/icon if changed (without recreating DOM)
+      const nameEl = existing.querySelector('.file-name');
+      if (nameEl && nameEl.textContent !== f.name) {
+        nameEl.textContent = f.name;
+        nameEl.title = key;
+        nameEl.className = 'file-name' + (f.isDir ? ' file-dir' : '');
+      }
+      const iconEl = existing.querySelector('.file-icon');
+      if (iconEl && iconEl.textContent !== icon) {
+        iconEl.textContent = icon;
+      }
+      const sizeEl = existing.querySelector('.file-size');
+      if (sizeStr) {
+        if (sizeEl) {
+          if (sizeEl.textContent !== sizeStr) sizeEl.textContent = sizeStr;
+        } else {
+          const span = document.createElement('span');
+          span.className = 'file-size';
+          span.textContent = sizeStr;
+          existing.querySelector('.file-name').after(span);
+        }
+      } else if (sizeEl) {
+        sizeEl.remove();
+      }
+      existing.dataset.isDir = String(f.isDir);
+    }
+
+    addItem(key, () => {
+      const item = makeFileItem(f.name, f.isDir, key, sizeStr, icon);
+      item.addEventListener('contextmenu', e => showCtxMenu(e, f));
+      return item;
+    });
   });
+
+  // Remove any orphaned nodes (not in new data)
+  for (const [, orphan] of oldMap) orphan.remove();
+
+  list.replaceChildren(fragment);
 }
 
 function makeFileItem(name, isDir, fullPath, size, icon) {
@@ -1722,6 +1774,8 @@ function makeFileItem(name, isDir, fullPath, size, icon) {
   div.className = 'file-item';
   div.setAttribute('role', 'option');
   div.setAttribute('aria-selected', 'false');
+  div.dataset.path = fullPath;
+  div.dataset.isDir = String(isDir);
   div.innerHTML = `
     <span class="file-select-check" data-path="${escHtml(fullPath)}"></span>
     <span class="file-icon">${icon}</span>
@@ -3039,6 +3093,45 @@ function setupSwipeGestures() {
     }, { passive: true });
   }
 })();
+
+// Touch long-press → context menu via event delegation (avoids conflict with text selection)
+function setupFileListTouch() {
+  const list = document.getElementById('file-list');
+  if (!list || list.dataset._touchSetup) return;
+  list.dataset._touchSetup = '1';
+
+  let longPressTimer = null;
+
+  list.addEventListener('touchstart', e => {
+    const item = e.target.closest('.file-item');
+    if (!item || e.target.closest('.file-name, .file-size')) return;
+
+    const touch = e.touches[0];
+    const file = {
+      path: item.dataset.path,
+      name: (item.querySelector('.file-name') || {}).textContent || '',
+      isDir: item.dataset.isDir === 'true' || !!item.querySelector('.file-dir')
+    };
+    if (!file.path) return;
+
+    longPressTimer = setTimeout(() => {
+      longPressTimer = null;
+      showCtxMenu({
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        preventDefault() {}
+      }, file);
+    }, 500);
+  }, { passive: false });
+
+  list.addEventListener('touchmove', () => {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+  }, { passive: true });
+
+  list.addEventListener('touchend', () => {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+  }, { passive: true });
+}
 
 function showPinScreen() {
   document.getElementById('app').style.display = 'none';
