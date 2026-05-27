@@ -930,17 +930,6 @@ app.post('/api/tunnel', checkPin, async (req, res) => {
   try { require('child_process').execSync(os.platform() === 'win32' ? 'where cloudflared' : 'command -v cloudflared', { stdio: 'ignore' }); }
   catch { return res.status(500).json({ error: 'cloudflared not installed' }); }
 
-  // health check — warn if local server is unreachable, but proceed regardless
-  let healthWarning = null;
-  try {
-    const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), 3000);
-    await fetch(url, { method: 'HEAD', signal: ac.signal });
-    clearTimeout(timer);
-  } catch {
-    healthWarning = `Local server at ${url} is not responding. The tunnel may not work until the server is running.`;
-  }
-
   const proc = spawn('cloudflared', ['tunnel', '--url', url], {
     detached: true, stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -974,7 +963,7 @@ app.post('/api/tunnel', checkPin, async (req, res) => {
     const id = tunnelUrl.replace(/^https:\/\//, '').replace(/\.trycloudflare\.com$/, '');
     tunnels.set(id, { proc, pid: proc.pid, localUrl: url, tunnelUrl, createdAt: Date.now() });
     saveTunnels();
-    res.json({ success: true, id, url: tunnelUrl, warning: healthWarning });
+    res.json({ success: true, id, url: tunnelUrl });
   } catch (e) {
     try { proc.kill(); } catch {}
     res.status(500).json({ error: e.message === 'timeout' ? 'Timed out waiting for tunnel URL' : e.message });
