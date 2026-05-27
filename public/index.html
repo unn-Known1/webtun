@@ -94,15 +94,24 @@
 html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 13px; padding-bottom: env(safe-area-inset-bottom); scroll-behavior: smooth; touch-action: manipulation; -webkit-overflow-scrolling: touch; }
 
 button { background: none; border: none; cursor: pointer; color: inherit; font-family: inherit; }
-input, select, textarea { font-family: var(--font); background: var(--bg3); border: 1px solid var(--border); color: var(--fg); border-radius: var(--radius); padding: 6px 10px; outline: none; font-size: 13px; }
+input, select, textarea { font-family: var(--font); background: var(--bg3); border: 1px solid var(--border); color: var(--fg); border-radius: var(--radius); padding: 6px 10px; outline: none; font-size: 16px; }
++ @media (pointer: coarse) { input, select, textarea { font-size: 16px; } }
 input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 a { color: var(--accent); text-decoration: none; }
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--fg2); }
+@media (pointer: coarse) { ::-webkit-scrollbar { width: 10px; height: 10px; } ::-webkit-scrollbar-thumb { border-radius: 5px; min-height: 44px; } }
 /* Always show scrollbars for better UX */
 * { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+@media (pointer: coarse) { * { scrollbar-width: auto; } }
+@media (pointer: coarse) {
+  .tab { height: 38px; }
+  .tab .tab-close { width: 32px; height: 32px; }
+  #new-tab-btn { width: 36px; height: 36px; }
+  #file-breadcrumb { padding: 8px 10px; font-size: 13px; line-height: 1.6; }
+}
 svg { display: block; }
 
 /* ═══════════════════════════════════════════════════════
@@ -157,6 +166,7 @@ svg { display: block; }
 }
 
 #hostname-badge { font-size: 11px; color: var(--fg2); padding: 2px 8px; background: var(--bg3); border-radius: 999px; }
+#conn-status { transition: background 0.3s; }
 
 /* ═══════════════════════════════════════════════════════
    TABS
@@ -166,7 +176,7 @@ svg { display: block; }
 .tab:hover { background: var(--bg4); color: var(--fg); }
 .tab.active { background: var(--bg4); color: var(--accent); border-bottom: 2px solid var(--accent); }
 .tab.active .tab-title { color: var(--accent); }
-.tab-close { width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; border-radius: 3px; opacity: 0.5; }
+.tab-close { width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; border-radius: 3px; opacity: 0.5; flex-shrink: 0; }
 .tab-close:hover { opacity: 1; background: var(--border); }
 #new-tab-btn { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius); color: var(--fg2); flex-shrink: 0; }
 #new-tab-btn:hover { background: var(--bg4); color: var(--fg); }
@@ -188,6 +198,14 @@ svg { display: block; }
 .file-item .file-actions { display: none; position: absolute; right: 6px; top: 50%; transform: translateY(-50%); gap: 2px; background: var(--bg4); border-radius: var(--radius); padding: 2px; }
 .file-item:hover .file-actions { display: flex; }
 .file-action-btn { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 3px; font-size: 11px; color: var(--fg2); }
+@media (hover: none) and (pointer: coarse) {
+  .file-item .file-actions { display: flex; }
+  .file-item:hover { background: var(--bg3); }
+}
+.file-select-check { display: none; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--fg2); flex-shrink: 0; align-items: center; justify-content: center; font-size: 10px; color: var(--bg2); }
+.file-select-check.on { background: var(--accent); border-color: var(--accent); }
+#sidebar[data-select-mode="true"] .file-select-check { display: flex; }
+#sidebar[data-select-mode="true"] .file-item { padding-left: 6px; }
 .file-action-btn:hover { background: var(--border); color: var(--fg); }
 #sidebar-footer { padding: 8px 10px; border-top: 1px solid var(--border); display: flex; gap: 4px; flex-wrap: wrap; flex-shrink: 0; }
 .sidebar-action-btn { flex: 1; min-width: 60px; height: 28px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); color: var(--fg2); font-size: 11px; display: flex; align-items: center; justify-content: center; gap: 4px; transition: all 0.15s; }
@@ -200,6 +218,16 @@ svg { display: block; }
 .mkey:active { background: var(--accent); color: var(--bg); }
 .mkey.wide { min-width: 64px; }
 .mkey-sep { display: inline-block; width: 1px; height: 24px; background: var(--border); margin: 0 2px; flex-shrink: 0; vertical-align: middle; }
+.mkey.sel-mode { background: var(--accent); color: var(--bg); }
+
+/* Touch feedback */
+.sidebar-action-btn:active { transform: scale(0.96); }
+.icon-btn:active { transform: scale(0.92); }
+.mkey:active { transform: scale(0.95); }
+
+/* Toast fade-out */
+.toast { animation: slideIn 0.2s ease, fadeIn 0.2s ease; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
 /* ═══════════════════════════════════════════════════════
    SEARCH BAR
@@ -237,10 +265,11 @@ svg { display: block; }
    ═══════════════════════════════════════════════════════ */
 #pin-screen { position: fixed; inset: 0; background: var(--bg); z-index: 200; display: flex; align-items: center; justify-content: center; }
 #pin-screen.hidden { display: none; }
-#pin-box { text-align: center; max-width: 320px; width: 90%; }
-#pin-box h1 { font-size: 28px; color: var(--accent); margin-bottom: 8px; }
-#pin-box p { color: var(--fg2); margin-bottom: 24px; }
-#pin-input { width: 100%; text-align: center; font-size: 24px; letter-spacing: 8px; height: 50px; margin-bottom: 12px; }
+#pin-box { text-align: center; padding: 40px; max-width: 320px; width: 90%; }
+#pin-box h1 { font-size: 36px; color: var(--accent); margin-bottom: 12px; }
+#pin-box p { color: var(--fg2); margin-bottom: 16px; font-size: 14px; }
+#pin-input { text-align: center; font-size: 28px; letter-spacing: 8px; width: 200px; height: 44px; border: 2px solid var(--border); border-radius: var(--radius); background: var(--bg3); color: var(--fg); outline: none; font-family: var(--font); margin-bottom: 12px; }
+#pin-input:focus { border-color: var(--accent); }
 #pin-error { color: var(--red); font-size: 12px; min-height: 18px; }
 
 /* ═══════════════════════════════════════════════════════
@@ -335,7 +364,7 @@ svg { display: block; }
 /* ═══════════════════════════════════════════════════════
    TOAST
    ═══════════════════════════════════════════════════════ */
-#toast-container { position: fixed; bottom: calc(60px + env(safe-area-inset-bottom)); right: 16px; z-index: 450; display: flex; flex-direction: column; gap: 8px; }
+#toast-container { position: fixed; bottom: calc(60px + env(safe-area-inset-bottom, 0px)); right: 16px; z-index: 450; display: flex; flex-direction: column; gap: 8px; }
 .toast { padding: 10px 16px; background: var(--bg4); border: 1px solid var(--border); border-radius: var(--radius); font-size: 12px; color: var(--fg); box-shadow: 0 4px 16px rgba(0,0,0,0.4); animation: slideIn 0.2s ease; max-width: 280px; }
 .toast.success { border-left: 3px solid var(--green); }
 .toast.error { border-left: 3px solid var(--red); }
@@ -347,6 +376,7 @@ svg { display: block; }
    ═══════════════════════════════════════════════════════ */
 #drop-overlay { position: fixed; inset: 0; background: color-mix(in srgb, var(--accent) 15%, transparent); border: 3px dashed var(--accent); z-index: 50; display: none; align-items: center; justify-content: center; font-size: 24px; color: var(--accent); }
 #drop-overlay.active { display: flex; }
+@media (hover: none) and (pointer: coarse) { #drop-overlay { display: none !important; } }
 
 /* ═══════════════════════════════════════════════════════
    MOBILE RESPONSIVE
@@ -372,6 +402,11 @@ svg { display: block; }
 .bookmark-item .bm-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); }
 .bookmark-item .bm-remove { opacity: 0.3; font-size: 14px; line-height: 1; width: 16px; text-align: center; }
 .bookmark-item .bm-remove:hover { opacity: 1; color: var(--red); }
+@media (pointer: coarse) {
+  .bookmark-item { padding: 10px 12px; }
+  .bookmark-item .bm-name { font-size: 13px; }
+  .bookmark-item .bm-remove { width: 28px; height: 28px; font-size: 14px; }
+}
 
 /* ═══════════════════════════════════════════════════════
    FUZZY FINDER
@@ -411,6 +446,24 @@ svg { display: block; }
 .sys-table td { padding: 3px 6px; border-bottom: 1px solid var(--border); }
 .sys-table tr:hover td { background: var(--bg3); }
 
+/* Small phones */
+@media (max-width: 480px) {
+  #sidebar { width: 85vw; }
+  #mobile-keys { padding: 4px 4px; gap: 2px; }
+  .mkey { min-width: 38px; padding: 0 6px; font-size: 11px; }
+  #header { padding: 0 4px; gap: 3px; }
+  .icon-btn { width: 28px; height: 28px; }
+  #logo { font-size: 13px; }
+}
+
+/* Tablets */
+@media (min-width: 1024px) and (pointer: coarse) {
+  #sidebar { width: 320px; }
+  #sidebar.hidden { width: 0; }
+  .file-item { padding: 8px 12px; font-size: 13px; }
+}
+
+/* Existing mobile breakpoint (refined) */
 @media (max-width: 768px) {
   #mobile-keys { display: flex; }
   #sidebar { position: absolute; left: 0; top: var(--header-h); bottom: 0; z-index: 30; width: var(--sidebar-w); transform: translateX(-100%); transition: transform 0.2s; }
@@ -421,7 +474,14 @@ svg { display: block; }
   .modal { min-width: unset; width: 95vw; }
   .sys-grid { grid-template-columns: 1fr; }
 }
-@media (min-width: 769px) {
+
+/* Landscape orientation on small screens */
+@media (max-width: 768px) and (orientation: landscape) {
+  #sidebar { width: 50vw; max-width: 320px; }
+  #header { height: 32px; }
+  #mobile-keys { height: 36px; }
+  .mkey { height: 28px; min-width: 36px; font-size: 10px; }
+  .tab { height: 32px; font-size: 11px; }
 }
 
 @media print {
@@ -431,6 +491,10 @@ svg { display: block; }
   .terminal { background: #fff !important; color: #000 !important; }
   #file-breadcrumb, #file-list-wrap { overflow: visible !important; }
 }
+#install-banner { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
 </style>
 </head>
 <body data-theme="light">
@@ -438,7 +502,10 @@ svg { display: block; }
   (function() {
     try {
       const settings = JSON.parse(localStorage.getItem('wt-settings')) || {};
-      const theme = settings.theme || 'light';
+      let theme = settings.theme || 'light';
+      if (theme === 'system') {
+        theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dracula' : 'light';
+      }
       document.body.dataset.theme = theme;
     } catch(e){}
   })();
@@ -461,6 +528,7 @@ svg { display: block; }
 <div id="app" style="display:none">
   <!-- Header -->
   <div id="header">
+    <span id="conn-status" style="width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0" title="Connected"></span>
     <span id="logo">⌨ WebTun</span>
     <span id="hostname-badge">—</span>
     <div class="header-spacer"></div>
@@ -470,10 +538,10 @@ svg { display: block; }
         <span class="keep-awake-dot"></span>
       </span>
     </label>
-    <button class="icon-btn" id="sidebar-toggle" title="Toggle Explorer (Ctrl+B)" onclick="toggleSidebar()">
+    <button class="icon-btn" id="sidebar-toggle" aria-label="Toggle sidebar" title="Toggle Explorer (Ctrl+B)" onclick="toggleSidebar()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
     </button>
-    <button class="icon-btn" id="search-toggle" title="Search (Ctrl+F)" onclick="toggleSearch()">
+    <button class="icon-btn" id="search-toggle" aria-label="Search" title="Search (Ctrl+F)" onclick="toggleSearch()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
     </button>
     <button class="icon-btn" title="System Stats" onclick="openSystemStats()">
@@ -482,10 +550,11 @@ svg { display: block; }
     <button class="icon-btn" id="tilesBtn" title="Tiles Mode" onclick="toggleTiles()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
     </button>
-    <button class="icon-btn" title="Settings" onclick="openSettings()">
+    <button class="icon-btn" aria-label="Settings" title="Settings" onclick="openSettings()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     </button>
   </div>
+  <div id="reconnect-banner" style="display:none;padding:4px 12px;font-size:11px;background:var(--yellow);color:var(--bg);text-align:center;flex-shrink:0">⚠️ Reconnecting…</div>
 
   <!-- Main -->
   <div id="main">
@@ -500,12 +569,21 @@ svg { display: block; }
         <button class="icon-btn" style="width:24px;height:24px" title="Refresh" onclick="refreshFiles()">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
         </button>
+        <button class="icon-btn" style="width:24px;height:24px" title="Toggle select mode" onclick="toggleSelectMode()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="9 12 11 14 15 10"/></svg>
+        </button>
       </div>
       <div id="bookmarks-header" onclick="toggleBookmarks()">📍 Bookmarks <span id="bm-count" style="margin-left:auto;font-size:10px"></span></div>
       <div id="bookmarks-list"></div>
       <div id="file-breadcrumb">/</div>
       <div id="file-list-wrap">
         <div id="file-list"></div>
+      </div>
+      <div id="select-actions" style="display:none;padding:8px 10px;border-top:1px solid var(--border);background:var(--bg2);gap:4px;flex-wrap:wrap">
+        <span id="select-count" style="font-size:11px;color:var(--fg2);line-height:28px;flex:1"></span>
+        <button class="sidebar-action-btn" onclick="deleteSelected()">Delete</button>
+        <button class="sidebar-action-btn" onclick="downloadSelected()">Download</button>
+        <button class="sidebar-action-btn" onclick="clearSelection()">Cancel</button>
       </div>
       <div id="sidebar-footer">
         <button class="sidebar-action-btn" onclick="bookmarkCurrentDir()" title="Bookmark current directory">
@@ -576,31 +654,46 @@ svg { display: block; }
 
       <!-- Mobile key bar -->
       <div id="mobile-keys">
-        <button class="mkey" onclick="sendKey('\x1b')">ESC</button>
+        <button class="mkey sel-toggle" onclick="toggleTermSelect()" title="Toggle selection mode" id="sel-toggle-btn">⎚</button>
         <span class="mkey-sep"></span>
-        <button class="mkey" onclick="sendKey('\t')">TAB</button>
+        <button class="mkey" onclick="sendKey('\x1b')" title="Escape">ESC</button>
         <span class="mkey-sep"></span>
-        <button class="mkey" onclick="sendKey('\x1b[A')">▲</button>
-        <button class="mkey" onclick="sendKey('\x1b[B')">▼</button>
-        <button class="mkey" onclick="sendKey('\x1b[D')">◀</button>
-        <button class="mkey" onclick="sendKey('\x1b[C')">▶</button>
+        <button class="mkey" onclick="sendKey('\t')" title="Tab">TAB</button>
         <span class="mkey-sep"></span>
-        <button class="mkey" onclick="sendKey('\x01')">^A</button>
-        <button class="mkey" onclick="sendKey('\x03')">^C</button>
-        <button class="mkey" onclick="sendKey('\x04')">^D</button>
-        <button class="mkey" onclick="sendKey('\x1a')">^Z</button>
-        <button class="mkey" onclick="sendKey('\x0c')">^L</button>
+        <button class="mkey" onclick="sendKey('\x1b[A')" title="Arrow Up">▲</button>
+        <button class="mkey" onclick="sendKey('\x1b[B')" title="Arrow Down">▼</button>
+        <button class="mkey" onclick="sendKey('\x1b[D')" title="Arrow Left">◀</button>
+        <button class="mkey" onclick="sendKey('\x1b[C')" title="Arrow Right">▶</button>
         <span class="mkey-sep"></span>
-        <button class="mkey wide" onclick="sendKey('\x1b[3~')">DEL</button>
-        <button class="mkey" onclick="sendKey('\x7f')">⌫</button>
+        <button class="mkey" onclick="sendKey('\x01')" title="Ctrl+A (Home)">^A</button>
+        <button class="mkey" onclick="sendKey('\x03')" title="Ctrl+C (Interrupt)">^C</button>
+        <button class="mkey" onclick="sendKey('\x04')" title="Ctrl+D (EOF)">^D</button>
+        <button class="mkey" onclick="sendKey('\x1a')" title="Ctrl+Z (Suspend)">^Z</button>
+        <button class="mkey" onclick="sendKey('\x0c')" title="Ctrl+L (Clear)">^L</button>
         <span class="mkey-sep"></span>
-        <button class="mkey" onclick="sendKey('\x1b[H')">Home</button>
-        <button class="mkey" onclick="sendKey('\x1b[F')">End</button>
-        <button class="mkey" onclick="sendKey('\x1b[5~')">PgUp</button>
-        <button class="mkey" onclick="sendKey('\x1b[6~')">PgDn</button>
+        <button class="mkey wide" onclick="sendKey('\x1b[3~')" title="Delete">DEL</button>
+        <button class="mkey" onclick="sendKey('\x7f')" title="Backspace">⌫</button>
         <span class="mkey-sep"></span>
-        <button class="mkey" onclick="sendKey('\x1bOQ')">F2</button>
-        <button class="mkey" onclick="sendKey('\x1b[15~')">F5</button>
+        <button class="mkey" onclick="sendKey('\x1b[H')" title="Home">Home</button>
+        <button class="mkey" onclick="sendKey('\x1b[F')" title="End">End</button>
+        <button class="mkey" onclick="sendKey('\x1b[5~')" title="Page Up">PgUp</button>
+        <button class="mkey" onclick="sendKey('\x1b[6~')" title="Page Down">PgDn</button>
+        <span class="mkey-sep"></span>
+        <button class="mkey" onclick="sendKey('\x1bOQ')" title="F2">F2</button>
+        <button class="mkey" onclick="sendKey('\x1b[15~')" title="F5">F5</button>
+        <span class="mkey-sep"></span>
+        <button class="mkey" onclick="toggleCtrlRow()" title="Toggle Ctrl keys" id="ctrl-toggle-btn">Ctrl</button>
+      </div>
+      <div id="mkey-ctrl-row" style="display:none;gap:4px;padding:4px 6px;padding-bottom:calc(4px + env(safe-area-inset-bottom));background:var(--bg3);border-top:1px solid var(--border);overflow-x:auto;white-space:nowrap;flex-shrink:0">
+        <button class="mkey" onclick="sendKey('\x03')" title="Ctrl+C (Interrupt)">^C</button>
+        <button class="mkey" onclick="sendKey('\x04')" title="Ctrl+D (EOF)">^D</button>
+        <button class="mkey" onclick="sendKey('\x1a')" title="Ctrl+Z (Suspend)">^Z</button>
+        <button class="mkey" onclick="sendKey('\x0c')" title="Ctrl+L (Clear)">^L</button>
+        <button class="mkey" onclick="sendKey('\x15')" title="Ctrl+U (Kill line)">^U</button>
+        <button class="mkey" onclick="sendKey('\x17')" title="Ctrl+W (Kill word)">^W</button>
+        <button class="mkey" onclick="sendKey('\x01')" title="Ctrl+A (Home)">^A</button>
+        <button class="mkey" onclick="sendKey('\x05')" title="Ctrl+E (End)">^E</button>
+        <button class="mkey" onclick="sendKey('\x12')" title="Ctrl+R (Reverse search)">^R</button>
       </div>
     </div>
   </div>
@@ -634,6 +727,7 @@ svg { display: block; }
       <div class="setting-row">
         <label>Theme</label>
         <select id="s-theme" onchange="applyTheme(this.value)">
+          <option value="system">System</option>
           <option value="light">Light</option>
           <option value="tokyonight">Tokyo Night</option>
           <option value="solarized">Solarized Dark</option>
@@ -810,10 +904,17 @@ svg { display: block; }
 </div>
 
 <!-- Toast container -->
-<div id="toast-container"></div>
+<div id="toast-container" aria-live="polite" aria-atomic="true"></div>
 
 <!-- Hidden file input for upload -->
 <input type="file" id="upload-input" multiple style="display:none" onchange="handleUploadInput()">
+
+<!-- PWA Install Banner -->
+<div id="install-banner" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:500;background:var(--bg3);border-top:1px solid var(--border);padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom));align-items:center;gap:10px;box-shadow:0 -4px 16px rgba(0,0,0,0.3)">
+  <span class="install-msg" style="flex:1;font-size:13px">Install WebTun for the best experience</span>
+  <button class="btn btn-ghost" style="height:32px;padding:0 12px;font-size:12px" onclick="dismissInstall()">Not now</button>
+  <button class="btn btn-primary" style="height:32px;padding:0 12px;font-size:12px" onclick="installPWA()">Install</button>
+</div>
 
 <script>
 // ═══════════════════════════════════════════════════════
@@ -845,6 +946,20 @@ function uuid() {
   } catch {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   }
+}
+
+function preventDoubleTap(el, fn, delay = 1000) {
+  if (el.dataset.busy === 'true') return;
+  el.dataset.busy = 'true';
+  el.style.opacity = '0.6';
+  el.style.pointerEvents = 'none';
+  Promise.resolve(fn()).finally(() => {
+    setTimeout(() => {
+      el.dataset.busy = 'false';
+      el.style.opacity = '';
+      el.style.pointerEvents = '';
+    }, delay);
+  });
 }
 
 function saveTabState() {
@@ -934,6 +1049,13 @@ async function unlockApp() {
   window.addEventListener('resize', setupMobileKeys);
   registerSW();
   restoreTunnels();
+  setupSwipeGestures();
+
+  // Listen for system theme changes
+  const systemThemeListener = window.matchMedia('(prefers-color-scheme: dark)');
+  systemThemeListener.addEventListener('change', () => {
+    if (settings.theme === 'system') applyTheme('system');
+  });
 
   // Restore tabs from last session, or open a fresh one
   const saved = loadTabState();
@@ -1000,6 +1122,7 @@ function newTab(title, sessionId) {
   tabEl.appendChild(tabTitleSpan);
   const closeBtn = document.createElement('button');
   closeBtn.className = 'tab-close';
+  closeBtn.setAttribute('aria-label', 'Close tab');
   closeBtn.onclick = e => closeTab(e, id);
   closeBtn.title = 'Close';
   const closeSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -1104,12 +1227,16 @@ function connectWebSocket(tab, isReconnect = false) {
 
   ws.onopen = () => {
     tab.reconnectDelay = 1000;
+    updateConnStatus(true);
+    const banner = document.getElementById('reconnect-banner');
+    if (banner) banner.style.display = 'none';
     if (isReconnect) {
       tab.term.writeln('\x1b[32m[Reconnected]\x1b[0m');
     }
     tab.pingTimer = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) ws.send(new Uint8Array([0x02]).buffer);
     }, 20000);
+    setupVisualViewport();
   };
 
   ws.onmessage = e => {
@@ -1125,6 +1252,9 @@ function connectWebSocket(tab, isReconnect = false) {
   ws.onclose = () => {
     cleanupWebSocket(tab);
     if (tab.closed) return;
+    updateConnStatus(false);
+    const banner = document.getElementById('reconnect-banner');
+    if (banner) banner.style.display = 'block';
     tab.reconnectDelay = Math.min((tab.reconnectDelay || 1000) * 2, 15000);
     const secs = tab.reconnectDelay / 1000;
     tab.term.writeln(`\r\n\x1b[33m[Disconnected — reconnecting in ${secs}s…]\x1b[0m`);
@@ -1250,6 +1380,40 @@ function initTerminal(tab) {
     if (e.deltaY < 0) term.scrollLines(-Math.ceil(Math.abs(e.deltaY) / 50));
     else if (e.deltaY > 0) term.scrollLines(Math.ceil(e.deltaY / 50));
   }, { passive: false });
+
+  // Pinch-to-zoom on mobile
+  let lastPinchDist = 0;
+  tab.wrapper.addEventListener('touchstart', e => {
+    if (e.touches.length === 2) {
+      lastPinchDist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+    }
+  }, { passive: true });
+  tab.wrapper.addEventListener('touchmove', e => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      const delta = dist - lastPinchDist;
+      if (Math.abs(delta) > 10) {
+        const fontSize = parseFloat(getComputedStyle(tab.term.element).fontSize) || 14;
+        const newSize = Math.max(10, Math.min(28, fontSize + (delta > 0 ? 1 : -1)));
+        tab.term.options.fontSize = newSize;
+        if (tab.fitAddon) tab.fitAddon.fit();
+        const persisted = JSON.parse(localStorage.getItem('wt-settings') || '{}');
+        persisted.fontSize = newSize;
+        localStorage.setItem('wt-settings', JSON.stringify(persisted));
+        lastPinchDist = dist;
+      }
+    }
+  }, { passive: false });
+  tab.wrapper.addEventListener('touchend', e => {
+    if (e.touches.length < 2) lastPinchDist = 0;
+  }, { passive: true });
 }
 
 function getActiveTab() { return tabs.find(t => t.id === activeTabId); }
@@ -1327,6 +1491,7 @@ function layoutTiles() {
     hdr.appendChild(tthName);
     const tthClose = document.createElement('button');
     tthClose.className = 'tth-close';
+    tthClose.setAttribute('aria-label', 'Close tab');
     tthClose.textContent = '×';
     hdr.appendChild(tthClose);
     hdr.addEventListener('click', e => {
@@ -1388,6 +1553,20 @@ async function loadFiles(dir) {
     const icon = f.isDir ? '📁' : getFileIcon(f.ext);
     const item = makeFileItem(f.name, f.isDir, f.path, f.isDir ? null : formatSize(f.size), icon);
     item.addEventListener('contextmenu', e => showCtxMenu(e, f));
+    let longPressTimer = null;
+    item.addEventListener('touchstart', e => {
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+        e.preventDefault();
+        showCtxMenu({ clientX: e.touches[0].clientX, clientY: e.touches[0].clientY, preventDefault() { e.preventDefault(); } }, f);
+      }, 500);
+    }, { passive: false });
+    item.addEventListener('touchmove', () => {
+      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+    }, { passive: true });
+    item.addEventListener('touchend', () => {
+      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+    }, { passive: true });
     list.appendChild(item);
   });
 }
@@ -1397,11 +1576,16 @@ function makeFileItem(name, isDir, fullPath, size, icon) {
   const div = document.createElement('div');
   div.className = 'file-item';
   div.innerHTML = `
+    <span class="file-select-check" data-path="${escHtml(fullPath)}"></span>
     <span class="file-icon">${icon}</span>
     <span class="file-name ${isDir ? 'file-dir' : ''}" title="${escHtml(fullPath)}">${escHtml(name)}</span>
     ${size ? `<span class="file-size">${escHtml(size)}</span>` : ''}
   `;
   div.addEventListener('click', () => {
+    if (selectMode) {
+      toggleFileSelection(fullPath, div);
+      return;
+    }
     if (isDir) loadFiles(fullPath);
     else openFileEditor(fullPath);
   });
@@ -1459,6 +1643,15 @@ function showCtxMenu(e, file) {
   menu.style.top = top + 'px';
   menu.classList.add('open');
   menu.style.display = '';
+  requestAnimationFrame(() => {
+    const rect = menu.getBoundingClientRect();
+    if (rect.right > window.innerWidth) {
+      menu.style.left = Math.max(0, window.innerWidth - rect.width - 8) + 'px';
+    }
+    if (rect.bottom > window.innerHeight) {
+      menu.style.top = Math.max(0, window.innerHeight - rect.height - 8) + 'px';
+    }
+  });
 }
 
 document.addEventListener('click', () => document.getElementById('ctx-menu').classList.remove('open'));
@@ -1545,6 +1738,70 @@ function joinPath(parent, child) {
   return parent.replace(/[\\/]$/, '') + sep + child;
 }
 
+// ═══════════════════════════════════════════════════════
+// SELECT MODE
+// ═══════════════════════════════════════════════════════
+let selectMode = false;
+let selectedFiles = [];
+
+function toggleSelectMode() {
+  selectMode = !selectMode;
+  selectedFiles = [];
+  document.getElementById('select-actions').style.display = 'none';
+  document.getElementById('sidebar').dataset.selectMode = selectMode ? 'true' : '';
+  document.getElementById('select-count').textContent = '0 selected';
+  refreshFiles();
+}
+
+function toggleFileSelection(path, el) {
+  const idx = selectedFiles.indexOf(path);
+  if (idx > -1) {
+    selectedFiles.splice(idx, 1);
+    el.classList.remove('selected');
+    el.querySelector('.file-select-check').classList.remove('on');
+  } else {
+    selectedFiles.push(path);
+    el.classList.add('selected');
+    el.querySelector('.file-select-check').classList.add('on');
+  }
+  const count = selectedFiles.length;
+  document.getElementById('select-count').textContent = count + ' selected';
+  document.getElementById('select-actions').style.display = count > 0 ? 'flex' : 'none';
+}
+
+function clearSelection() {
+  selectedFiles = [];
+  document.querySelectorAll('.file-item.selected').forEach(el => {
+    el.classList.remove('selected');
+    const check = el.querySelector('.file-select-check');
+    if (check) check.classList.remove('on');
+  });
+  document.getElementById('select-count').textContent = '0 selected';
+  document.getElementById('select-actions').style.display = 'none';
+}
+
+async function deleteSelected() {
+  if (!selectedFiles.length) return;
+  const msg = `Delete ${selectedFiles.length} item${selectedFiles.length > 1 ? 's' : ''}?`;
+  if (!confirm(msg)) return;
+  for (const p of [...selectedFiles]) {
+    const name = p.split(/[\\/]/).pop();
+    const r = await api(`/api/files?path=${encodeURIComponent(p)}`, { method: 'DELETE' });
+    if (!r.success) toast(`Failed to delete ${name}: ${r.error}`, 'error');
+  }
+  toast('Deleted', 'success');
+  clearSelection();
+  refreshFiles();
+}
+
+async function downloadSelected() {
+  for (const p of [...selectedFiles]) {
+    await downloadFile(p);
+  }
+  toast('Downloads started', 'success');
+  clearSelection();
+}
+
 function newFolder() {
   document.getElementById('newfolder-input').value = '';
   openOverlay('newfolder-overlay');
@@ -1606,6 +1863,7 @@ async function uploadFileList(items) {
     }
   }
   if (count === 0) return;
+  toast(`Uploading ${count} file(s)...`, 'info');
   let r;
   try {
     r = await fetch(`/api/files/upload?path=${encodeURIComponent(currentPath)}`, {
@@ -1813,7 +2071,7 @@ function loadSettings() {
   try {
     const s = JSON.parse(localStorage.getItem('wt-settings'));
     if (s && typeof s === 'object' && !Array.isArray(s)) {
-      if (typeof s.theme === 'string' && ['tokyonight','light','solarized'].includes(s.theme)) settings.theme = s.theme;
+      if (typeof s.theme === 'string' && ['system','tokyonight','light','solarized','gruvbox','dracula','monokai'].includes(s.theme)) settings.theme = s.theme;
       if (typeof s.fontSize === 'number' && s.fontSize >= 8 && s.fontSize <= 32) settings.fontSize = s.fontSize;
       if (typeof s.scrollback === 'number' && s.scrollback >= 100 && s.scrollback <= 50000) settings.scrollback = s.scrollback;
       if (typeof s.font === 'string') settings.font = s.font;
@@ -1846,7 +2104,12 @@ function toggleSetting(k) {
   syncToggle(k);
   saveSettings();
   if (k === 'mobilekeys') {
-    document.getElementById('mobile-keys').style.display = settings.mobilekeys ? 'flex' : 'none';
+    const mk = document.getElementById('mobile-keys');
+    mk.style.display = settings.mobilekeys && window.innerWidth <= 768 ? 'flex' : 'none';
+    const ctrlRow = document.getElementById('mkey-ctrl-row');
+    if (ctrlRow) ctrlRow.style.display = 'none';
+    const ctrlBtn = document.getElementById('ctrl-toggle-btn');
+    if (ctrlBtn) ctrlBtn.style.background = '';
   }
 }
 
@@ -1927,8 +2190,11 @@ function renderTunnels() {
 }
 
 async function createTunnel() {
+  const btn = document.querySelector('[onclick="createTunnel()"]');
+  if (btn && btn.dataset.busy === 'true') return;
+  if (btn) btn.dataset.busy = 'true';
   const url = document.getElementById('tunnel-url').value.trim();
-  if (!url) { toast('Enter a local URL', 'error'); return; }
+  if (!url) { if (btn) setTimeout(() => btn.dataset.busy = 'false', 2000); toast('Enter a local URL', 'error'); return; }
   document.getElementById('tunnel-status').textContent = 'Creating tunnel…';
   const r = await api('/api/tunnel', {
     method: 'POST',
@@ -1949,6 +2215,7 @@ async function createTunnel() {
     document.getElementById('tunnel-status').textContent = '';
     toast(r.error || 'Failed to create tunnel', 'error');
   }
+  if (btn) setTimeout(() => btn.dataset.busy = 'false', 2000);
 }
 
 async function stopTunnelById(id) {
@@ -1975,8 +2242,12 @@ function copyText(text) {
 }
 
 function applyTheme(theme, save = true) {
-  document.body.dataset.theme = theme;
-  document.documentElement.dataset.theme = theme;
+  let resolved = theme;
+  if (theme === 'system') {
+    resolved = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dracula' : 'light';
+  }
+  document.body.dataset.theme = resolved;
+  document.documentElement.dataset.theme = resolved;
   settings.theme = theme;
   document.getElementById('s-theme').value = theme;
   tabs.forEach(t => { if (t.term) { t.term.options.theme = getXtermTheme(); } });
@@ -2080,13 +2351,72 @@ function cycleTab(dir) {
 // ═══════════════════════════════════════════════════════
 // MOBILE KEYS
 // ═══════════════════════════════════════════════════════
+let termSelectMode = false;
+function toggleTermSelect() {
+  termSelectMode = !termSelectMode;
+  const btn = document.getElementById('sel-toggle-btn');
+  if (btn) btn.classList.toggle('sel-mode', termSelectMode);
+  tabs.forEach(t => {
+    if (t.term) {
+      t.term.element.style.userSelect = termSelectMode ? 'text' : 'none';
+      t.term.element.style.webkitUserSelect = termSelectMode ? 'text' : 'none';
+    }
+  });
+}
+
+function toggleCtrlRow() {
+  const row = document.getElementById('mkey-ctrl-row');
+  if (!row) return;
+  const isOpen = row.style.display !== 'none';
+  row.style.display = isOpen ? 'none' : 'flex';
+  const btn = document.getElementById('ctrl-toggle-btn');
+  if (btn) btn.style.background = isOpen ? '' : 'var(--accent)';
+}
+
+let _viewportHandlerInstalled = false;
+function setupVisualViewport() {
+  if (_viewportHandlerInstalled) return;
+  _viewportHandlerInstalled = true;
+  if (window.visualViewport) {
+    const handler = () => {
+      const diff = window.visualViewport.height - window.innerHeight;
+      const mobileKeys = document.getElementById('mobile-keys');
+      const terminals = document.getElementById('terminals');
+      if (diff < -50) {
+        terminals.style.marginBottom = Math.abs(diff) + 'px';
+        if (mobileKeys) mobileKeys.style.display = 'none';
+        const ctrlRow = document.getElementById('mkey-ctrl-row');
+        if (ctrlRow) ctrlRow.style.display = 'none';
+      } else {
+        terminals.style.marginBottom = '0';
+        if (mobileKeys && window.innerWidth <= 768 && settings.mobilekeys !== false) {
+          mobileKeys.style.display = 'flex';
+        }
+        if (window.innerWidth <= 768 && settings.mobilekeys !== false) {
+          const ctrlRow = document.getElementById('mkey-ctrl-row');
+          if (ctrlRow) ctrlRow.style.display = 'none';
+        }
+      }
+    };
+    window.visualViewport.addEventListener('resize', handler);
+  }
+}
+
 function setupMobileKeys() {
   const mk = document.getElementById('mobile-keys');
+  const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  if (settings.mobilekeys === undefined && isTouch) {
+    settings.mobilekeys = true;
+  }
   if (window.innerWidth <= 768) {
     mk.style.display = settings.mobilekeys ? 'flex' : 'none';
   } else {
     mk.style.display = 'none';
   }
+  const ctrlRow = document.getElementById('mkey-ctrl-row');
+  if (ctrlRow) ctrlRow.style.display = 'none';
+  const ctrlBtn = document.getElementById('ctrl-toggle-btn');
+  if (ctrlBtn) ctrlBtn.style.background = '';
 }
 
 // ═══════════════════════════════════════════════════════
@@ -2187,8 +2517,53 @@ function toast(msg, type = 'info') {
   const el = document.createElement('div');
   el.className = `toast ${type}`;
   el.textContent = msg;
+  const mk = document.getElementById('mobile-keys');
+  if (mk && mk.style.display !== 'none' && window.getComputedStyle(mk).display !== 'none') {
+    el.style.marginBottom = 'var(--mobilekey-h)';
+  }
   document.getElementById('toast-container').appendChild(el);
   setTimeout(() => el.remove(), 3000);
+}
+
+function updateConnStatus(connected) {
+  const dot = document.getElementById('conn-status');
+  if (dot) {
+    dot.style.background = connected ? 'var(--green)' : 'var(--red)';
+    dot.title = connected ? 'Connected' : 'Disconnected';
+  }
+}
+
+function setupSwipeGestures() {
+  let touchStartX = 0, touchStartY = 0;
+  document.addEventListener('touchstart', e => {
+    if (e.touches.length === 1) {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+    }
+  }, { passive: true });
+
+  document.addEventListener('touchmove', e => {
+    if (e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - touchStartX;
+    const dy = e.touches[0].clientY - touchStartY;
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar) return;
+
+    if (touchStartX < 30 && dx > 50 && Math.abs(dy) < 100) {
+      if (sidebar.classList.contains('hidden') || sidebar.style.transform) {
+        toggleSidebar();
+        touchStartX = 0;
+      }
+    }
+
+    if (dx < -50 && Math.abs(dy) < 100) {
+      const sRect = sidebar.getBoundingClientRect();
+      if (sRect.left >= 0 && sRect.width > 100) {
+        toggleSidebar();
+        touchStartX = 0;
+      }
+    }
+  }, { passive: true });
 }
 
 function showPinScreen() {
@@ -2392,6 +2767,48 @@ async function refreshSystemStats(showLoading) {
 // ═══════════════════════════════════════════════════════
 // PWA / SERVICE WORKER
 // ═══════════════════════════════════════════════════════
+let deferredPrompt = null;
+let installBannerDismissed = false;
+try { installBannerDismissed = localStorage.getItem('wt-install-dismissed') === 'true'; } catch {}
+
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  setTimeout(() => {
+    if (!installBannerDismissed) showInstallBanner(false);
+  }, 3000);
+});
+
+if (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
+  setTimeout(() => {
+    if (!deferredPrompt && !installBannerDismissed) showInstallBanner(true);
+  }, 5000);
+}
+
+function showInstallBanner(isIOS) {
+  const el = document.getElementById('install-banner');
+  if (!el || el.style.display === 'flex') return;
+  if (isIOS) {
+    el.querySelector('.install-msg').textContent = 'Tap Share → Add to Home Screen';
+    el.querySelector('.btn-primary').style.display = 'none';
+    el.querySelector('.btn-ghost').textContent = 'Dismiss';
+  }
+  el.style.display = 'flex';
+}
+
+function installPWA() {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  deferredPrompt.userChoice.then(() => { deferredPrompt = null; });
+  document.getElementById('install-banner').style.display = 'none';
+}
+
+function dismissInstall() {
+  document.getElementById('install-banner').style.display = 'none';
+  try { localStorage.setItem('wt-install-dismissed', 'true'); } catch {}
+  installBannerDismissed = true;
+}
+
 function registerSW() {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js')
