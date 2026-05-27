@@ -30,8 +30,22 @@
 ### Core
 - **Real shell sessions** — node-pty backed, full bash/zsh support
 - **Multi-tab terminal** — side-by-side sessions like your desktop
-- **File explorer** — browse, upload, download files without leaving the browser
+- **File explorer** — browse, upload, download, rename, delete files without leaving the browser
 - **WebSocket + xterm.js** — responsive, low-latency typing
+
+### Mobile-First UX
+- **Touch gestures** — swipe to close tabs, swipe from edge to open sidebar, pull-to-refresh file list
+- **Mobile keyboard bar** — ESC, Tab, arrow keys, Ctrl combos (Ctrl+C, Ctrl+D, etc.)
+- **Virtual keyboard aware** — terminal resizes when keyboard opens, no overlap
+- **Pinch-to-zoom** — adjust terminal font size (10–28px) with two fingers
+- **Selection mode** — toggle between terminal interaction and text selection
+- **Responsive** — optimized for phones (480px), tablets (1024px), and landscape orientation
+
+### File Explorer
+- **Multi-select** — batch delete and download files
+- **Upload with progress** — per-file progress bar via XHR
+- **Breadcrumb navigation** — tappable directory segments for quick navigation
+- **Long-press context menu** — rename, delete, download, copy on touch devices
 
 ### Desktop App (Electron)
 - Cross-platform app for Linux & Windows
@@ -41,12 +55,15 @@
 - Or build from source: `npm run dist:linux` / `npm run dist:win`
 
 ### PWA (Install as App)
-- Add to iOS home screen → looks and feels like native app
+- Add to iOS/Android home screen — looks and feels like native app
+- Install banner prompts on first visit (Chrome) with iOS instructions fallback
 - Works offline (shows last session state)
 - Push notifications for tunnel status
 
 ### Cloudflare Tunnel (Zero-Config)
 - Create tunnel from UI — no CLI commands
+- Built-in health check warns if local server is unreachable before creating tunnel
+- Live/orphan status + target responsiveness indicator in tunnel list
 - Get public HTTPS URL instantly
 - Tunnels survive server restarts
 - Stop/kill tunnels from settings panel
@@ -129,8 +146,9 @@ npm start
 1. Open **Settings** (gear icon)
 2. Go to **Tunnel** section
 3. Enter URL (default: `http://localhost:3000`)
-4. Click **Create**
+4. Click **Create** — a health check pings the target first, warns if unreachable
 5. Copy the public URL — share it with anyone
+6. View all tunnels with live status indicators (green/orange)
 
 **Note:** Tunnels created before a server restart need manual cleanup:
 ```bash
@@ -143,10 +161,10 @@ kill $(pgrep -f 'cloudflared tunnel')
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | HTML + Vanilla JS |
-| Backend | Node.js + node-pty |
-| Terminal | xterm.js |
-| Protocol | WebSocket |
+| Frontend | HTML + Vanilla JS (PWA, prefers-color-scheme, visualViewport, Drag & Drop) |
+| Backend | Node.js + node-pty + Express |
+| Terminal | xterm.js + fit addon |
+| Protocol | WebSocket (ws) |
 | Tunnel | Cloudflare Tunnel (cloudflared) |
 | Desktop | Electron + electron-builder |
 
