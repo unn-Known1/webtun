@@ -225,6 +225,7 @@ svg { display: block; }
 .mkey-sep { display: inline-block; width: 1px; height: 24px; background: var(--border); margin: 0 2px; flex-shrink: 0; vertical-align: middle; }
 .mkey.sel-mode { background: var(--accent); color: var(--bg); }
 .mkey.sel-done { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.mkey.active-mode { background: var(--accent); color: var(--bg); }
 #mkey-sel-row { display:none;gap:4px;padding:4px 6px;padding-bottom:calc(4px + env(safe-area-inset-bottom));background:var(--bg3);border-top:1px solid var(--border);overflow-x:auto;white-space:nowrap;flex-shrink:0;align-items:center }
 
 /* Touch feedback */
@@ -712,6 +713,7 @@ svg { display: block; }
         <button class="mkey" onclick="copyTermSelection()" title="Copy selected text">Copy</button>
         <button class="mkey" onclick="pasteToTerminal()" title="Paste text into terminal">Paste</button>
         <button class="mkey" onclick="selectAllTerm()" title="Select all terminal content">Select All</button>
+        <button class="mkey" id="sel-scroll-btn" onclick="toggleScrollMode()" title="Toggle scroll mode">Scroll</button>
         <span class="mkey-sep"></span>
         <button class="mkey sel-done" onclick="toggleTermSelect()" title="Exit selection mode">Done</button>
       </div>
@@ -1393,6 +1395,12 @@ function closeTab(e, id) {
   tab.closed = true;
   clearTimeout(tab.reconnectTimer);
   cleanupWebSocket(tab);
+  // Clean up selection/scroll mode state
+  if (termSelectMode) {
+    const ta = tab.term?.textarea || tab.term?.element?.querySelector('.xterm-textarea, textarea');
+    if (ta) ta.disabled = false;
+    cleanupScrollHandlers();
+  }
   tab.resizeObserver?.disconnect();
   tab.term?.dispose();
   tab.el?.remove();
@@ -2547,7 +2555,8 @@ function cycleTab(dir) {
 // MOBILE KEYS
 // ═══════════════════════════════════════════════════════
 let termSelectMode = false;
-let _selHandlers = [];
+let scrollMode = false;
+let _scrollHandlers = [];
 
 function toggleTermSelect() {
   termSelectMode = !termSelectMode;
@@ -2568,87 +2577,81 @@ function toggleTermSelect() {
     tabs.forEach(t => {
       if (!t.term) return;
       t.term.options.disableStdin = true;
-      const handler = attachSelectionHandlers(t);
-      if (handler) _selHandlers.push(handler);
+      const ta = t.term.textarea || t.term.element?.querySelector('.xterm-textarea, textarea');
+      if (ta) ta.disabled = true;
     });
   } else {
-    _selHandlers.forEach(h => {
-      if (!h || !h.handler) return;
-      const { el, onTouchStart, onTouchMove, onTouchEnd, onTouchCancel } = h.handler;
-      el.removeEventListener('touchstart', onTouchStart, { capture: true });
-      el.removeEventListener('touchmove', onTouchMove, { capture: true });
-      el.removeEventListener('touchend', onTouchEnd, { capture: true });
-      el.removeEventListener('touchcancel', onTouchCancel, { capture: true });
-    });
-    _selHandlers = [];
+    scrollMode = false;
+    cleanupScrollHandlers();
+    const scrollBtn = document.getElementById('sel-scroll-btn');
+    if (scrollBtn) scrollBtn.classList.remove('active-mode');
     tabs.forEach(t => {
       if (!t.term) return;
       t.term.options.disableStdin = false;
+      const ta = t.term.textarea || t.term.element?.querySelector('.xterm-textarea, textarea');
+      if (ta) ta.disabled = false;
       t.term.clearSelection();
     });
   }
 }
 
-function attachSelectionHandlers(tab) {
+function toggleScrollMode() {
+  scrollMode = !scrollMode;
+  const btn = document.getElementById('sel-scroll-btn');
+  if (btn) btn.classList.toggle('active-mode', scrollMode);
+  cleanupScrollHandlers();
+  if (scrollMode) {
+    tabs.forEach(t => {
+      if (!t.term) return;
+      const h = attachScrollHandler(t);
+      if (h) _scrollHandlers.push(h);
+    });
+  }
+}
+
+function attachScrollHandler(tab) {
   const el = tab.wrapper;
   const term = tab.term;
   if (!el || !term) return null;
-
-  let active = false;
+  let startY = 0, startX = 0;
   function onTouchStart(e) {
     if (e.touches.length > 1) return;
-    active = true;
-    e.preventDefault();
-    e.stopPropagation();
-    const touch = e.touches[0];
-    const pe = new PointerEvent('pointerdown', {
-      clientX: touch.clientX, clientY: touch.clientY,
-      button: 0, buttons: 1, pointerId: 1, pointerType: 'touch', bubbles: true, cancelable: true
-    });
-    const screen = term.element.querySelector('.xterm-screen');
-    if (screen) screen.dispatchEvent(pe);
+    startY = e.touches[0].clientY;
+    startX = e.touches[0].clientX;
+    const screen = term.element?.querySelector('.xterm-screen');
+    if (screen) screen.style.pointerEvents = 'none';
   }
   function onTouchMove(e) {
-    if (!active || e.touches.length > 1) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const touch = e.touches[0];
-    const pe = new PointerEvent('pointermove', {
-      clientX: touch.clientX, clientY: touch.clientY,
-      button: 0, buttons: 1, pointerId: 1, pointerType: 'touch', bubbles: true, cancelable: true
-    });
-    const screen = term.element.querySelector('.xterm-screen');
-    if (screen) screen.dispatchEvent(pe);
+    if (e.touches.length > 1) return;
+    const dy = startY - e.touches[0].clientY;
+    const dx = startX - e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    startX = e.touches[0].clientX;
+    if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 3) {
+      e.preventDefault();
+      const lines = Math.sign(dy) * Math.max(1, Math.ceil(Math.abs(dy) / 15));
+      term.scrollLines(lines);
+    }
   }
-  function onTouchEnd(e) {
-    if (!active) return;
-    active = false;
-    e.preventDefault();
-    e.stopPropagation();
-    const touch = e.changedTouches[0];
-    const pe = new PointerEvent('pointerup', {
-      clientX: touch.clientX, clientY: touch.clientY,
-      button: 0, buttons: 0, pointerId: 1, pointerType: 'touch', bubbles: true, cancelable: true
-    });
-    const screen = term.element.querySelector('.xterm-screen');
-    if (screen) screen.dispatchEvent(pe);
+  function onTouchEnd() {
+    const screen = term.element?.querySelector('.xterm-screen');
+    if (screen) screen.style.pointerEvents = '';
   }
-  function onTouchCancel(e) {
-    if (!active) return;
-    active = false;
-    const pe = new PointerEvent('pointerup', {
-      button: 0, buttons: 0, pointerId: 1, pointerType: 'touch', bubbles: true, cancelable: true
-    });
-    const screen = term.element.querySelector('.xterm-screen');
-    if (screen) screen.dispatchEvent(pe);
-  }
+  el.addEventListener('touchstart', onTouchStart, { passive: true });
+  el.addEventListener('touchmove', onTouchMove, { passive: false });
+  el.addEventListener('touchend', onTouchEnd, { passive: true });
+  return { el, start: onTouchStart, move: onTouchMove, end: onTouchEnd };
+}
 
-  el.addEventListener('touchstart', onTouchStart, { capture: true, passive: false });
-  el.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
-  el.addEventListener('touchend', onTouchEnd, { capture: true, passive: false });
-  el.addEventListener('touchcancel', onTouchCancel, { capture: true, passive: false });
-
-  return { handler: { el, onTouchStart, onTouchMove, onTouchEnd, onTouchCancel }, tab };
+function cleanupScrollHandlers() {
+  _scrollHandlers.forEach(h => {
+    h.el.removeEventListener('touchstart', h.start);
+    h.el.removeEventListener('touchmove', h.move);
+    h.el.removeEventListener('touchend', h.end);
+    const screens = h.el.querySelectorAll('.xterm-screen');
+    screens.forEach(s => s.style.pointerEvents = '');
+  });
+  _scrollHandlers = [];
 }
 
 function copyTermSelection() {
@@ -2667,28 +2670,52 @@ function copyTermSelection() {
   }
 }
 
+let _pasteInput = null;
+
 function pasteToTerminal() {
-  navigator.clipboard.readText().then(text => {
-    if (text) {
-      const tab = getActiveTab();
-      if (tab?.ws && tab.ws.readyState === WebSocket.OPEN) {
-        const enc = new TextEncoder().encode(text);
-        const buf = new Uint8Array(1 + enc.length);
-        buf[0] = 0x00; buf.set(enc, 1);
-        tab.ws.send(buf.buffer);
-        toast('Pasted to terminal', 'success');
-      }
+  const doPaste = text => {
+    if (!text) return;
+    const tab = getActiveTab();
+    if (tab?.ws && tab.ws.readyState === WebSocket.OPEN) {
+      const enc = new TextEncoder().encode(text);
+      const buf = new Uint8Array(1 + enc.length);
+      buf[0] = 0x00; buf.set(enc, 1);
+      tab.ws.send(buf.buffer);
+      toast('Pasted to terminal', 'success');
     }
-  }).catch(() => {
-    toast('Paste failed: clipboard access denied', 'error');
-  });
+  };
+
+  if (navigator.clipboard?.readText) {
+    navigator.clipboard.readText().then(doPaste).catch(() => fallbackPaste(doPaste));
+  } else {
+    fallbackPaste(doPaste);
+  }
+}
+
+function fallbackPaste(callback) {
+  if (!_pasteInput) {
+    _pasteInput = document.createElement('textarea');
+    _pasteInput.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;z-index:-1';
+    document.body.appendChild(_pasteInput);
+    _pasteInput.addEventListener('input', () => {
+      callback(_pasteInput.value);
+      _pasteInput.value = '';
+    });
+  }
+  _pasteInput.value = '';
+  _pasteInput.focus();
+  toast('Tap & hold to paste', 'info');
 }
 
 function selectAllTerm() {
   const tab = getActiveTab();
   if (tab?.term) {
+    let ta = tab.term.textarea || tab.term.element?.querySelector('.xterm-textarea, textarea');
+    let restore = null;
+    if (ta?.disabled) { ta.disabled = false; restore = true; }
     tab.term.focus();
     tab.term.selectAll();
+    if (restore && ta) ta.disabled = true;
     toast('All text selected', 'success');
   }
 }
