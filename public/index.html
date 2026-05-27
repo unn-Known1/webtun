@@ -110,7 +110,6 @@ a { color: var(--accent); text-decoration: none; }
   .tab { height: 38px; }
   .tab .tab-close { width: 32px; height: 32px; }
   #new-tab-btn { width: 36px; height: 36px; }
-  #file-breadcrumb { padding: 8px 10px; font-size: 13px; line-height: 1.6; }
 }
 svg { display: block; }
 
@@ -187,7 +186,13 @@ svg { display: block; }
 #sidebar-header { display: flex; align-items: center; padding: 8px 10px; gap: 6px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 #sidebar-header input { flex: 1; height: 26px; font-size: 12px; }
 #file-list-wrap { flex: 1; overflow-y: auto; min-height: 0; touch-action: pan-y; -webkit-overflow-scrolling: touch; }
-#file-breadcrumb { padding: 4px 10px; font-size: 11px; color: var(--fg2); border-bottom: 1px solid var(--border); word-break: break-all; line-height: 1.4; flex-shrink: 0; }
+#file-breadcrumb { padding: 8px 10px; font-size: 12px; color: var(--fg2); border-bottom: 1px solid var(--border); word-break: break-all; line-height: 1.8; flex-shrink: 0; }
+#file-breadcrumb a { transition: background 0.15s; border-radius: 3px; padding: 4px 6px !important; }
+#file-breadcrumb a:hover { background: var(--bg3); }
+@media (pointer: coarse) {
+  #file-breadcrumb { padding: 10px 12px; font-size: 13px; }
+  #file-breadcrumb a { padding: 6px 8px !important; }
+}
 .file-item { display: flex; align-items: center; gap: 8px; padding: 5px 10px; cursor: pointer; border-bottom: 1px solid transparent; font-size: 12px; position: relative; user-select: none; }
 .file-item:hover { background: var(--bg3); }
 .file-item.selected { background: var(--bg4); }
@@ -350,9 +355,14 @@ svg { display: block; }
 .toggle.on { background: var(--accent); border-color: var(--accent); }
 .toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background: white; border-radius: 50%; transition: transform 0.2s; }
 .toggle.on::after { transform: translateX(18px); }
+@media (pointer: coarse) {
+  .toggle { width: 48px; height: 28px; }
+  .toggle::after { width: 22px; height: 22px; }
+  .toggle.on::after { transform: translateX(20px); }
+}
 
 /* ═══════════════════════════════════════════════════════
-   CONTEXT MENU
+    CONTEXT MENU
    ═══════════════════════════════════════════════════════ */
 #ctx-menu { position: fixed; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.5); z-index: 500; display: none; min-width: 160px; overflow: hidden; }
 #ctx-menu.open { display: block; }
@@ -784,6 +794,10 @@ svg { display: block; }
         <label>Confirm on Close</label>
         <div class="toggle on" id="s-confirmclose" onclick="toggleSetting('confirmclose')"></div>
       </div>
+      <div class="setting-row">
+        <label>Data Saver</label>
+        <div class="toggle" id="s-datasaver" onclick="toggleSetting('datasaver')"></div>
+      </div>
     </div>
     <div class="settings-section">
       <h3>Tunnel</h3>
@@ -936,7 +950,7 @@ let hasTmux = false;
 let settings = {
   theme: 'light', fontSize: 14, font: "'SF Mono', 'Fira Code', Consolas, monospace",
   cursor: 'block', blink: true, scrollback: 5000, bell: false,
-  mobilekeys: false, confirmclose: true
+  mobilekeys: false, confirmclose: true, datasaver: false
 };
 
 function uuid() {
@@ -1050,6 +1064,8 @@ async function unlockApp() {
   registerSW();
   restoreTunnels();
   setupSwipeGestures();
+  document.getElementById('tab-bar').setAttribute('role', 'tablist');
+  document.getElementById('file-list-wrap').setAttribute('role', 'listbox');
 
   // Listen for system theme changes
   const systemThemeListener = window.matchMedia('(prefers-color-scheme: dark)');
@@ -1069,6 +1085,20 @@ async function unlockApp() {
   } else {
     newTab();
   }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      tabs.forEach(tab => {
+        if (tab.closed) return;
+        if (!tab.ws || tab.ws.readyState !== WebSocket.OPEN) {
+          if (!tab.reconnectTimer) {
+            tab.reconnectDelay = 1000;
+            connectWebSocket(tab, true);
+          }
+        }
+      });
+    }
+  });
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1110,6 +1140,8 @@ function newTab(title, sessionId) {
   // Tab button
   const tabEl = document.createElement('div');
   tabEl.className = 'tab';
+  tabEl.setAttribute('role', 'tab');
+  tabEl.setAttribute('aria-selected', 'false');
   tabEl.dataset.id = id;
   const tabIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   tabIcon.setAttribute('width', '12'); tabIcon.setAttribute('height', '12'); tabIcon.setAttribute('viewBox', '0 0 24 24');
@@ -1132,13 +1164,11 @@ function newTab(title, sessionId) {
   closeBtn.appendChild(closeSvg);
   tabEl.appendChild(closeBtn);
   tabEl.addEventListener('click', e => { if (!e.target.closest('.tab-close')) activateTab(id); });
-  tabEl.querySelector('.tab-title').addEventListener('dblclick', e => {
-    e.stopPropagation();
-    const span = e.target;
+  const startInlineRename = (span, tabRef) => {
     const input = document.createElement('input');
     input.type = 'text';
-    input.value = tab.title;
-    input.style.width = Math.max(60, tab.title.length * 9) + 'px';
+    input.value = tabRef.title;
+    input.style.width = Math.max(60, tabRef.title.length * 9) + 'px';
     input.style.height = '22px';
     input.style.fontSize = '12px';
     input.style.padding = '0 6px';
@@ -1146,8 +1176,8 @@ function newTab(title, sessionId) {
     input.focus();
     input.select();
     const done = () => {
-      const val = input.value.trim() || tab.title;
-      tab.title = val;
+      const val = input.value.trim() || tabRef.title;
+      tabRef.title = val;
       const newSpan = document.createElement('span');
       newSpan.className = 'tab-title';
       newSpan.textContent = val;
@@ -1155,8 +1185,47 @@ function newTab(title, sessionId) {
       saveTabState();
     };
     input.addEventListener('blur', done);
-    input.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); } if (ev.key === 'Escape') { ev.preventDefault(); input.value = tab.title; input.blur(); } });
+    input.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); } if (ev.key === 'Escape') { ev.preventDefault(); input.value = tabRef.title; input.blur(); } });
+  };
+  tabTitleSpan.addEventListener('dblclick', e => {
+    e.stopPropagation();
+    startInlineRename(e.target, tab);
   });
+  let renameTimer = null;
+  tabTitleSpan.addEventListener('touchstart', e => {
+    renameTimer = setTimeout(() => {
+      renameTimer = null;
+      startInlineRename(tabTitleSpan, tab);
+    }, 400);
+  }, { passive: true });
+  tabTitleSpan.addEventListener('touchend', () => {
+    if (renameTimer) { clearTimeout(renameTimer); renameTimer = null; }
+  }, { passive: true });
+  tabTitleSpan.addEventListener('touchmove', () => {
+    if (renameTimer) { clearTimeout(renameTimer); renameTimer = null; }
+  }, { passive: true });
+  let tabSwipeStartX = 0;
+  tabEl.addEventListener('touchstart', e => {
+    tabSwipeStartX = e.touches[0].clientX;
+  }, { passive: true });
+  tabEl.addEventListener('touchmove', e => {
+    if (tabSwipeStartX === 0) return;
+    const dx = e.touches[0].clientX - tabSwipeStartX;
+    if (Math.abs(dx) > 20) {
+      tabEl.style.transform = `translateX(${dx}px)`;
+      tabEl.style.opacity = Math.max(0, 1 - Math.abs(dx) / 200);
+    }
+  }, { passive: true });
+  tabEl.addEventListener('touchend', e => {
+    if (tabSwipeStartX === 0) return;
+    const dx = e.changedTouches[0].clientX - tabSwipeStartX;
+    tabEl.style.transform = '';
+    tabEl.style.opacity = '';
+    if (Math.abs(dx) > 80) {
+      closeTab({ stopPropagation() {} }, id);
+    }
+    tabSwipeStartX = 0;
+  }, { passive: true });
   document.getElementById('tab-bar').insertBefore(tabEl, document.getElementById('new-tab-btn'));
   tab.el = tabEl;
 
@@ -1177,6 +1246,7 @@ function activateTab(id) {
   activeTabId = id;
   tabs.forEach(t => {
     t.el?.classList.toggle('active', t.id === id);
+    if (t.el) t.el.setAttribute('aria-selected', t.id === id ? 'true' : 'false');
     if (t.wrapper) t.wrapper.classList.toggle('active', t.id === id);
   });
   const tab = tabs.find(t => t.id === id);
@@ -1227,9 +1297,13 @@ function connectWebSocket(tab, isReconnect = false) {
 
   ws.onopen = () => {
     tab.reconnectDelay = 1000;
+    tab.reconnectAttempts = 0;
     updateConnStatus(true);
     const banner = document.getElementById('reconnect-banner');
-    if (banner) banner.style.display = 'none';
+    if (banner) {
+      banner.innerHTML = '⚠️ Reconnecting…';
+      banner.style.display = 'none';
+    }
     if (isReconnect) {
       tab.term.writeln('\x1b[32m[Reconnected]\x1b[0m');
     }
@@ -1253,8 +1327,17 @@ function connectWebSocket(tab, isReconnect = false) {
     cleanupWebSocket(tab);
     if (tab.closed) return;
     updateConnStatus(false);
-    const banner = document.getElementById('reconnect-banner');
-    if (banner) banner.style.display = 'block';
+    tab.reconnectAttempts = (tab.reconnectAttempts || 0) + 1;
+    if (tab.reconnectAttempts >= 3) {
+      const banner = document.getElementById('reconnect-banner');
+      if (banner) {
+        banner.innerHTML = '⚠️ Connection lost. <button class="btn btn-primary" style="height:26px;padding:0 12px;font-size:11px;margin-left:8px" onclick="manualReconnect()">Reconnect</button>';
+        banner.style.display = 'block';
+      }
+    } else {
+      const banner = document.getElementById('reconnect-banner');
+      if (banner) banner.style.display = 'block';
+    }
     tab.reconnectDelay = Math.min((tab.reconnectDelay || 1000) * 2, 15000);
     const secs = tab.reconnectDelay / 1000;
     tab.term.writeln(`\r\n\x1b[33m[Disconnected — reconnecting in ${secs}s…]\x1b[0m`);
@@ -1267,6 +1350,22 @@ function connectWebSocket(tab, isReconnect = false) {
   tab.resizeDisposable?.dispose();
   tab.dataDisposable = tab.term.onData(data => sendInput(data));
   tab.resizeDisposable = tab.term.onResize(({ cols, rows }) => sendResize(cols, rows));
+}
+
+function manualReconnect() {
+  const banner = document.getElementById('reconnect-banner');
+  if (banner) {
+    banner.innerHTML = '⚠️ Reconnecting…';
+    banner.style.display = 'block';
+  }
+  tabs.forEach(tab => {
+    if (tab.closed) return;
+    if (!tab.ws || tab.ws.readyState !== WebSocket.OPEN) {
+      tab.reconnectDelay = 1000;
+      tab.reconnectAttempts = 0;
+      connectWebSocket(tab, true);
+    }
+  });
 }
 
 function closeTab(e, id) {
@@ -1532,7 +1631,7 @@ function getXtermTheme() {
 async function loadFiles(dir) {
   currentPath = dir;
   document.getElementById('path-input').value = dir;
-  document.getElementById('file-breadcrumb').textContent = dir;
+  renderBreadcrumb(dir);
   document.getElementById('file-list').innerHTML = '<div style="padding:10px;text-align:center;font-size:11px;color:var(--fg2)">Loading…</div>';
 
   const data = await api(`/api/files?path=${encodeURIComponent(dir)}`);
@@ -1575,6 +1674,8 @@ function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<
 function makeFileItem(name, isDir, fullPath, size, icon) {
   const div = document.createElement('div');
   div.className = 'file-item';
+  div.setAttribute('role', 'option');
+  div.setAttribute('aria-selected', 'false');
   div.innerHTML = `
     <span class="file-select-check" data-path="${escHtml(fullPath)}"></span>
     <span class="file-icon">${icon}</span>
@@ -1619,6 +1720,42 @@ function formatSize(bytes) {
   if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
   if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
   return (bytes / 1073741824).toFixed(1) + ' GB';
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function renderBreadcrumb(path) {
+  const el = document.getElementById('file-breadcrumb');
+  if (!el) return;
+  const parts = path.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
+  let html = '';
+  let accumulated = '';
+  for (const part of parts) {
+    accumulated += '/' + part;
+    const isLast = part === parts[parts.length - 1];
+    if (isLast) {
+      html += `<span style="color:var(--fg);font-weight:500">${escapeHtml(part)}</span>`;
+    } else {
+      html += `<a href="#" data-path="${escapeHtml(accumulated)}" style="color:var(--accent);text-decoration:none;padding:4px 2px;display:inline-block">${escapeHtml(part)}</a>`;
+      html += `<span style="color:var(--fg2);margin:0 2px">/</span>`;
+    }
+  }
+  if (!parts.length) {
+    html = `<span style="color:var(--fg2)">/</span>`;
+  }
+  el.innerHTML = '<span style="color:var(--fg2);margin-right:4px">📁</span>' + html;
+  
+  el.querySelectorAll('a[data-path]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      navigateTo(a.dataset.path);
+    });
+  });
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1758,10 +1895,12 @@ function toggleFileSelection(path, el) {
   if (idx > -1) {
     selectedFiles.splice(idx, 1);
     el.classList.remove('selected');
+    el.setAttribute('aria-selected', 'false');
     el.querySelector('.file-select-check').classList.remove('on');
   } else {
     selectedFiles.push(path);
     el.classList.add('selected');
+    el.setAttribute('aria-selected', 'true');
     el.querySelector('.file-select-check').classList.add('on');
   }
   const count = selectedFiles.length;
@@ -1851,27 +1990,63 @@ async function handleUploadInput() {
 }
 
 async function uploadFileList(items) {
-  const form = new FormData();
-  let count = 0;
+  const path = encodeURIComponent(currentPath);
+  const total = items.length;
+  let completed = 0;
+  const toastEl = toast(`Uploading 0/${total}...`, 'info');
+  
   for (const item of items) {
-    if (item.file && item.path) {
-      form.append('files', item.file, item.path);
-      count++;
-    } else {
-      form.append('files', item, item.webkitRelativePath || item.name);
-      count++;
+    const file = item.file || item;
+    const fileName = item.path || item.webkitRelativePath || item.name;
+    const formData = new FormData();
+    formData.append('file', file, fileName);
+    
+    try {
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `/api/files/upload?path=${path}`);
+        xhr.setRequestHeader('x-pin-token', authToken);
+        
+        xhr.upload.addEventListener('progress', e => {
+          if (e.lengthComputable && toastEl) {
+            const pct = Math.round((e.loaded / e.total) * 100);
+            toastEl.textContent = `Uploading ${fileName} (${pct}%)`;
+          }
+        });
+        
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const resp = JSON.parse(xhr.responseText);
+              if (resp.success) {
+                completed++;
+                if (toastEl) toastEl.textContent = `${completed}/${total} uploaded`;
+                resolve();
+              } else {
+                reject(new Error(resp.error || 'Upload failed'));
+              }
+            } catch {
+              completed++;
+              resolve();
+            }
+          } else {
+            reject(new Error(`HTTP ${xhr.status}`));
+          }
+        };
+        
+        xhr.onerror = () => reject(new Error('Network error'));
+        xhr.send(formData);
+      });
+    } catch (e) {
+      toast(`Upload failed: ${e.message}`, 'error');
+      if (toastEl) toastEl.remove();
+      return;
     }
   }
-  if (count === 0) return;
-  toast(`Uploading ${count} file(s)...`, 'info');
-  let r;
-  try {
-    r = await fetch(`/api/files/upload?path=${encodeURIComponent(currentPath)}`, {
-      method: 'POST', headers: { 'x-pin-token': authToken }, body: form
-    }).then(r => r.json());
-  } catch { toast('Upload failed', 'error'); return; }
-  if (r.success) { toast(`${r.count} file(s) uploaded`, 'success'); refreshFiles(); }
-  else toast(r.error || 'Upload failed', 'error');
+  
+  if (toastEl) toastEl.remove();
+  toast(`${completed}/${total} file(s) uploaded`, 'success');
+  refreshFiles();
 }
 
 // ═══════════════════════════════════════════════════════
@@ -2080,6 +2255,7 @@ function loadSettings() {
       if (typeof s.bell === 'boolean') settings.bell = s.bell;
       if (typeof s.mobilekeys === 'boolean') settings.mobilekeys = s.mobilekeys;
       if (typeof s.confirmclose === 'boolean') settings.confirmclose = s.confirmclose;
+      if (typeof s.datasaver === 'boolean') settings.datasaver = s.datasaver;
     }
   } catch {}
   document.getElementById('s-theme').value = settings.theme;
@@ -2087,7 +2263,7 @@ function loadSettings() {
   document.getElementById('s-scrollback').value = settings.scrollback;
   document.getElementById('s-font').value = settings.font;
   document.getElementById('s-cursor').value = settings.cursor;
-  syncToggle('blink'); syncToggle('bell'); syncToggle('mobilekeys'); syncToggle('confirmclose');
+  syncToggle('blink'); syncToggle('bell'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver');
 }
 
 function saveSettings() { localStorage.setItem('wt-settings', JSON.stringify(settings)); }
@@ -2110,6 +2286,15 @@ function toggleSetting(k) {
     if (ctrlRow) ctrlRow.style.display = 'none';
     const ctrlBtn = document.getElementById('ctrl-toggle-btn');
     if (ctrlBtn) ctrlBtn.style.background = '';
+  }
+  if (k === 'datasaver') {
+    if (settings.datasaver) {
+      if (sysStatsTimer) { clearInterval(sysStatsTimer); sysStatsTimer = null; }
+    } else {
+      if (document.getElementById('sys-overlay').classList.contains('open')) {
+        refreshSystemStats(true);
+      }
+    }
   }
 }
 
@@ -2501,8 +2686,20 @@ function setupDragDrop() {
 // ═══════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════
-function openOverlay(id) { document.getElementById(id).classList.add('open'); }
-function closeOverlay(id) { document.getElementById(id).classList.remove('open'); }
+let lastFocusedElement = null;
+function openOverlay(id) {
+  lastFocusedElement = document.activeElement;
+  document.getElementById(id).classList.add('open');
+  const modal = document.querySelector('#' + id + ' .modal, #' + id + ' input, #' + id + ' button');
+  if (modal) setTimeout(() => modal.focus(), 50);
+}
+function closeOverlay(id) {
+  document.getElementById(id).classList.remove('open');
+  if (lastFocusedElement) {
+    setTimeout(() => lastFocusedElement.focus(), 50);
+    lastFocusedElement = null;
+  }
+}
 
 document.querySelectorAll('.overlay').forEach(o => {
   o.addEventListener('click', e => {
@@ -2523,6 +2720,7 @@ function toast(msg, type = 'info') {
   }
   document.getElementById('toast-container').appendChild(el);
   setTimeout(() => el.remove(), 3000);
+  return el;
 }
 
 function updateConnStatus(connected) {
@@ -2565,6 +2763,40 @@ function setupSwipeGestures() {
     }
   }, { passive: true });
 }
+
+// Pull-to-refresh for file list
+(function() {
+  let pullStartY = 0;
+  let pullOffset = 0;
+  const fileListWrap = document.getElementById('file-list-wrap');
+  if (fileListWrap) {
+    fileListWrap.addEventListener('touchstart', e => {
+      if (fileListWrap.scrollTop <= 0) {
+        pullStartY = e.touches[0].clientY;
+        pullOffset = 0;
+      }
+    }, { passive: true });
+    fileListWrap.addEventListener('touchmove', e => {
+      if (pullStartY === 0) return;
+      const dy = e.touches[0].clientY - pullStartY;
+      if (dy > 0 && fileListWrap.scrollTop <= 0) {
+        pullOffset = dy;
+        fileListWrap.style.transform = `translateY(${Math.min(dy * 0.4, 60)}px)`;
+        fileListWrap.style.transition = 'none';
+      }
+    }, { passive: true });
+    fileListWrap.addEventListener('touchend', () => {
+      if (pullOffset > 80) {
+        refreshFiles();
+      }
+      fileListWrap.style.transition = 'transform 0.3s ease';
+      fileListWrap.style.transform = '';
+      pullStartY = 0;
+      pullOffset = 0;
+      setTimeout(() => { fileListWrap.style.transition = ''; }, 300);
+    }, { passive: true });
+  }
+})();
 
 function showPinScreen() {
   document.getElementById('app').style.display = 'none';
@@ -2705,7 +2937,9 @@ function openSystemStats() {
   document.getElementById('sys-content').style.display = 'none';
   refreshSystemStats(true);
   clearInterval(sysStatsTimer);
-  sysStatsTimer = setInterval(() => refreshSystemStats(false), 5000);
+  if (!settings.datasaver) {
+    sysStatsTimer = setInterval(() => refreshSystemStats(false), 5000);
+  }
 }
 
 function closeSystemStats() {
@@ -2715,6 +2949,7 @@ function closeSystemStats() {
 }
 
 async function refreshSystemStats(showLoading) {
+  if (settings.datasaver) return;
   if (showLoading) {
     document.getElementById('sys-loading').style.display = 'block';
     document.getElementById('sys-content').style.display = 'none';
