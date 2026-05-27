@@ -483,7 +483,7 @@ svg { display: block; }
   #sidebar.mobile-open { transform: translateX(0); }
   #sidebar.hidden { transform: translateX(-100%); width: var(--sidebar-w); }
   #hostname-badge { display: none; }
-  #search-input { width: 150px; }
+  #search-input { width: 200px; }
   .modal { min-width: unset; width: 95vw; }
   .sys-grid { grid-template-columns: 1fr; }
 }
@@ -1382,11 +1382,12 @@ function manualReconnect() {
 
 function closeTab(e, id) {
   e.stopPropagation();
-  if (settings.confirmclose && tabs.length === 1) { if (!confirm('Close last terminal?')) return; }
+  if (settings.confirmclose) { if (!confirm(tabs.length === 1 ? 'Close last terminal?' : 'Close terminal?')) return; }
 
   // Check for unsaved editor changes
   const editorOpen = document.getElementById('editor-view').classList.contains('open');
-  if (editorOpen && document.getElementById('editor-textarea').value !== editorOriginalContent) {
+  const currentContent = editor ? editor.getValue() : '';
+  if (editorOpen && currentContent !== editorOriginalContent) {
     if (!confirm('You have unsaved changes. Close anyway?')) return;
   }
 
@@ -1647,6 +1648,10 @@ function getXtermTheme() {
 // FILE EXPLORER
 // ═══════════════════════════════════════════════════════
 async function loadFiles(dir) {
+  if (window.innerWidth <= 768) {
+    const sb = document.getElementById('sidebar');
+    if (sb) { sb.classList.remove('mobile-open'); }
+  }
   currentPath = dir;
   document.getElementById('path-input').value = dir;
   renderBreadcrumb(dir);
@@ -1688,7 +1693,6 @@ async function loadFiles(dir) {
   });
 }
 
-function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
 function makeFileItem(name, isDir, fullPath, size, icon) {
   const div = document.createElement('div');
   div.className = 'file-item';
@@ -1732,18 +1736,11 @@ function getFileIcon(ext) {
   return map[ext] || '📄';
 }
 
-function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c] || c); }
 function formatSize(bytes) {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
   if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
   return (bytes / 1073741824).toFixed(1) + ' GB';
-}
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
 }
 
 function renderBreadcrumb(path) {
@@ -1756,14 +1753,14 @@ function renderBreadcrumb(path) {
     accumulated += '/' + part;
     const isLast = part === parts[parts.length - 1];
     if (isLast) {
-      html += `<span style="color:var(--fg);font-weight:500">${escapeHtml(part)}</span>`;
+      html += `<span style="color:var(--fg);font-weight:500">${escHtml(part)}</span>`;
     } else {
-      html += `<a href="#" data-path="${escapeHtml(accumulated)}" style="color:var(--accent);text-decoration:none;padding:4px 2px;display:inline-block">${escapeHtml(part)}</a>`;
+      html += `<a href="#" data-path="${escHtml(accumulated)}" style="color:var(--accent);text-decoration:none;padding:4px 2px;display:inline-block">${escHtml(part)}</a>`;
       html += `<span style="color:var(--fg2);margin:0 2px">/</span>`;
     }
   }
   if (!parts.length) {
-    html = `<span style="color:var(--fg2)">/</span>`;
+    html = `<span style="color:var(--fg2)">/</span><span style="color:var(--fg2);font-size:11px;margin-left:6px">(root)</span>`;
   }
   el.innerHTML = '<span style="color:var(--fg2);margin-right:4px">📁</span>' + html;
   
@@ -1941,12 +1938,14 @@ async function deleteSelected() {
   if (!selectedFiles.length) return;
   const msg = `Delete ${selectedFiles.length} item${selectedFiles.length > 1 ? 's' : ''}?`;
   if (!confirm(msg)) return;
+  let failed = 0;
   for (const p of [...selectedFiles]) {
     const name = p.split(/[\\/]/).pop();
     const r = await api(`/api/files?path=${encodeURIComponent(p)}`, { method: 'DELETE' });
-    if (!r.success) toast(`Failed to delete ${name}: ${r.error}`, 'error');
+    if (!r.success) { failed++; toast(`Failed to delete ${name}: ${r.error}`, 'error'); }
   }
-  toast('Deleted', 'success');
+  if (failed === 0) toast('Deleted', 'success');
+  else if (failed < selectedFiles.length) toast(`Deleted ${selectedFiles.length - failed} item(s), ${failed} failed`, 'warning');
   clearSelection();
   refreshFiles();
 }
@@ -2007,11 +2006,22 @@ async function handleUploadInput() {
   try { await uploadFileList(input.files); } catch { toast('Upload failed', 'error'); }
 }
 
+let _uploadToastEl = null;
+function getUploadToast() {
+  if (_uploadToastEl && _uploadToastEl.isConnected) return _uploadToastEl;
+  const el = document.createElement('div');
+  el.className = 'toast info';
+  document.getElementById('toast-container').appendChild(el);
+  _uploadToastEl = el;
+  return el;
+}
+
 async function uploadFileList(items) {
   const path = encodeURIComponent(currentPath);
   const total = items.length;
   let completed = 0;
-  const toastEl = toast(`Uploading 0/${total}...`, 'info');
+  const toastEl = getUploadToast();
+  toastEl.textContent = `Uploading 0/${total}...`;
   
   for (const item of items) {
     const file = item.file || item;
@@ -2056,13 +2066,15 @@ async function uploadFileList(items) {
         xhr.send(formData);
       });
     } catch (e) {
+      if (toastEl && toastEl.isConnected) toastEl.remove();
+      _uploadToastEl = null;
       toast(`Upload failed: ${e.message}`, 'error');
-      if (toastEl) toastEl.remove();
       return;
     }
   }
   
-  if (toastEl) toastEl.remove();
+  if (toastEl && toastEl.isConnected) toastEl.remove();
+  _uploadToastEl = null;
   toast(`${completed}/${total} file(s) uploaded`, 'success');
   refreshFiles();
 }
@@ -2440,8 +2452,11 @@ async function stopTunnelById(id) {
 }
 
 function copyText(text) {
-  navigator.clipboard.writeText(text);
-  toast('Copied', 'success');
+  navigator.clipboard.writeText(text).then(() => {
+    toast('Copied', 'success');
+  }).catch(() => {
+    toast('Copy failed', 'error');
+  });
 }
 
 function applyTheme(theme, save = true) {
@@ -2538,7 +2553,8 @@ function setupKeyboardShortcuts() {
         const id = el.id;
         if (id === 'settings-overlay') closeSettings();
         else if (id === 'sys-overlay') closeSystemStats();
-        else if (id === 'finder-overlay' || id === 'newfolder-overlay' || id === 'newfile-overlay' || id === 'rename-overlay') closeOverlay(id);
+        else if (id === 'finder-overlay') { clearTimeout(finderTimer); closeOverlay(id); }
+        else if (id === 'newfolder-overlay' || id === 'newfile-overlay' || id === 'rename-overlay') closeOverlay(id);
       });
     }
   });
@@ -3240,7 +3256,8 @@ init();
 // Warn before closing if there are unsaved changes or active terminals
 window.addEventListener('beforeunload', e => {
   const editorOpen = document.getElementById('editor-view').classList.contains('open');
-  const editorDirty = editorOpen && document.getElementById('editor-textarea').value !== editorOriginalContent;
+  const currentContent = editor ? editor.getValue() : '';
+  const editorDirty = editorOpen && currentContent !== editorOriginalContent;
   const hasActiveSessions = tabs.some(t => t.ws && t.ws.readyState === WebSocket.OPEN);
   if (editorDirty || hasActiveSessions) {
     e.preventDefault();
