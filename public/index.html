@@ -2139,9 +2139,10 @@ function uploadFiles() { document.getElementById('upload-input').click(); }
 
 async function handleUploadInput() {
   const input = document.getElementById('upload-input');
-  if (!input.files.length) return;
+  const files = [...input.files];
   input.value = '';
-  try { await uploadFileList(input.files); } catch { toast('Upload failed', 'error'); }
+  if (!files.length) return;
+  try { await uploadFileList(files); } catch { toast('Upload failed', 'error'); }
 }
 
 let _uploadProgressTimeout = null;
