@@ -124,7 +124,16 @@ svg { display: block; }
    LAYOUT
    ═══════════════════════════════════════════════════════ */
 #app { display: flex; flex-direction: column; height: 100dvh; }
-#header { display: flex; align-items: center; height: var(--header-h); background: var(--bg2); border-bottom: 1px solid var(--border); padding: 0 8px; gap: 6px; flex-shrink: 0; z-index: 10; }
+#header { display: flex; align-items: center; height: var(--header-h); background: var(--bg2); border-bottom: 1px solid var(--border); padding: 0 8px; gap: 6px; flex-shrink: 0; z-index: 10; position: relative; }
+
+/* Upload progress bar in header */
+#upload-progress { position: absolute; bottom: 0; left: 0; right: 0; height: 0; background: var(--bg3); z-index: 20; overflow: visible; transition: height 0.25s ease; }
+#upload-progress.active { height: 3px; }
+#upload-progress-bar { height: 100%; width: 0%; background: var(--accent); transition: width 0.3s ease; border-radius: 0 2px 2px 0; }
+#upload-progress.success #upload-progress-bar { background: var(--green); }
+#upload-progress.error #upload-progress-bar { background: var(--red); }
+#upload-progress-text { position: absolute; right: 8px; top: -14px; font-size: 10px; color: var(--fg2); white-space: nowrap; opacity: 0; transition: opacity 0.2s; pointer-events: none; line-height: 1; }
+#upload-progress.active #upload-progress-text { opacity: 1; }
 #main { display: flex; flex: 1; overflow: hidden; min-height: 0; }
 #sidebar { width: var(--sidebar-w); background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; transition: width 0.2s, transform 0.2s; }
 #sidebar.hidden { width: 0; }
@@ -595,6 +604,7 @@ svg { display: block; }
     <button class="icon-btn" aria-label="Settings" title="Settings" onclick="openSettings()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     </button>
+    <div id="upload-progress"><div id="upload-progress-bar"></div><span id="upload-progress-text"></span></div>
   </div>
   <div id="reconnect-banner" style="display:none;padding:4px 12px;font-size:11px;background:var(--yellow);color:var(--bg);text-align:center;flex-shrink:0">⚠️ Reconnecting…</div>
 
@@ -2134,28 +2144,44 @@ async function handleUploadInput() {
   try { await uploadFileList(input.files); } catch { toast('Upload failed', 'error'); }
 }
 
-let _uploadToastEl = null;
-function getUploadToast() {
-  if (_uploadToastEl && _uploadToastEl.isConnected) return _uploadToastEl;
-  const el = document.createElement('div');
-  el.className = 'toast info';
-  document.getElementById('toast-container').appendChild(el);
-  _uploadToastEl = el;
-  return el;
+let _uploadProgressTimeout = null;
+function setUploadProgress(pct, status, text) {
+  const bar = document.getElementById('upload-progress');
+  const barFill = document.getElementById('upload-progress-bar');
+  const barText = document.getElementById('upload-progress-text');
+  if (!bar) return;
+  bar.className = status || '';
+  if (pct >= 0) {
+    bar.classList.add('active');
+    barFill.style.width = Math.min(pct, 100) + '%';
+  }
+  if (text != null) barText.textContent = text;
+}
+function clearUploadProgress(delay = 1500) {
+  clearTimeout(_uploadProgressTimeout);
+  _uploadProgressTimeout = setTimeout(() => {
+    const bar = document.getElementById('upload-progress');
+    if (bar) {
+      bar.classList.remove('active', 'success', 'error');
+      bar.querySelector('#upload-progress-bar').style.width = '0%';
+      bar.querySelector('#upload-progress-text').textContent = '';
+    }
+  }, delay);
 }
 
 async function uploadFileList(items) {
   const path = encodeURIComponent(currentPath);
   const total = items.length;
   let completed = 0;
-  const toastEl = getUploadToast();
-  toastEl.textContent = `Uploading 0/${total}...`;
+  let failedItems = [];
+  
+  setUploadProgress(0, '', `0/${total}`);
   
   for (const item of items) {
     const file = item.file || item;
     const fileName = item.path || item.webkitRelativePath || item.name;
     const formData = new FormData();
-    formData.append('file', file, fileName);
+    formData.append('files', file, fileName);
     
     try {
       await new Promise((resolve, reject) => {
@@ -2164,9 +2190,10 @@ async function uploadFileList(items) {
         xhr.setRequestHeader('x-pin-token', authToken);
         
         xhr.upload.addEventListener('progress', e => {
-          if (e.lengthComputable && toastEl) {
+          if (e.lengthComputable) {
             const pct = Math.round((e.loaded / e.total) * 100);
-            toastEl.textContent = `Uploading ${fileName} (${pct}%)`;
+            const overallPct = ((completed + (pct / 100)) / total) * 100;
+            setUploadProgress(overallPct, '', `${fileName} (${pct}%)`);
           }
         });
         
@@ -2176,9 +2203,10 @@ async function uploadFileList(items) {
               const resp = JSON.parse(xhr.responseText);
               if (resp.success) {
                 completed++;
-                if (toastEl) toastEl.textContent = `${completed}/${total} uploaded`;
+                setUploadProgress((completed / total) * 100, '', `${completed}/${total} uploaded`);
                 resolve();
               } else {
+                failedItems.push(fileName);
                 reject(new Error(resp.error || 'Upload failed'));
               }
             } catch {
@@ -2186,24 +2214,32 @@ async function uploadFileList(items) {
               resolve();
             }
           } else {
+            failedItems.push(fileName);
             reject(new Error(`HTTP ${xhr.status}`));
           }
         };
         
-        xhr.onerror = () => reject(new Error('Network error'));
+        xhr.onerror = () => {
+          failedItems.push(fileName);
+          reject(new Error('Network error'));
+        };
         xhr.send(formData);
       });
     } catch (e) {
-      if (toastEl && toastEl.isConnected) toastEl.remove();
-      _uploadToastEl = null;
-      toast(`Upload failed: ${e.message}`, 'error');
-      return;
+      // Continue with remaining files
     }
   }
   
-  if (toastEl && toastEl.isConnected) toastEl.remove();
-  _uploadToastEl = null;
-  toast(`${completed}/${total} file(s) uploaded`, 'success');
+  // Final result
+  if (failedItems.length === 0) {
+    setUploadProgress(100, 'success', `✓ ${completed}/${total} uploaded`);
+  } else if (completed > 0) {
+    setUploadProgress(100, 'error', `⚠ ${completed} ok, ${failedItems.length} failed`);
+  } else {
+    setUploadProgress(100, 'error', `✗ All ${total} failed`);
+  }
+  
+  clearUploadProgress(2000);
   refreshFiles();
 }
 
