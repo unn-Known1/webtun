@@ -53,6 +53,7 @@
   --sidebar-w: 280px;
   --mobilekey-h: 44px;
   --header-h: 38px;
+  --settings-w: 340px;
   --radius: 6px;
   --font: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
 }
@@ -147,6 +148,26 @@ svg { display: block; }
 #mobile-keys { display: none; height: var(--mobilekey-h); background: var(--bg3); border-top: 1px solid var(--border); flex-shrink: 0; overflow-x: auto; overflow-y: hidden; white-space: nowrap; padding: 4px 6px; gap: 4px; padding-bottom: calc(4px + env(safe-area-inset-bottom)); min-height: calc(var(--mobilekey-h) + env(safe-area-inset-bottom)); }
 #editor-view { position: absolute; inset: 0; background: var(--bg); display: none; flex-direction: column; z-index: 5; }
 #editor-view.open { display: flex; }
+
+/* ═══════════════════════════════════════════════════════
+   SETTINGS PANEL (right side)
+   ═══════════════════════════════════════════════════════ */
+#settings-panel {
+  width: 0; overflow: hidden; flex-shrink: 0;
+  background: var(--bg2); border-left: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  transition: width 0.2s;
+}
+#settings-panel.open {
+  width: var(--settings-w); overflow-y: auto;
+}
+.settings-panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px; border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.settings-panel-header h2 { font-size: 14px; font-weight: 700; color: var(--fg); }
+.settings-panel-body { padding: 16px; overflow-y: auto; flex: 1; }
 
 /* ═══════════════════════════════════════════════════════
    HEADER ELEMENTS
@@ -488,6 +509,8 @@ svg { display: block; }
   #sidebar { position: absolute; left: 0; top: var(--header-h); bottom: 0; z-index: 30; width: var(--sidebar-w); transform: translateX(-100%); transition: transform 0.2s; }
   #sidebar.mobile-open { transform: translateX(0); }
   #sidebar.hidden { transform: translateX(-100%); width: var(--sidebar-w); }
+  #settings-panel { position: fixed; right: 0; top: var(--header-h); bottom: 0; z-index: 30; width: var(--settings-w); border-left: 1px solid var(--border); transform: translateX(100%); transition: transform 0.2s; }
+  #settings-panel.open { transform: translateX(0); }
   #hostname-badge { display: none; }
   #search-input { width: 200px; }
   .modal { min-width: unset; width: 95vw; }
@@ -505,7 +528,7 @@ svg { display: block; }
 
 @media print {
   body { background: #fff !important; color: #000 !important; }
-  #sidebar, #header, #tab-bar, #search-bar, #toast-container, #mobile-keys, .overlay, #drop-overlay { display: none !important; }
+  #sidebar, #header, #tab-bar, #search-bar, #toast-container, #mobile-keys, .overlay, #drop-overlay, #settings-panel { display: none !important; }
   #editor-view { position: static !important; z-index: auto !important; }
   .terminal { background: #fff !important; color: #000 !important; }
   #file-breadcrumb, #file-list-wrap { overflow: visible !important; }
@@ -724,6 +747,97 @@ svg { display: block; }
         <button class="mkey sel-done" onclick="toggleTermSelect()" title="Exit selection mode">Done</button>
       </div>
     </div>
+
+    <!-- Settings Panel -->
+    <div id="settings-panel">
+      <div class="settings-panel-header">
+        <span style="font-size:14px;font-weight:700">⚙ Settings</span>
+        <button class="icon-btn" onclick="closeSettings()" title="Close settings">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="settings-panel-body">
+        <div class="settings-section">
+          <h3>Appearance</h3>
+          <div class="setting-row">
+            <label>Theme</label>
+            <select id="s-theme" onchange="applyTheme(this.value)">
+              <option value="system">System</option>
+              <option value="light">Light</option>
+              <option value="tokyonight">Tokyo Night</option>
+              <option value="solarized">Solarized Dark</option>
+              <option value="gruvbox">Gruvbox</option>
+              <option value="dracula">Dracula</option>
+              <option value="monokai">Monokai</option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <label>Font Size</label>
+            <input type="number" id="s-fontsize" min="8" max="32" value="14" onchange="applyFontSize(+this.value)">
+          </div>
+          <div class="setting-row">
+            <label>Font Family</label>
+            <select id="s-font" onchange="applyFont(this.value)">
+              <option value="'SF Mono', 'Fira Code', Consolas, monospace">System Mono</option>
+              <option value="'Fira Code', monospace">Fira Code</option>
+              <option value="'Cascadia Code', monospace">Cascadia Code</option>
+              <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
+              <option value="monospace">Monospace</option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <label>Cursor Style</label>
+            <select id="s-cursor" onchange="applyCursor(this.value)">
+              <option value="block">Block</option>
+              <option value="underline">Underline</option>
+              <option value="bar">Bar</option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <label>Cursor Blink</label>
+            <div class="toggle" id="s-blink" onclick="toggleSetting('blink')"></div>
+          </div>
+        </div>
+        <div class="settings-section">
+          <h3>Terminal</h3>
+          <div class="setting-row">
+            <label>Scrollback Lines</label>
+            <input type="number" id="s-scrollback" min="100" max="100000" value="5000" onchange="applyScrollback(+this.value)">
+          </div>
+          <div class="setting-row">
+            <label>Bell Sound</label>
+            <div class="toggle" id="s-bell" onclick="toggleSetting('bell')"></div>
+          </div>
+        </div>
+        <div class="settings-section">
+          <h3>Interface</h3>
+          <div class="setting-row">
+            <label>Show Mobile Keys</label>
+            <div class="toggle" id="s-mobilekeys" onclick="toggleSetting('mobilekeys')"></div>
+          </div>
+          <div class="setting-row">
+            <label>Confirm on Close</label>
+            <div class="toggle on" id="s-confirmclose" onclick="toggleSetting('confirmclose')"></div>
+          </div>
+          <div class="setting-row">
+            <label>Data Saver</label>
+            <div class="toggle" id="s-datasaver" onclick="toggleSetting('datasaver')"></div>
+          </div>
+        </div>
+        <div class="settings-section">
+          <h3>Tunnel</h3>
+          <div class="setting-row" style="flex-wrap:wrap;gap:6px">
+            <label style="flex:0 0 auto">Local URL</label>
+            <div style="display:flex;flex:1;gap:6px;min-width:0">
+              <input type="text" id="tunnel-url" value="http://localhost:3000" placeholder="http://localhost:PORT" style="flex:1;min-width:0">
+              <button class="btn btn-primary" style="height:28px;padding:0 12px;font-size:12px;flex-shrink:0" onclick="createTunnel()">Create</button>
+            </div>
+          </div>
+          <div id="tunnel-list"></div>
+          <div id="tunnel-status" style="font-size:11px;color:var(--fg2);min-height:16px;margin-top:2px"></div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -744,93 +858,6 @@ svg { display: block; }
   <div class="ctx-item" id="ctx-rename">🏷️ Rename</div>
   <div class="ctx-sep"></div>
   <div class="ctx-item danger" id="ctx-delete">🗑️ Delete</div>
-</div>
-
-<!-- Settings Modal -->
-<div class="overlay" id="settings-overlay">
-  <div class="modal" style="width:420px">
-    <h2>⚙ Settings</h2>
-    <div class="settings-section">
-      <h3>Appearance</h3>
-      <div class="setting-row">
-        <label>Theme</label>
-        <select id="s-theme" onchange="applyTheme(this.value)">
-          <option value="system">System</option>
-          <option value="light">Light</option>
-          <option value="tokyonight">Tokyo Night</option>
-          <option value="solarized">Solarized Dark</option>
-          <option value="gruvbox">Gruvbox</option>
-          <option value="dracula">Dracula</option>
-          <option value="monokai">Monokai</option>
-        </select>
-      </div>
-      <div class="setting-row">
-        <label>Font Size</label>
-        <input type="number" id="s-fontsize" min="8" max="32" value="14" onchange="applyFontSize(+this.value)">
-      </div>
-      <div class="setting-row">
-        <label>Font Family</label>
-        <select id="s-font" onchange="applyFont(this.value)">
-          <option value="'SF Mono', 'Fira Code', Consolas, monospace">System Mono</option>
-          <option value="'Fira Code', monospace">Fira Code</option>
-          <option value="'Cascadia Code', monospace">Cascadia Code</option>
-          <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
-          <option value="monospace">Monospace</option>
-        </select>
-      </div>
-      <div class="setting-row">
-        <label>Cursor Style</label>
-        <select id="s-cursor" onchange="applyCursor(this.value)">
-          <option value="block">Block</option>
-          <option value="underline">Underline</option>
-          <option value="bar">Bar</option>
-        </select>
-      </div>
-      <div class="setting-row">
-        <label>Cursor Blink</label>
-        <div class="toggle" id="s-blink" onclick="toggleSetting('blink')"></div>
-      </div>
-    </div>
-    <div class="settings-section">
-      <h3>Terminal</h3>
-      <div class="setting-row">
-        <label>Scrollback Lines</label>
-        <input type="number" id="s-scrollback" min="100" max="100000" value="5000" onchange="applyScrollback(+this.value)">
-      </div>
-      <div class="setting-row">
-        <label>Bell Sound</label>
-        <div class="toggle" id="s-bell" onclick="toggleSetting('bell')"></div>
-      </div>
-    </div>
-    <div class="settings-section">
-      <h3>Interface</h3>
-      <div class="setting-row">
-        <label>Show Mobile Keys</label>
-        <div class="toggle" id="s-mobilekeys" onclick="toggleSetting('mobilekeys')"></div>
-      </div>
-      <div class="setting-row">
-        <label>Confirm on Close</label>
-        <div class="toggle on" id="s-confirmclose" onclick="toggleSetting('confirmclose')"></div>
-      </div>
-      <div class="setting-row">
-        <label>Data Saver</label>
-        <div class="toggle" id="s-datasaver" onclick="toggleSetting('datasaver')"></div>
-      </div>
-    </div>
-    <div class="settings-section">
-      <h3>Tunnel</h3>
-      <div class="setting-row">
-        <label>Local URL</label>
-        <input type="text" id="tunnel-url" value="http://localhost:3000" placeholder="http://localhost:PORT">
-        <button class="btn btn-primary" style="height:28px;padding:0 12px;font-size:12px" onclick="createTunnel()">Create</button>
-      </div>
-      <div id="tunnel-list"></div>
-      <div id="tunnel-status" style="font-size:11px;color:var(--fg2);min-height:16px;margin-top:2px"></div>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeSettings()">Close</button>
-    </div>
-  </div>
 </div>
 
 <!-- Fuzzy Finder Modal -->
@@ -2432,8 +2459,8 @@ function toggleSetting(k) {
   }
 }
 
-function openSettings() { openOverlay('settings-overlay'); }
-function closeSettings() { closeOverlay('settings-overlay'); }
+function openSettings() { document.getElementById('settings-panel').classList.toggle('open'); }
+function closeSettings() { document.getElementById('settings-panel').classList.remove('open'); }
 
 let tunnelList = [];
 
@@ -2653,10 +2680,10 @@ function setupKeyboardShortcuts() {
     if (ctrl && e.shiftKey && e.key === 'ArrowLeft') { e.preventDefault(); cycleTab(-1); }
     if (e.key === 'Escape') {
       if (document.getElementById('search-bar').classList.contains('open')) closeSearch();
+      if (document.getElementById('settings-panel').classList.contains('open')) closeSettings();
       document.querySelectorAll('.overlay.open').forEach(el => {
         const id = el.id;
-        if (id === 'settings-overlay') closeSettings();
-        else if (id === 'sys-overlay') closeSystemStats();
+        if (id === 'sys-overlay') closeSystemStats();
         else if (id === 'finder-overlay') { clearTimeout(finderTimer); closeOverlay(id); }
         else if (id === 'newfolder-overlay' || id === 'newfile-overlay' || id === 'rename-overlay') closeOverlay(id);
       });
