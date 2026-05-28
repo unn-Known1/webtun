@@ -867,6 +867,8 @@ svg { display: block; }
   <div class="ctx-sep"></div>
   <div class="ctx-item" id="ctx-rename">🏷️ Rename</div>
   <div class="ctx-sep"></div>
+  <div class="ctx-item" id="ctx-open-term">🖥️ Open Terminal Here</div>
+  <div class="ctx-sep"></div>
   <div class="ctx-item danger" id="ctx-delete">🗑️ Delete</div>
 </div>
 
@@ -1196,10 +1198,10 @@ function nextTermNumber() {
   return n;
 }
 
-function newTab(title, sessionId) {
+function newTab(title, sessionId, dir) {
   const id = ++tabCounter;
   const sid = sessionId || (hasTmux ? uuid() : null);
-  const tab = { id, sessionId: sid, title: title || `Term ${nextTermNumber()}`, term: null, fitAddon: null, searchAddon: null, ws: null, el: null, wrapper: null, closed: false, reconnectDelay: 1000, dataDisposable: null, resizeDisposable: null, resizeObserver: null };
+  const tab = { id, sessionId: sid, title: title || `Term ${nextTermNumber()}`, term: null, fitAddon: null, searchAddon: null, ws: null, el: null, wrapper: null, closed: false, reconnectDelay: 1000, dataDisposable: null, resizeDisposable: null, resizeObserver: null, cwd: dir || currentPath };
   tabs.push(tab);
 
   // Tab button
@@ -1344,7 +1346,7 @@ function connectWebSocket(tab, isReconnect = false) {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const cols = tab.term.cols, rows = tab.term.rows;
   const sessionParam = tab.sessionId ? `&session=${encodeURIComponent(tab.sessionId)}` : '';
-  const wsUrl = `${proto}://${location.host}/ws?token=${encodeURIComponent(authToken)}&cols=${cols}&rows=${rows}&cwd=${encodeURIComponent(currentPath)}${sessionParam}`;
+  const wsUrl = `${proto}://${location.host}/ws?token=${encodeURIComponent(authToken)}&cols=${cols}&rows=${rows}&cwd=${encodeURIComponent(tab.cwd || currentPath)}${sessionParam}`;
   const ws = new WebSocket(wsUrl);
   tab.ws = ws;
   ws.binaryType = 'arraybuffer';
@@ -1923,6 +1925,7 @@ function showCtxMenu(e, file) {
   menu.style.display = 'block';
   document.getElementById('ctx-open').style.display = file.isDir ? '' : 'none';
   document.getElementById('ctx-edit').style.display = file.isDir ? 'none' : '';
+  document.getElementById('ctx-open-term').style.display = file.isDir ? '' : 'none';
   document.getElementById('ctx-paste').style.display = fsClipboard ? '' : 'none';
   const mw = menu.offsetWidth, mh = menu.offsetHeight;
   let left = Math.min(e.clientX, window.innerWidth - mw - 8);
@@ -1952,6 +1955,7 @@ document.getElementById('ctx-download').onclick = () => ctxTarget && downloadFil
 document.getElementById('ctx-rename').onclick = () => ctxTarget && startRename(ctxTarget.path, ctxTarget.name);
 document.getElementById('ctx-copy-path').onclick = () => { if (!ctxTarget) return; navigator.clipboard.writeText(ctxTarget.path).then(() => toast('Path copied')).catch(() => toast('Copy failed', 'error')); };
 document.getElementById('ctx-delete').onclick = () => ctxTarget && deleteFile(ctxTarget);
+document.getElementById('ctx-open-term').onclick = () => { if (!ctxTarget) return; newTab(`Term @ ${ctxTarget.name}`, null, ctxTarget.path); };
 document.getElementById('ctx-copy').onclick = () => { if (!ctxTarget) return; fsClipboard = { action: 'copy', path: ctxTarget.path, name: ctxTarget.name }; updatePasteUI(); toast('Copied: ' + ctxTarget.name, 'success'); };
 document.getElementById('ctx-cut').onclick = () => { if (!ctxTarget) return; fsClipboard = { action: 'cut', path: ctxTarget.path, name: ctxTarget.name }; updatePasteUI(); toast('Cut: ' + ctxTarget.name, 'success'); };
 document.getElementById('ctx-paste').onclick = () => { if (fsClipboard) pasteFile(currentPath); };
