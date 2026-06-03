@@ -72,9 +72,19 @@ app.get('/api/home', checkPin, (req, res) => {
 const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT ? path.resolve(process.env.WORKSPACE_ROOT) : os.homedir();
 const fsPromises = fs.promises;
 
+function assertInsideWorkspace(p) {
+  if (!p.startsWith(WORKSPACE_ROOT + path.sep) && p !== WORKSPACE_ROOT) {
+    const err = new Error('Path is outside the allowed workspace root');
+    err.code = 'EACCESS';
+    throw err;
+  }
+}
+
 function resolvePath(targetPath) {
   if (!targetPath) return WORKSPACE_ROOT;
-  return path.resolve(targetPath);
+  const resolved = path.resolve(targetPath);
+  assertInsideWorkspace(resolved);
+  return resolved;
 }
 
 // Resolve path and follow symlinks to their real location.
@@ -82,7 +92,9 @@ function resolvePath(targetPath) {
 function realPath(targetPath) {
   if (!targetPath) return WORKSPACE_ROOT;
   const resolved = path.resolve(targetPath);
-  try { return fs.realpathSync(resolved); } catch { return resolved; }
+  const real = (() => { try { return fs.realpathSync(resolved); } catch { return resolved; } })();
+  assertInsideWorkspace(real);
+  return real;
 }
 
 async function safeStat(p) {
@@ -195,17 +207,75 @@ app.post('/api/files/rename', checkPin, async (req, res) => {
   }
 });
 
+async function resolveCopyMove(src, dst, conflict, isMove) {
+  const VALID_CONFLICTS = ['replace', 'skip', 'keep_both', 'merge', 'cancel'];
+  let dstExists = false, dstIsDir = false;
+  try { const s = await fsPromises.stat(dst); dstExists = true; dstIsDir = s.isDirectory(); } catch {}
+
+  if (dstExists && !VALID_CONFLICTS.includes(conflict)) {
+    return { conflict: true, isDir: dstIsDir, name: path.basename(dst) };
+  }
+
+  if (conflict === 'cancel') return { success: false, error: 'Cancelled' };
+  if (conflict === 'skip') return { success: true, skipped: true };
+
+  if (conflict === 'keep_both' && dstExists) {
+    const ext = path.extname(dst);
+    const base = path.basename(dst, ext);
+    const dir = path.dirname(dst);
+    let counter = 1;
+    while (true) {
+      const suffix = counter === 1 ? ' (copy)' : ` (copy ${counter})`;
+      dst = path.join(dir, base + suffix + ext);
+      try { await fsPromises.access(dst); counter++; } catch { break; }
+    }
+  }
+
+  const st = await fsPromises.stat(src);
+  const isDir = st.isDirectory();
+
+  if (dstExists && conflict === 'replace') {
+    if (isDir) await fsPromises.rm(dst, { recursive: true, force: true });
+    else await fsPromises.unlink(dst);
+  }
+
+  if (isMove) {
+    if (dstExists && conflict === 'merge' && isDir && dstIsDir) {
+      const entries = await fsPromises.readdir(src);
+      for (const entry of entries) {
+        const srcEntry = path.join(src, entry);
+        const dstEntry = path.join(dst, entry);
+        await fsPromises.cp(srcEntry, dstEntry, { recursive: true, force: true });
+      }
+      await fsPromises.rm(src, { recursive: true, force: true });
+    } else {
+      await fsPromises.rename(src, dst);
+    }
+  } else {
+    if (isDir) {
+      if (dstExists && conflict === 'merge' && dstIsDir) {
+        const entries = await fsPromises.readdir(src);
+        for (const entry of entries) {
+          const srcEntry = path.join(src, entry);
+          const dstEntry = path.join(dst, entry);
+          await fsPromises.cp(srcEntry, dstEntry, { recursive: true, force: true });
+        }
+      } else {
+        await fsPromises.cp(src, dst, { recursive: true, force: true });
+      }
+    } else {
+      await fsPromises.copyFile(src, dst);
+    }
+  }
+  return { success: true };
+}
+
 app.post('/api/files/copy', checkPin, async (req, res) => {
   try {
     const src = realPath(req.body.source);
     const dst = resolvePath(req.body.destination);
-    const st = await fsPromises.stat(src);
-    if (st.isDirectory()) {
-      await fsPromises.cp(src, dst, { recursive: true, errorOnExist: false });
-    } else {
-      await fsPromises.copyFile(src, dst);
-    }
-    res.json({ success: true });
+    const result = await resolveCopyMove(src, dst, req.body.conflict || '', false);
+    res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -215,8 +285,8 @@ app.post('/api/files/move', checkPin, async (req, res) => {
   try {
     const src = realPath(req.body.source);
     const dst = resolvePath(req.body.destination);
-    await fsPromises.rename(src, dst);
-    res.json({ success: true });
+    const result = await resolveCopyMove(src, dst, req.body.conflict || '', true);
+    res.json(result);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -262,12 +332,19 @@ app.post('/api/files/zip', checkPin, async (req, res) => {
     const p = realPath(req.body.path);
     const st = await fsPromises.stat(p);
     const baseName = path.basename(p);
-    const zipName = baseName + '.zip';
-    const zipPath = path.join(path.dirname(p), zipName);
+    let zipName = baseName + '.zip';
+    let zipPath = path.join(path.dirname(p), zipName);
+    let counter = 1;
+    while (true) {
+      try { await fsPromises.access(zipPath); } catch { break; }
+      zipName = baseName + ' (' + counter + ').zip';
+      zipPath = path.join(path.dirname(p), zipName);
+      counter++;
+    }
     const output = fs.createWriteStream(zipPath);
     const archive = archiver('zip', { zlib: { level: 6 } });
-    archive.on('error', err => { throw err; });
     await new Promise((resolve, reject) => {
+      archive.on('error', err => reject(err));
       output.on('close', resolve);
       output.on('error', reject);
       archive.pipe(output);
@@ -293,7 +370,10 @@ app.post('/api/files/unzip', checkPin, async (req, res) => {
     await fsPromises.mkdir(destDir, { recursive: true });
     const { execFileSync } = require('child_process');
     if (os.platform() === 'win32') {
-      execFileSync('powershell.exe', ['-Command', `Expand-Archive -Path "${p}" -DestinationPath "${destDir}" -Force`], { stdio: 'ignore' });
+      execFileSync('powershell.exe', ['-NoProfile', '-Command', 'Expand-Archive -LiteralPath $env:ZIP_SRC -DestinationPath $env:ZIP_DST -Force'], {
+        stdio: 'ignore',
+        env: { ...process.env, ZIP_SRC: p, ZIP_DST: destDir }
+      });
     } else {
       execFileSync('unzip', ['-o', p, '-d', destDir], { stdio: 'ignore' });
     }
