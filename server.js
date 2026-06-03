@@ -72,19 +72,9 @@ app.get('/api/home', checkPin, (req, res) => {
 const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT ? path.resolve(process.env.WORKSPACE_ROOT) : os.homedir();
 const fsPromises = fs.promises;
 
-function assertInsideWorkspace(p) {
-  if (!p.startsWith(WORKSPACE_ROOT + path.sep) && p !== WORKSPACE_ROOT) {
-    const err = new Error('Path is outside the allowed workspace root');
-    err.code = 'EACCESS';
-    throw err;
-  }
-}
-
 function resolvePath(targetPath) {
   if (!targetPath) return WORKSPACE_ROOT;
-  const resolved = path.resolve(targetPath);
-  assertInsideWorkspace(resolved);
-  return resolved;
+  return path.resolve(targetPath);
 }
 
 // Resolve path and follow symlinks to their real location.
@@ -92,9 +82,7 @@ function resolvePath(targetPath) {
 function realPath(targetPath) {
   if (!targetPath) return WORKSPACE_ROOT;
   const resolved = path.resolve(targetPath);
-  const real = (() => { try { return fs.realpathSync(resolved); } catch { return resolved; } })();
-  assertInsideWorkspace(real);
-  return real;
+  try { return fs.realpathSync(resolved); } catch { return resolved; }
 }
 
 async function safeStat(p) {
