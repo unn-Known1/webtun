@@ -257,6 +257,52 @@ app.post('/api/files/touch', checkPin, async (req, res) => {
   }
 });
 
+app.post('/api/files/zip', checkPin, async (req, res) => {
+  try {
+    const p = realPath(req.body.path);
+    const st = await fsPromises.stat(p);
+    const baseName = path.basename(p);
+    const zipName = baseName + '.zip';
+    const zipPath = path.join(path.dirname(p), zipName);
+    const output = fs.createWriteStream(zipPath);
+    const archive = archiver('zip', { zlib: { level: 6 } });
+    archive.on('error', err => { throw err; });
+    await new Promise((resolve, reject) => {
+      output.on('close', resolve);
+      output.on('error', reject);
+      archive.pipe(output);
+      if (st.isDirectory()) {
+        archive.directory(p, baseName, { followSymlinks: false });
+      } else {
+        archive.file(p, { name: baseName });
+      }
+      archive.finalize();
+    });
+    res.json({ success: true, name: zipName });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/files/unzip', checkPin, async (req, res) => {
+  try {
+    const p = realPath(req.body.path);
+    const ext = path.extname(p).toLowerCase();
+    if (ext !== '.zip') return res.status(400).json({ error: 'Not a zip file' });
+    const destDir = path.join(path.dirname(p), path.basename(p, '.zip'));
+    await fsPromises.mkdir(destDir, { recursive: true });
+    const { execFileSync } = require('child_process');
+    if (os.platform() === 'win32') {
+      execFileSync('powershell.exe', ['-Command', `Expand-Archive -Path "${p}" -DestinationPath "${destDir}" -Force`], { stdio: 'ignore' });
+    } else {
+      execFileSync('unzip', ['-o', p, '-d', destDir], { stdio: 'ignore' });
+    }
+    res.json({ success: true, dir: destDir });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/files/read', checkPin, async (req, res) => {
   try {
     const p = resolvePath(req.query.path);
@@ -277,6 +323,23 @@ app.post('/api/files/write', checkPin, async (req, res) => {
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// Serve image files for inline viewing (not as download)
+app.get('/api/files/image', checkPin, async (req, res) => {
+  try {
+    const p = resolvePath(req.query.path);
+    const mimeType = mime.lookup(p) || 'application/octet-stream';
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    const stream = fs.createReadStream(p);
+    stream.on('error', err => {
+      if (!res.headersSent) res.status(500).json({ error: err.message });
+    });
+    stream.pipe(res);
+  } catch (e) {
+    if (!res.headersSent) res.status(500).json({ error: e.message });
   }
 });
 
