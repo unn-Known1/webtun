@@ -139,6 +139,7 @@ svg { display: block; }
 #sidebar.hidden { width: 0; }
 #content { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; min-height: 0; }
 #tab-bar { display: flex; align-items: center; height: var(--tab-h); background: var(--bg2); border-bottom: 1px solid var(--border); overflow-x: auto; overflow-y: hidden; flex-shrink: 0; gap: 2px; padding: 0 4px; }
+#tab-bar.drag-over, #new-tab-btn.drag-over { background: var(--accent, #00c853); opacity: 0.15; }
 #tab-bar::-webkit-scrollbar { height: 3px; }
 #terminals { flex: 1; position: relative; overflow: hidden; }
 .term-wrapper { position: absolute; inset: 0; padding: 4px; display: none; touch-action: pan-y; -webkit-overflow-scrolling: touch; }
@@ -171,7 +172,7 @@ svg { display: block; }
   z-index: 15;
 }
 #settings-panel.open {
-  transform: translateX(0); overflow-y: auto;
+  transform: translateX(0);
 }
 .settings-panel-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -216,6 +217,7 @@ svg { display: block; }
    ═══════════════════════════════════════════════════════ */
 .tab { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 12px; border-radius: var(--radius); background: var(--bg3); color: var(--fg2); cursor: pointer; flex-shrink: 0; font-size: 12px; transition: background 0.15s, color 0.15s, opacity 0.15s; white-space: nowrap; user-select: none; min-width: 0; }
 .tab.dragging { opacity: 0.4; }
+.tab.drag-over { border-left: 2px solid var(--accent, #00c853); }
 .tab .tab-title { overflow: hidden; text-overflow: ellipsis; color: var(--fg); }
 .tab:hover { background: var(--bg4); color: var(--fg); }
 .tab.active { background: var(--bg4); color: var(--accent); border-bottom: 2px solid var(--accent); }
@@ -998,6 +1000,22 @@ svg { display: block; }
   </div>
 </div>
 
+<!-- Conflict Dialog -->
+<div class="overlay" id="conflict-overlay">
+  <div class="modal" style="width:380px">
+    <h2 style="font-size:15px;margin-bottom:8px">File Conflict</h2>
+    <p style="font-size:12px;color:var(--fg2);margin-bottom:4px">An item named <strong id="conflict-name" style="color:var(--fg)"></strong> already exists at this location.</p>
+    <p id="conflict-dir-hint" style="font-size:11px;color:var(--fg2);margin-bottom:14px">The destination already contains a folder with this name.</p>
+    <div class="modal-actions" style="flex-wrap:wrap;gap:6px">
+      <button class="btn btn-primary" id="conflict-replace" style="font-size:12px;height:32px" onclick="resolveConflict('replace')">Replace</button>
+      <button class="btn" id="conflict-merge" style="font-size:12px;height:32px" onclick="resolveConflict('merge')">Merge</button>
+      <button class="btn btn-ghost" id="conflict-keep-both" style="font-size:12px;height:32px" onclick="resolveConflict('keep_both')">Keep Both</button>
+      <button class="btn btn-ghost" id="conflict-skip" style="font-size:12px;height:32px" onclick="resolveConflict('skip')">Skip</button>
+      <button class="btn btn-ghost" id="conflict-cancel" style="font-size:12px;height:32px" onclick="resolveConflict('cancel')">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- Image Viewer -->
 <div class="overlay" id="image-viewer">
   <div class="modal">
@@ -1153,6 +1171,7 @@ async function unlockApp() {
   loadFiles(currentPath);
   renderBookmarks();
   setupDragDrop();
+  setupTabBarDnD();
   setupKeyboardShortcuts();
   startFileWatcher();
   setupMobileKeys();
@@ -1274,28 +1293,33 @@ function newTab(title, sessionId, dir) {
     e.dataTransfer.setData('text/plain', String(id));
     tabEl.classList.add('dragging');
   });
+  tabEl.addEventListener('dragenter', e => { e.preventDefault(); tabEl.classList.add('drag-over'); });
+  tabEl.addEventListener('dragleave', () => { tabEl.classList.remove('drag-over'); });
   tabEl.addEventListener('dragover', e => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
   });
-  tabEl.addEventListener('drop', e => {
-    e.preventDefault();
-    document.querySelectorAll('.tab-drop-placeholder').forEach(el => el.remove());
-    const fromId = parseInt(e.dataTransfer.getData('text/plain'));
+  function finishDrop(fromId) {
     if (isNaN(fromId) || fromId === id) return;
     const fromIdx = tabs.findIndex(t => t.id === fromId);
-    const toIdx = tabs.findIndex(t => t.id === id);
-    if (fromIdx === -1 || toIdx === -1) return;
+    if (fromIdx === -1) return;
     const [moved] = tabs.splice(fromIdx, 1);
     const targetIdx = tabs.findIndex(t => t.id === id);
     tabs.splice(targetIdx, 0, moved);
     const bar = document.getElementById('tab-bar');
-    const newTabBtn = document.getElementById('new-tab-btn');
-    if (moved.el) bar.insertBefore(moved.el, tabEl);
+    if (moved.el && moved.el.parentNode === bar) bar.insertBefore(moved.el, tabEl);
     saveTabState();
+  }
+  tabEl.addEventListener('drop', e => {
+    e.preventDefault();
+    tabEl.classList.remove('drag-over');
+    document.querySelectorAll('.tab-drop-placeholder').forEach(el => el.remove());
+    const fromId = parseInt(e.dataTransfer.getData('text/plain'));
+    finishDrop(fromId);
   });
   tabEl.addEventListener('dragend', () => {
     tabEl.classList.remove('dragging');
+    tabEl.classList.remove('drag-over');
     document.querySelectorAll('.tab-drop-placeholder').forEach(el => el.remove());
   });
   tabEl.addEventListener('click', e => { if (!e.target.closest('.tab-close')) activateTab(id); });
@@ -2038,20 +2062,43 @@ function updatePasteUI() {
   if (el) el.style.display = fsClipboard ? '' : 'none';
 }
 
-async function pasteFile(destDir) {
-  if (!fsClipboard) return;
+let _conflictResolve = null;
+
+let _pasteBusy = false;
+
+async function pasteFile(destDir, conflictMode) {
+  if (!fsClipboard || _pasteBusy) return;
+  _pasteBusy = true;
   const dest = joinPath(destDir, fsClipboard.name);
   const ep = fsClipboard.action === 'copy' ? '/api/files/copy' : '/api/files/move';
+  const body = { source: fsClipboard.path, destination: dest };
+  if (conflictMode) body.conflict = conflictMode;
   const r = await api(ep, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ source: fsClipboard.path, destination: dest })
+    body: JSON.stringify(body)
   });
+  if (r.conflict) {
+    _conflictResolve = { destDir, conflictMode: null };
+    document.getElementById('conflict-name').textContent = r.name;
+    document.getElementById('conflict-dir-hint').style.display = r.isDir ? '' : 'none';
+    document.getElementById('conflict-merge').style.display = r.isDir ? '' : 'none';
+    openOverlay('conflict-overlay');
+    return;
+  }
   if (r.success) {
-    toast(fsClipboard.action === 'copy' ? 'Pasted' : 'Moved', 'success');
+    const label = fsClipboard.action === 'copy' ? 'Pasted' : 'Moved';
+    if (r.skipped) toast(label + ' (skipped existing)', 'info');
+    else toast(label, 'success');
     if (fsClipboard.action === 'cut') { fsClipboard = null; updatePasteUI(); }
     refreshFiles();
-  } else toast(r.error, 'error');
+  } else toast(r.error || 'Operation failed', 'error');
+  _pasteBusy = false;
+}
+
+function resolveConflict(mode) {
+  closeOverlay('conflict-overlay');
+  pasteFile(_conflictResolve.destDir, mode);
 }
 
 async function zipFile(path, name) {
@@ -2156,26 +2203,26 @@ function toggleFileSelection(path, el) {
   const count = selectedFiles.length;
   document.getElementById('select-count').textContent = count + ' selected';
   document.getElementById('select-actions').style.display = count > 0 ? 'flex' : 'none';
-  document.getElementById('select-all-btn').textContent = count === document.querySelectorAll('.file-item').length ? 'Deselect All' : 'Select All';
+  const totalItems = [...document.querySelectorAll('.file-item')].filter(el => el.dataset.path !== currentParent).length;
+  document.getElementById('select-all-btn').textContent = count === totalItems ? 'Deselect All' : 'Select All';
 }
 
 function selectAllFiles() {
   const items = document.querySelectorAll('.file-item');
-  const allSelected = selectedFiles.length === items.length;
-  if (allSelected) {
+  const totalCount = [...items].filter(el => el.dataset.path !== currentParent).length;
+  if (selectedFiles.length >= totalCount) {
     clearSelection();
     return;
   }
   selectedFiles = [];
   items.forEach(el => {
     const path = el.dataset.path;
-    if (path) {
-      selectedFiles.push(path);
-      el.classList.add('selected');
-      el.setAttribute('aria-selected', 'true');
-      const check = el.querySelector('.file-select-check');
-      if (check) check.classList.add('on');
-    }
+    if (!path || path === currentParent) return;
+    selectedFiles.push(path);
+    el.classList.add('selected');
+    el.setAttribute('aria-selected', 'true');
+    const check = el.querySelector('.file-select-check');
+    if (check) check.classList.add('on');
   });
   const count = selectedFiles.length;
   document.getElementById('select-count').textContent = count + ' selected';
@@ -2507,25 +2554,41 @@ function isImageFile(path) {
   return m ? IMAGE_EXTS.has('.' + m[1].toLowerCase()) : false;
 }
 
+let _ivImageUrl = null;
+
 function openImageViewer(path) {
   const name = path.split(/[\\/]/).pop() || path;
   document.getElementById('iv-name').textContent = name;
   document.getElementById('iv-img').style.display = 'none';
   document.getElementById('iv-loading').style.display = 'block';
+  document.getElementById('iv-loading').textContent = 'Loading…';
+  if (_ivImageUrl) { URL.revokeObjectURL(_ivImageUrl); _ivImageUrl = null; }
   openOverlay('image-viewer');
-  const img = document.getElementById('iv-img');
-  img.onload = () => {
-    document.getElementById('iv-loading').style.display = 'none';
-    img.style.display = '';
-  };
-  img.onerror = () => {
+  fetch(`/api/files/image?path=${encodeURIComponent(path)}&_t=${Date.now()}`, {
+    headers: { 'x-pin-token': authToken }
+  }).then(r => {
+    if (!r.ok) throw new Error('Failed to load');
+    return r.blob();
+  }).then(blob => {
+    _ivImageUrl = URL.createObjectURL(blob);
+    const img = document.getElementById('iv-img');
+    img.onload = () => {
+      document.getElementById('iv-loading').style.display = 'none';
+      img.style.display = '';
+      img.onload = null;
+    };
+    img.onerror = () => {
+      document.getElementById('iv-loading').textContent = 'Failed to load image';
+    };
+    img.src = _ivImageUrl;
+  }).catch(() => {
     document.getElementById('iv-loading').textContent = 'Failed to load image';
-  };
-  img.src = `/api/files/image?path=${encodeURIComponent(path)}&token=${encodeURIComponent(authToken)}`;
+  });
 }
 
 function closeImageViewer() {
   document.getElementById('iv-img').src = '';
+  if (_ivImageUrl) { URL.revokeObjectURL(_ivImageUrl); _ivImageUrl = null; }
   closeOverlay('image-viewer');
 }
 
@@ -2854,6 +2917,42 @@ async function toggleKeepAwake(enabled) {
   }
 }
 
+function moveTabToEnd(fromId) {
+  if (isNaN(fromId)) return;
+  const fromIdx = tabs.findIndex(t => t.id === fromId);
+  if (fromIdx === -1) return;
+  const [moved] = tabs.splice(fromIdx, 1);
+  tabs.push(moved);
+  const bar = document.getElementById('tab-bar');
+  const newTabBtn = document.getElementById('new-tab-btn');
+  if (moved.el && moved.el.parentNode === bar) bar.insertBefore(moved.el, newTabBtn);
+  saveTabState();
+}
+
+function setupTabBarDnD() {
+  const bar = document.getElementById('tab-bar');
+  const btn = document.getElementById('new-tab-btn');
+  if (!bar || !btn) return;
+  let dragEnterCount = 0;
+  function setOver(el, v) { if (v) el.classList.add('drag-over'); else el.classList.remove('drag-over'); }
+  bar.addEventListener('dragenter', e => { e.preventDefault(); dragEnterCount++; setOver(bar, true); });
+  bar.addEventListener('dragleave', e => { dragEnterCount--; if (dragEnterCount <= 0) { dragEnterCount = 0; setOver(bar, false); } });
+  bar.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+  bar.addEventListener('drop', e => {
+    e.preventDefault(); dragEnterCount = 0; setOver(bar, false);
+    const fromId = parseInt(e.dataTransfer.getData('text/plain'));
+    moveTabToEnd(fromId);
+  });
+  btn.addEventListener('dragenter', () => setOver(btn, true));
+  btn.addEventListener('dragleave', () => setOver(btn, false));
+  btn.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+  btn.addEventListener('drop', e => {
+    e.preventDefault(); setOver(btn, false);
+    const fromId = parseInt(e.dataTransfer.getData('text/plain'));
+    moveTabToEnd(fromId);
+  });
+}
+
 // ═══════════════════════════════════════════════════════
 // KEYBOARD SHORTCUTS
 // ═══════════════════════════════════════════════════════
@@ -2875,6 +2974,8 @@ function setupKeyboardShortcuts() {
         if (id === 'sys-overlay') closeSystemStats();
         else if (id === 'finder-overlay') { clearTimeout(finderTimer); closeOverlay(id); }
         else if (id === 'newfolder-overlay' || id === 'newfile-overlay' || id === 'rename-overlay') closeOverlay(id);
+        else if (id === 'image-viewer') closeImageViewer();
+        else if (id === 'conflict-overlay') closeOverlay(id);
       });
     }
   });
