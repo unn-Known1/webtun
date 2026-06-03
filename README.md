@@ -29,8 +29,8 @@
 
 ### Core
 - **Real shell sessions** — node-pty backed, full bash/zsh support
-- **Multi-tab terminal** — side-by-side sessions like your desktop
-- **File explorer** — browse, upload, download, rename, delete files without leaving the browser
+- **Multi-tab terminal** — drag tabs to reorder, side-by-side sessions like your desktop
+- **File explorer** — browse, upload, download, rename, delete, cut/copy/paste with conflict resolution (replace, merge, keep both, skip)
 - **WebSocket + xterm.js** — responsive, low-latency typing
 
 ### Mobile-First UX
@@ -42,7 +42,10 @@
 - **Responsive** — optimized for phones (480px), tablets (1024px), and landscape orientation
 
 ### File Explorer
-- **Multi-select** — batch delete and download files
+- **Multi-select** — select all / deselect all, batch delete and download files
+- **Zip / Extract** — right-click any file or folder to zip; right-click `.zip` files to extract
+- **Image viewer** — click images (.png, .jpg, .gif, .svg, .webp, .bmp, .ico) to preview inline
+- **Cut, Copy, Paste** — with conflict resolution dialog (replace, merge folders, keep both, skip, cancel)
 - **Upload with progress** — per-file progress bar via XHR
 - **Breadcrumb navigation** — tappable directory segments for quick navigation
 - **Long-press context menu** — rename, delete, download, copy on touch devices
@@ -141,6 +144,15 @@ npm start
 | **Corporate restrictions** | HTTPS works where SSH is blocked |
 
 ---
+
+## Settings Panel
+
+Open settings (gear icon) — slides over the terminal without reflowing the page. Configure:
+- **Font size** (adjustable slider 10–28px)
+- **Scrollback** (buffer size 1000–100000)
+- **Cursor style** (block, underline, bar)
+- **Theme** (light/dark with 6 accent color presets)
+- **Tunnel manager** — create/stop Cloudflare tunnels
 
 ## Tunnel Manager
 
