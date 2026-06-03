@@ -145,15 +145,6 @@ npm start
 
 ---
 
-## Settings Panel
-
-Open settings (gear icon) — slides over the terminal without reflowing the page. Configure:
-- **Font size** (adjustable slider 10–28px)
-- **Scrollback** (buffer size 1000–100000)
-- **Cursor style** (block, underline, bar)
-- **Theme** (light/dark with 6 accent color presets)
-- **Tunnel manager** — create/stop Cloudflare tunnels
-
 ## Tunnel Manager
 
 1. Open **Settings** (gear icon)
