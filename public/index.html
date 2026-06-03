@@ -1816,10 +1816,7 @@ async function loadFiles(dir) {
 
   const data = await api(`/api/files?path=${encodeURIComponent(dir)}`);
   if (!data.files) {
-    if (dir !== homeDir) {
-      toast('Directory not accessible, returning to home', 'warning');
-      loadFiles(homeDir);
-    }
+    if (dir !== homeDir) loadFiles(homeDir);
     return;
   }
 
