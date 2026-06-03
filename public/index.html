@@ -134,7 +134,7 @@ svg { display: block; }
 #upload-progress.error #upload-progress-bar { background: var(--red); }
 #upload-progress-text { position: absolute; right: 8px; top: -14px; font-size: 10px; color: var(--fg2); white-space: nowrap; opacity: 0; transition: opacity 0.2s; pointer-events: none; line-height: 1; }
 #upload-progress.active #upload-progress-text { opacity: 1; }
-#main { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+#main { display: flex; flex: 1; overflow: hidden; min-height: 0; position: relative; }
 #sidebar { width: var(--sidebar-w); background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; transition: width 0.2s, transform 0.2s; }
 #sidebar.hidden { width: 0; }
 #content { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; min-height: 0; }
@@ -162,13 +162,16 @@ svg { display: block; }
    SETTINGS PANEL (right side)
    ═══════════════════════════════════════════════════════ */
 #settings-panel {
-  width: 0; overflow: hidden; flex-shrink: 0;
+  position: absolute; right: 0; top: 0; bottom: 0;
+  width: var(--settings-w); overflow: hidden;
   background: var(--bg2); border-left: 1px solid var(--border);
   display: flex; flex-direction: column;
-  transition: width 0.2s;
+  transform: translateX(100%);
+  transition: transform 0.2s;
+  z-index: 15;
 }
 #settings-panel.open {
-  width: var(--settings-w); overflow-y: auto;
+  transform: translateX(0); overflow-y: auto;
 }
 .settings-panel-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -177,6 +180,11 @@ svg { display: block; }
 }
 .settings-panel-header h2 { font-size: 14px; font-weight: 700; color: var(--fg); }
 .settings-panel-body { padding: 16px; overflow-y: auto; flex: 1; }
+.settings-panel-body select,
+.settings-panel-body input[type="number"],
+.settings-panel-body input[type="text"] {
+  font-size: 12px;
+}
 
 /* ═══════════════════════════════════════════════════════
    HEADER ELEMENTS
@@ -206,7 +214,8 @@ svg { display: block; }
 /* ═══════════════════════════════════════════════════════
    TABS
    ═══════════════════════════════════════════════════════ */
-.tab { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 12px; border-radius: var(--radius); background: var(--bg3); color: var(--fg2); cursor: pointer; flex-shrink: 0; font-size: 12px; transition: background 0.15s, color 0.15s; white-space: nowrap; user-select: none; min-width: 0; }
+.tab { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 12px; border-radius: var(--radius); background: var(--bg3); color: var(--fg2); cursor: pointer; flex-shrink: 0; font-size: 12px; transition: background 0.15s, color 0.15s, opacity 0.15s; white-space: nowrap; user-select: none; min-width: 0; }
+.tab.dragging { opacity: 0.4; }
 .tab .tab-title { overflow: hidden; text-overflow: ellipsis; color: var(--fg); }
 .tab:hover { background: var(--bg4); color: var(--fg); }
 .tab.active { background: var(--bg4); color: var(--accent); border-bottom: 2px solid var(--accent); }
@@ -428,6 +437,18 @@ svg { display: block; }
 @media (hover: none) and (pointer: coarse) { #drop-overlay { display: none !important; } }
 
 /* ═══════════════════════════════════════════════════════
+   IMAGE VIEWER
+   ═══════════════════════════════════════════════════════ */
+#image-viewer { background: rgba(0,0,0,0.85); }
+#image-viewer .modal { background: transparent; box-shadow: none; max-width: 95vw; max-height: 95vh; padding: 0; display: flex; flex-direction: column; align-items: center; }
+#image-viewer img { max-width: 100%; max-height: 85vh; border-radius: var(--radius); object-fit: contain; box-shadow: 0 8px 40px rgba(0,0,0,0.6); }
+#image-viewer .iv-header { display: flex; align-items: center; width: 100%; padding: 8px 0; gap: 12px; color: var(--fg2); }
+#image-viewer .iv-name { font-size: 13px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#image-viewer .iv-close { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius); cursor: pointer; }
+#image-viewer .iv-close:hover { background: rgba(255,255,255,0.1); color: var(--fg); }
+#image-viewer .iv-loading { color: var(--fg2); font-size: 14px; padding: 40px; }
+
+/* ═══════════════════════════════════════════════════════
    MOBILE RESPONSIVE
    ═══════════════════════════════════════════════════════ */
 /* ═══════════════════════════════════════════════════════
@@ -633,6 +654,7 @@ svg { display: block; }
       </div>
       <div id="select-actions" style="display:none;padding:8px 10px;border-top:1px solid var(--border);background:var(--bg2);gap:4px;flex-wrap:wrap">
         <span id="select-count" style="font-size:11px;color:var(--fg2);line-height:28px;flex:1"></span>
+        <button class="sidebar-action-btn" id="select-all-btn" onclick="selectAllFiles()">Select All</button>
         <button class="sidebar-action-btn" onclick="deleteSelected()">Delete</button>
         <button class="sidebar-action-btn" onclick="downloadSelected()">Download</button>
         <button class="sidebar-action-btn" onclick="clearSelection()">Cancel</button>
@@ -859,6 +881,8 @@ svg { display: block; }
   <div class="ctx-item" id="ctx-open">📂 Open</div>
   <div class="ctx-item" id="ctx-edit">✏️ Edit</div>
   <div class="ctx-item" id="ctx-download">⬇️ Download</div>
+  <div class="ctx-item" id="ctx-zip">📦 Zip</div>
+  <div class="ctx-item" id="ctx-extract">📂 Extract</div>
   <div class="ctx-item" id="ctx-copy-path">📋 Copy Path</div>
   <div class="ctx-sep"></div>
   <div class="ctx-item" id="ctx-copy">📋 Copy</div>
@@ -971,6 +995,20 @@ svg { display: block; }
       <button class="btn btn-ghost" onclick="closeOverlay('newfile-overlay')">Cancel</button>
       <button class="btn btn-primary" onclick="confirmNewFile()">Create</button>
     </div>
+  </div>
+</div>
+
+<!-- Image Viewer -->
+<div class="overlay" id="image-viewer">
+  <div class="modal">
+    <div class="iv-header">
+      <span class="iv-name" id="iv-name"></span>
+      <button class="iv-close" onclick="closeImageViewer()" aria-label="Close image viewer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div id="iv-loading" class="iv-loading">Loading…</div>
+    <img id="iv-img" style="display:none" alt="Image preview">
   </div>
 </div>
 
@@ -1210,6 +1248,7 @@ function newTab(title, sessionId, dir) {
   tabEl.setAttribute('role', 'tab');
   tabEl.setAttribute('aria-selected', 'false');
   tabEl.dataset.id = id;
+  tabEl.draggable = true;
   const tabIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   tabIcon.setAttribute('width', '12'); tabIcon.setAttribute('height', '12'); tabIcon.setAttribute('viewBox', '0 0 24 24');
   tabIcon.setAttribute('fill', 'none'); tabIcon.setAttribute('stroke', 'currentColor'); tabIcon.setAttribute('stroke-width', '2');
@@ -1230,6 +1269,35 @@ function newTab(title, sessionId, dir) {
   closeSvg.innerHTML = '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>';
   closeBtn.appendChild(closeSvg);
   tabEl.appendChild(closeBtn);
+  tabEl.addEventListener('dragstart', e => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(id));
+    tabEl.classList.add('dragging');
+  });
+  tabEl.addEventListener('dragover', e => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  });
+  tabEl.addEventListener('drop', e => {
+    e.preventDefault();
+    document.querySelectorAll('.tab-drop-placeholder').forEach(el => el.remove());
+    const fromId = parseInt(e.dataTransfer.getData('text/plain'));
+    if (isNaN(fromId) || fromId === id) return;
+    const fromIdx = tabs.findIndex(t => t.id === fromId);
+    const toIdx = tabs.findIndex(t => t.id === id);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const [moved] = tabs.splice(fromIdx, 1);
+    const targetIdx = tabs.findIndex(t => t.id === id);
+    tabs.splice(targetIdx, 0, moved);
+    const bar = document.getElementById('tab-bar');
+    const newTabBtn = document.getElementById('new-tab-btn');
+    if (moved.el) bar.insertBefore(moved.el, tabEl);
+    saveTabState();
+  });
+  tabEl.addEventListener('dragend', () => {
+    tabEl.classList.remove('dragging');
+    document.querySelectorAll('.tab-drop-placeholder').forEach(el => el.remove());
+  });
   tabEl.addEventListener('click', e => { if (!e.target.closest('.tab-close')) activateTab(id); });
   const startInlineRename = (span, tabRef) => {
     const input = document.createElement('input');
@@ -1827,6 +1895,7 @@ function makeFileItem(name, isDir, fullPath, size, icon) {
       return;
     }
     if (isDir) loadFiles(fullPath);
+    else if (isImageFile(fullPath)) openImageViewer(fullPath);
     else openFileEditor(fullPath);
   });
   return div;
@@ -1923,10 +1992,12 @@ function showCtxMenu(e, file) {
   ctxTarget = file;
   const menu = document.getElementById('ctx-menu');
   menu.style.display = 'block';
-  document.getElementById('ctx-open').style.display = file.isDir ? '' : 'none';
-  document.getElementById('ctx-edit').style.display = file.isDir ? 'none' : '';
+  document.getElementById('ctx-open').style.display = file.isDir || isImageFile(file.path) ? '' : 'none';
+  document.getElementById('ctx-edit').style.display = file.isDir ? 'none' : (isImageFile(file.path) ? 'none' : '');
   document.getElementById('ctx-open-term').style.display = file.isDir ? '' : 'none';
   document.getElementById('ctx-paste').style.display = fsClipboard ? '' : 'none';
+  document.getElementById('ctx-zip').style.display = '';
+  document.getElementById('ctx-extract').style.display = file.isDir ? 'none' : (file.ext === '.zip' ? '' : 'none');
   const mw = menu.offsetWidth, mh = menu.offsetHeight;
   let left = Math.min(e.clientX, window.innerWidth - mw - 8);
   let top = Math.min(e.clientY, window.innerHeight - mh - 8);
@@ -1949,9 +2020,11 @@ function showCtxMenu(e, file) {
 
 document.addEventListener('click', () => document.getElementById('ctx-menu').classList.remove('open'));
 
-document.getElementById('ctx-open').onclick = () => ctxTarget && loadFiles(ctxTarget.path);
+document.getElementById('ctx-open').onclick = () => { if (!ctxTarget) return; if (isImageFile(ctxTarget.path)) openImageViewer(ctxTarget.path); else loadFiles(ctxTarget.path); };
 document.getElementById('ctx-edit').onclick = () => ctxTarget && openFileEditor(ctxTarget.path);
 document.getElementById('ctx-download').onclick = () => ctxTarget && downloadFile(ctxTarget.path);
+document.getElementById('ctx-zip').onclick = () => ctxTarget && zipFile(ctxTarget.path, ctxTarget.name);
+document.getElementById('ctx-extract').onclick = () => ctxTarget && extractZip(ctxTarget.path, ctxTarget.name);
 document.getElementById('ctx-rename').onclick = () => ctxTarget && startRename(ctxTarget.path, ctxTarget.name);
 document.getElementById('ctx-copy-path').onclick = () => { if (!ctxTarget) return; navigator.clipboard.writeText(ctxTarget.path).then(() => toast('Path copied')).catch(() => toast('Copy failed', 'error')); };
 document.getElementById('ctx-delete').onclick = () => ctxTarget && deleteFile(ctxTarget);
@@ -1979,6 +2052,26 @@ async function pasteFile(destDir) {
     if (fsClipboard.action === 'cut') { fsClipboard = null; updatePasteUI(); }
     refreshFiles();
   } else toast(r.error, 'error');
+}
+
+async function zipFile(path, name) {
+  const r = await api('/api/files/zip', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path })
+  });
+  if (r.success) { toast('Zipped: ' + r.name, 'success'); refreshFiles(); }
+  else toast(r.error || 'Zip failed', 'error');
+}
+
+async function extractZip(path, name) {
+  const r = await api('/api/files/unzip', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path })
+  });
+  if (r.success) { toast('Extracted to: ' + r.dir, 'success'); refreshFiles(); }
+  else toast(r.error || 'Extract failed', 'error');
 }
 
 // ═══════════════════════════════════════════════════════
@@ -2063,6 +2156,31 @@ function toggleFileSelection(path, el) {
   const count = selectedFiles.length;
   document.getElementById('select-count').textContent = count + ' selected';
   document.getElementById('select-actions').style.display = count > 0 ? 'flex' : 'none';
+  document.getElementById('select-all-btn').textContent = count === document.querySelectorAll('.file-item').length ? 'Deselect All' : 'Select All';
+}
+
+function selectAllFiles() {
+  const items = document.querySelectorAll('.file-item');
+  const allSelected = selectedFiles.length === items.length;
+  if (allSelected) {
+    clearSelection();
+    return;
+  }
+  selectedFiles = [];
+  items.forEach(el => {
+    const path = el.dataset.path;
+    if (path) {
+      selectedFiles.push(path);
+      el.classList.add('selected');
+      el.setAttribute('aria-selected', 'true');
+      const check = el.querySelector('.file-select-check');
+      if (check) check.classList.add('on');
+    }
+  });
+  const count = selectedFiles.length;
+  document.getElementById('select-count').textContent = count + ' selected';
+  document.getElementById('select-actions').style.display = count > 0 ? 'flex' : 'none';
+  document.getElementById('select-all-btn').textContent = 'Deselect All';
 }
 
 function clearSelection() {
@@ -2074,6 +2192,7 @@ function clearSelection() {
   });
   document.getElementById('select-count').textContent = '0 selected';
   document.getElementById('select-actions').style.display = 'none';
+  document.getElementById('select-all-btn').textContent = 'Select All';
 }
 
 async function deleteSelected() {
@@ -2379,6 +2498,35 @@ function closeEditor() {
   editorOriginalContent = '';
   const tab = getActiveTab();
   setTimeout(() => { try { fitTerm(tab); tab?.term?.focus(); } catch {} }, 60);
+}
+
+const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.bmp', '.ico']);
+
+function isImageFile(path) {
+  const m = path.match(/\.([^.]+)$/);
+  return m ? IMAGE_EXTS.has('.' + m[1].toLowerCase()) : false;
+}
+
+function openImageViewer(path) {
+  const name = path.split(/[\\/]/).pop() || path;
+  document.getElementById('iv-name').textContent = name;
+  document.getElementById('iv-img').style.display = 'none';
+  document.getElementById('iv-loading').style.display = 'block';
+  openOverlay('image-viewer');
+  const img = document.getElementById('iv-img');
+  img.onload = () => {
+    document.getElementById('iv-loading').style.display = 'none';
+    img.style.display = '';
+  };
+  img.onerror = () => {
+    document.getElementById('iv-loading').textContent = 'Failed to load image';
+  };
+  img.src = `/api/files/image?path=${encodeURIComponent(path)}&token=${encodeURIComponent(authToken)}`;
+}
+
+function closeImageViewer() {
+  document.getElementById('iv-img').src = '';
+  closeOverlay('image-viewer');
 }
 
 function toggleMdPreview() {
@@ -3178,7 +3326,8 @@ function setupFileListTouch() {
     const file = {
       path: item.dataset.path,
       name: (item.querySelector('.file-name') || {}).textContent || '',
-      isDir: item.dataset.isDir === 'true' || !!item.querySelector('.file-dir')
+      isDir: item.dataset.isDir === 'true' || !!item.querySelector('.file-dir'),
+      ext: (() => { const m = item.dataset.path.match(/\.([^.]+)$/); return m ? '.' + m[1].toLowerCase() : ''; })()
     };
     if (!file.path) return;
 
