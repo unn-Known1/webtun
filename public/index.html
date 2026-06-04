@@ -637,6 +637,9 @@ svg { display: block; }
     <div id="sidebar">
       <div id="sidebar-header">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--fg2);flex-shrink:0"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        <button class="icon-btn" style="width:24px;height:24px" title="Back" onclick="navigateBack()" id="back-btn">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        </button>
         <input id="path-input" type="text" placeholder="Path…" onkeydown="if(event.key==='Enter')navigateTo(this.value)">
         <button class="icon-btn" style="width:24px;height:24px" title="Go up" onclick="navigateUp()">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
@@ -1055,6 +1058,8 @@ let tabCounter = 0;
 let currentPath = '';
 let currentParent = '';
 let homeDir = '';
+let navHistory = [];
+let skipHistoryPush = false;
 let ctxTarget = null;
 let renamePath = '';
 let editorPath = '';
@@ -1802,6 +1807,12 @@ async function loadFiles(dir) {
     const sb = document.getElementById('sidebar');
     if (sb) { sb.classList.remove('mobile-open'); }
   }
+
+  if (!skipHistoryPush && currentPath && currentPath !== dir) {
+    navHistory.push(currentPath);
+  }
+  skipHistoryPush = false;
+
   currentPath = dir;
   document.getElementById('path-input').value = dir;
   renderBreadcrumb(dir);
@@ -1895,6 +1906,7 @@ async function loadFiles(dir) {
   for (const [, orphan] of oldMap) orphan.remove();
 
   list.replaceChildren(fragment);
+  updateBackBtn();
 }
 
 function makeFileItem(name, isDir, fullPath, size, icon) {
@@ -1930,6 +1942,16 @@ function navigateUp() {
   if (currentParent && currentParent !== currentPath) {
     loadFiles(currentParent);
   }
+}
+function navigateBack() {
+  if (navHistory.length > 0) {
+    skipHistoryPush = true;
+    loadFiles(navHistory.pop());
+  }
+}
+function updateBackBtn() {
+  const btn = document.getElementById('back-btn');
+  if (btn) btn.style.opacity = navHistory.length > 0 ? '1' : '0.3';
 }
 
 let fileWatchTimer = null;
