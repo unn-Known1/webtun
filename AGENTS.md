@@ -1,6 +1,6 @@
 # WebTun — Agent Instructions
 
-**Repo**: `github.com/unn-Known1/webtun` — maintained by [Gaurang Patel](https://github.com/unn-Known1) (unn-Known1)
+**Repo**: `github.com/unn-Known1/webtun` — maintained by [Gaurang Patel](https://github.com/unn-Known1) (unn-Known1) — ptelgm.yt@gmail.com
 
 ## Entrypoints
 - **Server**: `node server.js` (Express + WebSocket + node-pty)
