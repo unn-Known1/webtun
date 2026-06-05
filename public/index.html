@@ -137,7 +137,7 @@ svg { display: block; }
 #main { display: flex; flex: 1; overflow: hidden; min-height: 0; position: relative; }
 #sidebar { position: relative; width: var(--sidebar-w); background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; transition: width 0.2s, transform 0.2s; }
 #sidebar.dragging { transition: none; }
-#sidebar.hidden { width: 0; }
+#sidebar.hidden { width: 0 !important; }
 #content { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; min-height: 0; }
 #tab-bar { display: flex; align-items: center; height: var(--tab-h); background: var(--bg2); border-bottom: 1px solid var(--border); overflow-x: auto; overflow-y: hidden; flex-shrink: 0; gap: 2px; padding: 0 4px; }
 #tab-bar.drag-over, #new-tab-btn.drag-over { background: var(--accent, #00c853); opacity: 0.15; }
@@ -544,7 +544,7 @@ svg { display: block; }
 /* Tablets */
 @media (min-width: 1024px) and (pointer: coarse) {
   #sidebar { width: 320px; }
-  #sidebar.hidden { width: 0; }
+#sidebar.hidden { width: 0 !important; }
   .file-item { padding: 8px 12px; font-size: 13px; }
 }
 
@@ -2977,6 +2977,12 @@ function toggleSidebar() {
     sb.classList.remove('hidden');
   } else {
     sidebarOpen = !sidebarOpen;
+    if (!sidebarOpen) {
+      sb._savedWidth = sb.style.width || '';
+      sb.style.width = '';
+    } else {
+      sb.style.width = sb._savedWidth || '';
+    }
     sb.classList.toggle('hidden', !sidebarOpen);
     sb.classList.remove('mobile-open');
     setTimeout(() => { const t = getActiveTab(); try { fitTerm(t); } catch {} }, 220);
