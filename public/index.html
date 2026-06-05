@@ -2248,9 +2248,10 @@ let selectedFiles = [];
 function toggleSelectMode() {
   selectMode = !selectMode;
   selectedFiles = [];
-  document.getElementById('select-actions').style.display = 'none';
+  document.getElementById('select-actions').style.display = selectMode ? 'flex' : 'none';
   document.getElementById('sidebar').dataset.selectMode = selectMode ? 'true' : '';
   document.getElementById('select-count').textContent = '0 selected';
+  document.querySelector('[onclick="toggleSelectMode()"]')?.classList.toggle('active', selectMode);
   refreshFiles();
 }
 
