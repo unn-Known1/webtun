@@ -34,7 +34,31 @@ jobs:
 
       - run: npm ci
 
-      - run: npx electron-builder --linux --publish never
+      - name: Pre-cache electron-builder binaries
+        run: |
+          CACHE_DIR="$HOME/.cache/electron-builder"
+          auth="-H Authorization: Bearer $GH_TOKEN"
+          for tool in "appimage-12.0.1/appimage-12.0.1.7z"; do
+            name="${tool##*/}"; dir="${tool%%/*}"
+            mkdir -p "$CACHE_DIR/${dir%-*}/$dir"
+            dest="$CACHE_DIR/${dir%-*}/$dir/$name"
+            [ -f "$dest" ] && continue
+            echo "Pre-caching $name..."
+            curl -#fL $auth -o "$dest" \
+              "https://github.com/electron-userland/electron-builder-binaries/releases/download/$tool" \
+              --retry 10 --retry-delay 15 || echo "Pre-cache failed, build will retry"
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Linux
+        run: |
+          for i in 1 2 3 4 5; do
+            npx electron-builder --linux --publish never && exit 0
+            echo "Attempt $i failed, waiting 15s..."
+            sleep 15
+          done
+          exit 1
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -58,14 +82,46 @@ jobs:
 
       - run: npm ci
 
-      - name: Build Windows (with retries)
+      - name: Pre-cache electron-builder binaries
+        shell: pwsh
         run: |
-          for i in 1 2 3; do
-            npx electron-builder --win --publish never && exit 0
-            echo "Attempt $i failed, waiting 10s..."
-            sleep 10
-          done
+          $CACHE_DIR = "$env:LOCALAPPDATA\electron-builder\Cache"
+          $auth = @{ Authorization = "Bearer $env:GH_TOKEN" }
+          $urls = @(
+            "nsis-3.0.4.1/nsis-3.0.4.1.7z",
+            "nsis-resources-3.4.1/nsis-resources-3.4.1.7z",
+            "winCodeSign-2.6.0/winCodeSign-2.6.0.7z"
+          )
+          foreach ($entry in $urls) {
+            $parts = $entry -split '/'
+            $name = $parts[-1]
+            $tag = $parts[-2]
+            $verDir = if ($tag -match '^nsis-resources') { 'nsis-resources' } elseif ($tag -match '^winCodeSign') { 'winCodeSign' } else { 'nsis' }
+            $version = $tag -replace '^[a-z-]+', ''
+            $destDir = "$CACHE_DIR\$verDir\$version"
+            $destFile = "$destDir\$name"
+            if (Test-Path $destFile) { continue }
+            New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+            Write-Host "Pre-caching $name..."
+            try {
+              Invoke-WebRequest -Uri "https://github.com/electron-userland/electron-builder-binaries/releases/download/$entry" -Headers $auth -OutFile $destFile -MaximumRetryCount 10 -RetryIntervalSec 15
+            } catch {
+              Write-Host "Pre-cache failed, build will retry"
+            }
+          }
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Windows
+        run: |
+          for ($i=1; $i -le 5; $i++) {
+            npx electron-builder --win --publish never
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            Write-Host "Attempt $i failed, waiting 15s..."
+            Start-Sleep -Seconds 15
+          }
           exit 1
+        shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
