@@ -591,6 +591,26 @@ app.get('/api/files/stat', checkPin, async (req, res) => {
   }
 });
 
+// ── Folder size ──────────────────────────────────────────────────────
+app.get('/api/files/size', checkPin, async (req, res) => {
+  try {
+    if (!req.query.path) {
+      return res.status(400).json({ error: 'path is required', usage: 'GET /api/files/size?path=<dir>' });
+    }
+    const p = realPath(req.query.path);
+    const st = await fsPromises.stat(p);
+    if (!st.isDirectory()) {
+      return res.json({ path: p, size: st.size, isDir: false });
+    }
+    const { execFileSync } = require('child_process');
+    const out = execFileSync('du', ['-sb', p], { encoding: 'utf8', stdio: 'pipe', timeout: 30000 });
+    const size = parseInt(out.split('\t')[0], 10);
+    res.json({ path: p, size, isDir: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Batch delete ──────────────────────────────────────────────────────
 app.post('/api/files/batch-delete', checkPin, async (req, res) => {
   try {

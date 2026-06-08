@@ -997,6 +997,7 @@ svg { display: block; }
   <div class="ctx-item" id="ctx-download">⬇️ Download</div>
   <div class="ctx-item" id="ctx-zip">📦 Zip</div>
   <div class="ctx-item" id="ctx-extract">📂 Extract</div>
+  <div class="ctx-item" id="ctx-folder-size">📏 Folder Size</div>
   <div class="ctx-item" id="ctx-copy-path">📋 Copy Path</div>
   <div class="ctx-sep"></div>
   <div class="ctx-item" id="ctx-copy">📋 Copy</div>
@@ -2178,6 +2179,7 @@ function showCtxMenu(e, file) {
   document.getElementById('ctx-open-term').style.display = file.isDir ? '' : 'none';
   document.getElementById('ctx-paste').style.display = fsClipboard ? '' : 'none';
   document.getElementById('ctx-zip').style.display = '';
+  document.getElementById('ctx-folder-size').style.display = file.isDir ? '' : 'none';
   document.getElementById('ctx-extract').style.display = file.isDir ? 'none' : (file.ext === '.zip' ? '' : 'none');
   const mw = menu.offsetWidth, mh = menu.offsetHeight;
   let left = Math.min(e.clientX, window.innerWidth - mw - 8);
@@ -2206,6 +2208,21 @@ document.getElementById('ctx-edit').onclick = () => ctxTarget && openFileEditor(
 document.getElementById('ctx-download').onclick = () => ctxTarget && downloadFile(ctxTarget.path);
 document.getElementById('ctx-zip').onclick = () => ctxTarget && zipFile(ctxTarget.path, ctxTarget.name);
 document.getElementById('ctx-extract').onclick = () => ctxTarget && extractZip(ctxTarget.path, ctxTarget.name);
+document.getElementById('ctx-folder-size').onclick = async () => {
+  if (!ctxTarget) return;
+  const toastEl = toast('Calculating folder size…', 'info');
+  try {
+    const res = await fetch(`/api/files/size?path=${encodeURIComponent(ctxTarget.path)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    toastEl.remove();
+    const size = formatSize(data.size);
+    toast(`📁 ${ctxTarget.name}: ${size}`, 'success', 5000);
+  } catch (e) {
+    toastEl.remove();
+    toast('Size calc failed: ' + e.message, 'error');
+  }
+};
 document.getElementById('ctx-rename').onclick = () => ctxTarget && startRename(ctxTarget.path, ctxTarget.name);
 document.getElementById('ctx-copy-path').onclick = () => { if (!ctxTarget) return; navigator.clipboard.writeText(ctxTarget.path).then(() => toast('Path copied')).catch(() => toast('Copy failed', 'error')); };
 document.getElementById('ctx-delete').onclick = () => ctxTarget && deleteFile(ctxTarget);
