@@ -41,7 +41,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: webtun-linux
-          path: dist/*.{AppImage,deb}
+          path: |
+            dist/*.AppImage
+            dist/*.deb
           if-no-files-found: error
 
   build-macos:
