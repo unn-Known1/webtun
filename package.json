@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "description": "Self-hosted web terminal with Cloudflare Tunnel, file explorer, and PWA support",
+  "author": {
+    "name": "Gaurang Patel",
+    "email": "ptelgm.yt@gmail.com"
+  },
   "main": "electron/main.js",
   "engines": {
     "node": ">=18"
