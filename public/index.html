@@ -138,7 +138,7 @@ svg { display: block; }
 #sidebar { position: relative; width: var(--sidebar-w); background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; transition: width 0.2s, transform 0.2s; }
 #sidebar.dragging { transition: none; }
 #sidebar.hidden { width: 0 !important; }
-#content { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; min-height: 0; }
+#content { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; min-height: 0; position: relative; }
 #tab-bar { display: flex; align-items: center; height: var(--tab-h); background: var(--bg2); border-bottom: 1px solid var(--border); overflow-x: auto; overflow-y: hidden; flex-shrink: 0; gap: 2px; padding: 0 4px; }
 #tab-bar.drag-over, #new-tab-btn.drag-over { background: var(--accent, #00c853); opacity: 0.15; }
 #tab-bar::-webkit-scrollbar { height: 3px; }
@@ -157,8 +157,51 @@ svg { display: block; }
 .term-tile-header .tth-close:hover { opacity: 1; background: var(--border); }
 #terminals.tiles-mode .xterm { flex: 1; }
 #mobile-keys { display: none; height: var(--mobilekey-h); background: var(--bg3); border-top: 1px solid var(--border); flex-shrink: 0; overflow-x: auto; overflow-y: hidden; white-space: nowrap; padding: 4px 6px; gap: 4px; padding-bottom: calc(4px + env(safe-area-inset-bottom)); min-height: calc(var(--mobilekey-h) + env(safe-area-inset-bottom)); }
-#editor-view { position: absolute; inset: 0; background: var(--bg); display: none; flex-direction: column; z-index: 5; }
+/* ═══════════════════════════════════════════════════════
+   EDITOR SPLIT VIEW
+   ═══════════════════════════════════════════════════════ */
+#editor-view { display: none; flex-direction: column; background: var(--bg); overflow: hidden; }
 #editor-view.open { display: flex; }
+
+/* Desktop: split layout */
+@media (min-width: 769px) {
+  #editor-view {
+    flex: 0 0 var(--editor-h, 300px);
+    min-height: 80px;
+    max-height: calc(100vh - var(--header-h) - var(--tab-h) - 80px);
+    border-top: 1px solid var(--border);
+  }
+  #content.editor-open #terminals {
+    flex: 1;
+    min-height: 80px;
+  }
+}
+
+/* Mobile: full screen overlay */
+@media (max-width: 768px) {
+  #editor-view.open {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+  }
+}
+
+/* Editor resize handle */
+#editor-resize-handle {
+  display: none;
+  height: 5px;
+  cursor: row-resize;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+  background: transparent;
+  transition: background 0.15s;
+}
+#editor-resize-handle:hover,
+#editor-resize-handle:active { background: var(--accent); opacity: 0.35; }
+#content.editor-open #editor-resize-handle {
+  display: block;
+}
 
 /* ═══════════════════════════════════════════════════════
    SETTINGS PANEL (right side)
@@ -734,22 +777,25 @@ svg { display: block; }
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
+      </div>
 
-        <!-- Editor view -->
-        <div id="editor-view">
-          <div id="editor-header">
-            <button class="icon-btn" onclick="closeEditor()" title="Close editor">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-            <span id="editor-filename">—</span>
-            <span id="editor-status"></span>
-            <button class="btn" id="md-preview-toggle" style="height:26px;padding:0 12px;font-size:12px;display:none" onclick="toggleMdPreview()">Preview</button>
-            <button class="btn btn-primary" style="height:26px;padding:0 12px;font-size:12px" onclick="saveFile()">Save</button>
-          </div>
-          <div id="editor-area">
-            <textarea id="editor-textarea" spellcheck="false"></textarea>
-            <div id="editor-preview"></div>
-          </div>
+      <!-- Editor resize handle -->
+      <div id="editor-resize-handle"></div>
+
+      <!-- Editor view -->
+      <div id="editor-view">
+        <div id="editor-header">
+          <button class="icon-btn" onclick="closeEditor()" title="Close editor">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+          <span id="editor-filename">—</span>
+          <span id="editor-status"></span>
+          <button class="btn" id="md-preview-toggle" style="height:26px;padding:0 12px;font-size:12px;display:none" onclick="toggleMdPreview()">Preview</button>
+          <button class="btn btn-primary" style="height:26px;padding:0 12px;font-size:12px" onclick="saveFile()">Save</button>
+        </div>
+        <div id="editor-area">
+          <textarea id="editor-textarea" spellcheck="false"></textarea>
+          <div id="editor-preview"></div>
         </div>
       </div>
 
@@ -1210,6 +1256,7 @@ async function unlockApp() {
   setupFileListTouch();
   restoreSidebarWidth();
   setupSidebarResize();
+  setupEditorResize();
   window.addEventListener('resize', updateSidebarNarrowClass);
   document.getElementById('tab-bar').setAttribute('role', 'tablist');
   document.getElementById('file-list-wrap').setAttribute('role', 'listbox');
@@ -2580,8 +2627,26 @@ async function openFileEditor(path) {
   }
   document.getElementById('editor-filename').textContent = fileName + '  ' + path;
   document.getElementById('editor-status').textContent = '';
+
+  // Restore saved editor height
+  try {
+    const savedH = localStorage.getItem('wt-editor-height');
+    if (savedH) {
+      document.documentElement.style.setProperty('--editor-h', savedH + 'px');
+    }
+  } catch {}
+
+  // Desktop: split layout; Mobile: overlay (handled by CSS)
+  if (window.innerWidth > 768) {
+    document.getElementById('content').classList.add('editor-open');
+  }
   document.getElementById('editor-view').classList.add('open');
   cm.focus();
+
+  // Fit all terminals to new available space
+  requestAnimationFrame(() => {
+    tabs.forEach(tab => { try { fitTerm(tab); } catch {} });
+  });
 }
 
 async function saveFile() {
@@ -2606,6 +2671,7 @@ function closeEditor() {
     if (!confirm('You have unsaved changes. Close anyway?')) return;
   }
   document.getElementById('editor-view').classList.remove('open');
+  document.getElementById('content').classList.remove('editor-open');
   document.getElementById('editor-preview').classList.remove('active');
   document.getElementById('md-preview-toggle').style.display = 'none';
   const cm = document.querySelector('.CodeMirror');
@@ -2613,8 +2679,10 @@ function closeEditor() {
   mdPreviewActive = false;
   editorPath = '';
   editorOriginalContent = '';
-  const tab = getActiveTab();
-  setTimeout(() => { try { fitTerm(tab); tab?.term?.focus(); } catch {} }, 60);
+  // Fit all terminals to full available space
+  requestAnimationFrame(() => {
+    tabs.forEach(tab => { try { fitTerm(tab); tab?.term?.focus(); } catch {} });
+  });
 }
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.bmp', '.ico']);
@@ -3057,6 +3125,61 @@ function restoreSidebarWidth() {
       }
     }
   } catch {}
+}
+
+// ═══════════════════════════════════════════════════════
+// EDITOR RESIZE
+// ═══════════════════════════════════════════════════════
+function setupEditorResize() {
+  const handle = document.getElementById('editor-resize-handle');
+  if (!handle) return;
+  let isResizing = false;
+  let startY = 0;
+  let startEditorH = 0;
+  function startResize(e) {
+    if (window.innerWidth <= 768) return;
+    e.preventDefault();
+    isResizing = true;
+    startY = e.clientY || (e.touches && e.touches[0].clientY);
+    startEditorH = parseInt(document.documentElement.style.getPropertyValue('--editor-h')) || 300;
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', doResize);
+    document.addEventListener('mouseup', stopResize);
+    document.addEventListener('touchmove', doResize, { passive: false });
+    document.addEventListener('touchend', stopResize);
+  }
+  function doResize(e) {
+    if (!isResizing) return;
+    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+    if (!clientY) return;
+    const content = document.getElementById('content');
+    if (!content) return;
+    const contentRect = content.getBoundingClientRect();
+    const contentBottom = contentRect.bottom;
+    const availableH = contentBottom - contentRect.top;
+    const editorH = Math.max(80, Math.min(availableH - 160, startEditorH + (startY - clientY)));
+    document.documentElement.style.setProperty('--editor-h', editorH + 'px');
+    requestAnimationFrame(() => {
+      tabs.forEach(tab => { try { fitTerm(tab); } catch {} });
+    });
+  }
+  function stopResize() {
+    if (!isResizing) return;
+    isResizing = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    document.removeEventListener('mousemove', doResize);
+    document.removeEventListener('mouseup', stopResize);
+    document.removeEventListener('touchmove', doResize);
+    document.removeEventListener('touchend', stopResize);
+    try {
+      const h = document.documentElement.style.getPropertyValue('--editor-h');
+      if (h) localStorage.setItem('wt-editor-height', h.replace('px', ''));
+    } catch {}
+  }
+  handle.addEventListener('mousedown', startResize);
+  handle.addEventListener('touchstart', startResize, { passive: false });
 }
 
 // ═══════════════════════════════════════════════════════
