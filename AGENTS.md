@@ -17,6 +17,8 @@
 | Electron dev | `npm run electron` |
 | Build Electron (Linux) | `npm run dist:linux` |
 | Build Electron (Windows) | `npm run dist:win` |
+| Build Electron (macOS) | `npm run dist:mac` |
+| Build all platforms | `npm run dist` |
 
 No test, lint, or typecheck commands exist. Verify changes via `npm start`.
 
@@ -28,8 +30,8 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
 ## Key Details
 - **`postinstall.js`** auto-downloads `cloudflared` to `/usr/local/bin/cloudflared` if missing.
 - **Tunnel cleanup** after server restart: `kill $(pgrep -f 'cloudflared tunnel')`
-- **Build output**: `dist/` (AppImage, deb, exe), `release/`. Git-ignored.
-- **CI**: GitHub Actions builds Electron packages on `v*` tag push (Ubuntu + Windows). `npm ci` then `npx electron-builder --{linux,win} --publish never`.
+- **Build output**: `dist/` (AppImage, deb, dmg, exe, zip), `release/`. Git-ignored.
+- **CI**: GitHub Actions builds Electron packages on `v*` tag push (Linux, macOS, Windows). All artifacts are uploaded to the release.
 - **Systemd**: `setup.sh` optionally creates `/etc/systemd/system/webtun.service`.
 - **CSP** in `server.js:33` allows CDN scripts from `cdn.jsdelivr.net`.
 - **File API** workspace root: `WORKSPACE_ROOT` env var, falls back to `os.homedir()`.
