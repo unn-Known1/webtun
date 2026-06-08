@@ -46,9 +46,9 @@ function download() {
 }
 
 if (!download()) {
-  console.log('  cloudflared install failed (download error)');
+  console.log('  cloudflared install failed (download error) — skipping');
   cleanup();
-  process.exit(1);
+  process.exit(0);
 }
 
 // Validate downloaded file is not HTML (e.g. 404 page)
@@ -59,14 +59,14 @@ try {
   fs.closeSync(fd);
   const head = buf.slice(0, bytesRead).toString('utf8').trim();
   if (/^<!doctype\s+html/i.test(head) || /^<html/i.test(head)) {
-    console.log('  cloudflared install failed (downloaded file is not a binary)');
+    console.log('  cloudflared install failed (downloaded file is not a binary) — skipping');
     cleanup();
-    process.exit(1);
+    process.exit(0);
   }
 } catch (e) {
   console.log('  cloudflared install failed (cannot validate download): ' + e.message);
   cleanup();
-  process.exit(1);
+  process.exit(0);
 }
 
 function installBin(src, dest) {
@@ -101,7 +101,7 @@ try {
   console.log('  cloudflared installed');
   cleanup();
 } catch (e) {
-  console.log('  cloudflared install failed: ' + e.message);
+  console.log('  cloudflared install failed: ' + e.message + ' — skipping');
   cleanup();
-  process.exit(1);
+  process.exit(0);
 }
