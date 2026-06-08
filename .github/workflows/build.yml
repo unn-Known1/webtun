@@ -34,6 +34,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Fix app-builder permissions
+        run: chmod +x node_modules/app-builder-bin/linux/x64/app-builder
+
       - name: Pre-cache electron-builder binaries
         run: |
           CACHE_DIR="$HOME/.cache/electron-builder"
