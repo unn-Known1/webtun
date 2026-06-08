@@ -160,20 +160,59 @@ svg { display: block; }
 /* ═══════════════════════════════════════════════════════
    EDITOR SPLIT VIEW
    ═══════════════════════════════════════════════════════ */
+/* Wrapper for the split */
+#editor-split-area {
+  display: none;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+#editor-split-area > #terminals {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
 #editor-view { display: none; flex-direction: column; background: var(--bg); overflow: hidden; }
 #editor-view.open { display: flex; }
 
 /* Desktop: split layout */
 @media (min-width: 769px) {
-  #editor-view {
-    flex: 0 0 var(--editor-h, 300px);
-    min-height: 80px;
-    max-height: calc(100vh - var(--header-h) - var(--tab-h) - 80px);
-    border-top: 1px solid var(--border);
+  #content.editor-open #editor-split-area {
+    display: flex;
   }
-  #content.editor-open #terminals {
+  #editor-split-area > #terminals {
     flex: 1;
     min-height: 80px;
+  }
+  #editor-split-area > #editor-view {
+    flex: 0 0 var(--editor-size, 300px);
+    min-height: 80px;
+    max-height: calc(100vh - var(--header-h) - var(--tab-h) - 80px - 5px);
+    border-top: 1px solid var(--border);
+  }
+  /* Horizontal split */
+  #editor-split-area.horizontal {
+    flex-direction: row;
+  }
+  #editor-split-area.horizontal > #terminals {
+    min-width: 80px;
+  }
+  #editor-split-area.horizontal > #editor-view {
+    flex: 0 0 var(--editor-size, 400px);
+    min-width: 80px;
+    max-width: calc(100vw - var(--sidebar-w) - 160px);
+    border-top: none;
+    border-left: 1px solid var(--border);
+  }
+  #editor-split-area.horizontal > #editor-resize-handle {
+    width: 5px;
+    height: auto;
+    cursor: col-resize;
+  }
+  #editor-split-toggle.horizontal svg {
+    transform: rotate(90deg);
   }
 }
 
@@ -186,7 +225,7 @@ svg { display: block; }
   }
 }
 
-/* Editor resize handle */
+/* Editor resize handle — vertical by default */
 #editor-resize-handle {
   display: none;
   height: 5px;
@@ -760,42 +799,47 @@ svg { display: block; }
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
       </div>
-      <div id="terminals">
-        <div id="search-bar">
-          <input id="search-input" type="text" placeholder="Search…" oninput="doSearch()" onkeydown="searchKeydown(event)">
-          <span id="search-results"></span>
-          <button class="search-btn" title="Prev (Shift+Enter)" onclick="searchPrev()">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
-          </button>
-          <button class="search-btn" title="Next (Enter)" onclick="searchNext()">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-          </button>
-          <button class="search-btn" id="search-case-btn" title="Match Case" onclick="toggleSearchCase()">
-            Aa
-          </button>
-          <button class="search-btn" title="Close (Esc)" onclick="closeSearch()">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
+      <div id="editor-split-area">
+        <div id="terminals">
+          <div id="search-bar">
+            <input id="search-input" type="text" placeholder="Search…" oninput="doSearch()" onkeydown="searchKeydown(event)">
+            <span id="search-results"></span>
+            <button class="search-btn" title="Prev (Shift+Enter)" onclick="searchPrev()">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>
+            </button>
+            <button class="search-btn" title="Next (Enter)" onclick="searchNext()">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <button class="search-btn" id="search-case-btn" title="Match Case" onclick="toggleSearchCase()">
+              Aa
+            </button>
+            <button class="search-btn" title="Close (Esc)" onclick="closeSearch()">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
         </div>
-      </div>
 
-      <!-- Editor resize handle -->
-      <div id="editor-resize-handle"></div>
+        <!-- Editor resize handle -->
+        <div id="editor-resize-handle"></div>
 
-      <!-- Editor view -->
-      <div id="editor-view">
-        <div id="editor-header">
-          <button class="icon-btn" onclick="closeEditor()" title="Close editor">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-          <span id="editor-filename">—</span>
-          <span id="editor-status"></span>
-          <button class="btn" id="md-preview-toggle" style="height:26px;padding:0 12px;font-size:12px;display:none" onclick="toggleMdPreview()">Preview</button>
-          <button class="btn btn-primary" style="height:26px;padding:0 12px;font-size:12px" onclick="saveFile()">Save</button>
-        </div>
-        <div id="editor-area">
-          <textarea id="editor-textarea" spellcheck="false"></textarea>
-          <div id="editor-preview"></div>
+        <!-- Editor view -->
+        <div id="editor-view">
+          <div id="editor-header">
+            <button class="icon-btn" onclick="closeEditor()" title="Close editor">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <span id="editor-filename">—</span>
+            <span id="editor-status"></span>
+            <button class="btn" id="md-preview-toggle" style="height:26px;padding:0 12px;font-size:12px;display:none" onclick="toggleMdPreview()">Preview</button>
+            <button class="icon-btn" id="editor-split-toggle" onclick="toggleEditorSplit()" title="Toggle split orientation">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
+            </button>
+            <button class="btn btn-primary" style="height:26px;padding:0 12px;font-size:12px" onclick="saveFile()">Save</button>
+          </div>
+          <div id="editor-area">
+            <textarea id="editor-textarea" spellcheck="false"></textarea>
+            <div id="editor-preview"></div>
+          </div>
         </div>
       </div>
 
@@ -2628,17 +2672,34 @@ async function openFileEditor(path) {
   document.getElementById('editor-filename').textContent = fileName + '  ' + path;
   document.getElementById('editor-status').textContent = '';
 
-  // Restore saved editor height
-  try {
-    const savedH = localStorage.getItem('wt-editor-height');
-    if (savedH) {
-      document.documentElement.style.setProperty('--editor-h', savedH + 'px');
-    }
-  } catch {}
-
   // Desktop: split layout; Mobile: overlay (handled by CSS)
   if (window.innerWidth > 768) {
     document.getElementById('content').classList.add('editor-open');
+
+    // Restore split orientation
+    const splitArea = document.getElementById('editor-split-area');
+    const orientToggle = document.getElementById('editor-split-toggle');
+    try {
+      const orient = localStorage.getItem('wt-editor-split-orientation');
+      const isHoriz = orient === 'horizontal';
+      if (splitArea) splitArea.classList.toggle('horizontal', isHoriz);
+      if (orientToggle) {
+        orientToggle.classList.toggle('horizontal', isHoriz);
+        orientToggle.title = isHoriz ? 'Switch to vertical split' : 'Switch to horizontal split';
+      }
+      const handle = document.getElementById('editor-resize-handle');
+      if (handle) handle.style.cursor = isHoriz ? 'col-resize' : 'row-resize';
+    } catch {}
+
+    // Restore saved editor size for current orientation
+    try {
+      const isHoriz = splitArea && splitArea.classList.contains('horizontal');
+      const key = isHoriz ? 'wt-editor-width' : 'wt-editor-height';
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        document.documentElement.style.setProperty('--editor-size', saved + 'px');
+      }
+    } catch {}
   }
   document.getElementById('editor-view').classList.add('open');
   cm.focus();
@@ -3134,36 +3195,49 @@ function setupEditorResize() {
   const handle = document.getElementById('editor-resize-handle');
   if (!handle) return;
   let isResizing = false;
-  let startY = 0;
-  let startEditorH = 0;
+  let startPos = 0;
+  let startSize = 0;
+
+  function isHorizontal() {
+    const area = document.getElementById('editor-split-area');
+    return area && area.classList.contains('horizontal');
+  }
+
   function startResize(e) {
     if (window.innerWidth <= 768) return;
     e.preventDefault();
     isResizing = true;
-    startY = e.clientY || (e.touches && e.touches[0].clientY);
-    startEditorH = parseInt(document.documentElement.style.getPropertyValue('--editor-h')) || 300;
-    document.body.style.cursor = 'row-resize';
+    const horiz = isHorizontal();
+    startPos = horiz
+      ? (e.clientX || (e.touches && e.touches[0].clientX))
+      : (e.clientY || (e.touches && e.touches[0].clientY));
+    startSize = parseInt(document.documentElement.style.getPropertyValue('--editor-size')) || (horiz ? 400 : 300);
+    document.body.style.cursor = horiz ? 'col-resize' : 'row-resize';
     document.body.style.userSelect = 'none';
     document.addEventListener('mousemove', doResize);
     document.addEventListener('mouseup', stopResize);
     document.addEventListener('touchmove', doResize, { passive: false });
     document.addEventListener('touchend', stopResize);
   }
+
   function doResize(e) {
     if (!isResizing) return;
-    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
-    if (!clientY) return;
-    const content = document.getElementById('content');
-    if (!content) return;
-    const contentRect = content.getBoundingClientRect();
-    const contentBottom = contentRect.bottom;
-    const availableH = contentBottom - contentRect.top;
-    const editorH = Math.max(80, Math.min(availableH - 160, startEditorH + (startY - clientY)));
-    document.documentElement.style.setProperty('--editor-h', editorH + 'px');
+    const horiz = isHorizontal();
+    const clientPos = horiz
+      ? (e.clientX || (e.touches && e.touches[0].clientX))
+      : (e.clientY || (e.touches && e.touches[0].clientY));
+    if (!clientPos) return;
+    const splitArea = document.getElementById('editor-split-area');
+    if (!splitArea) return;
+    const rect = splitArea.getBoundingClientRect();
+    const available = horiz ? rect.width : rect.height;
+    const newSize = Math.max(80, Math.min(available - 160, startSize + (startPos - clientPos)));
+    document.documentElement.style.setProperty('--editor-size', newSize + 'px');
     requestAnimationFrame(() => {
       tabs.forEach(tab => { try { fitTerm(tab); } catch {} });
     });
   }
+
   function stopResize() {
     if (!isResizing) return;
     isResizing = false;
@@ -3174,12 +3248,52 @@ function setupEditorResize() {
     document.removeEventListener('touchmove', doResize);
     document.removeEventListener('touchend', stopResize);
     try {
-      const h = document.documentElement.style.getPropertyValue('--editor-h');
-      if (h) localStorage.setItem('wt-editor-height', h.replace('px', ''));
+      const v = document.documentElement.style.getPropertyValue('--editor-size');
+      if (v) {
+        const key = isHorizontal() ? 'wt-editor-width' : 'wt-editor-height';
+        localStorage.setItem(key, v.replace('px', ''));
+      }
     } catch {}
   }
+
   handle.addEventListener('mousedown', startResize);
   handle.addEventListener('touchstart', startResize, { passive: false });
+}
+
+function toggleEditorSplit() {
+  const area = document.getElementById('editor-split-area');
+  if (!area) return;
+  const wasHorizontal = area.classList.contains('horizontal');
+  area.classList.toggle('horizontal');
+  const isHoriz = !wasHorizontal;
+
+  // Update toggle button icon
+  const btn = document.getElementById('editor-split-toggle');
+  if (btn) {
+    btn.classList.toggle('horizontal', isHoriz);
+    btn.title = isHoriz ? 'Switch to vertical split' : 'Switch to horizontal split';
+  }
+
+  // Update cursor on handle
+  const handle = document.getElementById('editor-resize-handle');
+  if (handle) handle.style.cursor = isHoriz ? 'col-resize' : 'row-resize';
+
+  // Restore saved size for this orientation
+  try {
+    const key = isHoriz ? 'wt-editor-width' : 'wt-editor-height';
+    const saved = localStorage.getItem(key);
+    if (saved) {
+      document.documentElement.style.setProperty('--editor-size', saved + 'px');
+    }
+  } catch {}
+
+  // Re-fit all terminals
+  requestAnimationFrame(() => {
+    tabs.forEach(tab => { try { fitTerm(tab); } catch {} });
+  });
+
+  // Persist orientation
+  try { localStorage.setItem('wt-editor-split-orientation', isHoriz ? 'horizontal' : 'vertical'); } catch {}
 }
 
 // ═══════════════════════════════════════════════════════
