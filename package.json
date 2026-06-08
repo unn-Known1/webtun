@@ -42,6 +42,14 @@
       ],
       "icon": "public/icon-512.png"
     },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "public/icon-512.png",
+      "category": "Utility"
+    },
     "linux": {
       "target": [
         "AppImage",

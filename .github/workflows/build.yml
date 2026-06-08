@@ -44,6 +44,28 @@ jobs:
           path: dist/*.{AppImage,deb}
           if-no-files-found: error
 
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx electron-builder --mac --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: webtun-macos
+          path: dist/*.{dmg,zip}
+          if-no-files-found: error
+
   build-windows:
     runs-on: windows-latest
     steps:
@@ -67,7 +89,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    needs: [build-linux]
+    needs: [build-linux, build-macos]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
