@@ -10,69 +10,6 @@ permissions:
   contents: write
 
 jobs:
-  build-linux:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: npm
-
-      - name: Install system deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libx11-dev libxext-dev libxrender-dev \
-            libxkbfile-dev libxrandr-dev libxfixes-dev libxi-dev \
-            libxtst-dev libxcb1-dev libxcb-keysyms1-dev libxcb-image0-dev \
-            libxcb-shm0-dev libxcb-icccm4-dev libxcb-randr0-dev \
-            libxcb-shape0-dev libxcb-xfixes0-dev libxcb-xkb-dev \
-            libxkbcommon-dev libxkbcommon-x11-dev \
-            libsecret-1-dev libgdk-pixbuf2.0-dev librsvg2-dev \
-            --no-install-recommends
-
-      - run: npm ci
-
-      - name: Fix app-builder permissions
-        run: chmod +x node_modules/app-builder-bin/linux/x64/app-builder
-
-      - name: Pre-cache electron-builder binaries
-        run: |
-          CACHE_DIR="$HOME/.cache/electron-builder"
-          auth="-H Authorization: Bearer $GH_TOKEN"
-          for tool in "appimage-12.0.1/appimage-12.0.1.7z"; do
-            name="${tool##*/}"; dir="${tool%%/*}"
-            mkdir -p "$CACHE_DIR/${dir%-*}/$dir"
-            dest="$CACHE_DIR/${dir%-*}/$dir/$name"
-            [ -f "$dest" ] && continue
-            echo "Pre-caching $name..."
-            curl -#fL $auth -o "$dest" \
-              "https://github.com/electron-userland/electron-builder-binaries/releases/download/$tool" \
-              --retry 10 --retry-delay 15 || echo "Pre-cache failed, build will retry"
-          done
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build Linux
-        run: |
-          for i in 1 2 3 4 5; do
-            npx electron-builder --linux --publish never && exit 0
-            echo "Attempt $i failed, waiting 15s..."
-            sleep 15
-          done
-          exit 1
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: actions/upload-artifact@v5
-        with:
-          name: webtun-linux
-          path: |
-            dist/*.AppImage
-            dist/*.deb
-          if-no-files-found: error
-
   build-windows:
     runs-on: windows-latest
     steps:
@@ -135,7 +72,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    needs: [build-linux, build-windows]
+    needs: [build-windows]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
