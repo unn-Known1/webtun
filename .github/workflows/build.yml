@@ -58,7 +58,14 @@ jobs:
 
       - run: npm ci
 
-      - run: npx electron-builder --win --publish never
+      - name: Build Windows (with retries)
+        run: |
+          for i in 1 2 3; do
+            npx electron-builder --win --publish never && exit 0
+            echo "Attempt $i failed, waiting 10s..."
+            sleep 10
+          done
+          exit 1
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
