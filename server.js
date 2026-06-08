@@ -969,6 +969,423 @@ app.delete('/api/files/trash/all', checkPin, async (req, res) => {
   }
 });
 
+// ── Git integration ──────────────────────────────────────────────────
+function gitExec(args, cwd) {
+  const { execFileSync } = require('child_process');
+  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe', maxBuffer: 10 * 1024 * 1024 }).trim();
+}
+
+function requireGitRepo(path) {
+  try { gitExec(['rev-parse', '--show-toplevel'], path); return true; } catch { return false; }
+}
+
+app.get('/api/git/status', checkPin, async (req, res) => {
+  try {
+    if (!req.query.path) return res.status(400).json({ error: 'path is required' });
+    const p = realPath(req.query.path);
+    if (!requireGitRepo(p)) return res.status(400).json({ error: 'not a git repository' });
+    const porcelain = gitExec(['status', '--porcelain', '-b'], p);
+    const lines = porcelain.split('\n').filter(Boolean);
+    const branch = lines[0].replace(/^## /, '');
+    const files = lines.slice(1).map(l => ({ xy: l.slice(0, 2), path: l.slice(3) }));
+    res.json({ branch, files, repoPath: p });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/git/diff', checkPin, async (req, res) => {
+  try {
+    if (!req.body.path) return res.status(400).json({ error: 'path is required' });
+    const p = realPath(req.body.path);
+    if (!requireGitRepo(p)) return res.status(400).json({ error: 'not a git repository' });
+    const args = ['diff', '--no-color', '-U5'];
+    if (req.body.file) args.push('--', req.body.file);
+    const diff = gitExec(args, p);
+    res.json({ diff, repoPath: p });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/git/add', checkPin, async (req, res) => {
+  try {
+    if (!req.body.path) return res.status(400).json({ error: 'path is required' });
+    const p = realPath(req.body.path);
+    if (!requireGitRepo(p)) return res.status(400).json({ error: 'not a git repository' });
+    const files = Array.isArray(req.body.files) ? req.body.files : ['.'];
+    gitExec(['add', '--'].concat(files), p);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/git/commit', checkPin, async (req, res) => {
+  try {
+    if (!req.body.path || !req.body.message) return res.status(400).json({ error: 'path and message are required' });
+    const p = realPath(req.body.path);
+    if (!requireGitRepo(p)) return res.status(400).json({ error: 'not a git repository' });
+    gitExec(['commit', '-m', req.body.message], p);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/git/log', checkPin, async (req, res) => {
+  try {
+    if (!req.query.path) return res.status(400).json({ error: 'path is required' });
+    const p = realPath(req.query.path);
+    if (!requireGitRepo(p)) return res.status(400).json({ error: 'not a git repository' });
+    const maxCount = Math.min(parseInt(req.query.maxCount) || 50, 200);
+    const format = '--format=%H|%an|%ai|%s';
+    const raw = gitExec(['log', `--max-count=${maxCount}`, format], p);
+    const commits = raw.split('\n').filter(Boolean).map(line => {
+      const [hash, author, date, ...msgParts] = line.split('|');
+      return { hash: hash.slice(0, 7), fullHash: hash, author, date, message: msgParts.join('|') };
+    });
+    res.json({ commits, count: commits.length, repoPath: p });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/git/push', checkPin, async (req, res) => {
+  try {
+    if (!req.body.path) return res.status(400).json({ error: 'path is required' });
+    const p = realPath(req.body.path);
+    if (!requireGitRepo(p)) return res.status(400).json({ error: 'not a git repository' });
+    const remote = req.body.remote || 'origin';
+    const branch = req.body.branch || '';
+    const args = ['push', remote];
+    if (branch) args.push(branch);
+    const out = gitExec(args, p);
+    res.json({ success: true, output: out });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/git/pull', checkPin, async (req, res) => {
+  try {
+    if (!req.body.path) return res.status(400).json({ error: 'path is required' });
+    const p = realPath(req.body.path);
+    if (!requireGitRepo(p)) return res.status(400).json({ error: 'not a git repository' });
+    const remote = req.body.remote || 'origin';
+    const branch = req.body.branch || '';
+    const args = ['pull', remote];
+    if (branch) args.push(branch);
+    const out = gitExec(args, p);
+    res.json({ success: true, output: out });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/git/branches', checkPin, async (req, res) => {
+  try {
+    if (!req.query.path) return res.status(400).json({ error: 'path is required' });
+    const p = realPath(req.query.path);
+    if (!requireGitRepo(p)) return res.status(400).json({ error: 'not a git repository' });
+    const raw = gitExec(['branch', '--all'], p);
+    const branches = raw.split('\n').filter(Boolean).map(b => ({
+      name: b.replace(/^\*?\s*/, '').trim(),
+      current: b.startsWith('* ')
+    }));
+    res.json({ branches, repoPath: p });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/git/branch', checkPin, async (req, res) => {
+  try {
+    if (!req.body.path || !req.body.name) return res.status(400).json({ error: 'path and name are required' });
+    const p = realPath(req.body.path);
+    if (!requireGitRepo(p)) return res.status(400).json({ error: 'not a git repository' });
+    if (req.body.switch) {
+      gitExec(['checkout', '-b', req.body.name], p);
+    } else {
+      gitExec(['branch', req.body.name], p);
+    }
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/git/remote', checkPin, async (req, res) => {
+  try {
+    if (!req.query.path) return res.status(400).json({ error: 'path is required' });
+    const p = realPath(req.query.path);
+    if (!requireGitRepo(p)) return res.status(400).json({ error: 'not a git repository' });
+    const raw = gitExec(['remote', '-v'], p);
+    const remotes = raw.split('\n').filter(Boolean).map(line => {
+      const [name, url, type] = line.split(/\s+/);
+      return { name, url, type: type ? type.replace(/[()]/g, '') : '' };
+    });
+    res.json({ remotes, repoPath: p });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── File preview (Markdown → HTML, code detection) ────────────────────
+const MARKDOWN_EXT = new Set(['.md', '.markdown', '.mdown']);
+const CODE_EXT = new Set([
+  '.js', '.ts', '.jsx', '.tsx', '.py', '.rb', '.go', '.rs', '.java', '.c', '.cpp', '.h', '.hpp',
+  '.css', '.scss', '.less', '.html', '.htm', '.xml', '.json', '.yaml', '.yml', '.toml', '.ini',
+  '.sh', '.bash', '.zsh', '.fish', '.ps1', '.bat', '.cmd',
+  '.sql', '.r', '.m', '.swift', '.kt', '.scala', '.ex', '.exs', '.erl', '.hs',
+  '.php', '.pl', '.pm', '.lua', '.vue', '.svelte', '.astro', '.mdx',
+  '.graphql', '.gql', '.proto', '.dockerfile', '.makefile',
+]);
+
+function simpleMarkdownToHtml(md) {
+  let html = '';
+  const lines = md.split('\n');
+  let inCodeBlock = false, codeBuf = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.startsWith('```')) {
+      if (inCodeBlock) {
+        html += '<pre><code>' + escapeHtml(codeBuf.join('\n')) + '</code></pre>\n';
+        codeBuf = [];
+      }
+      inCodeBlock = !inCodeBlock;
+      continue;
+    }
+    if (inCodeBlock) { codeBuf.push(line); continue; }
+    if (line.startsWith('# ')) { html += '<h1>' + escapeHtml(line.slice(2)) + '</h1>\n'; continue; }
+    if (line.startsWith('## ')) { html += '<h2>' + escapeHtml(line.slice(3)) + '</h2>\n'; continue; }
+    if (line.startsWith('### ')) { html += '<h3>' + escapeHtml(line.slice(4)) + '</h3>\n'; continue; }
+    if (line.startsWith('- ') || line.startsWith('* ')) { html += '<li>' + escapeHtml(line.slice(2)) + '</li>\n'; continue; }
+    if (line.match(/^\d+\.\s/)) { html += '<li>' + escapeHtml(line.replace(/^\d+\.\s/, '')) + '</li>\n'; continue; }
+    if (line.trim() === '') { html += '<br>\n'; continue; }
+    html += '<p>' + escapeHtml(line) + '</p>\n';
+  }
+  if (codeBuf.length) html += '<pre><code>' + escapeHtml(codeBuf.join('\n')) + '</code></pre>\n';
+  return html;
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function detectLanguage(ext) {
+  const map = {
+    '.js': 'javascript', '.ts': 'typescript', '.jsx': 'jsx', '.tsx': 'tsx',
+    '.py': 'python', '.rb': 'ruby', '.go': 'go', '.rs': 'rust', '.java': 'java',
+    '.c': 'c', '.cpp': 'cpp', '.h': 'c', '.hpp': 'cpp',
+    '.css': 'css', '.scss': 'scss', '.html': 'html', '.json': 'json',
+    '.yaml': 'yaml', '.yml': 'yaml', '.toml': 'toml', '.xml': 'xml',
+    '.sh': 'bash', '.bash': 'bash', '.zsh': 'bash', '.ps1': 'powershell',
+    '.sql': 'sql', '.php': 'php', '.lua': 'lua', '.md': 'markdown',
+    '.vue': 'vue', '.svelte': 'svelte', '.graphql': 'graphql',
+  };
+  return map[ext] || null;
+}
+
+app.get('/api/files/preview', checkPin, async (req, res) => {
+  try {
+    if (!req.query.path) return res.status(400).json({ error: 'path is required' });
+    const p = realPath(req.query.path);
+    const ext = path.extname(p).toLowerCase();
+    const st = await fsPromises.stat(p);
+    if (st.size > 5 * 1024 * 1024) return res.status(413).json({ error: 'file too large for preview (max 5MB)' });
+    const content = await fsPromises.readFile(p, 'utf8');
+    if (MARKDOWN_EXT.has(ext)) {
+      res.json({ type: 'markdown', html: simpleMarkdownToHtml(content), path: p, name: path.basename(p) });
+    } else if (CODE_EXT.has(ext)) {
+      res.json({ type: 'code', content, language: detectLanguage(ext), path: p, name: path.basename(p) });
+    } else {
+      res.json({ type: 'text', content: content.substring(0, 10000), path: p, name: path.basename(p), truncated: content.length > 10000 });
+    }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Log tail (SSE) ────────────────────────────────────────────────────
+app.get('/api/files/tail', checkPin, async (req, res) => {
+  try {
+    if (!req.query.path) {
+      res.status(400).json({ error: 'path is required' });
+      return;
+    }
+    const p = realPath(req.query.path);
+    const lines = Math.min(parseInt(req.query.lines) || 50, 500);
+    const pollInterval = Math.max(500, parseInt(req.query.interval) || 2000);
+
+    const st = await fsPromises.stat(p);
+    if (st.isDirectory()) { res.status(400).json({ error: 'cannot tail a directory' }); return; }
+    if (st.size > 100 * 1024 * 1024) { res.status(413).json({ error: 'file too large to tail (max 100MB)' }); return; }
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+
+    // Send initial content (last N lines)
+    const content = await fsPromises.readFile(p, 'utf8');
+    const allLines = content.split('\n');
+    const tailLines = allLines.slice(-lines);
+    res.write(`data: ${JSON.stringify({ type: 'init', lines: tailLines, total: allLines.length })}\n\n`);
+
+    // Poll for changes
+    let lastSize = content.length;
+    const timer = setInterval(async () => {
+      if (res.writableEnded) { clearInterval(timer); return; }
+      try {
+        const newSt = await fsPromises.stat(p);
+        if (newSt.size > lastSize) {
+          const fd = await fsPromises.open(p, 'r');
+          const buf = Buffer.alloc(newSt.size - lastSize);
+          await fd.read(buf, 0, buf.length, lastSize);
+          await fd.close();
+          lastSize = newSt.size;
+          const newLines = buf.toString('utf8');
+          res.write(`data: ${JSON.stringify({ type: 'data', lines: newLines })}\n\n`);
+        } else if (newSt.size < lastSize) {
+          // File was truncated — re-read
+          lastSize = 0;
+        }
+      } catch {}
+    }, pollInterval);
+
+    req.on('close', () => { clearInterval(timer); });
+  } catch (e) {
+    if (!res.headersSent) res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Network info ──────────────────────────────────────────────────────
+app.get('/api/system/network', checkPin, async (req, res) => {
+  try {
+    const interfaces = os.networkInterfaces();
+    const result = [];
+    for (const [name, addrs] of Object.entries(interfaces)) {
+      if (!addrs) continue;
+      for (const addr of addrs) {
+        result.push({ interface: name, family: addr.family, address: addr.address, netmask: addr.netmask, mac: addr.mac, internal: addr.internal, cidr: addr.cidr });
+      }
+    }
+    let gateway = null, dns = null, listenPorts = [];
+    try {
+      const { execFileSync } = require('child_process');
+      if (os.platform() === 'win32') {
+        const route = execFileSync('powershell.exe', ['-Command', '(Get-NetRoute -DestinationPrefix "0.0.0.0/0").NextHop'], { encoding: 'utf8', stdio: 'pipe' }).trim();
+        gateway = route.split('\n')[0].trim() || null;
+        const dnsOut = execFileSync('powershell.exe', ['-Command', '(Get-DnsClientServerAddress -AddressFamily IPv4).ServerAddresses'], { encoding: 'utf8', stdio: 'pipe' }).trim();
+        dns = dnsOut.split('\n').filter(Boolean);
+      } else {
+        const route = execFileSync('sh', ['-c', "ip route | grep default | head -1 | awk '{print $3}'"], { encoding: 'utf8', stdio: 'pipe' }).trim();
+        gateway = route || null;
+        const resolv = execFileSync('sh', ['-c', "grep nameserver /etc/resolv.conf | awk '{print $2}'"], { encoding: 'utf8', stdio: 'pipe' }).trim();
+        dns = resolv.split('\n').filter(Boolean);
+      }
+    } catch {}
+    try {
+      const { execFileSync } = require('child_process');
+      if (os.platform() === 'win32') {
+        const out = execFileSync('powershell.exe', ['-Command', 'netstat -ano | findstr LISTEN'], { encoding: 'utf8', stdio: 'pipe' }).trim();
+        listenPorts = out.split('\n').filter(Boolean).map(l => {
+          const m = l.match(/:(\d+)\s+/);
+          return m ? { port: parseInt(m[1]), process: l.split(/\s+/).pop() } : null;
+        }).filter(Boolean);
+      } else {
+        const out = execFileSync('sh', ['-c', "ss -tlnp 2>/dev/null | tail -n+2"], { encoding: 'utf8', stdio: 'pipe' }).trim();
+        listenPorts = out.split('\n').filter(Boolean).map(l => {
+          const parts = l.split(/\s+/);
+          const addr = parts[3] || '';
+          const port = parseInt(addr.split(':').pop());
+          const proc = parts[5] || '';
+          const m = proc.match(/users:\(\("(.+?)"/);
+          return { port, address: addr, process: m ? m[1] : '' };
+        }).filter(p => !isNaN(p.port));
+      }
+    } catch {}
+    res.json({ interfaces: result, gateway, dns, ports: listenPorts });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Environment viewer ────────────────────────────────────────────────
+const SECRET_KEYS = new Set(['token', 'secret', 'password', 'passwd', 'pass', 'key', 'api_key', 'apikey', 'private_key', 'access_key', 'auth', 'credential', 'pwd']);
+
+function isSecretKey(key) {
+  const lower = key.toLowerCase();
+  return SECRET_KEYS.has(lower) || SECRET_KEYS.has(lower.replace(/_/g, '')) || /secret|token|password|key|auth|credential/i.test(lower);
+}
+
+app.get('/api/env', checkPin, (req, res) => {
+  const env = {};
+  for (const [key, val] of Object.entries(process.env)) {
+    if (isSecretKey(key)) {
+      env[key] = val ? '••••••••' : '';
+    } else {
+      env[key] = val;
+    }
+  }
+  res.json({ env, count: Object.keys(env).length });
+});
+
+// ── Clipboard (server-side staging) ───────────────────────────────────
+let clipboard = { sources: [], action: null, createdAt: null };
+
+app.get('/api/clipboard', checkPin, (req, res) => {
+  res.json({ clipboard });
+});
+
+app.post('/api/clipboard', checkPin, async (req, res) => {
+  try {
+    if (!Array.isArray(req.body.sources) || req.body.sources.length === 0) {
+      return res.status(400).json({ error: 'sources array is required' });
+    }
+    const action = req.body.action === 'cut' ? 'cut' : 'copy';
+    clipboard = {
+      sources: req.body.sources.map(s => realPath(s)).filter(s => s !== WORKSPACE_ROOT),
+      action,
+      createdAt: new Date().toISOString()
+    };
+    res.json({ clipboard, count: clipboard.sources.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/clipboard/paste', checkPin, async (req, res) => {
+  try {
+    if (!req.body.destination) return res.status(400).json({ error: 'destination is required' });
+    if (!clipboard.sources.length) return res.status(400).json({ error: 'clipboard is empty' });
+    const destDir = resolvePath(req.body.destination);
+    const conflict = req.body.conflict || 'replace';
+    const results = [];
+    for (const src of clipboard.sources) {
+      try {
+        const baseName = path.basename(src);
+        const dst = path.join(destDir, baseName);
+        const result = await resolveCopyMove(src, dst, conflict, clipboard.action === 'cut');
+        results.push({ path: src, success: true, ...result });
+      } catch (e) {
+        results.push({ path: src, success: false, error: e.message });
+      }
+    }
+    if (clipboard.action === 'cut') clipboard = { sources: [], action: null, createdAt: null };
+    res.json({ results, succeeded: results.filter(r => r.success).length, failed: results.filter(r => !r.success).length, pasteAction: clipboard.action });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/clipboard', checkPin, (req, res) => {
+  clipboard = { sources: [], action: null, createdAt: null };
+  res.json({ success: true });
+});
+
 // ── Session persistence via tmux ──────────────────────────────────────
 const { execSync, execFileSync, spawn } = require('child_process');
 
@@ -1652,6 +2069,27 @@ server.listen(PORT, HOST, () => {
    console.log(`    POST   /api/files/trash/restore           — restore trash   { path }`);
    console.log(`    DELETE /api/files/trash?path=<path>       — delete trash item permanently`);
    console.log(`    DELETE /api/files/trash/all               — empty entire trash`);
+   console.log(`    GET    /api/files/preview?path=<file>      — file preview (md→html, code)`);
+   console.log(`    GET    /api/files/tail?path=<file>&lines=N  — tail log file (SSE)`);
+   console.log(`  Git API:`);
+   console.log(`    GET    /api/git/status?path=<dir>           — git status`);
+   console.log(`    POST   /api/git/diff                        — git diff       { path, file? }`);
+   console.log(`    POST   /api/git/add                         — git add        { path, files? }`);
+   console.log(`    POST   /api/git/commit                      — git commit     { path, message }`);
+   console.log(`    GET    /api/git/log?path=<dir>&maxCount=N   — git log`);
+   console.log(`    POST   /api/git/push                        — git push       { path, remote?, branch? }`);
+   console.log(`    POST   /api/git/pull                        — git pull       { path, remote?, branch? }`);
+   console.log(`    GET    /api/git/branches?path=<dir>         — list branches`);
+   console.log(`    POST   /api/git/branch                      — create branch  { path, name, switch? }`);
+   console.log(`    GET    /api/git/remote?path=<dir>           — list remotes`);
+   console.log(`  System:`);
+   console.log(`    GET    /api/system/network                  — network interfaces, ports`);
+   console.log(`    GET    /api/env                             — environment variables`);
+   console.log(`  Clipboard:`);
+   console.log(`    GET    /api/clipboard                       — clipboard contents`);
+   console.log(`    POST   /api/clipboard                       — set clipboard  { sources, action }`);
+   console.log(`    POST   /api/clipboard/paste                 — paste          { destination, conflict? }`);
+   console.log(`    DELETE /api/clipboard                       — clear clipboard`);
 });
 
 process.on('uncaughtException', e => {
