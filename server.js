@@ -1436,29 +1436,27 @@ setInterval(() => {
 
 // Simple in-memory rate limiter
 const rateLimitWindows = new Map();
-const rateLimiter = (() => {
+function rateLimiter(req, res, next) {
   const LIMITS = {
     '/api/exec': { limit: 10, windowMs: 10000 },
     '/api/search': { limit: 20, windowMs: 10000 },
   };
-  return (req, res, next) => {
-    const path = req.path;
-    const cfg = path === '/api/exec' ? LIMITS['/api/exec'] : path === '/api/search' ? LIMITS['/api/search'] : null;
-    if (!cfg) return next();
-    const now = Date.now();
-    const key = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || 'default';
-    let win = rateLimitWindows.get(key);
-    if (!win || now > win.resetAt) {
-      win = { count: 0, resetAt: now + cfg.windowMs };
-      rateLimitWindows.set(key, win);
-    }
-    win.count++;
-    if (win.count > cfg.limit) {
-      return res.status(429).json({ error: 'Too many requests, please wait' });
-    }
-    next();
-  };
-})();
+  const path = req.path;
+  const cfg = path === '/api/exec' ? LIMITS['/api/exec'] : path === '/api/search' ? LIMITS['/api/search'] : null;
+  if (!cfg) return next();
+  const now = Date.now();
+  const key = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || 'default';
+  let win = rateLimitWindows.get(key);
+  if (!win || now > win.resetAt) {
+    win = { count: 0, resetAt: now + cfg.windowMs };
+    rateLimitWindows.set(key, win);
+  }
+  win.count++;
+  if (win.count > cfg.limit) {
+    return res.status(429).json({ error: 'Too many requests, please wait' });
+  }
+  next();
+}
 
 function isValidPID(pid) {
   return typeof pid === 'number' && Number.isInteger(pid) && pid > 0;
