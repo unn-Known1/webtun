@@ -124,10 +124,6 @@ async function asyncSafeWalk(currentDir, depth, maxDepth, q, results, maxResults
 app.get('/api/files', checkPin, async (req, res) => {
   try {
     const dir = resolvePath(req.query.path || WORKSPACE_ROOT);
-    if (!isPathInWorkspace(dir)) {
-      console.warn('GET /api/files 403 — path outside workspace');
-      return res.status(403).json({ error: 'path is outside workspace root' });
-    }
 
     // Windows: at a drive root (e.g. C:\), list all available drives
     if (os.platform() === 'win32') {
@@ -459,10 +455,6 @@ app.post('/api/files/unzip', checkPin, async (req, res) => {
 app.get('/api/files/read', checkPin, async (req, res) => {
   try {
     const p = resolvePath(req.query.path);
-    if (!isPathInWorkspace(p)) {
-      console.warn('GET /api/files/read 403 — path outside workspace');
-      return res.status(403).json({ error: 'path is outside workspace root' });
-    }
     const [content, st] = await Promise.all([
       fsPromises.readFile(p, 'utf8'),
       fsPromises.stat(p)
@@ -495,10 +487,6 @@ app.post('/api/files/write', checkPin, async (req, res) => {
 app.get('/api/files/image', checkPin, async (req, res) => {
   try {
     const p = resolvePath(req.query.path);
-    if (!isPathInWorkspace(p)) {
-      console.warn('GET /api/files/image 403 — path outside workspace');
-      return res.status(403).json({ error: 'path is outside workspace root' });
-    }
     const mimeType = mime.lookup(p) || 'application/octet-stream';
     res.setHeader('Content-Type', mimeType);
     res.setHeader('Cache-Control', 'private, max-age=3600');
@@ -1831,10 +1819,6 @@ app.get('/api/search', rateLimiter, checkPin, async (req, res) => {
 
   try {
     const searchDir = resolvePath(dir);
-    if (!isPathInWorkspace(searchDir)) {
-      console.warn('GET /api/search 403 — path outside workspace');
-      return res.status(403).json({ error: 'path is outside workspace root' });
-    }
     const maxResults = 50;
     const results = [];
     const maxDepth = 4;
