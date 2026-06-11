@@ -2707,7 +2707,7 @@ async function uploadFileList(items) {
         xhr.send(formData);
       });
     } catch (e) {
-      // Continue with remaining files
+      console.warn('Upload item failed:', e);
     }
   }
   
