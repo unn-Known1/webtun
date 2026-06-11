@@ -390,6 +390,7 @@ svg { display: block; }
 .mkey.sel-mode { background: var(--accent); color: var(--bg); }
 .mkey.sel-done { background: var(--accent); color: var(--bg); border-color: var(--accent); }
 .mkey.active-mode { background: var(--accent); color: var(--bg); }
+.mkey.latch-active { background: var(--accent); color: var(--bg); box-shadow: 0 0 0 2px var(--accent); }
 #mkey-sel-row { display:none;gap:4px;padding:4px 6px;padding-bottom:calc(4px + env(safe-area-inset-bottom));background:var(--bg3);border-top:1px solid var(--border);overflow-x:auto;white-space:nowrap;flex-shrink:0;align-items:center }
 
 /* Focus visible */
@@ -930,24 +931,35 @@ svg { display: block; }
         <button class="mkey" onclick="sendKey('\x1bOQ')" title="F2">F2</button>
         <button class="mkey" onclick="sendKey('\x1b[15~')" title="F5">F5</button>
         <span class="mkey-sep"></span>
+        <button class="mkey" onclick="toggleShift()" title="Toggle Shift (latches for next key)" id="shift-toggle-btn">⇧</button>
+        <button class="mkey" onclick="toggleAlt()" title="Toggle Alt (latches for next key)" id="alt-toggle-btn">Alt</button>
+        <span class="mkey-sep"></span>
         <button class="mkey" onclick="toggleCtrlRow()" title="Toggle Ctrl keys" id="ctrl-toggle-btn">Ctrl</button>
       </div>
       <div id="mkey-ctrl-row" style="display:none;gap:4px;padding:4px 6px;padding-bottom:calc(4px + env(safe-area-inset-bottom));background:var(--bg3);border-top:1px solid var(--border);overflow-x:auto;white-space:nowrap;flex-shrink:0">
+        <button class="mkey" onclick="sendKey('\x01')" title="Ctrl+A (Start of line)">^A</button>
+        <button class="mkey" onclick="sendKey('\x02')" title="Ctrl+B (Backward char)">^B</button>
         <button class="mkey" onclick="sendKey('\x03')" title="Ctrl+C (Interrupt)">^C</button>
         <button class="mkey" onclick="sendKey('\x04')" title="Ctrl+D (EOF)">^D</button>
-        <button class="mkey" onclick="sendKey('\x1a')" title="Ctrl+Z (Suspend)">^Z</button>
+        <button class="mkey" onclick="sendKey('\x05')" title="Ctrl+E (End of line)">^E</button>
+        <button class="mkey" onclick="sendKey('\x06')" title="Ctrl+F (Forward char)">^F</button>
+        <button class="mkey" onclick="sendKey('\x0b')" title="Ctrl+K (Kill to end)">^K</button>
         <button class="mkey" onclick="sendKey('\x0c')" title="Ctrl+L (Clear)">^L</button>
-        <button class="mkey" onclick="sendKey('\x15')" title="Ctrl+U (Kill line)">^U</button>
-        <button class="mkey" onclick="sendKey('\x17')" title="Ctrl+W (Kill word)">^W</button>
-        <button class="mkey" onclick="sendKey('\x01')" title="Ctrl+A (Home)">^A</button>
-        <button class="mkey" onclick="sendKey('\x05')" title="Ctrl+E (End)">^E</button>
+        <button class="mkey" onclick="sendCtrlP()" title="Ctrl+P (Fuzzy finder)">^P</button>
         <button class="mkey" onclick="sendKey('\x12')" title="Ctrl+R (Reverse search)">^R</button>
+        <button class="mkey" onclick="sendKey('\x15')" title="Ctrl+U (Kill to start)">^U</button>
+        <button class="mkey" onclick="sendKey('\x17')" title="Ctrl+W (Kill word)">^W</button>
+        <button class="mkey" onclick="sendKey('\x1a')" title="Ctrl+Z (Suspend)">^Z</button>
       </div>
       <!-- Selection mode action bar -->
       <div id="mkey-sel-row">
         <button class="mkey" onclick="copyTermSelection()" title="Copy selected text">Copy</button>
         <button class="mkey" onclick="pasteToTerminal()" title="Paste text into terminal">Paste</button>
         <button class="mkey" onclick="selectAllTerm()" title="Select all terminal content">Select All</button>
+        <button class="mkey" onclick="selectTermLine()" title="Select current visible line">Line</button>
+        <span class="mkey-sep"></span>
+        <button class="mkey" onclick="termScrollUp()" title="Scroll up">▲</button>
+        <button class="mkey" onclick="termScrollDn()" title="Scroll down">▼</button>
         <button class="mkey" id="sel-scroll-btn" onclick="toggleScrollMode()" title="Toggle scroll mode">Scroll</button>
         <span class="mkey-sep"></span>
         <button class="mkey sel-done" onclick="toggleTermSelect()" title="Exit selection mode">Done</button>
@@ -1936,15 +1948,54 @@ function fitTerm(tab) {
   } catch (e) { console.warn('fitTerm failed:', e); }
 }
 
+let shiftLatch = false;
+let altLatch = false;
+
+function updateModifierButtons() {
+  const sb = document.getElementById('shift-toggle-btn');
+  if (sb) sb.classList.toggle('latch-active', shiftLatch);
+  const ab = document.getElementById('alt-toggle-btn');
+  if (ab) ab.classList.toggle('latch-active', altLatch);
+}
+
+function toggleShift() {
+  shiftLatch = !shiftLatch;
+  updateModifierButtons();
+  if (shiftLatch) toast('Shift ON (next key)', 'info');
+}
+
+function toggleAlt() {
+  altLatch = !altLatch;
+  updateModifierButtons();
+  if (altLatch) toast('Alt ON (next key)', 'info');
+}
+
 function sendKey(key) {
+  let modified = key;
+  if (key.length === 1) {
+    if (shiftLatch && modified >= 'a' && modified <= 'z') {
+      modified = modified.toUpperCase();
+    }
+    shiftLatch = false;
+    if (altLatch && modified.charCodeAt(0) >= 0x20) {
+      modified = '\x1b' + modified;
+      altLatch = false;
+    }
+    updateModifierButtons();
+  }
   const tab = getActiveTab();
   if (tab?.ws?.readyState === WebSocket.OPEN) {
-    const enc = new TextEncoder().encode(key);
+    const enc = new TextEncoder().encode(modified);
     const buf = new Uint8Array(1 + enc.length);
     buf[0] = 0x00; buf.set(enc, 1);
     tab.ws.send(buf.buffer);
   }
   tab?.term?.focus();
+}
+
+function sendCtrlP() {
+  sendKey('\x10');
+  openFinder();
 }
 
 // ═══════════════════════════════════════════════════════
@@ -3589,6 +3640,7 @@ function toggleTermSelect() {
     cleanupScrollHandlers();
     const scrollBtn = document.getElementById('sel-scroll-btn');
     if (scrollBtn) scrollBtn.classList.remove('active-mode');
+    shiftLatch = false; altLatch = false; updateModifierButtons();
     tabs.forEach(t => {
       if (!t.term) return;
       t.term.options.disableStdin = false;
@@ -3724,6 +3776,25 @@ function selectAllTerm() {
   }
 }
 
+function selectTermLine() {
+  const tab = getActiveTab();
+  if (!tab?.term) return;
+  const buf = tab.term.buffer.active;
+  const cursorY = buf.baseY + buf.cursorY;
+  tab.term.selectLines(cursorY, cursorY);
+  toast('Line selected', 'success');
+}
+
+function termScrollUp() {
+  const tab = getActiveTab();
+  if (tab?.term) tab.term.scrollLines(-Math.floor((tab.term.rows || 10) / 2));
+}
+
+function termScrollDn() {
+  const tab = getActiveTab();
+  if (tab?.term) tab.term.scrollLines(Math.floor((tab.term.rows || 10) / 2));
+}
+
 function toggleCtrlRow() {
   const row = document.getElementById('mkey-ctrl-row');
   if (!row) return;
@@ -3731,6 +3802,7 @@ function toggleCtrlRow() {
   row.style.display = isOpen ? 'none' : 'flex';
   const btn = document.getElementById('ctrl-toggle-btn');
   if (btn) btn.style.background = isOpen ? '' : 'var(--accent)';
+  shiftLatch = false; altLatch = false; updateModifierButtons();
 }
 
 let _viewportHandlerInstalled = false;
@@ -3783,6 +3855,7 @@ function setupMobileKeys() {
   if (ctrlRow) ctrlRow.style.display = 'none';
   const ctrlBtn = document.getElementById('ctrl-toggle-btn');
   if (ctrlBtn) ctrlBtn.style.background = '';
+  shiftLatch = false; altLatch = false; updateModifierButtons();
 }
 
 // ═══════════════════════════════════════════════════════
