@@ -55,8 +55,20 @@
   --mobilekey-h: 44px;
   --header-h: 38px;
   --settings-w: 340px;
-  --radius: 6px;
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius: var(--radius-md);
   --shadow-color: rgba(0,0,0,0.6);
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --btn-sm: 26px;
+  --btn-md: 32px;
+  --btn-lg: 36px;
   --font: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
 }
 [data-theme="light"] {
@@ -68,7 +80,7 @@
 }
 [data-theme="solarized"] {
   --bg: #002b36; --bg2: #073642; --bg3: #083f4d; --bg4: #0a4a5a;
-  --border: #1a5a6a; --fg: #839496; --fg2: #586e75;
+  --border: #1a5a6a; --fg: #93a1a1; --fg2: #586e75;
   --accent: #268bd2; --accent2: #6c71c4; --green: #859900;
   --red: #dc322f; --yellow: #b58900; --cyan: #2aa198;
   --shadow-color: rgba(0,0,0,0.6);
@@ -108,7 +120,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 a { color: var(--accent); text-decoration: none; }
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-sm); }
 ::-webkit-scrollbar-thumb:hover { background: var(--fg2); }
 @media (pointer: coarse) { ::-webkit-scrollbar { width: 10px; height: 10px; } ::-webkit-scrollbar-thumb { border-radius: 5px; min-height: 44px; } }
 /* Always show scrollbars for better UX */
@@ -118,6 +130,8 @@ a { color: var(--accent); text-decoration: none; }
   .tab { height: 38px; }
   .tab .tab-close { width: 32px; height: 32px; }
   #new-tab-btn { width: 36px; height: 36px; }
+  .icon-btn { width: 40px; height: 40px; }
+  .file-action-btn { width: 36px; height: 36px; }
 }
 svg { display: block; }
 
@@ -144,17 +158,17 @@ svg { display: block; }
 #tab-bar.drag-over, #new-tab-btn.drag-over { background: var(--accent, #00c853); opacity: 0.15; }
 #tab-bar::-webkit-scrollbar { height: 3px; }
 #terminals { flex: 1; position: relative; overflow: hidden; }
-.term-wrapper { position: absolute; inset: 0; padding: 4px; display: none; touch-action: pan-y; -webkit-overflow-scrolling: touch; }
+.term-wrapper { position: absolute; inset: 0; padding: 4px; display: none; touch-action: pan-y; -webkit-overflow-scrolling: touch; overscroll-behavior: none; }
 .term-wrapper.active { display: flex; }
 .xterm { flex: 1; }
 .xterm-viewport { border-radius: 0; }
-#terminals.tiles-mode { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); grid-auto-rows: 1fr; gap: 4px; padding: 4px; position: relative; overflow: auto; min-height: 0; }
+#terminals.tiles-mode { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); grid-auto-rows: 1fr; gap: 4px; padding: 4px; position: relative; overflow: auto; min-height: 0; overscroll-behavior: none; }
 #terminals.tiles-mode .term-wrapper { position: relative; inset: unset; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; min-height: 150px; }
 #terminals.tiles-mode .term-wrapper.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 #terminals.tiles-mode .term-wrapper.active .term-tile-header { background: var(--bg); color: var(--accent); }
 .term-tile-header { display: flex; align-items: center; height: 24px; padding: 0 8px; background: var(--bg3); border-bottom: 1px solid var(--border); font-size: 11px; color: var(--fg2); flex-shrink: 0; gap: 6px; cursor: pointer; user-select: none; }
 .term-tile-header .tth-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.term-tile-header .tth-close { width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; border-radius: 3px; opacity: 0.4; font-size: 12px; line-height: 1; }
+.term-tile-header .tth-close { width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-sm); opacity: 0.4; font-size: 12px; line-height: 1; }
 .term-tile-header .tth-close:hover { opacity: 1; background: var(--border); }
 #terminals.tiles-mode .xterm { flex: 1; }
 #mobile-keys { display: none; height: var(--mobilekey-h); background: var(--bg3); border-top: 1px solid var(--border); flex-shrink: 0; overflow-x: auto; overflow-y: hidden; white-space: nowrap; padding: 4px 6px; gap: 4px; padding-bottom: calc(4px + env(safe-area-inset-bottom)); min-height: calc(var(--mobilekey-h) + env(safe-area-inset-bottom)); }
@@ -262,10 +276,12 @@ svg { display: block; }
 }
 .settings-panel-header h2 { font-size: 14px; font-weight: 700; color: var(--fg); }
 .settings-panel-body { padding: 16px; overflow-y: auto; flex: 1; }
-.settings-panel-body select,
-.settings-panel-body input[type="number"],
-.settings-panel-body input[type="text"] {
-  font-size: 12px;
+@media (hover: hover) {
+  .settings-panel-body select,
+  .settings-panel-body input[type="number"],
+  .settings-panel-body input[type="text"] {
+    font-size: 12px;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -303,7 +319,7 @@ svg { display: block; }
 .tab:hover { background: var(--bg4); color: var(--fg); }
 .tab.active { background: var(--bg4); color: var(--accent); border-bottom: 2px solid var(--accent); }
 .tab.active .tab-title { color: var(--accent); }
-.tab-close { width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; border-radius: 3px; opacity: 0.5; flex-shrink: 0; }
+.tab-close { width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-sm); opacity: 0.5; flex-shrink: 0; }
 .tab-close:hover { opacity: 1; background: var(--border); }
 #new-tab-btn { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius); color: var(--fg2); flex-shrink: 0; }
 #new-tab-btn:hover { background: var(--bg4); color: var(--fg); }
@@ -315,7 +331,7 @@ svg { display: block; }
 #sidebar-header input { flex: 1 1 60px; min-width: 40px; height: 26px; font-size: 12px; }
 #file-list-wrap { flex: 1; overflow-y: auto; min-height: 0; touch-action: pan-y; -webkit-overflow-scrolling: touch; }
 #file-breadcrumb { padding: 8px 10px; font-size: 12px; color: var(--fg2); border-bottom: 1px solid var(--border); word-break: break-all; line-height: 1.8; flex-shrink: 0; }
-#file-breadcrumb a { transition: background 0.15s; border-radius: 3px; padding: 4px 6px !important; }
+#file-breadcrumb a { transition: background 0.15s; border-radius: var(--radius-sm); padding: 4px 6px !important; }
 #file-breadcrumb a:hover { background: var(--bg3); }
 @media (pointer: coarse) {
   #file-breadcrumb { padding: 10px 12px; font-size: 13px; }
@@ -330,7 +346,7 @@ svg { display: block; }
 .file-dir { color: var(--accent); }
 .file-item .file-actions { display: none; position: absolute; right: 6px; top: 50%; transform: translateY(-50%); gap: 2px; background: var(--bg4); border-radius: var(--radius); padding: 2px; }
 .file-item:hover .file-actions { display: flex; }
-.file-action-btn { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 3px; font-size: 11px; color: var(--fg2); }
+.file-action-btn { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-sm); font-size: 11px; color: var(--fg2); }
 @media (hover: none) and (pointer: coarse) {
   .file-item .file-actions { display: flex; }
   .file-item:hover { background: var(--bg3); }
@@ -414,7 +430,7 @@ svg { display: block; }
    ═══════════════════════════════════════════════════════ */
 .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 400; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
 .overlay.open { display: flex; }
-.modal { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 24px; min-width: 320px; max-width: 90vw; max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 40px var(--shadow-color); }
+.modal { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; min-width: 320px; max-width: 90vw; max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 40px var(--shadow-color); }
 .modal h2 { font-size: 16px; margin-bottom: 20px; color: var(--fg); }
 .modal-row { margin-bottom: 14px; }
 .modal-row label { display: block; font-size: 11px; color: var(--fg2); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -458,7 +474,7 @@ svg { display: block; }
 #editor-preview ul, #editor-preview ol { margin: 0.5em 0; padding-left: 2em; }
 #editor-preview li { margin: 0.25em 0; }
 #editor-preview blockquote { margin: 0.75em 0; padding: 4px 16px; border-left: 4px solid var(--accent); background: var(--bg2); color: var(--fg2); border-radius: 0 var(--radius) var(--radius) 0; }
-#editor-preview code { font-family: var(--font); background: var(--bg3); padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+#editor-preview code { font-family: var(--font); background: var(--bg3); padding: 2px 6px; border-radius: var(--radius-sm); font-size: 0.9em; }
 #editor-preview pre { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; overflow-x: auto; margin: 0.75em 0; }
 #editor-preview pre code { background: none; padding: 0; border-radius: 0; font-size: 0.85em; }
 #editor-preview table { border-collapse: collapse; width: 100%; margin: 0.75em 0; }
@@ -1396,39 +1412,7 @@ function nextTermNumber() {
   return n;
 }
 
-function newTab(title, sessionId, dir) {
-  const id = ++tabCounter;
-  const sid = sessionId || (hasTmux ? uuid() : null);
-  const tab = { id, sessionId: sid, title: title || `Term ${nextTermNumber()}`, term: null, fitAddon: null, searchAddon: null, ws: null, el: null, wrapper: null, closed: false, reconnectDelay: 1000, dataDisposable: null, resizeDisposable: null, resizeObserver: null, cwd: dir || currentPath };
-  tabs.push(tab);
-
-  // Tab button
-  const tabEl = document.createElement('div');
-  tabEl.className = 'tab';
-  tabEl.setAttribute('role', 'tab');
-  tabEl.setAttribute('aria-selected', 'false');
-  tabEl.dataset.id = id;
-  tabEl.draggable = true;
-  const tabIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  tabIcon.setAttribute('width', '12'); tabIcon.setAttribute('height', '12'); tabIcon.setAttribute('viewBox', '0 0 24 24');
-  tabIcon.setAttribute('fill', 'none'); tabIcon.setAttribute('stroke', 'currentColor'); tabIcon.setAttribute('stroke-width', '2');
-  tabIcon.innerHTML = '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>';
-  tabEl.appendChild(tabIcon);
-  const tabTitleSpan = document.createElement('span');
-  tabTitleSpan.className = 'tab-title';
-  tabTitleSpan.textContent = tab.title;
-  tabEl.appendChild(tabTitleSpan);
-  const closeBtn = document.createElement('button');
-  closeBtn.className = 'tab-close';
-  closeBtn.setAttribute('aria-label', 'Close tab');
-  closeBtn.onclick = e => closeTab(e, id);
-  closeBtn.title = 'Close';
-  const closeSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  closeSvg.setAttribute('width', '10'); closeSvg.setAttribute('height', '10'); closeSvg.setAttribute('viewBox', '0 0 24 24');
-  closeSvg.setAttribute('fill', 'none'); closeSvg.setAttribute('stroke', 'currentColor'); closeSvg.setAttribute('stroke-width', '2.5');
-  closeSvg.innerHTML = '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>';
-  closeBtn.appendChild(closeSvg);
-  tabEl.appendChild(closeBtn);
+function setupTabDragDrop(tabEl, id) {
   tabEl.addEventListener('dragstart', e => {
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', String(id));
@@ -1440,7 +1424,7 @@ function newTab(title, sessionId, dir) {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
   });
-  function finishDrop(fromId) {
+  const finishDrop = (fromId) => {
     if (isNaN(fromId) || fromId === id) return;
     const fromIdx = tabs.findIndex(t => t.id === fromId);
     if (fromIdx === -1) return;
@@ -1450,34 +1434,33 @@ function newTab(title, sessionId, dir) {
     const bar = document.getElementById('tab-bar');
     if (moved.el && moved.el.parentNode === bar) bar.insertBefore(moved.el, tabEl);
     saveTabState();
-  }
+  };
   tabEl.addEventListener('drop', e => {
     e.preventDefault();
     tabEl.classList.remove('drag-over');
-    document.querySelectorAll('.tab-drop-placeholder').forEach(el => el.remove());
+    [...document.querySelectorAll('.tab-drop-placeholder')].forEach(el => el.remove());
     const fromId = parseInt(e.dataTransfer.getData('text/plain'));
     finishDrop(fromId);
   });
   tabEl.addEventListener('dragend', () => {
     tabEl.classList.remove('dragging');
     tabEl.classList.remove('drag-over');
-    document.querySelectorAll('.tab-drop-placeholder').forEach(el => el.remove());
+    [...document.querySelectorAll('.tab-drop-placeholder')].forEach(el => el.remove());
   });
-  tabEl.addEventListener('click', e => { if (!e.target.closest('.tab-close')) activateTab(id); });
-  const startInlineRename = (span, tabRef) => {
+}
+
+function setupTabInlineRename(tabTitleSpan, tab) {
+  const startRename = (span) => {
     const input = document.createElement('input');
     input.type = 'text';
-    input.value = tabRef.title;
-    input.style.width = Math.max(60, tabRef.title.length * 9) + 'px';
-    input.style.height = '22px';
-    input.style.fontSize = '12px';
-    input.style.padding = '0 6px';
+    input.value = tab.title;
+    input.style.cssText = `width:${Math.max(60, tab.title.length * 9)}px;height:22px;font-size:12px;padding:0 6px`;
     span.replaceWith(input);
     input.focus();
     input.select();
     const done = () => {
-      const val = input.value.trim() || tabRef.title;
-      tabRef.title = val;
+      const val = input.value.trim() || tab.title;
+      tab.title = val;
       const newSpan = document.createElement('span');
       newSpan.className = 'tab-title';
       newSpan.textContent = val;
@@ -1485,18 +1468,18 @@ function newTab(title, sessionId, dir) {
       saveTabState();
     };
     input.addEventListener('blur', done);
-    input.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); } if (ev.key === 'Escape') { ev.preventDefault(); input.value = tabRef.title; input.blur(); } });
+    input.addEventListener('keydown', ev => {
+      if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); }
+      if (ev.key === 'Escape') { ev.preventDefault(); input.value = tab.title; input.blur(); }
+    });
   };
   tabTitleSpan.addEventListener('dblclick', e => {
     e.stopPropagation();
-    startInlineRename(e.target, tab);
+    startRename(e.target);
   });
   let renameTimer = null;
-  tabTitleSpan.addEventListener('touchstart', e => {
-    renameTimer = setTimeout(() => {
-      renameTimer = null;
-      startInlineRename(tabTitleSpan, tab);
-    }, 400);
+  tabTitleSpan.addEventListener('touchstart', () => {
+    renameTimer = setTimeout(() => { renameTimer = null; startRename(tabTitleSpan); }, 400);
   }, { passive: true });
   tabTitleSpan.addEventListener('touchend', () => {
     if (renameTimer) { clearTimeout(renameTimer); renameTimer = null; }
@@ -1504,41 +1487,88 @@ function newTab(title, sessionId, dir) {
   tabTitleSpan.addEventListener('touchmove', () => {
     if (renameTimer) { clearTimeout(renameTimer); renameTimer = null; }
   }, { passive: true });
-  let tabSwipeStartX = 0;
-  tabEl.addEventListener('touchstart', e => {
-    tabSwipeStartX = e.touches[0].clientX;
-  }, { passive: true });
+}
+
+function setupTabSwipeGesture(tabEl, id) {
+  let swipeStartX = 0;
+  tabEl.addEventListener('touchstart', e => { swipeStartX = e.touches[0].clientX; }, { passive: true });
   tabEl.addEventListener('touchmove', e => {
-    if (tabSwipeStartX === 0) return;
-    const dx = e.touches[0].clientX - tabSwipeStartX;
+    if (swipeStartX === 0) return;
+    const dx = e.touches[0].clientX - swipeStartX;
     if (Math.abs(dx) > 2) {
       tabEl.style.transform = `translateX(${dx}px)`;
       tabEl.style.opacity = Math.max(0.3, 1 - Math.abs(dx) / 200);
-      const pct = Math.min(Math.abs(dx) / 80, 1);
-      tabEl.style.background = `rgba(247,118,142,${pct * 0.2})`;
+      tabEl.style.background = `rgba(247,118,142,${Math.min(Math.abs(dx) / 80, 1) * 0.2})`;
     }
   }, { passive: true });
   tabEl.addEventListener('touchend', e => {
-    if (tabSwipeStartX === 0) return;
-    const dx = e.changedTouches[0].clientX - tabSwipeStartX;
+    if (swipeStartX === 0) return;
+    const dx = e.changedTouches[0].clientX - swipeStartX;
     tabEl.style.transform = '';
     tabEl.style.opacity = '';
     tabEl.style.background = '';
-    if (Math.abs(dx) > 80) {
-      closeTab({ stopPropagation() {} }, id);
-    }
-    tabSwipeStartX = 0;
+    if (Math.abs(dx) > 80) closeTab({ stopPropagation() {} }, id);
+    swipeStartX = 0;
   }, { passive: true });
+}
+
+function createTabButton(tab) {
+  const id = tab.id;
+  const tabEl = document.createElement('div');
+  tabEl.className = 'tab';
+  tabEl.setAttribute('role', 'tab');
+  tabEl.setAttribute('aria-selected', 'false');
+  tabEl.dataset.id = id;
+  tabEl.draggable = true;
+
+  const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  icon.setAttribute('width', '12'); icon.setAttribute('height', '12'); icon.setAttribute('viewBox', '0 0 24 24');
+  icon.setAttribute('fill', 'none'); icon.setAttribute('stroke', 'currentColor'); icon.setAttribute('stroke-width', '2');
+  icon.innerHTML = '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>';
+  tabEl.appendChild(icon);
+
+  const titleSpan = document.createElement('span');
+  titleSpan.className = 'tab-title';
+  titleSpan.textContent = tab.title;
+  tabEl.appendChild(titleSpan);
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'tab-close';
+  closeBtn.setAttribute('aria-label', 'Close tab');
+  closeBtn.onclick = e => closeTab(e, id);
+  closeBtn.title = 'Close';
+  const closeSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  closeSvg.setAttribute('width', '10'); closeSvg.setAttribute('height', '10'); closeSvg.setAttribute('viewBox', '0 0 24 24');
+  closeSvg.setAttribute('fill', 'none'); closeSvg.setAttribute('stroke', 'currentColor'); closeSvg.setAttribute('stroke-width', '2.5');
+  closeSvg.innerHTML = '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>';
+  closeBtn.appendChild(closeSvg);
+  tabEl.appendChild(closeBtn);
+
+  tabEl.addEventListener('click', e => { if (!e.target.closest('.tab-close')) activateTab(id); });
+
+  setupTabDragDrop(tabEl, id);
+  setupTabInlineRename(titleSpan, tab);
+  setupTabSwipeGesture(tabEl, id);
+
   document.getElementById('tab-bar').insertBefore(tabEl, document.getElementById('new-tab-btn'));
   tab.el = tabEl;
+}
 
-  // Terminal wrapper
+function createTerminalWrapper(tab) {
   const wrapper = document.createElement('div');
   wrapper.className = 'term-wrapper';
-  wrapper.dataset.id = id;
+  wrapper.dataset.id = tab.id;
   document.getElementById('terminals').appendChild(wrapper);
   tab.wrapper = wrapper;
+}
 
+function newTab(title, sessionId, dir) {
+  const id = ++tabCounter;
+  const sid = sessionId || (hasTmux ? uuid() : null);
+  const tab = { id, sessionId: sid, title: title || `Term ${nextTermNumber()}`, term: null, fitAddon: null, searchAddon: null, ws: null, el: null, wrapper: null, closed: false, reconnectDelay: 1000, dataDisposable: null, resizeDisposable: null, resizeObserver: null, cwd: dir || currentPath };
+  tabs.push(tab);
+  createTabButton(tab);
+  createTerminalWrapper(tab);
   activateTab(id);
   setTimeout(() => { initTerminal(tab); if (tilesMode) layoutTiles(); }, 50);
   saveTabState();
@@ -1813,9 +1843,14 @@ function initTerminal(tab) {
         const newSize = Math.max(10, Math.min(28, fontSize + (delta > 0 ? 1 : -1)));
         tab.term.options.fontSize = newSize;
         if (tab.fitAddon) tab.fitAddon.fit();
-        const persisted = JSON.parse(localStorage.getItem('wt-settings') || '{}');
-        persisted.fontSize = newSize;
-        localStorage.setItem('wt-settings', JSON.stringify(persisted));
+        if (!window._pinchSaveTimer) {
+          window._pinchSaveTimer = setTimeout(() => {
+            const persisted = JSON.parse(localStorage.getItem('wt-settings') || '{}');
+            persisted.fontSize = tab.term.options.fontSize;
+            localStorage.setItem('wt-settings', JSON.stringify(persisted));
+            window._pinchSaveTimer = null;
+          }, 500);
+        }
         lastPinchDist = dist;
       }
     }
@@ -1943,11 +1978,6 @@ let loadFilesAbortController = null;
 async function loadFiles(dir) {
   if (loadFilesAbortController) loadFilesAbortController.abort();
   loadFilesAbortController = new AbortController();
-
-  if (window.innerWidth <= 768) {
-    const sb = document.getElementById('sidebar');
-    if (sb) { sb.classList.remove('mobile-open'); }
-  }
 
   if (skipHistoryPush) {
     // back/forward — don't push and don't clear forward
@@ -2134,8 +2164,19 @@ function startFileWatcher() {
     if (!sb || sb.classList.contains('hidden') || document.hidden) return;
     if (currentPath) loadFiles(currentPath);
   };
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && currentPath) loadFiles(currentPath);
+  const onVisibility = () => {
+    if (document.hidden) {
+      clearInterval(fileWatchTimer);
+      fileWatchTimer = null;
+    } else {
+      if (currentPath) loadFiles(currentPath);
+      if (!fileWatchTimer) fileWatchTimer = setInterval(watch, 10000);
+    }
+  };
+  document.addEventListener('visibilitychange', onVisibility, { passive: true });
+  window.addEventListener('pagehide', () => {
+    clearInterval(fileWatchTimer);
+    fileWatchTimer = null;
   }, { passive: true });
   fileWatchTimer = setInterval(watch, 10000);
 }
@@ -4087,7 +4128,6 @@ async function refreshSystemStats(showLoading) {
   }
   if (!data || !data.cpu) { toast('Failed to load system stats', 'error'); return; }
 
-  const fmt = (bytes) => { if (bytes < 1024) return bytes + ' B'; if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB'; if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB'; return (bytes / 1073741824).toFixed(1) + ' GB'; };
   const fmtUptime = (s) => { const d = Math.floor(s / 86400); const h = Math.floor((s % 86400) / 3600); const m = Math.floor((s % 3600) / 60); return `${d}d ${h}h ${m}m`; };
 
   document.getElementById('sys-cpu-val').textContent = `${data.cpu.usage}%`;
@@ -4096,7 +4136,7 @@ async function refreshSystemStats(showLoading) {
   document.getElementById('sys-cpu-bar').className = 'sys-bar-fill' + (data.cpu.usage > 80 ? ' danger' : data.cpu.usage > 50 ? ' warn' : '');
 
   document.getElementById('sys-mem-val').textContent = `${data.memory.percent}%`;
-  document.getElementById('sys-mem-sub').textContent = `${fmt(data.memory.used)} / ${fmt(data.memory.total)}`;
+  document.getElementById('sys-mem-sub').textContent = `${formatSize(data.memory.used)} / ${formatSize(data.memory.total)}`;
   document.getElementById('sys-mem-bar').style.width = Math.min(data.memory.percent, 100) + '%';
   document.getElementById('sys-mem-bar').className = 'sys-bar-fill' + (data.memory.percent > 80 ? ' danger' : data.memory.percent > 50 ? ' warn' : '');
 
