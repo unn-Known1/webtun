@@ -486,26 +486,7 @@ svg { display: block; }
 #editor-area { flex: 1; overflow: hidden; position: relative; }
 #editor-preview { width: 100%; height: 100%; overflow-y: auto; padding: 12px 24px; font-size: 14px; line-height: 1.7; color: var(--fg); display: none; box-sizing: border-box; }
 #editor-preview.active { display: block; }
-#editor-preview h1, #editor-preview h2, #editor-preview h3, #editor-preview h4, #editor-preview h5, #editor-preview h6 { color: var(--fg); margin: 1em 0 0.5em; font-weight: 700; }
-#editor-preview h1 { font-size: 1.8em; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
-#editor-preview h2 { font-size: 1.5em; border-bottom: 1px solid var(--border); padding-bottom: 0.25em; }
-#editor-preview h3 { font-size: 1.25em; }
-#editor-preview h4 { font-size: 1.1em; }
-#editor-preview p { margin: 0.75em 0; }
-#editor-preview ul, #editor-preview ol { margin: 0.5em 0; padding-left: 2em; }
-#editor-preview li { margin: 0.25em 0; }
-#editor-preview blockquote { margin: 0.75em 0; padding: 4px 16px; border-left: 4px solid var(--accent); background: var(--bg2); color: var(--fg2); border-radius: 0 var(--radius) var(--radius) 0; }
-#editor-preview code { font-family: var(--font); background: var(--bg3); padding: 2px 6px; border-radius: var(--radius-sm); font-size: 0.9em; }
-#editor-preview pre { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; overflow-x: auto; margin: 0.75em 0; }
-#editor-preview pre code { background: none; padding: 0; border-radius: 0; font-size: 0.85em; }
-#editor-preview table { border-collapse: collapse; width: 100%; margin: 0.75em 0; }
-#editor-preview th, #editor-preview td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; }
-#editor-preview th { background: var(--bg3); font-weight: 600; }
-#editor-preview hr { border: none; border-top: 1px solid var(--border); margin: 1.5em 0; }
-#editor-preview a { color: var(--accent); text-decoration: none; }
-#editor-preview a:hover { text-decoration: underline; }
-#editor-preview img { max-width: 100%; border-radius: var(--radius); }
-#editor-preview-iframe { width: 100%; height: 100%; border: none; display: none; background: #fff; border-radius: var(--radius); }
+#editor-preview-iframe { width: 100%; height: 100%; border: none; display: none; background: var(--bg); border-radius: var(--radius); }
 
 /* ═══════════════════════════════════════════════════════
    CODEMIRROR
@@ -894,6 +875,9 @@ svg { display: block; }
             <span id="editor-filename">—</span>
             <span id="editor-status"></span>
             <button class="btn" id="md-preview-toggle" style="height:26px;padding:0 12px;font-size:12px;display:none" onclick="toggleMdPreview()">Preview</button>
+            <button class="icon-btn" id="preview-refresh-btn" aria-label="Refresh preview" title="Refresh preview (Ctrl+Shift+R)" onclick="refreshPreview()" style="display:none">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            </button>
             <button class="icon-btn active" id="editor-split-toggle" aria-label="Toggle split orientation" onclick="toggleEditorSplit()" title="Switch to horizontal split">
               <svg id="split-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/></svg>
             </button>
@@ -2885,14 +2869,17 @@ async function openFileEditor(path) {
 
   const preview = document.getElementById('editor-preview');
   const toggleBtn = document.getElementById('md-preview-toggle');
+  const refreshBtn = document.getElementById('preview-refresh-btn');
   const previewIframe = document.getElementById('editor-preview-iframe');
   preview.classList.remove('active');
-  if (previewIframe) previewIframe.style.display = 'none';
+  if (previewIframe) { previewIframe.style.display = 'none'; previewIframe.srcdoc = ''; }
   if ((isMd && typeof marked !== 'undefined') || isHtml) {
     toggleBtn.style.display = '';
     toggleBtn.textContent = 'Preview';
+    if (refreshBtn) refreshBtn.style.display = 'none';
   } else {
     toggleBtn.style.display = 'none';
+    if (refreshBtn) refreshBtn.style.display = 'none';
   }
   document.getElementById('editor-filename').textContent = fileName + '  ' + path;
   document.getElementById('editor-status').textContent = '';
@@ -2956,6 +2943,7 @@ async function saveFile() {
     editorOriginalContent = content;
     document.getElementById('editor-status').textContent = '✓ Saved';
     toast('Saved', 'success');
+    if (mdPreviewActive) refreshPreview();
     setTimeout(() => document.getElementById('editor-status').textContent = '', 2000);
   } else toast(r.error, 'error');
 }
@@ -2965,6 +2953,23 @@ function closeEditor() {
   if (currentContent !== editorOriginalContent) {
     if (!confirm('You have unsaved changes. Close anyway?')) return;
   }
+  clearPreviewLiveReload();
+  document.getElementById('editor-view').classList.remove('open');
+  document.getElementById('content').classList.remove('editor-open');
+  document.getElementById('editor-preview').classList.remove('active');
+  document.getElementById('md-preview-toggle').style.display = 'none';
+  document.getElementById('preview-refresh-btn').style.display = 'none';
+  const previewIframe = document.getElementById('editor-preview-iframe');
+  if (previewIframe) { previewIframe.style.display = 'none'; previewIframe.srcdoc = ''; }
+  const cm = document.querySelector('.CodeMirror');
+  if (cm) cm.style.display = '';
+  mdPreviewActive = false;
+  editorPath = '';
+  editorOriginalContent = '';
+  requestAnimationFrame(() => {
+    tabs.forEach(tab => { try { fitTerm(tab); tab?.term?.focus(); } catch(e) { console.warn(e); } });
+  });
+}
   document.getElementById('editor-view').classList.remove('open');
   document.getElementById('content').classList.remove('editor-open');
   document.getElementById('editor-preview').classList.remove('active');
@@ -3032,30 +3037,156 @@ function toggleHtmlPreview() {
   const preview = document.getElementById('editor-preview');
   const iframe = document.getElementById('editor-preview-iframe');
   const btn = document.getElementById('md-preview-toggle');
+  const refreshBtn = document.getElementById('preview-refresh-btn');
   const isActive = preview.classList.contains('active');
   if (isActive) {
     if (cmWrapper) cmWrapper.style.display = '';
     preview.classList.remove('active');
     if (iframe) iframe.style.display = 'none';
     btn.textContent = 'Preview';
+    if (refreshBtn) refreshBtn.style.display = 'none';
+    mdPreviewActive = false;
     editor.focus();
+    clearPreviewLiveReload();
   } else {
-    try {
-      const raw = editor.getValue() || '';
-      if (typeof DOMPurify !== 'undefined') {
-        iframe.srcdoc = DOMPurify.sanitize(raw, { USE_PROFILES: { html: true } });
-      } else {
-        iframe.srcdoc = raw;
-      }
-      iframe.style.display = 'block';
-    } catch (e) {
-      console.warn('HTML preview error:', e);
-      if (preview) preview.textContent = 'Error rendering HTML preview';
-    }
+    renderHtmlPreview();
     if (cmWrapper) cmWrapper.style.display = 'none';
     preview.classList.add('active');
     btn.textContent = 'Edit';
+    if (refreshBtn) refreshBtn.style.display = '';
+    mdPreviewActive = true;
+    startPreviewLiveReload();
   }
+}
+
+function renderHtmlPreview() {
+  const iframe = document.getElementById('editor-preview-iframe');
+  const raw = editor ? editor.getValue() : '';
+  if (!iframe) return;
+  const s = getComputedStyle(document.documentElement);
+  const bg = s.getPropertyValue('--bg').trim();
+  const fg = s.getPropertyValue('--fg').trim();
+  const accent = s.getPropertyValue('--accent').trim();
+  const bg2 = s.getPropertyValue('--bg2').trim();
+  const border = s.getPropertyValue('--border').trim();
+  const font = s.getPropertyValue('--font').trim();
+  const isDark = !['#f9f9fb', '#ffffff', 'rgb(249, 249, 251)', 'rgb(255, 255, 255)'].includes(bg);
+  const doc = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="color-scheme" content="${isDark ? 'dark' : 'light'}">
+<style>
+  :root { color-scheme: ${isDark ? 'dark' : 'light'}; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px 24px; font-family: ${font};
+    font-size: 14px; line-height: 1.6; background: ${bg}; color: ${fg};
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: ${accent}; }
+  img { max-width: 100%; height: auto; }
+  pre { background: ${bg2}; border: 1px solid ${border}; border-radius: 6px; padding: 12px; overflow-x: auto; }
+  code { font-family: ${font}; font-size: 0.9em; }
+  pre code { background: none; padding: 0; }
+  code:not(pre code) { background: ${bg2}; padding: 2px 6px; border-radius: 3px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid ${border}; padding: 8px 12px; text-align: left; }
+  th { background: ${bg2}; }
+  blockquote { margin: 0.75em 0; padding: 4px 16px; border-left: 4px solid ${accent}; background: ${bg2}; border-radius: 0 6px 6px 0; }
+  h1, h2, h3, h4, h5, h6 { margin: 1em 0 0.5em; font-weight: 700; }
+  h1 { font-size: 1.8em; border-bottom: 1px solid ${border}; padding-bottom: 0.3em; }
+  h2 { font-size: 1.5em; border-bottom: 1px solid ${border}; padding-bottom: 0.25em; }
+  h3 { font-size: 1.25em; }
+  p { margin: 0.75em 0; }
+  ul, ol { margin: 0.5em 0; padding-left: 2em; }
+  li { margin: 0.25em 0; }
+  hr { border: none; border-top: 1px solid ${border}; margin: 1.5em 0; }
+  input[type="text"], input[type="email"], input[type="password"], input[type="number"],
+  textarea, select, button {
+    font-family: ${font}; font-size: 14px; padding: 6px 10px;
+    border: 1px solid ${border}; border-radius: 4px; background: ${bg2}; color: ${fg};
+  }
+  button { cursor: pointer; }
+  input:focus, textarea:focus, select:focus { outline: 2px solid ${accent}; outline-offset: 1px; }
+</style>
+</head>
+<body>${typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(raw, { USE_PROFILES: { html: true }, ADD_TAGS: ['style'], ADD_ATTR: ['target'] }) : raw}</body>
+</html>`;
+  iframe.srcdoc = doc;
+  iframe.style.display = 'block';
+}
+
+function renderMdPreview() {
+  const preview = document.getElementById('editor-preview');
+  const raw = editor ? editor.getValue() : '';
+  if (!preview) return;
+  try {
+    const html = marked.parse(raw, { breaks: true, gfm: true, langPrefix: 'language-' });
+    const sanitized = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(html) : html;
+    const s = getComputedStyle(document.documentElement);
+    const bg = s.getPropertyValue('--bg').trim();
+    const fg = s.getPropertyValue('--fg').trim();
+    const accent = s.getPropertyValue('--accent').trim();
+    const bg2 = s.getPropertyValue('--bg2').trim();
+    const bg3 = s.getPropertyValue('--bg3').trim();
+    const border = s.getPropertyValue('--border').trim();
+    const fg2 = s.getPropertyValue('--fg2').trim();
+    const font = s.getPropertyValue('--font').trim();
+    preview.innerHTML = `
+      <style>
+        .md-rendered { max-width: 800px; margin: 0 auto; }
+        .md-rendered h1, .md-rendered h2, .md-rendered h3, .md-rendered h4, .md-rendered h5, .md-rendered h6 { color: ${fg}; margin: 1.2em 0 0.5em; font-weight: 700; }
+        .md-rendered h1 { font-size: 1.8em; border-bottom: 1px solid ${border}; padding-bottom: 0.3em; }
+        .md-rendered h2 { font-size: 1.5em; border-bottom: 1px solid ${border}; padding-bottom: 0.25em; }
+        .md-rendered h3 { font-size: 1.25em; }
+        .md-rendered h4 { font-size: 1.1em; }
+        .md-rendered p { margin: 0.75em 0; line-height: 1.7; }
+        .md-rendered ul, .md-rendered ol { margin: 0.5em 0; padding-left: 2em; }
+        .md-rendered li { margin: 0.25em 0; }
+        .md-rendered blockquote { margin: 0.75em 0; padding: 4px 16px; border-left: 4px solid ${accent}; background: ${bg2}; color: ${fg2}; border-radius: 0 6px 6px 0; }
+        .md-rendered code { font-family: ${font}; background: ${bg3}; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+        .md-rendered pre { background: ${bg2}; border: 1px solid ${border}; border-radius: 6px; padding: 12px; overflow-x: auto; margin: 0.75em 0; }
+        .md-rendered pre code { background: none; padding: 0; border-radius: 0; font-size: 0.85em; }
+        .md-rendered table { border-collapse: collapse; width: 100%; margin: 0.75em 0; }
+        .md-rendered th, .md-rendered td { border: 1px solid ${border}; padding: 8px 12px; text-align: left; }
+        .md-rendered th { background: ${bg3}; font-weight: 600; }
+        .md-rendered hr { border: none; border-top: 1px solid ${border}; margin: 1.5em 0; }
+        .md-rendered a { color: ${accent}; text-decoration: none; }
+        .md-rendered a:hover { text-decoration: underline; }
+        .md-rendered img { max-width: 100%; border-radius: 6px; }
+      </style>
+      <div class="md-rendered">${sanitized}</div>`;
+  } catch (e) {
+    console.warn('Markdown preview error:', e);
+    preview.textContent = 'Error rendering markdown preview';
+  }
+}
+
+let _previewLiveReloadTimer = null;
+let _previewLastContent = '';
+function startPreviewLiveReload() {
+  clearPreviewLiveReload();
+  _previewLastContent = editor ? editor.getValue() : '';
+  _previewLiveReloadTimer = setInterval(() => {
+    if (!mdPreviewActive || !editor) return;
+    const current = editor.getValue();
+    if (current !== _previewLastContent) {
+      _previewLastContent = current;
+      if (/\.html?$/i.test(editorPath)) renderHtmlPreview();
+      else renderMdPreview();
+    }
+  }, 1000);
+}
+function clearPreviewLiveReload() {
+  if (_previewLiveReloadTimer) { clearInterval(_previewLiveReloadTimer); _previewLiveReloadTimer = null; }
+}
+
+function refreshPreview() {
+  if (!editor) return;
+  if (/\.html?$/i.test(editorPath)) renderHtmlPreview();
+  else renderMdPreview();
+  toast('Preview refreshed', 'success');
 }
 
 function toggleMdPreview() {
@@ -3066,23 +3197,22 @@ function toggleMdPreview() {
   const cmWrapper = document.querySelector('.CodeMirror');
   const preview = document.getElementById('editor-preview');
   const btn = document.getElementById('md-preview-toggle');
+  const refreshBtn = document.getElementById('preview-refresh-btn');
   mdPreviewActive = !mdPreviewActive;
   if (mdPreviewActive) {
-    try {
-      const raw = marked.parse(editor.getValue(), { breaks: true, gfm: true });
-      preview.innerHTML = DOMPurify ? DOMPurify.sanitize(raw) : raw;
-    } catch (e) {
-      console.warn('Markdown preview error:', e);
-      preview.textContent = 'Error rendering markdown preview';
-    }
+    renderMdPreview();
     if (cmWrapper) cmWrapper.style.display = 'none';
     preview.classList.add('active');
     btn.textContent = 'Edit';
+    if (refreshBtn) refreshBtn.style.display = '';
+    startPreviewLiveReload();
   } else {
     if (cmWrapper) cmWrapper.style.display = '';
     preview.classList.remove('active');
     btn.textContent = 'Preview';
+    if (refreshBtn) refreshBtn.style.display = 'none';
     editor.focus();
+    clearPreviewLiveReload();
   }
 }
 
@@ -3653,6 +3783,7 @@ function setupKeyboardShortcuts() {
     if (ctrl && e.key === 'w') { e.preventDefault(); if (activeTabId) closeTab(e, activeTabId); }
     if (ctrl && e.shiftKey && e.key === 'ArrowRight') { e.preventDefault(); cycleTab(1); }
     if (ctrl && e.shiftKey && e.key === 'ArrowLeft') { e.preventDefault(); cycleTab(-1); }
+    if (ctrl && e.shiftKey && e.key === 'r') { e.preventDefault(); refreshPreview(); }
     if (e.key === 'Escape') {
       if (document.getElementById('ctx-menu').classList.contains('open')) {
         document.getElementById('ctx-menu').classList.remove('open');
