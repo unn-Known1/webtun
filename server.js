@@ -19,8 +19,8 @@ const PORT = process.env.PORT || 3000;
 const PIN = process.env.PIN || '';
 const SHELL = process.env.SHELL || (os.platform() === 'win32' ? 'powershell.exe' : (fs.existsSync('/bin/bash') ? '/bin/bash' : 'sh'));
 const HOST = process.env.HOST || '0.0.0.0';
+const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT ? path.resolve(process.env.WORKSPACE_ROOT) : os.homedir();
 
-app.disable('x-powered-by');
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -37,6 +37,11 @@ app.use((req, res, next) => {
 // Trust proxy for proper IP detection behind reverse proxy
 app.set('trust proxy', 1);
 
+function isPathInWorkspace(p) {
+  const normalized = path.resolve(p);
+  if (typeof WORKSPACE_ROOT !== 'string') return false;
+  return normalized === WORKSPACE_ROOT || normalized.startsWith(WORKSPACE_ROOT + path.sep);
+}
 function constantTimeEqual(a, b) {
   if (typeof a !== 'string' || typeof b !== 'string') return false;
   return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b.padEnd(a.length, '\0').slice(0, a.length)));
@@ -69,7 +74,6 @@ app.get('/api/home', checkPin, (req, res) => {
 });
 
 // ── File API ──────────────────────────────────────────────────────────
-const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT ? path.resolve(process.env.WORKSPACE_ROOT) : os.homedir();
 const fsPromises = fs.promises;
 
 function resolvePath(targetPath) {
@@ -120,6 +124,10 @@ async function asyncSafeWalk(currentDir, depth, maxDepth, q, results, maxResults
 app.get('/api/files', checkPin, async (req, res) => {
   try {
     const dir = resolvePath(req.query.path || WORKSPACE_ROOT);
+    if (!isPathInWorkspace(dir)) {
+      console.warn('GET /api/files 403 — path outside workspace');
+      return res.status(403).json({ error: 'path is outside workspace root' });
+    }
 
     // Windows: at a drive root (e.g. C:\), list all available drives
     if (os.platform() === 'win32') {
@@ -412,6 +420,10 @@ app.post('/api/files/unzip', checkPin, async (req, res) => {
       return res.status(400).json({ error: 'path is required', usage: 'POST JSON { "path": "<zip_file>" }' });
     }
     const p = realPath(req.body.path);
+    if (!isPathInWorkspace(p)) {
+      console.warn('POST /api/files/unzip 403 — path outside workspace');
+      return res.status(403).json({ error: 'path is outside workspace root' });
+    }
     if (p === WORKSPACE_ROOT) {
       console.warn('POST /api/files/unzip 403 — cannot unzip workspace root');
       return res.status(403).json({ error: 'cannot unzip workspace root' });
@@ -420,14 +432,23 @@ app.post('/api/files/unzip', checkPin, async (req, res) => {
     if (ext !== '.zip') return res.status(400).json({ error: 'Not a zip file' });
     const destDir = path.join(path.dirname(p), path.basename(p, '.zip'));
     await fsPromises.mkdir(destDir, { recursive: true });
-    const { execFileSync } = require('child_process');
-    if (os.platform() === 'win32') {
-      execFileSync('powershell.exe', ['-NoProfile', '-Command', 'Expand-Archive -LiteralPath $env:ZIP_SRC -DestinationPath $env:ZIP_DST -Force'], {
-        stdio: 'ignore',
-        env: { ...process.env, ZIP_SRC: p, ZIP_DST: destDir }
-      });
-    } else {
-      execFileSync('unzip', ['-o', p, '-d', destDir], { stdio: 'ignore' });
+    const AdmZip = require('adm-zip');
+    const zip = new AdmZip(p);
+    const entries = zip.getEntries();
+    for (const entry of entries) {
+      const entryPath = path.normalize(entry.entryName);
+      if (entryPath.startsWith('..') || path.isAbsolute(entryPath)) {
+        return res.status(400).json({ error: 'Invalid zip entry: ' + entry.entryName });
+      }
+      const target = path.join(destDir, entryPath);
+      if (!target.startsWith(destDir + path.sep) && target !== destDir) {
+        return res.status(400).json({ error: 'Zip entry escapes destination directory' });
+      }
+    }
+    try {
+      zip.extractAllTo(destDir, true);
+    } catch (e) {
+      return res.status(500).json({ error: e.message });
     }
     res.json({ success: true, dir: destDir });
   } catch (e) {
@@ -438,6 +459,10 @@ app.post('/api/files/unzip', checkPin, async (req, res) => {
 app.get('/api/files/read', checkPin, async (req, res) => {
   try {
     const p = resolvePath(req.query.path);
+    if (!isPathInWorkspace(p)) {
+      console.warn('GET /api/files/read 403 — path outside workspace');
+      return res.status(403).json({ error: 'path is outside workspace root' });
+    }
     const [content, st] = await Promise.all([
       fsPromises.readFile(p, 'utf8'),
       fsPromises.stat(p)
@@ -470,6 +495,10 @@ app.post('/api/files/write', checkPin, async (req, res) => {
 app.get('/api/files/image', checkPin, async (req, res) => {
   try {
     const p = resolvePath(req.query.path);
+    if (!isPathInWorkspace(p)) {
+      console.warn('GET /api/files/image 403 — path outside workspace');
+      return res.status(403).json({ error: 'path is outside workspace root' });
+    }
     const mimeType = mime.lookup(p) || 'application/octet-stream';
     res.setHeader('Content-Type', mimeType);
     res.setHeader('Cache-Control', 'private, max-age=3600');
@@ -532,7 +561,11 @@ app.post('/api/files/upload', checkPin, (req, res) => {
   const storage = multer.diskStorage({
     destination: (req, file, cb) => {
       try {
-        const finalDest = realPath(path.join(destDir, file.originalname));
+        const safeName = path.basename(file.originalname).replace(/[^a-zA-Z0-9_.\-]/g, '_');
+        const finalDest = path.join(destDir, safeName);
+        if (!finalDest.startsWith(destDir + path.sep) && finalDest !== destDir) {
+          return cb(new Error('Invalid upload destination'));
+        }
         const subPath = path.dirname(finalDest);
         fs.mkdirSync(subPath, { recursive: true });
         cb(null, subPath);
@@ -540,9 +573,7 @@ app.post('/api/files/upload', checkPin, (req, res) => {
         cb(err);
       }
     },
-    filename: (_, file, cb) => {
-      cb(null, path.basename(file.originalname));
-    }
+    filename: (_, file, cb) => cb(null, path.basename(file.originalname).replace(/[^a-zA-Z0-9_.\-]/g, '_'))
   });
   const upload = multer({ storage, limits: { fileSize: 500 * 1024 * 1024, files: 100 } }).array('files');
   upload(req, res, err => {
@@ -1800,6 +1831,10 @@ app.get('/api/search', rateLimiter, checkPin, async (req, res) => {
 
   try {
     const searchDir = resolvePath(dir);
+    if (!isPathInWorkspace(searchDir)) {
+      console.warn('GET /api/search 403 — path outside workspace');
+      return res.status(403).json({ error: 'path is outside workspace root' });
+    }
     const maxResults = 50;
     const results = [];
     const maxDepth = 4;

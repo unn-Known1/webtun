@@ -503,6 +503,7 @@ svg { display: block; }
 #editor-preview a { color: var(--accent); text-decoration: none; }
 #editor-preview a:hover { text-decoration: underline; }
 #editor-preview img { max-width: 100%; border-radius: var(--radius); }
+#editor-preview-iframe { width: 100%; height: 100%; border: none; display: none; background: #fff; border-radius: var(--radius); }
 
 /* ═══════════════════════════════════════════════════════
    CODEMIRROR
@@ -896,7 +897,7 @@ svg { display: block; }
           </div>
           <div id="editor-area">
             <textarea id="editor-textarea" spellcheck="false"></textarea>
-            <div id="editor-preview"></div>
+            <div id="editor-preview"><iframe id="editor-preview-iframe" sandbox="allow-same-origin"></iframe></div>
           </div>
         </div>
       </div>
@@ -1719,7 +1720,7 @@ function connectWebSocket(tab, isReconnect = false) {
     if (tab.reconnectAttempts >= 3) {
       const banner = document.getElementById('reconnect-banner');
       if (banner) {
-        banner.innerHTML = '⚠️ Connection lost. <button class="btn btn-primary" style="height:26px;padding:0 12px;font-size:11px;margin-left:8px" onclick="manualReconnect()">Reconnect</button>';
+        banner.innerHTML = '⚠️ Connection lost. <button class="btn btn-primary" data-action="manual-reconnect" style="height:26px;padding:0 12px;font-size:11px;margin-left:8px">Reconnect</button>';
         banner.style.display = 'block';
       }
     } else {
@@ -1741,7 +1742,6 @@ function connectWebSocket(tab, isReconnect = false) {
 }
 
 function manualReconnect() {
-  const banner = document.getElementById('reconnect-banner');
   if (banner) {
     banner.innerHTML = '⚠️ Reconnecting…';
     banner.style.display = 'block';
@@ -2091,21 +2091,23 @@ async function loadFiles(dir) {
   renderBreadcrumb(dir);
 
   const list = document.getElementById('file-list');
-
-  // Show loading only when list has no prior content (first load)
-  const isEmpty = list.children.length === 0;
-  if (isEmpty) {
-    list.innerHTML = '<div style="padding:10px;text-align:center;font-size:11px;color:var(--fg2)">Loading…</div>';
-  }
+  list.innerHTML = '<div style="padding:10px;text-align:center;font-size:11px;color:var(--fg2)">Loading…</div>';
 
   let data;
   try {
     data = await api(`/api/files?path=${encodeURIComponent(dir)}`, { signal: loadFilesAbortController.signal });
   } catch (e) {
     if (e.name === 'AbortError') return;
-    console.warn('loadFiles error:', e);
+    const errorDiv = document.createElement('div');
+    errorDiv.style.cssText = 'padding:16px;text-align:center;';
+    errorDiv.innerHTML = '<div style="color:var(--red);margin-bottom:8px">Failed to load directory</div>' +
+      '<button class="btn btn-primary" style="height:28px;padding:0 12px;font-size:11px">Retry</button>';
+    list.innerHTML = '';
+    list.appendChild(errorDiv);
+    errorDiv.querySelector('button').addEventListener('click', () => loadFiles(dir));
     return;
   }
+
   if (!data.files) {
     if (dir !== homeDir) loadFiles(homeDir);
     return;
@@ -2851,6 +2853,7 @@ async function openFileEditor(path) {
   const sep = path.includes('\\') ? '\\' : '/';
   const fileName = path.split(sep).pop() || path;
   const isMd = /\.md$/i.test(fileName);
+  const isHtml = /\.html?$/i.test(fileName);
 
   const cm = initCodeMirror();
   cm.setValue(r.content);
@@ -2860,8 +2863,10 @@ async function openFileEditor(path) {
 
   const preview = document.getElementById('editor-preview');
   const toggleBtn = document.getElementById('md-preview-toggle');
+  const previewIframe = document.getElementById('editor-preview-iframe');
   preview.classList.remove('active');
-  if (isMd && typeof marked !== 'undefined') {
+  if (previewIframe) previewIframe.style.display = 'none';
+  if ((isMd && typeof marked !== 'undefined') || isHtml) {
     toggleBtn.style.display = '';
     toggleBtn.textContent = 'Preview';
   } else {
@@ -2942,6 +2947,8 @@ function closeEditor() {
   document.getElementById('content').classList.remove('editor-open');
   document.getElementById('editor-preview').classList.remove('active');
   document.getElementById('md-preview-toggle').style.display = 'none';
+  const previewIframe = document.getElementById('editor-preview-iframe');
+  if (previewIframe) previewIframe.style.display = 'none';
   const cm = document.querySelector('.CodeMirror');
   if (cm) cm.style.display = '';
   mdPreviewActive = false;
@@ -2998,7 +3005,42 @@ function closeImageViewer() {
   closeOverlay('image-viewer');
 }
 
+function toggleHtmlPreview() {
+  const cmWrapper = document.querySelector('.CodeMirror');
+  const preview = document.getElementById('editor-preview');
+  const iframe = document.getElementById('editor-preview-iframe');
+  const btn = document.getElementById('md-preview-toggle');
+  const isActive = preview.classList.contains('active');
+  if (isActive) {
+    if (cmWrapper) cmWrapper.style.display = '';
+    preview.classList.remove('active');
+    if (iframe) iframe.style.display = 'none';
+    btn.textContent = 'Preview';
+    editor.focus();
+  } else {
+    try {
+      const raw = editor.getValue() || '';
+      if (typeof DOMPurify !== 'undefined') {
+        iframe.srcdoc = DOMPurify.sanitize(raw, { USE_PROFILES: { html: true } });
+      } else {
+        iframe.srcdoc = raw;
+      }
+      iframe.style.display = 'block';
+    } catch (e) {
+      console.warn('HTML preview error:', e);
+      if (preview) preview.textContent = 'Error rendering HTML preview';
+    }
+    if (cmWrapper) cmWrapper.style.display = 'none';
+    preview.classList.add('active');
+    btn.textContent = 'Edit';
+  }
+}
+
 function toggleMdPreview() {
+  if (/\.html?$/i.test(editorPath)) {
+    toggleHtmlPreview();
+    return;
+  }
   const cmWrapper = document.querySelector('.CodeMirror');
   const preview = document.getElementById('editor-preview');
   const btn = document.getElementById('md-preview-toggle');
