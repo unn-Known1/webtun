@@ -1,6 +1,7 @@
-# WebTun Frontend Audit Report
+# WebTun Frontend Audit Report [fixed]
 
 > **Generated**: Comprehensive UI/UX audit using 10x thinking with multi-agent parallel analysis.
+> **Status**: All 12 Critical Issues (C1-C12) have been fixed. See summary below.
 > **Source**: `public/index.html` (4163 lines, single-page vanilla HTML/CSS/JS app)
 > **Server**: `server.js` (2143 lines, Express + WebSocket + node-pty)
 > **Stack**: Vanilla HTML/CSS/JS + xterm.js + CodeMirror 5 + marked
@@ -37,6 +38,20 @@
 | **Total** | **12** | **18** | **35** | **33** | **98** |
 
 **Overall Verdict**: WebTun is a remarkably capable single-page terminal app with strong theming, solid mobile touch support, and good architectural decisions (WebSocket binary protocol, tmux session persistence). However, it suffers from **critical accessibility gaps** (no focus indicators, ARIA misuse), **silent error swallowing throughout the JS**, **a stray `+` character breaking a CSS `@media` rule**, and **inconsistent design tokens** across 4163 lines of inline code.
+
+> **Fixes Applied (all 12 Critical Issues)**:
+> - C1: Removed stray `+` before `@media`
+> - C2: Added `:focus-visible` styles to all interactive elements
+> - C3: AbortController race condition fix in `loadFiles()`
+> - C4: DOMPurify sanitization in `toggleMdPreview()`
+> - C5: `console.warn()` added to all empty `catch {}` blocks
+> - C6: `.catch()` added to `init()` call
+> - C7: Context menu emoji replaced with SVGs
+> - C8: Bookmarks/settings/PIN/system-stats emoji replaced with SVGs
+> - C9: Tab close icon `×` text replaced with SVG in tiles mode
+> - C10: `--shadow-color` variable per theme
+> - C11: Removed duplicate `[data-theme="tokyonight"]` CSS block
+> - C12: Safe-area-inset added to sidebar, settings panel, header
 
 ---
 

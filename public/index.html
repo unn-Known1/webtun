@@ -15,6 +15,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-search@0.15.0/lib/addon-search.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0.11.0/lib/addon-web-links.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/lib/codemirror.min.css">
 <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/lib/codemirror.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/addon/edit/matchbrackets.min.js"></script>
@@ -55,6 +56,7 @@
   --header-h: 38px;
   --settings-w: 340px;
   --radius: 6px;
+  --shadow-color: rgba(0,0,0,0.6);
   --font: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
 }
 [data-theme="light"] {
@@ -62,36 +64,35 @@
   --border: #c8c8d4; --fg: #2a2a3a; --fg2: #4a4a6a;
   --accent: #4060d0; --accent2: #8050c0; --green: #3a8a2a;
   --red: #c03050; --yellow: #a07010; --cyan: #2080a0;
+  --shadow-color: rgba(0,0,0,0.12);
 }
 [data-theme="solarized"] {
   --bg: #002b36; --bg2: #073642; --bg3: #083f4d; --bg4: #0a4a5a;
   --border: #1a5a6a; --fg: #839496; --fg2: #586e75;
   --accent: #268bd2; --accent2: #6c71c4; --green: #859900;
   --red: #dc322f; --yellow: #b58900; --cyan: #2aa198;
+  --shadow-color: rgba(0,0,0,0.6);
 }
 [data-theme="gruvbox"] {
   --bg: #282828; --bg2: #1d2021; --bg3: #32302f; --bg4: #3c3836;
   --border: #504945; --fg: #ebdbb2; --fg2: #928374;
   --accent: #83a598; --accent2: #d3869b; --green: #b8bb26;
   --red: #fb4934; --yellow: #fabd2f; --cyan: #8ec07c;
+  --shadow-color: rgba(0,0,0,0.6);
 }
 [data-theme="dracula"] {
   --bg: #282a36; --bg2: #1e1f29; --bg3: #2f3240; --bg4: #373a50;
   --border: #44475a; --fg: #f8f8f2; --fg2: #6272a4;
   --accent: #bd93f9; --accent2: #ff79c6; --green: #50fa7b;
   --red: #ff5555; --yellow: #f1fa8c; --cyan: #8be9fd;
-}
-[data-theme="tokyonight"] {
-  --bg: #1a1b26; --bg2: #16161e; --bg3: #24283b; --bg4: #2a2d3e;
-  --border: #3b3f52; --fg: #c0caf5; --fg2: #787c99;
-  --accent: #7aa2f7; --accent2: #bb9af7; --green: #9ece6a;
-  --red: #f7768e; --yellow: #e0af68; --cyan: #7dcfff;
+  --shadow-color: rgba(0,0,0,0.6);
 }
 [data-theme="monokai"] {
   --bg: #272822; --bg2: #1e1f1c; --bg3: #31322b; --bg4: #3a3c32;
   --border: #49483e; --fg: #f8f8f2; --fg2: #75715e;
   --accent: #a6e22e; --accent2: #ae81ff; --green: #a6e22e;
   --red: #f92672; --yellow: #e6db74; --cyan: #66d9e8;
+  --shadow-color: rgba(0,0,0,0.6);
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -102,7 +103,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 
 button { background: none; border: none; cursor: pointer; color: inherit; font-family: inherit; }
 input, select, textarea { font-family: var(--font); background: var(--bg3); border: 1px solid var(--border); color: var(--fg); border-radius: var(--radius); padding: 6px 10px; outline: none; font-size: 16px; }
-+ @media (pointer: coarse) { input, select, textarea { font-size: 16px; } }
+@media (pointer: coarse) { input, select, textarea { font-size: 16px; } }
 input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 a { color: var(--accent); text-decoration: none; }
 ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -124,7 +125,7 @@ svg { display: block; }
    LAYOUT
    ═══════════════════════════════════════════════════════ */
 #app { display: flex; flex-direction: column; height: 100dvh; }
-#header { display: flex; align-items: center; height: var(--header-h); background: var(--bg2); border-bottom: 1px solid var(--border); padding: 0 8px; gap: 6px; flex-shrink: 0; z-index: 10; position: relative; }
+#header { display: flex; align-items: center; height: var(--header-h); background: var(--bg2); border-bottom: 1px solid var(--border); padding: 0 8px; padding-top: env(safe-area-inset-top, 0px); gap: 6px; flex-shrink: 0; z-index: 10; position: relative; }
 
 /* Upload progress bar in header */
 #upload-progress { position: absolute; bottom: 0; left: 0; right: 0; height: 0; background: var(--bg3); z-index: 20; overflow: visible; transition: height 0.25s ease; }
@@ -369,6 +370,24 @@ svg { display: block; }
 .mkey.active-mode { background: var(--accent); color: var(--bg); }
 #mkey-sel-row { display:none;gap:4px;padding:4px 6px;padding-bottom:calc(4px + env(safe-area-inset-bottom));background:var(--bg3);border-top:1px solid var(--border);overflow-x:auto;white-space:nowrap;flex-shrink:0;align-items:center }
 
+/* Focus visible */
+.icon-btn:focus-visible,
+.tab:focus-visible,
+.file-item:focus-visible,
+.btn:focus-visible,
+.mkey:focus-visible,
+.sidebar-action-btn:focus-visible,
+.search-btn:focus-visible,
+.tth-close:focus-visible,
+.ctx-item:focus-visible,
+.iv-close:focus-visible,
+#new-tab-btn:focus-visible,
+#pin-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#search-input:focus-visible,
+#path-input:focus-visible,
+.settings-panel-body select:focus-visible,
+.settings-panel-body input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
 /* Touch feedback */
 .sidebar-action-btn:active { transform: scale(0.96); }
 .icon-btn:active { transform: scale(0.92); }
@@ -381,7 +400,7 @@ svg { display: block; }
 /* ═══════════════════════════════════════════════════════
    SEARCH BAR
    ═══════════════════════════════════════════════════════ */
-#search-bar { position: absolute; top: 8px; right: 12px; z-index: 20; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 8px; display: none; align-items: center; gap: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
+#search-bar { position: absolute; top: 8px; right: 12px; z-index: 20; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 8px; display: none; align-items: center; gap: 6px; box-shadow: 0 4px 16px var(--shadow-color); }
 #search-bar.open { display: flex; }
 #search-input { width: 200px; height: 26px; }
 .search-btn { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 4px; color: var(--fg2); }
@@ -395,7 +414,7 @@ svg { display: block; }
    ═══════════════════════════════════════════════════════ */
 .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 400; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
 .overlay.open { display: flex; }
-.modal { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 24px; min-width: 320px; max-width: 90vw; max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 40px rgba(0,0,0,0.6); }
+.modal { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 24px; min-width: 320px; max-width: 90vw; max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 40px var(--shadow-color); }
 .modal h2 { font-size: 16px; margin-bottom: 20px; color: var(--fg); }
 .modal-row { margin-bottom: 14px; }
 .modal-row label { display: block; font-size: 11px; color: var(--fg2); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -508,7 +527,7 @@ svg { display: block; }
 /* ═══════════════════════════════════════════════════════
     CONTEXT MENU
    ═══════════════════════════════════════════════════════ */
-#ctx-menu { position: fixed; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 4px 20px rgba(0,0,0,0.5); z-index: 500; display: none; min-width: 160px; overflow: hidden; }
+#ctx-menu { position: fixed; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 4px 20px var(--shadow-color); z-index: 500; display: none; min-width: 160px; overflow: hidden; }
 #ctx-menu.open { display: block; }
 .ctx-item { padding: 8px 14px; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
 .ctx-item:hover { background: var(--bg4); }
@@ -519,7 +538,7 @@ svg { display: block; }
    TOAST
    ═══════════════════════════════════════════════════════ */
 #toast-container { position: fixed; bottom: calc(60px + env(safe-area-inset-bottom, 0px)); right: 16px; z-index: 450; display: flex; flex-direction: column; gap: 8px; }
-.toast { padding: 10px 16px; background: var(--bg4); border: 1px solid var(--border); border-radius: var(--radius); font-size: 12px; color: var(--fg); box-shadow: 0 4px 16px rgba(0,0,0,0.4); animation: slideIn 0.2s ease; max-width: 280px; }
+.toast { padding: 10px 16px; background: var(--bg4); border: 1px solid var(--border); border-radius: var(--radius); font-size: 12px; color: var(--fg); box-shadow: 0 4px 16px var(--shadow-color); animation: slideIn 0.2s ease; max-width: 280px; }
 .toast.success { border-left: 3px solid var(--green); }
 .toast.error { border-left: 3px solid var(--red); }
 .toast.warning { border-left: 3px solid var(--yellow); }
@@ -537,7 +556,7 @@ svg { display: block; }
    ═══════════════════════════════════════════════════════ */
 #image-viewer { background: rgba(0,0,0,0.85); }
 #image-viewer .modal { background: transparent; box-shadow: none; max-width: 95vw; max-height: 95vh; padding: 0; display: flex; flex-direction: column; align-items: center; }
-#image-viewer img { max-width: 100%; max-height: 85vh; border-radius: var(--radius); object-fit: contain; box-shadow: 0 8px 40px rgba(0,0,0,0.6); }
+#image-viewer img { max-width: 100%; max-height: 85vh; border-radius: var(--radius); object-fit: contain; box-shadow: 0 8px 40px var(--shadow-color); }
 #image-viewer .iv-header { display: flex; align-items: center; width: 100%; padding: 8px 0; gap: 12px; color: var(--fg2); }
 #image-viewer .iv-name { font-size: 13px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #image-viewer .iv-close { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius); cursor: pointer; }
@@ -633,10 +652,10 @@ svg { display: block; }
 @media (max-width: 768px) {
   #mobile-keys { display: flex; }
   .sidebar-resize-handle { display: none; }
-  #sidebar { position: absolute; left: 0; top: var(--header-h); bottom: 0; z-index: 30; width: var(--sidebar-w); transform: translateX(-100%); transition: transform 0.2s; }
+  #sidebar { position: absolute; left: env(safe-area-inset-left, 0px); top: var(--header-h); bottom: 0; z-index: 30; width: var(--sidebar-w); transform: translateX(-100%); transition: transform 0.2s; }
   #sidebar.mobile-open { transform: translateX(0); }
   #sidebar.hidden { transform: translateX(-100%); width: var(--sidebar-w); }
-  #settings-panel { position: fixed; right: 0; top: var(--header-h); bottom: 0; z-index: 30; width: var(--settings-w); border-left: 1px solid var(--border); transform: translateX(100%); transition: transform 0.2s; }
+  #settings-panel { position: fixed; right: env(safe-area-inset-right, 0px); top: var(--header-h); bottom: 0; z-index: 30; width: var(--settings-w); border-left: 1px solid var(--border); transform: translateX(100%); transition: transform 0.2s; }
   #settings-panel.open { transform: translateX(0); }
   #hostname-badge { display: none; }
   #search-input { width: 200px; }
@@ -676,14 +695,14 @@ svg { display: block; }
         theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dracula' : 'light';
       }
       document.body.dataset.theme = theme;
-    } catch(e){}
+    } catch(e){ console.warn('Settings init error:', e); }
   })();
 </script>
 
 <!-- PIN Screen -->
 <div id="pin-screen">
   <div id="pin-box">
-    <h1>⌨ WebTun</h1>
+    <h1 style="display:flex;align-items:center;justify-content:center;gap:6px"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="10" y2="8"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="6" y1="16" x2="8" y2="16"/><line x1="12" y1="8" x2="18" y2="8"/><line x1="12" y1="12" x2="18" y2="12"/><line x1="12" y1="16" x2="16" y2="16"/><line x1="10" y1="16" x2="10" y2="16"/></svg>WebTun</h1>
     <p>Enter PIN to continue</p>
     <input id="pin-input" type="password" placeholder="••••" autocomplete="off" maxlength="32">
     <div id="pin-error"></div>
@@ -698,7 +717,7 @@ svg { display: block; }
   <!-- Header -->
   <div id="header">
     <span id="conn-status" style="width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0" title="Connected"></span>
-    <span id="logo">⌨ WebTun</span>
+    <span id="logo" style="display:flex;align-items:center;gap:4px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="10" y2="8"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="12" y1="8" x2="18" y2="8"/><line x1="12" y1="12" x2="18" y2="12"/></svg>WebTun</span>
     <span id="hostname-badge">—</span>
     <div class="header-spacer"></div>
     <label id="keep-awake-toggle" class="keep-awake" title="Keep Screen Awake">
@@ -762,7 +781,7 @@ svg { display: block; }
         <button class="sidebar-action-btn" onclick="downloadSelected()">Download</button>
         <button class="sidebar-action-btn" onclick="clearSelection()">Cancel</button>
       </div>
-      <div id="bookmarks-header" onclick="toggleBookmarks()">📍 Bookmarks <span id="bm-count" style="margin-left:auto;font-size:10px"></span></div>
+      <div id="bookmarks-header" onclick="toggleBookmarks()"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg> Bookmarks <span id="bm-count" style="margin-left:auto;font-size:10px"></span></div>
       <div id="bookmarks-list"></div>
       <div id="sidebar-footer">
         <button class="sidebar-action-btn" onclick="bookmarkCurrentDir()" title="Bookmark current directory">
@@ -897,7 +916,7 @@ svg { display: block; }
     <!-- Settings Panel -->
     <div id="settings-panel">
       <div class="settings-panel-header">
-        <span style="font-size:14px;font-weight:700">⚙ Settings</span>
+         <span style="font-size:14px;font-weight:700;display:flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Settings</span>
         <button class="icon-btn" onclick="closeSettings()" title="Close settings">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
@@ -992,23 +1011,23 @@ svg { display: block; }
 
 <!-- Context menu -->
 <div id="ctx-menu">
-  <div class="ctx-item" id="ctx-open">📂 Open</div>
-  <div class="ctx-item" id="ctx-edit">✏️ Edit</div>
-  <div class="ctx-item" id="ctx-download">⬇️ Download</div>
-  <div class="ctx-item" id="ctx-zip">📦 Zip</div>
-  <div class="ctx-item" id="ctx-extract">📂 Extract</div>
-  <div class="ctx-item" id="ctx-folder-size">📏 Folder Size</div>
-  <div class="ctx-item" id="ctx-copy-path">📋 Copy Path</div>
+  <div class="ctx-item" id="ctx-open"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> Open</div>
+  <div class="ctx-item" id="ctx-edit"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg> Edit</div>
+  <div class="ctx-item" id="ctx-download"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download</div>
+  <div class="ctx-item" id="ctx-zip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="12" x2="12" y2="18"/><line x1="9" y1="15" x2="15" y2="15"/></svg> Zip</div>
+  <div class="ctx-item" id="ctx-extract"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg> Extract</div>
+  <div class="ctx-item" id="ctx-folder-size"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Folder Size</div>
+  <div class="ctx-item" id="ctx-copy-path"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy Path</div>
   <div class="ctx-sep"></div>
-  <div class="ctx-item" id="ctx-copy">📋 Copy</div>
-  <div class="ctx-item" id="ctx-cut">✂️ Cut</div>
-  <div class="ctx-item" id="ctx-paste" style="display:none">📄 Paste</div>
+  <div class="ctx-item" id="ctx-copy"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</div>
+  <div class="ctx-item" id="ctx-cut"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg> Cut</div>
+  <div class="ctx-item" id="ctx-paste" style="display:none"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="14" y="2" width="8" height="8" rx="2"/><path d="M16 14H8M8 18h8"/><path d="M5 4h4"/><rect x="2" y="6" width="16" height="16" rx="2"/></svg> Paste</div>
   <div class="ctx-sep"></div>
-  <div class="ctx-item" id="ctx-rename">🏷️ Rename</div>
+  <div class="ctx-item" id="ctx-rename"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg> Rename</div>
   <div class="ctx-sep"></div>
-  <div class="ctx-item" id="ctx-open-term">🖥️ Open Terminal Here</div>
+  <div class="ctx-item" id="ctx-open-term"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> Open Terminal Here</div>
   <div class="ctx-sep"></div>
-  <div class="ctx-item danger" id="ctx-delete">🗑️ Delete</div>
+  <div class="ctx-item danger" id="ctx-delete"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg> Delete</div>
 </div>
 
 <!-- Fuzzy Finder Modal -->
@@ -1023,7 +1042,7 @@ svg { display: block; }
 <!-- System Stats Modal -->
 <div class="overlay" id="sys-overlay">
   <div class="modal">
-    <h2>🖥 System Stats</h2>
+    <h2 style="display:flex;align-items:center;gap:6px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>System Stats</h2>
     <div id="sys-loading" style="text-align:center;padding:20px;color:var(--fg2);display:none">Loading…</div>
     <div id="sys-content">
       <div class="sys-grid">
@@ -1186,7 +1205,8 @@ function uuid() {
   try {
     return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
       (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
-  } catch {
+  } catch(e) {
+    console.warn('uuid fallback:', e);
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   }
 }
@@ -1207,14 +1227,14 @@ function preventDoubleTap(el, fn, delay = 1000) {
 
 function saveTabState() {
   const state = tabs.map(t => ({ id: t.id, sessionId: t.sessionId, title: t.title }));
-  try { localStorage.setItem('wt-tabs', JSON.stringify(state)); } catch {}
+  try { localStorage.setItem('wt-tabs', JSON.stringify(state)); } catch(e) { console.warn('Failed to save tabs:', e); }
 }
 
 function loadTabState() {
   try {
     const val = JSON.parse(localStorage.getItem('wt-tabs'));
     return Array.isArray(val) ? val : [];
-  } catch { return []; }
+  } catch(e) { console.warn('loadTabState error:', e); return []; }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1354,10 +1374,11 @@ async function api(url, opts = {}) {
     const r = await fetch(url, opts);
     clearTimeout(timeoutId);
     if (!r.ok && r.status === 401) { showPinScreen(); return {}; }
-    try { return await r.json(); } catch { return {}; }
-  } catch {
+    try { return await r.json(); } catch(e) { console.warn('api() JSON parse error:', e); return {}; }
+  } catch(e) {
     clearTimeout(timeoutId);
     if (userSignal?.aborted) throw new DOMException('Aborted', 'AbortError');
+    console.warn('api() fetch error:', e);
     return {};
   }
 }
@@ -1541,7 +1562,7 @@ function cleanupWebSocket(tab) {
     tab.ws.onmessage = null;
     tab.ws.onerror = null;
     tab.ws.onclose = null;
-    try { tab.ws.close(); } catch {}
+    try { tab.ws.close(); } catch(e) { console.warn(e); }
     tab.ws = null;
   }
   if (tab.pingTimer) {
@@ -1735,7 +1756,7 @@ function initTerminal(tab) {
 
   // Resize observer
   tab.resizeObserver = new ResizeObserver(() => {
-    if (activeTabId === tab.id) { try { fitTerm(tab); } catch {} }
+    if (activeTabId === tab.id) { try { fitTerm(tab); } catch(e) { console.warn(e); } }
   });
   tab.resizeObserver.observe(tab.wrapper);
 
@@ -1858,7 +1879,7 @@ function toggleTiles() {
     const termWrap = document.getElementById('terminals');
     termWrap.querySelectorAll('.term-tile-header').forEach(el => el.remove());
     const t = getActiveTab();
-    setTimeout(() => { try { fitTerm(t); } catch {} }, 60);
+    setTimeout(() => { try { fitTerm(t); } catch(e) { console.warn(e); } }, 60);
   }
 }
 
@@ -1880,7 +1901,7 @@ function layoutTiles() {
     const tthClose = document.createElement('button');
     tthClose.className = 'tth-close';
     tthClose.setAttribute('aria-label', 'Close tab');
-    tthClose.textContent = '×';
+    tthClose.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
     hdr.appendChild(tthClose);
     hdr.addEventListener('click', e => {
       if (e.target.closest('.tth-close')) return;
@@ -1893,7 +1914,7 @@ function layoutTiles() {
     tab.wrapper.prepend(hdr);
   });
   setTimeout(() => {
-    tabs.forEach(tab => { try { fitTerm(tab); } catch {} });
+    tabs.forEach(tab => { try { fitTerm(tab); } catch(e) { console.warn(e); } });
   }, 60);
 }
 
@@ -1917,7 +1938,12 @@ function getXtermTheme() {
 // ═══════════════════════════════════════════════════════
 // FILE EXPLORER
 // ═══════════════════════════════════════════════════════
+let loadFilesAbortController = null;
+
 async function loadFiles(dir) {
+  if (loadFilesAbortController) loadFilesAbortController.abort();
+  loadFilesAbortController = new AbortController();
+
   if (window.innerWidth <= 768) {
     const sb = document.getElementById('sidebar');
     if (sb) { sb.classList.remove('mobile-open'); }
@@ -1945,7 +1971,14 @@ async function loadFiles(dir) {
     list.innerHTML = '<div style="padding:10px;text-align:center;font-size:11px;color:var(--fg2)">Loading…</div>';
   }
 
-  const data = await api(`/api/files?path=${encodeURIComponent(dir)}`);
+  let data;
+  try {
+    data = await api(`/api/files?path=${encodeURIComponent(dir)}`, { signal: loadFilesAbortController.signal });
+  } catch (e) {
+    if (e.name === 'AbortError') return;
+    console.warn('loadFiles error:', e);
+    return;
+  }
   if (!data.files) {
     if (dir !== homeDir) loadFiles(homeDir);
     return;
@@ -2338,7 +2371,7 @@ async function downloadFile(path) {
     a.download = path.split(/[\\/]/).pop() || 'download';
     a.click();
     URL.revokeObjectURL(url);
-  } catch { toast('Download failed', 'error'); }
+  } catch(e) { console.warn('Download failed:', e); toast('Download failed', 'error'); }
 }
 
 function joinPath(parent, child) {
@@ -2487,7 +2520,7 @@ async function handleUploadInput() {
   const files = [...input.files];
   input.value = '';
   if (!files.length) return;
-  try { await uploadFileList(files); } catch { toast('Upload failed', 'error'); }
+  try { await uploadFileList(files); } catch(e) { console.warn('Upload failed:', e); toast('Upload failed', 'error'); }
 }
 
 let _uploadProgressTimeout = null;
@@ -2555,7 +2588,8 @@ async function uploadFileList(items) {
                 failedItems.push(fileName);
                 reject(new Error(resp.error || 'Upload failed'));
               }
-            } catch {
+            } catch(e) {
+              console.warn('Upload XHR response parse error:', e);
               completed++;
               resolve();
             }
@@ -2712,7 +2746,7 @@ async function openFileEditor(path) {
       }
       const handle = document.getElementById('editor-resize-handle');
       if (handle) handle.style.cursor = isHoriz ? 'col-resize' : 'row-resize';
-    } catch {}
+    } catch(e) { console.warn(e); }
 
     // Restore saved editor size for current orientation
     try {
@@ -2722,14 +2756,14 @@ async function openFileEditor(path) {
       if (saved) {
         document.documentElement.style.setProperty('--editor-size', saved + 'px');
       }
-    } catch {}
+    } catch(e) { console.warn(e); }
   }
   document.getElementById('editor-view').classList.add('open');
   cm.focus();
 
   // Fit all terminals to new available space
   requestAnimationFrame(() => {
-    tabs.forEach(tab => { try { fitTerm(tab); } catch {} });
+    tabs.forEach(tab => { try { fitTerm(tab); } catch(e) { console.warn(e); } });
   });
 }
 
@@ -2765,7 +2799,7 @@ function closeEditor() {
   editorOriginalContent = '';
   // Fit all terminals to full available space
   requestAnimationFrame(() => {
-    tabs.forEach(tab => { try { fitTerm(tab); tab?.term?.focus(); } catch {} });
+    tabs.forEach(tab => { try { fitTerm(tab); tab?.term?.focus(); } catch(e) { console.warn(e); } });
   });
 }
 
@@ -2820,7 +2854,13 @@ function toggleMdPreview() {
   const btn = document.getElementById('md-preview-toggle');
   mdPreviewActive = !mdPreviewActive;
   if (mdPreviewActive) {
-    preview.innerHTML = marked.parse(editor.getValue(), { breaks: true, gfm: true });
+    try {
+      const raw = marked.parse(editor.getValue(), { breaks: true, gfm: true });
+      preview.innerHTML = DOMPurify ? DOMPurify.sanitize(raw) : raw;
+    } catch (e) {
+      console.warn('Markdown preview error:', e);
+      preview.textContent = 'Error rendering markdown preview';
+    }
     if (cmWrapper) cmWrapper.style.display = 'none';
     preview.classList.add('active');
     btn.textContent = 'Edit';
@@ -2892,7 +2932,7 @@ function loadSettings() {
       if (typeof s.confirmclose === 'boolean') settings.confirmclose = s.confirmclose;
       if (typeof s.datasaver === 'boolean') settings.datasaver = s.datasaver;
     }
-  } catch {}
+  } catch(e) { console.warn(e); }
   document.getElementById('s-theme').value = settings.theme;
   document.getElementById('s-fontsize').value = settings.fontSize;
   document.getElementById('s-scrollback').value = settings.scrollback;
@@ -3140,7 +3180,7 @@ function toggleSidebar() {
     }
     sb.classList.toggle('hidden', !sidebarOpen);
     sb.classList.remove('mobile-open');
-    setTimeout(() => { const t = getActiveTab(); try { fitTerm(t); } catch {} }, 220);
+    setTimeout(() => { const t = getActiveTab(); try { fitTerm(t); } catch(e) { console.warn(e); } }, 220);
   }
 }
 
@@ -3175,7 +3215,7 @@ function setupSidebarResize() {
     sidebar.style.width = width + 'px';
     document.documentElement.style.setProperty('--sidebar-w', width + 'px');
     updateSidebarNarrowClass();
-    setTimeout(() => { const t = getActiveTab(); try { fitTerm(t); } catch {} }, 50);
+    setTimeout(() => { const t = getActiveTab(); try { fitTerm(t); } catch(e) { console.warn(e); } }, 50);
   }
   function stopResize() {
     if (!isResizing) return;
@@ -3187,7 +3227,7 @@ function setupSidebarResize() {
     document.removeEventListener('mouseup', stopResize);
     document.removeEventListener('touchmove', doResize);
     document.removeEventListener('touchend', stopResize);
-    try { localStorage.setItem('wt-sidebar-width', String(sidebar.offsetWidth)); } catch {}
+    try { localStorage.setItem('wt-sidebar-width', String(sidebar.offsetWidth)); } catch(e) { console.warn(e); }
   }
   handle.addEventListener('mousedown', startResize);
   handle.addEventListener('touchstart', startResize, { passive: false });
@@ -3208,7 +3248,7 @@ function restoreSidebarWidth() {
         }
       }
     }
-  } catch {}
+  } catch(e) { console.warn(e); }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -3257,7 +3297,7 @@ function setupEditorResize() {
     const newSize = Math.max(80, Math.min(available - 160, startSize + (startPos - clientPos)));
     document.documentElement.style.setProperty('--editor-size', newSize + 'px');
     requestAnimationFrame(() => {
-      tabs.forEach(tab => { try { fitTerm(tab); } catch {} });
+      tabs.forEach(tab => { try { fitTerm(tab); } catch(e) { console.warn(e); } });
     });
   }
 
@@ -3276,7 +3316,7 @@ function setupEditorResize() {
         const key = isHorizontal() ? 'wt-editor-width' : 'wt-editor-height';
         localStorage.setItem(key, v.replace('px', ''));
       }
-    } catch {}
+    } catch(e) { console.warn(e); }
   }
 
   handle.addEventListener('mousedown', startResize);
@@ -3317,15 +3357,15 @@ function toggleEditorSplit() {
     if (saved) {
       document.documentElement.style.setProperty('--editor-size', saved + 'px');
     }
-  } catch {}
+  } catch(e) { console.warn(e); }
 
   // Re-fit all terminals
   requestAnimationFrame(() => {
-    tabs.forEach(tab => { try { fitTerm(tab); } catch {} });
+    tabs.forEach(tab => { try { fitTerm(tab); } catch(e) { console.warn(e); } });
   });
 
   // Persist orientation
-  try { localStorage.setItem('wt-editor-split-orientation', isHoriz ? 'horizontal' : 'vertical'); } catch {}
+  try { localStorage.setItem('wt-editor-split-orientation', isHoriz ? 'horizontal' : 'vertical'); } catch(e) { console.warn(e); }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -3710,7 +3750,7 @@ function setupDragDrop() {
               try {
                 const traversed = await traverseDirectoryEntry(entry);
                 filesToUpload.push(...traversed);
-              } catch {}
+              } catch(e) { console.warn(e); }
             }
           }
         }
@@ -3890,7 +3930,7 @@ function showPinScreen() {
 // BOOKMARKS
 // ═══════════════════════════════════════════════════════
 function getBookmarks() {
-  try { return JSON.parse(localStorage.getItem('wt-bookmarks')) || []; } catch { return []; }
+  try { return JSON.parse(localStorage.getItem('wt-bookmarks')) || []; } catch(e) { console.warn('Failed to parse bookmarks:', e); return []; }
 }
 function saveBookmarks(bm) { localStorage.setItem('wt-bookmarks', JSON.stringify(bm)); renderBookmarks(); }
 
@@ -3941,11 +3981,11 @@ function bookmarkCurrentDir() {
   toast('Bookmarked', 'success');
 }
 
-let bookmarksOpen = (() => { try { const v = localStorage.getItem('wt-bm-open'); return v !== null ? v === 'true' : true; } catch { return true; } })();
+let bookmarksOpen = (() => { try { const v = localStorage.getItem('wt-bm-open'); return v !== null ? v === 'true' : true; } catch(e) { console.warn('Failed to read bookmarksOpen:', e); return true; } })();
 function toggleBookmarks() {
   bookmarksOpen = !bookmarksOpen;
   document.getElementById('bookmarks-list').classList.toggle('open', bookmarksOpen);
-  try { localStorage.setItem('wt-bm-open', bookmarksOpen); } catch {}
+  try { localStorage.setItem('wt-bm-open', bookmarksOpen); } catch(e) { console.warn(e); }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -4090,7 +4130,7 @@ async function refreshSystemStats(showLoading) {
 // ═══════════════════════════════════════════════════════
 let deferredPrompt = null;
 let installBannerDismissed = false;
-try { installBannerDismissed = localStorage.getItem('wt-install-dismissed') === 'true'; } catch {}
+try { installBannerDismissed = localStorage.getItem('wt-install-dismissed') === 'true'; } catch(e) { console.warn(e); }
 
 window.addEventListener('beforeinstallprompt', e => {
   e.preventDefault();
@@ -4126,7 +4166,7 @@ function installPWA() {
 
 function dismissInstall() {
   document.getElementById('install-banner').style.display = 'none';
-  try { localStorage.setItem('wt-install-dismissed', 'true'); } catch {}
+  try { localStorage.setItem('wt-install-dismissed', 'true'); } catch(e) { console.warn(e); }
   installBannerDismissed = true;
 }
 
@@ -4145,7 +4185,7 @@ function registerSW() {
 // ═══════════════════════════════════════════════════════
 // START
 // ═══════════════════════════════════════════════════════
-init();
+init().catch(e => console.error('Init failed:', e));
 
 // Warn before closing if there are unsaved changes or active terminals
 window.addEventListener('beforeunload', e => {
