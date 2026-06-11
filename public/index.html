@@ -1317,19 +1317,27 @@ async function init() {
 }
 
 async function submitPin() {
-  const pin = document.getElementById('pin-input').value;
-  const r = await fetch('/api/auth', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ pin })
-  }).then(r => r.json());
-  if (r.success) {
-    authToken = r.token;
-    unlockApp();
-  } else {
-    document.getElementById('pin-error').textContent = 'Wrong PIN, try again';
-    document.getElementById('pin-input').value = '';
-    document.getElementById('pin-input').focus();
+  const pinInput = document.getElementById('pin-input');
+  const pinError = document.getElementById('pin-error');
+  const pin = pinInput.value;
+  if (!pin) { pinError.textContent = 'Please enter a PIN'; pinInput.focus(); return; }
+  try {
+    const r = await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pin })
+    }).then(r => r.json());
+    if (r.success) {
+      authToken = r.token;
+      unlockApp();
+    } else {
+      pinError.textContent = r.error || 'Wrong PIN, try again';
+      pinInput.value = '';
+      pinInput.focus();
+    }
+  } catch(e) {
+    pinError.textContent = 'Connection failed. Is the server running?';
+    pinInput.focus();
   }
 }
 

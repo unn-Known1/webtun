@@ -44,7 +44,8 @@ function isPathInWorkspace(p) {
 }
 function constantTimeEqual(a, b) {
   if (typeof a !== 'string' || typeof b !== 'string') return false;
-  return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b.padEnd(a.length, '\0').slice(0, a.length)));
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────
