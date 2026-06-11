@@ -195,10 +195,6 @@ app.post('/api/files/rename', checkPin, async (req, res) => {
       return res.status(400).json({ error: 'oldPath and newName are required', usage: 'POST JSON { "oldPath": "<path>", "newName": "<name>" }' });
     }
     const oldPath = realPath(req.body.oldPath);
-    if (oldPath === WORKSPACE_ROOT) {
-      console.warn('POST /api/files/rename 403 — cannot rename workspace root');
-      return res.status(403).json({ error: 'cannot rename workspace root' });
-    }
     const newPath = realPath(path.join(path.dirname(oldPath), req.body.newName));
     await fsPromises.rename(oldPath, newPath);
     res.json({ success: true, newPath });
@@ -277,10 +273,6 @@ app.post('/api/files/copy', checkPin, async (req, res) => {
       return res.status(400).json({ error: 'source and destination are required', usage: 'POST JSON { "source": "<src>", "destination": "<dst>", "conflict": "replace|skip|keep_both|merge|cancel" }' });
     }
     const src = realPath(req.body.source);
-    if (src === WORKSPACE_ROOT) {
-      console.warn('POST /api/files/copy 403 — cannot copy workspace root');
-      return res.status(403).json({ error: 'cannot copy workspace root' });
-    }
     const dst = resolvePath(req.body.destination);
     const result = await resolveCopyMove(src, dst, req.body.conflict || '', false);
     res.json(result);
@@ -296,10 +288,6 @@ app.post('/api/files/move', checkPin, async (req, res) => {
       return res.status(400).json({ error: 'source and destination are required', usage: 'POST JSON { "source": "<src>", "destination": "<dst>", "conflict": "replace|skip|keep_both|merge|cancel" }' });
     }
     const src = realPath(req.body.source);
-    if (src === WORKSPACE_ROOT) {
-      console.warn('POST /api/files/move 403 — cannot move workspace root');
-      return res.status(403).json({ error: 'cannot move workspace root' });
-    }
     const dst = resolvePath(req.body.destination);
     const result = await resolveCopyMove(src, dst, req.body.conflict || '', true);
     res.json(result);
@@ -315,10 +303,6 @@ app.delete('/api/files', checkPin, async (req, res) => {
       return res.status(400).json({ error: 'path is required', usage: 'DELETE /api/files?path=<path>' });
     }
     const p = realPath(req.query.path);
-    if (p === WORKSPACE_ROOT) {
-      console.warn('DELETE /api/files 403 — cannot delete workspace root');
-      return res.status(403).json({ error: 'cannot delete workspace root' });
-    }
     const st = await fsPromises.stat(p);
     if (st.isDirectory()) {
       await fsPromises.rm(p, { recursive: true, force: true });
@@ -338,10 +322,6 @@ app.post('/api/files/mkdir', checkPin, async (req, res) => {
       return res.status(400).json({ error: 'path is required', usage: 'POST JSON { "path": "<dir>" }' });
     }
     const p = realPath(req.body.path);
-    if (p === WORKSPACE_ROOT) {
-      console.warn('POST /api/files/mkdir 403 — cannot mkdir workspace root');
-      return res.status(403).json({ error: 'cannot mkdir workspace root' });
-    }
     await fsPromises.mkdir(p, { recursive: true });
     res.json({ success: true });
   } catch (e) {
@@ -356,10 +336,6 @@ app.post('/api/files/touch', checkPin, async (req, res) => {
       return res.status(400).json({ error: 'path is required', usage: 'POST JSON { "path": "<file>" }' });
     }
     const p = realPath(req.body.path);
-    if (p === WORKSPACE_ROOT) {
-      console.warn('POST /api/files/touch 403 — cannot touch workspace root');
-      return res.status(403).json({ error: 'cannot touch workspace root' });
-    }
     await fsPromises.writeFile(p, '', { flag: 'a' });
     res.json({ success: true });
   } catch (e) {
@@ -374,10 +350,6 @@ app.post('/api/files/zip', checkPin, async (req, res) => {
       return res.status(400).json({ error: 'path is required', usage: 'POST JSON { "path": "<file_or_dir>" }' });
     }
     const p = realPath(req.body.path);
-    if (p === WORKSPACE_ROOT) {
-      console.warn('POST /api/files/zip 403 — cannot zip workspace root');
-      return res.status(403).json({ error: 'cannot zip workspace root' });
-    }
     const st = await fsPromises.stat(p);
     const baseName = path.basename(p);
     let zipName = baseName + '.zip';
@@ -416,14 +388,6 @@ app.post('/api/files/unzip', checkPin, async (req, res) => {
       return res.status(400).json({ error: 'path is required', usage: 'POST JSON { "path": "<zip_file>" }' });
     }
     const p = realPath(req.body.path);
-    if (!isPathInWorkspace(p)) {
-      console.warn('POST /api/files/unzip 403 — path outside workspace');
-      return res.status(403).json({ error: 'path is outside workspace root' });
-    }
-    if (p === WORKSPACE_ROOT) {
-      console.warn('POST /api/files/unzip 403 — cannot unzip workspace root');
-      return res.status(403).json({ error: 'cannot unzip workspace root' });
-    }
     const ext = path.extname(p).toLowerCase();
     if (ext !== '.zip') return res.status(400).json({ error: 'Not a zip file' });
     const destDir = path.join(path.dirname(p), path.basename(p, '.zip'));
@@ -472,10 +436,6 @@ app.post('/api/files/write', checkPin, async (req, res) => {
       return res.status(400).json({ error: 'path is required', usage: 'POST JSON { "path": "<file>", "content": "<string>" }' });
     }
     const p = realPath(req.body.path);
-    if (p === WORKSPACE_ROOT) {
-      console.warn('POST /api/files/write 403 — cannot write to workspace root');
-      return res.status(403).json({ error: 'cannot write to workspace root' });
-    }
     await fsPromises.writeFile(p, req.body.content, 'utf8');
     res.json({ success: true });
   } catch (e) {
@@ -507,10 +467,6 @@ app.get('/api/files/download', checkPin, async (req, res) => {
       return res.status(400).json({ error: 'path is required', usage: 'GET /api/files/download?path=<path>' });
     }
     const p = realPath(req.query.path);
-    if (p === WORKSPACE_ROOT) {
-      console.warn('GET /api/files/download 403 — cannot download workspace root');
-      return res.status(403).json({ error: 'cannot download workspace root' });
-    }
     const st = await fsPromises.stat(p);
     if (st.isDirectory()) {
       res.setHeader('Content-Type', 'application/zip');
@@ -640,7 +596,6 @@ app.post('/api/files/batch-delete', checkPin, async (req, res) => {
     const results = [];
     for (const raw of req.body.paths) {
       const p = realPath(raw);
-      if (p === WORKSPACE_ROOT) { results.push({ path: raw, success: false, error: 'cannot delete workspace root' }); continue; }
       try {
         const st = await fsPromises.stat(p);
         if (st.isDirectory()) await fsPromises.rm(p, { recursive: true, force: true });
@@ -668,7 +623,6 @@ app.post('/api/files/batch-copy', checkPin, async (req, res) => {
     const results = [];
     for (const raw of req.body.sources) {
       const src = realPath(raw);
-      if (src === WORKSPACE_ROOT) { results.push({ path: raw, success: false, error: 'cannot copy workspace root' }); continue; }
       try {
         const baseName = path.basename(src);
         const dst = path.join(destDir, baseName);
@@ -696,7 +650,6 @@ app.post('/api/files/batch-move', checkPin, async (req, res) => {
     const results = [];
     for (const raw of req.body.sources) {
       const src = realPath(raw);
-      if (src === WORKSPACE_ROOT) { results.push({ path: raw, success: false, error: 'cannot move workspace root' }); continue; }
       try {
         const baseName = path.basename(src);
         const dst = path.join(destDir, baseName);
@@ -720,7 +673,6 @@ app.post('/api/files/chmod', checkPin, async (req, res) => {
       return res.status(400).json({ error: 'path and mode are required', usage: 'POST JSON { "path": "<path>", "mode": "<octal_perms>" }' });
     }
     const p = realPath(req.body.path);
-    if (p === WORKSPACE_ROOT) { console.warn('POST /api/files/chmod 403 — cannot chmod workspace root'); return res.status(403).json({ error: 'cannot chmod workspace root' }); }
     if (!/^[0-7]{3,4}$/.test(req.body.mode)) return res.status(400).json({ error: 'mode must be a 3-4 digit octal number (e.g. 755, 644, 1777)' });
     const mode = parseInt(req.body.mode, 8);
     await fsPromises.chmod(p, mode);
@@ -739,7 +691,6 @@ app.post('/api/files/symlink', checkPin, async (req, res) => {
     }
     const target = realPath(req.body.target);
     const linkPath = realPath(req.body.linkPath);
-    if (linkPath === WORKSPACE_ROOT) { console.warn('POST /api/files/symlink 403 — cannot symlink to workspace root'); return res.status(403).json({ error: 'cannot symlink to workspace root' }); }
     await fsPromises.mkdir(path.dirname(linkPath), { recursive: true });
     await fsPromises.symlink(target, linkPath);
     res.json({ success: true, target, linkPath });
@@ -828,8 +779,6 @@ app.post('/api/files/batch-zip', checkPin, async (req, res) => {
     let dest = realPath(req.body.destination);
     const resolved = req.body.sources.map(s => realPath(s));
     // Prevent zipping workspace root
-    if (resolved.some(s => s === WORKSPACE_ROOT)) return res.status(403).json({ error: 'cannot zip workspace root' });
-    if (dest === WORKSPACE_ROOT) return res.status(403).json({ error: 'cannot write zip to workspace root' });
     // Auto-rename if destination exists
     let counter = 1;
     const ext = '.zip';
@@ -879,7 +828,6 @@ app.post('/api/files/trash', checkPin, async (req, res) => {
     const results = [];
     for (const raw of req.body.paths) {
       const p = realPath(raw);
-      if (p === WORKSPACE_ROOT) { results.push({ path: raw, success: false, error: 'cannot trash workspace root' }); continue; }
       try {
         const st = await fsPromises.stat(p);
         const timestamp = Date.now() + '-' + Math.random().toString(36).slice(2, 6);
@@ -1386,7 +1334,7 @@ app.post('/api/clipboard', checkPin, async (req, res) => {
     }
     const action = req.body.action === 'cut' ? 'cut' : 'copy';
     clipboard = {
-      sources: req.body.sources.map(s => realPath(s)).filter(s => s !== WORKSPACE_ROOT),
+      sources: req.body.sources.map(s => realPath(s)),
       action,
       createdAt: new Date().toISOString()
     };
