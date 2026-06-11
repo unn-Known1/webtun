@@ -2106,8 +2106,8 @@ async function loadFiles(dir) {
         nameEl.className = 'file-name' + (f.isDir ? ' file-dir' : '');
       }
       const iconEl = existing.querySelector('.file-icon');
-      if (iconEl && iconEl.textContent !== icon) {
-        iconEl.textContent = icon;
+      if (iconEl && iconEl.innerHTML !== icon) {
+        iconEl.innerHTML = icon;
       }
       const sizeEl = existing.querySelector('.file-size');
       if (sizeStr) {
