@@ -438,13 +438,16 @@ svg { display: block; }
 @media (prefers-reduced-transparency: reduce) { .overlay { backdrop-filter: none; } }
 .overlay.open { display: flex; }
 .modal { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; min-width: 320px; max-width: 90vw; max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 40px var(--shadow-color); }
+.modal-sm { width: 380px; }
+.modal-md { width: 520px; }
+.modal-lg { width: 90vw; max-width: 760px; }
 .modal h2 { font-size: 16px; margin-bottom: 20px; color: var(--fg); }
 .modal-row { margin-bottom: 14px; }
 .modal-row label { display: block; font-size: 11px; color: var(--fg2); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px; }
 .modal-row input, .modal-row select { width: 100%; }
 .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
 .btn { height: 34px; padding: 0 16px; border-radius: var(--radius); font-size: 13px; font-family: var(--font); cursor: pointer; transition: all var(--transition-fast); border: 1px solid transparent; }
-#conflict-modal { width: 380px; }
+#conflict-modal.modal-sm { width: 380px; }
 #conflict-heading { font-size: 15px; margin-bottom: 8px; color: var(--fg); }
 #conflict-desc { font-size: 12px; color: var(--fg2); margin-bottom: 4px; }
 #conflict-desc strong { color: var(--fg); }
@@ -467,6 +470,7 @@ svg { display: block; }
 #pin-box h1 { font-size: 36px; color: var(--accent); margin-bottom: 12px; }
 #pin-box p { color: var(--fg2); margin-bottom: 16px; font-size: 14px; }
 #pin-input { text-align: center; font-size: 28px; letter-spacing: 8px; width: 200px; height: 44px; border: 2px solid var(--border); border-radius: var(--radius); background: var(--bg3); color: var(--fg); outline: none; font-family: var(--font); margin-bottom: 12px; }
+@media (max-width: 360px) { #pin-input { width: 100%; letter-spacing: 4px; font-size: 22px; } }
 #pin-input:focus { border-color: var(--accent); }
 #pin-error { color: var(--red); font-size: 12px; min-height: 18px; }
 
@@ -568,11 +572,13 @@ svg { display: block; }
 /* ═══════════════════════════════════════════════════════
    TOAST
    ═══════════════════════════════════════════════════════ */
-#toast-container { position: fixed; bottom: calc(60px + env(safe-area-inset-bottom, 0px)); right: 16px; left: 16px; z-index: 450; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
-.toast { padding: 10px 16px; background: var(--bg4); border: 1px solid var(--border); border-radius: var(--radius); font-size: 12px; color: var(--fg); box-shadow: 0 4px 16px var(--shadow-color); animation: slideIn 0.2s ease; max-width: min(280px, calc(100vw - 32px)); }
+#toast-container { position: fixed; bottom: calc(var(--mobilekey-h) + 12px + env(safe-area-inset-bottom, 0px)); right: 16px; left: 16px; z-index: 450; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+#toast-container.keys-hidden { bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
+.toast { padding: 10px 16px; background: var(--bg4); border: 1px solid var(--border); border-radius: var(--radius); font-size: 12px; color: var(--fg); box-shadow: 0 4px 16px var(--shadow-color); animation: slideIn 0.2s ease; max-width: min(400px, calc(100vw - 32px)); }
 .toast.success { border-left: 3px solid var(--green); }
 .toast.error { border-left: 3px solid var(--red); }
 .toast.warning { border-left: 3px solid var(--yellow); }
+.toast.info { border-left: 3px solid var(--accent); }
 @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
 /* ═══════════════════════════════════════════════════════
@@ -637,7 +643,7 @@ svg { display: block; }
 .finder-item:hover, .finder-item.selected { background: var(--bg4); }
 .finder-item .fi-icon { flex-shrink: 0; }
 .finder-item .fi-name { font-weight: 600; }
-.finder-item .fi-dir { font-size: 11px; color: var(--fg2); margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; }
+.finder-item .fi-dir { font-size: 11px; color: var(--fg2); margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: min(200px, 40vw); }
 #finder-empty { text-align: center; color: var(--fg2); padding: 20px; font-size: 13px; }
 
 /* ═══════════════════════════════════════════════════════
@@ -778,7 +784,7 @@ svg { display: block; }
     </button>
     <div id="upload-progress"><div id="upload-progress-bar"></div><span id="upload-progress-text"></span></div>
   </div>
-  <div id="reconnect-banner" style="display:none;padding:4px 12px;font-size:11px;background:var(--yellow);color:var(--bg);text-align:center;flex-shrink:0">⚠️ Reconnecting…</div>
+  <div id="reconnect-banner" style="display:none;padding:4px 12px;font-size:11px;background:var(--accent);color:#fff;text-align:center;flex-shrink:0">⚠️ Reconnecting…</div>
 
   <!-- Main -->
   <div id="main">
@@ -1067,7 +1073,7 @@ svg { display: block; }
 
 <!-- Fuzzy Finder Modal -->
 <div class="overlay" id="finder-overlay">
-  <div class="modal" style="padding:12px">
+  <div class="modal modal-md" style="padding:12px">
     <input id="finder-input" type="text" placeholder="Search files and folders…" autocomplete="off" oninput="doFinderSearch()" onkeydown="finderKeydown(event)">
     <div id="finder-results"></div>
     <div id="finder-empty">Start typing to search files</div>
@@ -1238,11 +1244,12 @@ let settings = {
 
 function uuid() {
   try {
+    if (crypto.randomUUID) return crypto.randomUUID();
     return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
       (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
   } catch(e) {
     console.warn('uuid fallback:', e);
-    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
   }
 }
 
@@ -1251,13 +1258,14 @@ function preventDoubleTap(el, fn, delay = 1000) {
   el.dataset.busy = 'true';
   el.style.opacity = '0.6';
   el.style.pointerEvents = 'none';
-  Promise.resolve(fn()).finally(() => {
+  const unlock = () => {
     setTimeout(() => {
       el.dataset.busy = 'false';
       el.style.opacity = '';
       el.style.pointerEvents = '';
     }, delay);
-  });
+  };
+  try { Promise.resolve(fn()).then(unlock, unlock); } catch(e) { console.warn('preventDoubleTap error:', e); unlock(); }
 }
 
 function saveTabState() {
@@ -1396,6 +1404,11 @@ async function unlockApp() {
   };
   document.addEventListener('visibilitychange', onVisibilityChange);
   window._cleanups.push(() => document.removeEventListener('visibilitychange', onVisibilityChange));
+
+  window.addEventListener('pagehide', () => {
+    window._cleanups?.forEach(fn => { try { fn(); } catch(e) { console.warn(e); } });
+    window._cleanups = [];
+  });
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1516,9 +1529,14 @@ function setupTabInlineRename(tabTitleSpan, tab) {
 
 function setupTabSwipeGesture(tabEl, id) {
   let swipeStartX = 0;
-  tabEl.addEventListener('touchstart', e => { swipeStartX = e.touches[0].clientX; }, { passive: true });
+  let swipeStartScroll = 0;
+  tabEl.addEventListener('touchstart', e => {
+    swipeStartX = e.touches[0].clientX;
+    swipeStartScroll = tabEl.parentElement.scrollLeft;
+  }, { passive: true });
   tabEl.addEventListener('touchmove', e => {
     if (swipeStartX === 0) return;
+    if (tabEl.parentElement.scrollLeft !== swipeStartScroll) { swipeStartX = 0; return; }
     const dx = e.touches[0].clientX - swipeStartX;
     if (Math.abs(dx) > 2) {
       tabEl.style.transform = `translateX(${dx}px)`;
@@ -2232,9 +2250,7 @@ function getFileIcon(ext) {
 
 function escHtml(str) {
   if (typeof str !== 'string') return '';
-  const d = document.createElement('div');
-  d.textContent = str;
-  return d.innerHTML;
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function formatSize(bytes) {
@@ -2603,8 +2619,8 @@ function uploadFiles() { document.getElementById('upload-input').click(); }
 async function handleUploadInput() {
   const input = document.getElementById('upload-input');
   const files = [...input.files];
-  input.value = '';
   if (!files.length) return;
+  input.value = '';
   try { await uploadFileList(files); } catch(e) { console.warn('Upload failed:', e); toast('Upload failed', 'error'); }
 }
 
@@ -3761,11 +3777,10 @@ function setupMobileKeys() {
   if (settings.mobilekeys === undefined && isTouch) {
     settings.mobilekeys = true;
   }
-  if (window.innerWidth <= 768) {
-    mk.style.display = settings.mobilekeys ? 'flex' : 'none';
-  } else {
-    mk.style.display = 'none';
-  }
+  const show = window.innerWidth <= 768 && settings.mobilekeys;
+  if (mk) mk.style.display = show ? 'flex' : 'none';
+  const tc = document.getElementById('toast-container');
+  if (tc) tc.classList.toggle('keys-hidden', !show);
   const ctrlRow = document.getElementById('mkey-ctrl-row');
   if (ctrlRow) ctrlRow.style.display = 'none';
   const ctrlBtn = document.getElementById('ctrl-toggle-btn');
@@ -4009,8 +4024,13 @@ function setupFileListTouch() {
 function showPinScreen() {
   document.getElementById('app').style.display = 'none';
   document.getElementById('pin-screen').classList.remove('hidden');
+  document.getElementById('pin-input').value = '';
+  document.getElementById('pin-error').textContent = '';
+  window._appUnlocked = false;
   // Close all active WebSocket connections
   tabs.forEach(t => { cleanupWebSocket(t); });
+  tabs = [];
+  activeTabId = null;
 }
 
 // ═══════════════════════════════════════════════════════
