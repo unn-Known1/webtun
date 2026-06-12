@@ -270,7 +270,7 @@ fi
 
 echo ""
 echo "  ┌─────────────────────────────────────────┐"
-  echo "  │  ${GREEN}${BOLD}WebTun is running!${RESET}                        │"
+echo "  │  ${GREEN}${BOLD}WebTun is running!${RESET}                        │"
 echo "  │                                         │"
 echo "  │  Local:  ${CYAN}http://localhost:$PORT${RESET}           │"
 echo "  │  Network: ${CYAN}http://$(hostname -I 2>/dev/null | awk '{print $1}' || echo "YOUR_IP"):$PORT${RESET}          │"
@@ -293,24 +293,27 @@ if command -v cloudflared &>/dev/null; then
   echo ""
   IFS=$READ_IFS read -rp "  Start Cloudflare Tunnel for remote access? [Y/n]: " START_TUNNEL
   if [[ "$(echo "$START_TUNNEL" | tr '[:upper:]' '[:lower:]')" != "n" ]]; then
+    # Start tunnel in background, suppress output
+    TUNNEL_LOG="$SCRIPT_DIR/cloudflared.log"
+    rm -f "$TUNNEL_LOG"
+    nohup cloudflared tunnel --url "http://localhost:$PORT" > "$TUNNEL_LOG" 2>&1 &
+
     echo ""
     echo "  ${BOLD}Starting Cloudflare Tunnel...${RESET}"
-    echo "  ${YELLOW}Your public URL will appear below (takes a few seconds):${RESET}"
-    echo "  ${YELLOW}Press Ctrl+C to stop the tunnel (server keeps running).${RESET}"
-    echo ""
-    # Run cloudflared; pipe stderr+stdout through grep to surface the public URL,
-    # then also let everything flow through so the user sees full output.
-    cloudflared tunnel --url "http://localhost:$PORT" 2>&1 | tee /dev/stderr | grep --line-buffered -oE 'https://[a-z0-9-]+\.trycloudflare\.com' | while read -r URL; do
-      if [ -n "$URL" ]; then
+
+    # Wait up to 5 seconds for the tunnel URL, then exit
+    echo "  ${YELLOW}Waiting for Cloudflare Tunnel URL...${RESET}"
+    for i in {1..5}; do
+      TUNNEL_URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$TUNNEL_LOG" 2>/dev/null | head -1 || true)"
+      if [ -n "$TUNNEL_URL" ]; then
         echo ""
         echo "  ┌─────────────────────────────────────────────────────┐"
         echo "  │  ${GREEN}${BOLD}Public URL (share this!):${RESET}   │"
-        echo "  │  ${CYAN}${BOLD}$URL${RESET}                         │"
-        echo "  │                                                     │"
-        echo "  │  Bookmark it on your phone to use WebTun anywhere!  │"
+        echo "  │  ${CYAN}${BOLD}$TUNNEL_URL${RESET}                  │"
         echo "  └─────────────────────────────────────────────────────┘"
-        echo ""
+        break
       fi
+      sleep 1
     done
   else
     echo ""
@@ -324,5 +327,6 @@ else
 fi
 
 echo ""
-echo "  ${GREEN}Done.${RESET} To stop the server: kill \$(cat webtun.pid)"
+echo "  ${GREEN}Done.${RESET} WebTun server running (PID $SERVER_PID)."
+echo "  ${GREEN}To stop:${RESET} kill \$(cat webtun.pid)"
 echo ""

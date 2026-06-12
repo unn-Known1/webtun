@@ -1320,7 +1320,6 @@ async function submitPin() {
   const pinInput = document.getElementById('pin-input');
   const pinError = document.getElementById('pin-error');
   const pin = pinInput.value;
-  if (!pin) { pinError.textContent = 'Please enter a PIN'; pinInput.focus(); return; }
   try {
     const r = await fetch('/api/auth', {
       method: 'POST',
@@ -2974,22 +2973,6 @@ function closeEditor() {
   mdPreviewActive = false;
   editorPath = '';
   editorOriginalContent = '';
-  requestAnimationFrame(() => {
-    tabs.forEach(tab => { try { fitTerm(tab); tab?.term?.focus(); } catch(e) { console.warn(e); } });
-  });
-}
-  document.getElementById('editor-view').classList.remove('open');
-  document.getElementById('content').classList.remove('editor-open');
-  document.getElementById('editor-preview').classList.remove('active');
-  document.getElementById('md-preview-toggle').style.display = 'none';
-  const previewIframe = document.getElementById('editor-preview-iframe');
-  if (previewIframe) previewIframe.style.display = 'none';
-  const cm = document.querySelector('.CodeMirror');
-  if (cm) cm.style.display = '';
-  mdPreviewActive = false;
-  editorPath = '';
-  editorOriginalContent = '';
-  // Fit all terminals to full available space
   requestAnimationFrame(() => {
     tabs.forEach(tab => { try { fitTerm(tab); tab?.term?.focus(); } catch(e) { console.warn(e); } });
   });

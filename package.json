@@ -79,7 +79,8 @@
   "devDependencies": {
     "electron": "^42.2.0",
     "electron-builder": "^26.8.1",
-    "nodemon": "^3.1.14"
+    "nodemon": "^3.1.14",
+    "playwright": "^1.60.0"
   },
   "allowScripts": {
     "electron-winstaller@5.4.0": true,
