@@ -10,6 +10,34 @@ const os = require('os');
 const mime = require('mime-types');
 const archiver = require('archiver');
 const crypto = require('crypto');
+const { execSync, execFileSync, spawn } = require('child_process');
+
+// In-memory rate limiter factory
+const rateLimitWindows = new Map();
+function createRateLimiter(opts) {
+  return (req, res, next) => {
+    if (opts.skipWhenNoPin && !PIN) return next();
+    const now = Date.now();
+    const key = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || 'default';
+    let win = rateLimitWindows.get(key);
+    if (!win || now > win.resetAt) {
+      win = { count: 0, resetAt: now + (opts.windowMs || 10000) };
+      rateLimitWindows.set(key, win);
+    }
+    win.count++;
+    if (win.count > (opts.limit || 10)) return res.status(429).json({ error: opts.errorMsg || 'Too many requests' });
+    next();
+  };
+}
+
+const authRateLimiter = createRateLimiter({ limit: 5, windowMs: 10000, errorMsg: 'Too many attempts', skipWhenNoPin: true });
+const rateLimiter = createRateLimiter({ limit: 20, windowMs: 10000 });
+
+// Periodic cleanup of rate limiter
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, win] of rateLimitWindows) { if (now > win.resetAt) rateLimitWindows.delete(key); }
+}, 60000);
 
 const app = express();
 const server = http.createServer(app);
@@ -37,11 +65,6 @@ app.use((req, res, next) => {
 // Trust proxy for proper IP detection behind reverse proxy
 app.set('trust proxy', 1);
 
-function isPathInWorkspace(p) {
-  const normalized = path.resolve(p);
-  if (typeof WORKSPACE_ROOT !== 'string') return false;
-  return normalized === WORKSPACE_ROOT || normalized.startsWith(WORKSPACE_ROOT + path.sep);
-}
 function constantTimeEqual(a, b) {
   if (typeof a !== 'string' || typeof b !== 'string') return false;
   if (a.length !== b.length) return false;
@@ -267,35 +290,18 @@ async function resolveCopyMove(src, dst, conflict, isMove) {
   return { success: true };
 }
 
-app.post('/api/files/copy', checkPin, async (req, res) => {
-  try {
-    if (!req.body.source || !req.body.destination) {
-      console.warn('POST /api/files/copy 400 — body requires { source, destination[, conflict] }. Example: { "source": "/a/file.txt", "destination": "/b/file.txt", "conflict": "replace" }');
-      return res.status(400).json({ error: 'source and destination are required', usage: 'POST JSON { "source": "<src>", "destination": "<dst>", "conflict": "replace|skip|keep_both|merge|cancel" }' });
-    }
-    const src = realPath(req.body.source);
-    const dst = resolvePath(req.body.destination);
-    const result = await resolveCopyMove(src, dst, req.body.conflict || '', false);
-    res.json(result);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
+async function handleCopyMove(req, res, isMove) {
+  if (!req.body.source || !req.body.destination) {
+    return res.status(400).json({ error: 'source and destination are required', usage: 'POST JSON { "source": "<src>", "destination": "<dst>", "conflict": "replace|skip|keep_both|merge|cancel" }' });
   }
-});
+  const src = realPath(req.body.source);
+  const dst = resolvePath(req.body.destination);
+  const result = await resolveCopyMove(src, dst, req.body.conflict || '', isMove);
+  res.json(result);
+}
 
-app.post('/api/files/move', checkPin, async (req, res) => {
-  try {
-    if (!req.body.source || !req.body.destination) {
-      console.warn('POST /api/files/move 400 — body requires { source, destination[, conflict] }. Example: { "source": "/a/file.txt", "destination": "/b/file.txt", "conflict": "replace" }');
-      return res.status(400).json({ error: 'source and destination are required', usage: 'POST JSON { "source": "<src>", "destination": "<dst>", "conflict": "replace|skip|keep_both|merge|cancel" }' });
-    }
-    const src = realPath(req.body.source);
-    const dst = resolvePath(req.body.destination);
-    const result = await resolveCopyMove(src, dst, req.body.conflict || '', true);
-    res.json(result);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
+app.post('/api/files/copy', checkPin, (req, res) => handleCopyMove(req, res, false));
+app.post('/api/files/move', checkPin, (req, res) => handleCopyMove(req, res, true));
 
 app.delete('/api/files', checkPin, async (req, res) => {
   try {
@@ -550,11 +556,9 @@ app.get('/api/files/stat', checkPin, async (req, res) => {
       isSocket: st.isSocket(), isFIFO: st.isFIFO(),
     };
     try {
-      const { execFileSync } = require('child_process');
       stat.owner = execFileSync('id', ['-nu', String(st.uid)], { encoding: 'utf8', stdio: 'pipe' }).trim();
     } catch { stat.owner = String(st.uid); }
     try {
-      const { execFileSync } = require('child_process');
       stat.group = execFileSync('getent', ['group', String(st.gid)], { encoding: 'utf8', stdio: 'pipe' }).split(':')[0];
     } catch { stat.group = String(st.gid); }
     try {
@@ -578,7 +582,6 @@ app.get('/api/files/size', checkPin, async (req, res) => {
     if (!st.isDirectory()) {
       return res.json({ path: p, size: st.size, isDir: false });
     }
-    const { execFileSync } = require('child_process');
     const out = execFileSync('du', ['-sb', p], { encoding: 'utf8', stdio: 'pipe', timeout: 30000 });
     const size = parseInt(out.split('\t')[0], 10);
     res.json({ path: p, size, isDir: true });
@@ -613,58 +616,29 @@ app.post('/api/files/batch-delete', checkPin, async (req, res) => {
 });
 
 // ── Batch copy ────────────────────────────────────────────────────────
-app.post('/api/files/batch-copy', checkPin, async (req, res) => {
-  try {
-    if (!Array.isArray(req.body.sources) || req.body.sources.length === 0 || !req.body.destination) {
-      console.warn('POST /api/files/batch-copy 400 — body requires { sources: [...], destination: "<dir>" }');
-      return res.status(400).json({ error: 'sources array and destination are required', usage: 'POST JSON { "sources": ["<src1>", ...], "destination": "<dir>", "conflict": "replace|skip|keep_both|merge|cancel" }' });
-    }
-    const conflict = req.body.conflict || 'replace';
-    const destDir = resolvePath(req.body.destination);
-    const results = [];
-    for (const raw of req.body.sources) {
-      const src = realPath(raw);
-      try {
-        const baseName = path.basename(src);
-        const dst = path.join(destDir, baseName);
-        const result = await resolveCopyMove(src, dst, conflict, false);
-        results.push({ path: raw, success: true, ...result });
-      } catch (e) {
-        results.push({ path: raw, success: false, error: e.message });
-      }
-    }
-    res.json({ results, succeeded: results.filter(r => r.success).length, failed: results.filter(r => !r.success).length });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
+async function handleBatchCopyMove(req, res, isMove) {
+  if (!Array.isArray(req.body.sources) || req.body.sources.length === 0 || !req.body.destination) {
+    return res.status(400).json({ error: 'sources array and destination are required', usage: 'POST JSON { "sources": ["<src1>", ...], "destination": "<dir>", "conflict": "replace|skip|keep_both|merge|cancel" }' });
   }
-});
+  const conflict = req.body.conflict || 'replace';
+  const destDir = resolvePath(req.body.destination);
+  const results = [];
+  for (const raw of req.body.sources) {
+    const src = realPath(raw);
+    try {
+      const baseName = path.basename(src);
+      const dst = path.join(destDir, baseName);
+      const result = await resolveCopyMove(src, dst, conflict, isMove);
+      results.push({ path: raw, success: true, ...result });
+    } catch (e) {
+      results.push({ path: raw, success: false, error: e.message });
+    }
+  }
+  res.json({ results, succeeded: results.filter(r => r.success).length, failed: results.filter(r => !r.success).length });
+}
 
-// ── Batch move ────────────────────────────────────────────────────────
-app.post('/api/files/batch-move', checkPin, async (req, res) => {
-  try {
-    if (!Array.isArray(req.body.sources) || req.body.sources.length === 0 || !req.body.destination) {
-      console.warn('POST /api/files/batch-move 400 — body requires { sources: [...], destination: "<dir>" }');
-      return res.status(400).json({ error: 'sources array and destination are required', usage: 'POST JSON { "sources": ["<src1>", ...], "destination": "<dir>", "conflict": "replace|skip|keep_both|merge|cancel" }' });
-    }
-    const conflict = req.body.conflict || 'replace';
-    const destDir = resolvePath(req.body.destination);
-    const results = [];
-    for (const raw of req.body.sources) {
-      const src = realPath(raw);
-      try {
-        const baseName = path.basename(src);
-        const dst = path.join(destDir, baseName);
-        const result = await resolveCopyMove(src, dst, conflict, true);
-        results.push({ path: raw, success: true, ...result });
-      } catch (e) {
-        results.push({ path: raw, success: false, error: e.message });
-      }
-    }
-    res.json({ results, succeeded: results.filter(r => r.success).length, failed: results.filter(r => !r.success).length });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
+app.post('/api/files/batch-copy', checkPin, (req, res) => handleBatchCopyMove(req, res, false));
+app.post('/api/files/batch-move', checkPin, (req, res) => handleBatchCopyMove(req, res, true));
 
 // ── Change permissions (chmod) ─────────────────────────────────────────
 app.post('/api/files/chmod', checkPin, async (req, res) => {
@@ -811,389 +785,11 @@ app.post('/api/files/batch-zip', checkPin, async (req, res) => {
   }
 });
 
-// ── Trash / recycle bin ───────────────────────────────────────────────
-const TRASH_DIR = path.join(os.homedir(), '.trash');
 
-async function ensureTrashDir() {
-  try { await fsPromises.mkdir(TRASH_DIR, { recursive: true }); } catch {}
-}
 
-// Move files/dirs to trash
-app.post('/api/files/trash', checkPin, async (req, res) => {
-  try {
-    if (!Array.isArray(req.body.paths) || req.body.paths.length === 0) {
-      console.warn('POST /api/files/trash 400 — body requires { paths: [...] }');
-      return res.status(400).json({ error: 'paths array is required', usage: 'POST JSON { "paths": ["<path1>", ...] }' });
-    }
-    await ensureTrashDir();
-    const results = [];
-    for (const raw of req.body.paths) {
-      const p = realPath(raw);
-      try {
-        const st = await fsPromises.stat(p);
-        const timestamp = Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-        const trashName = path.basename(p) + '.' + timestamp;
-        const trashPath = path.join(TRASH_DIR, trashName);
-        // Write info first, then move
-        const info = { originalPath: p, trashedAt: new Date().toISOString(), isDir: st.isDirectory() };
-        await fsPromises.writeFile(trashPath + '.info.json', JSON.stringify(info, null, 2));
-        try { await fsPromises.rename(p, trashPath); } catch (e) {
-          // Cross-device rename failure — fall back to copy + delete
-          if (st.isDirectory()) await fsPromises.cp(p, trashPath, { recursive: true, force: true });
-          else await fsPromises.copyFile(p, trashPath);
-          if (st.isDirectory()) await fsPromises.rm(p, { recursive: true, force: true });
-          else await fsPromises.unlink(p);
-        }
-        results.push({ path: raw, success: true, trashPath });
-      } catch (e) {
-        results.push({ path: raw, success: false, error: e.message });
-      }
-    }
-    res.json({ results, succeeded: results.filter(r => r.success).length, failed: results.filter(r => !r.success).length });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
 
-// List trash contents
-app.get('/api/files/trash', checkPin, async (req, res) => {
-  try {
-    await ensureTrashDir();
-    const entries = await fsPromises.readdir(TRASH_DIR);
-    const items = [];
-    for (const name of entries) {
-      if (name.endsWith('.info.json')) continue;
-      const full = path.join(TRASH_DIR, name);
-      const infoPath = full + '.info.json';
-      let info = null;
-      try { info = JSON.parse(await fsPromises.readFile(infoPath, 'utf8')); } catch {}
-      try {
-        const st = await fsPromises.stat(full);
-        items.push({
-          trashName: name, path: full, originalPath: info ? info.originalPath : null,
-          trashedAt: info ? info.trashedAt : null, isDir: info ? info.isDir : st.isDirectory(),
-          size: st.size, modified: st.mtime
-        });
-      } catch {}
-    }
-    // Sort by trashedAt descending
-    items.sort((a, b) => new Date(b.trashedAt || 0) - new Date(a.trashedAt || 0));
-    res.json({ items, count: items.length, trashDir: TRASH_DIR });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
 
-// Restore from trash
-app.post('/api/files/trash/restore', checkPin, async (req, res) => {
-  try {
-    if (!req.body.path) {
-      console.warn('POST /api/files/trash/restore 400 — body requires { path }');
-      return res.status(400).json({ error: 'path is required', usage: 'POST JSON { "path": "<trash_item_path>" }' });
-    }
-    const trashItem = realPath(req.body.path);
-    if (!trashItem.startsWith(TRASH_DIR)) return res.status(403).json({ error: 'path is not in trash directory' });
-    const infoPath = trashItem + '.info.json';
-    let info;
-    try { info = JSON.parse(await fsPromises.readFile(infoPath, 'utf8')); } catch { return res.status(400).json({ error: 'trash item info not found' }); }
-    // If original path exists, generate unique name
-    let restorePath = info.originalPath;
-    try {
-      await fsPromises.access(restorePath);
-      const dir = path.dirname(restorePath);
-      const ext = path.extname(restorePath);
-      const base = path.basename(restorePath, ext);
-      let counter = 1;
-      while (true) {
-        restorePath = path.join(dir, `${base} (restored ${counter})${ext}`);
-        try { await fsPromises.access(restorePath); counter++; } catch { break; }
-      }
-    } catch {}
-    // Ensure parent dir exists
-    await fsPromises.mkdir(path.dirname(restorePath), { recursive: true });
-    await fsPromises.rename(trashItem, restorePath);
-    // Remove info file
-    try { await fsPromises.unlink(infoPath); } catch {}
-    res.json({ success: true, restoredPath: restorePath });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
 
-// Permanently delete from trash
-app.delete('/api/files/trash', checkPin, async (req, res) => {
-  try {
-    if (!req.query.path) {
-      console.warn('DELETE /api/files/trash 400 — query param ?path= is required');
-      return res.status(400).json({ error: 'path is required', usage: 'DELETE /api/files/trash?path=<trash_item_path>' });
-    }
-    const p = realPath(req.query.path);
-    if (!p.startsWith(TRASH_DIR)) return res.status(403).json({ error: 'path is not in trash directory' });
-    try { await fsPromises.unlink(p); } catch {}
-    try { await fsPromises.unlink(p + '.info.json'); } catch {}
-    try { await fsPromises.rm(p, { recursive: true, force: true }); } catch {}
-    res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// Empty entire trash
-app.delete('/api/files/trash/all', checkPin, async (req, res) => {
-  try {
-    await ensureTrashDir();
-    const entries = await fsPromises.readdir(TRASH_DIR);
-    for (const name of entries) {
-      const full = path.join(TRASH_DIR, name);
-      try {
-        const st = await fsPromises.stat(full);
-        if (st.isDirectory()) await fsPromises.rm(full, { recursive: true, force: true });
-        else await fsPromises.unlink(full);
-      } catch {}
-    }
-    res.json({ success: true, cleared: entries.length });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ── Git integration ──────────────────────────────────────────────────
-function gitExec(args, cwd) {
-  const { execFileSync } = require('child_process');
-  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe', maxBuffer: 10 * 1024 * 1024 }).trim();
-}
-
-function requireGitRepo(path) {
-  try { gitExec(['rev-parse', '--show-toplevel'], path); return true; } catch { return false; }
-}
-
-app.get('/api/git/status', checkPin, async (req, res) => {
-  try {
-    if (!req.query.path) return res.status(400).json({ error: 'path is required' });
-    const p = realPath(req.query.path);
-    if (!requireGitRepo(p)) return res.status(400).json({ error: 'not a git repository' });
-    const porcelain = gitExec(['status', '--porcelain', '-b'], p);
-    const lines = porcelain.split('\n').filter(Boolean);
-    const branch = lines[0].replace(/^## /, '');
-    const files = lines.slice(1).map(l => ({ xy: l.slice(0, 2), path: l.slice(3) }));
-    res.json({ branch, files, repoPath: p });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-app.post('/api/git/diff', checkPin, async (req, res) => {
-  try {
-    if (!req.body.path) return res.status(400).json({ error: 'path is required' });
-    const p = realPath(req.body.path);
-    if (!requireGitRepo(p)) return res.status(400).json({ error: 'not a git repository' });
-    const args = ['diff', '--no-color', '-U5'];
-    if (req.body.file) args.push('--', req.body.file);
-    const diff = gitExec(args, p);
-    res.json({ diff, repoPath: p });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-app.post('/api/git/add', checkPin, async (req, res) => {
-  try {
-    if (!req.body.path) return res.status(400).json({ error: 'path is required' });
-    const p = realPath(req.body.path);
-    if (!requireGitRepo(p)) return res.status(400).json({ error: 'not a git repository' });
-    const files = Array.isArray(req.body.files) ? req.body.files : ['.'];
-    gitExec(['add', '--'].concat(files), p);
-    res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-app.post('/api/git/commit', checkPin, async (req, res) => {
-  try {
-    if (!req.body.path || !req.body.message) return res.status(400).json({ error: 'path and message are required' });
-    const p = realPath(req.body.path);
-    if (!requireGitRepo(p)) return res.status(400).json({ error: 'not a git repository' });
-    gitExec(['commit', '-m', req.body.message], p);
-    res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-app.get('/api/git/log', checkPin, async (req, res) => {
-  try {
-    if (!req.query.path) return res.status(400).json({ error: 'path is required' });
-    const p = realPath(req.query.path);
-    if (!requireGitRepo(p)) return res.status(400).json({ error: 'not a git repository' });
-    const maxCount = Math.min(parseInt(req.query.maxCount) || 50, 200);
-    const format = '--format=%H|%an|%ai|%s';
-    const raw = gitExec(['log', `--max-count=${maxCount}`, format], p);
-    const commits = raw.split('\n').filter(Boolean).map(line => {
-      const [hash, author, date, ...msgParts] = line.split('|');
-      return { hash: hash.slice(0, 7), fullHash: hash, author, date, message: msgParts.join('|') };
-    });
-    res.json({ commits, count: commits.length, repoPath: p });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-app.post('/api/git/push', checkPin, async (req, res) => {
-  try {
-    if (!req.body.path) return res.status(400).json({ error: 'path is required' });
-    const p = realPath(req.body.path);
-    if (!requireGitRepo(p)) return res.status(400).json({ error: 'not a git repository' });
-    const remote = req.body.remote || 'origin';
-    const branch = req.body.branch || '';
-    const args = ['push', remote];
-    if (branch) args.push(branch);
-    const out = gitExec(args, p);
-    res.json({ success: true, output: out });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-app.post('/api/git/pull', checkPin, async (req, res) => {
-  try {
-    if (!req.body.path) return res.status(400).json({ error: 'path is required' });
-    const p = realPath(req.body.path);
-    if (!requireGitRepo(p)) return res.status(400).json({ error: 'not a git repository' });
-    const remote = req.body.remote || 'origin';
-    const branch = req.body.branch || '';
-    const args = ['pull', remote];
-    if (branch) args.push(branch);
-    const out = gitExec(args, p);
-    res.json({ success: true, output: out });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-app.get('/api/git/branches', checkPin, async (req, res) => {
-  try {
-    if (!req.query.path) return res.status(400).json({ error: 'path is required' });
-    const p = realPath(req.query.path);
-    if (!requireGitRepo(p)) return res.status(400).json({ error: 'not a git repository' });
-    const raw = gitExec(['branch', '--all'], p);
-    const branches = raw.split('\n').filter(Boolean).map(b => ({
-      name: b.replace(/^\*?\s*/, '').trim(),
-      current: b.startsWith('* ')
-    }));
-    res.json({ branches, repoPath: p });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-app.post('/api/git/branch', checkPin, async (req, res) => {
-  try {
-    if (!req.body.path || !req.body.name) return res.status(400).json({ error: 'path and name are required' });
-    const p = realPath(req.body.path);
-    if (!requireGitRepo(p)) return res.status(400).json({ error: 'not a git repository' });
-    if (req.body.switch) {
-      gitExec(['checkout', '-b', req.body.name], p);
-    } else {
-      gitExec(['branch', req.body.name], p);
-    }
-    res.json({ success: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-app.get('/api/git/remote', checkPin, async (req, res) => {
-  try {
-    if (!req.query.path) return res.status(400).json({ error: 'path is required' });
-    const p = realPath(req.query.path);
-    if (!requireGitRepo(p)) return res.status(400).json({ error: 'not a git repository' });
-    const raw = gitExec(['remote', '-v'], p);
-    const remotes = raw.split('\n').filter(Boolean).map(line => {
-      const [name, url, type] = line.split(/\s+/);
-      return { name, url, type: type ? type.replace(/[()]/g, '') : '' };
-    });
-    res.json({ remotes, repoPath: p });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ── File preview (Markdown → HTML, code detection) ────────────────────
-const MARKDOWN_EXT = new Set(['.md', '.markdown', '.mdown']);
-const CODE_EXT = new Set([
-  '.js', '.ts', '.jsx', '.tsx', '.py', '.rb', '.go', '.rs', '.java', '.c', '.cpp', '.h', '.hpp',
-  '.css', '.scss', '.less', '.html', '.htm', '.xml', '.json', '.yaml', '.yml', '.toml', '.ini',
-  '.sh', '.bash', '.zsh', '.fish', '.ps1', '.bat', '.cmd',
-  '.sql', '.r', '.m', '.swift', '.kt', '.scala', '.ex', '.exs', '.erl', '.hs',
-  '.php', '.pl', '.pm', '.lua', '.vue', '.svelte', '.astro', '.mdx',
-  '.graphql', '.gql', '.proto', '.dockerfile', '.makefile',
-]);
-
-function simpleMarkdownToHtml(md) {
-  let html = '';
-  const lines = md.split('\n');
-  let inCodeBlock = false, codeBuf = [];
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (line.startsWith('```')) {
-      if (inCodeBlock) {
-        html += '<pre><code>' + escapeHtml(codeBuf.join('\n')) + '</code></pre>\n';
-        codeBuf = [];
-      }
-      inCodeBlock = !inCodeBlock;
-      continue;
-    }
-    if (inCodeBlock) { codeBuf.push(line); continue; }
-    if (line.startsWith('# ')) { html += '<h1>' + escapeHtml(line.slice(2)) + '</h1>\n'; continue; }
-    if (line.startsWith('## ')) { html += '<h2>' + escapeHtml(line.slice(3)) + '</h2>\n'; continue; }
-    if (line.startsWith('### ')) { html += '<h3>' + escapeHtml(line.slice(4)) + '</h3>\n'; continue; }
-    if (line.startsWith('- ') || line.startsWith('* ')) { html += '<li>' + escapeHtml(line.slice(2)) + '</li>\n'; continue; }
-    if (line.match(/^\d+\.\s/)) { html += '<li>' + escapeHtml(line.replace(/^\d+\.\s/, '')) + '</li>\n'; continue; }
-    if (line.trim() === '') { html += '<br>\n'; continue; }
-    html += '<p>' + escapeHtml(line) + '</p>\n';
-  }
-  if (codeBuf.length) html += '<pre><code>' + escapeHtml(codeBuf.join('\n')) + '</code></pre>\n';
-  return html;
-}
-
-function escapeHtml(s) {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function detectLanguage(ext) {
-  const map = {
-    '.js': 'javascript', '.ts': 'typescript', '.jsx': 'jsx', '.tsx': 'tsx',
-    '.py': 'python', '.rb': 'ruby', '.go': 'go', '.rs': 'rust', '.java': 'java',
-    '.c': 'c', '.cpp': 'cpp', '.h': 'c', '.hpp': 'cpp',
-    '.css': 'css', '.scss': 'scss', '.html': 'html', '.json': 'json',
-    '.yaml': 'yaml', '.yml': 'yaml', '.toml': 'toml', '.xml': 'xml',
-    '.sh': 'bash', '.bash': 'bash', '.zsh': 'bash', '.ps1': 'powershell',
-    '.sql': 'sql', '.php': 'php', '.lua': 'lua', '.md': 'markdown',
-    '.vue': 'vue', '.svelte': 'svelte', '.graphql': 'graphql',
-  };
-  return map[ext] || null;
-}
-
-app.get('/api/files/preview', checkPin, async (req, res) => {
-  try {
-    if (!req.query.path) return res.status(400).json({ error: 'path is required' });
-    const p = realPath(req.query.path);
-    const ext = path.extname(p).toLowerCase();
-    const st = await fsPromises.stat(p);
-    if (st.size > 5 * 1024 * 1024) return res.status(413).json({ error: 'file too large for preview (max 5MB)' });
-    const content = await fsPromises.readFile(p, 'utf8');
-    if (MARKDOWN_EXT.has(ext)) {
-      res.json({ type: 'markdown', html: simpleMarkdownToHtml(content), path: p, name: path.basename(p) });
-    } else if (CODE_EXT.has(ext)) {
-      res.json({ type: 'code', content, language: detectLanguage(ext), path: p, name: path.basename(p) });
-    } else {
-      res.json({ type: 'text', content: content.substring(0, 10000), path: p, name: path.basename(p), truncated: content.length > 10000 });
-    }
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
 
 // ── Log tail (SSE) ────────────────────────────────────────────────────
 app.get('/api/files/tail', checkPin, async (req, res) => {
@@ -1262,7 +858,6 @@ app.get('/api/system/network', checkPin, async (req, res) => {
     }
     let gateway = null, dns = null, listenPorts = [];
     try {
-      const { execFileSync } = require('child_process');
       if (os.platform() === 'win32') {
         const route = execFileSync('powershell.exe', ['-Command', '(Get-NetRoute -DestinationPrefix "0.0.0.0/0").NextHop'], { encoding: 'utf8', stdio: 'pipe' }).trim();
         gateway = route.split('\n')[0].trim() || null;
@@ -1276,7 +871,6 @@ app.get('/api/system/network', checkPin, async (req, res) => {
       }
     } catch {}
     try {
-      const { execFileSync } = require('child_process');
       if (os.platform() === 'win32') {
         const out = execFileSync('powershell.exe', ['-Command', 'netstat -ano | findstr LISTEN'], { encoding: 'utf8', stdio: 'pipe' }).trim();
         listenPorts = out.split('\n').filter(Boolean).map(l => {
@@ -1301,25 +895,7 @@ app.get('/api/system/network', checkPin, async (req, res) => {
   }
 });
 
-// ── Environment viewer ────────────────────────────────────────────────
-const SECRET_KEYS = new Set(['token', 'secret', 'password', 'passwd', 'pass', 'key', 'api_key', 'apikey', 'private_key', 'access_key', 'auth', 'credential', 'pwd']);
 
-function isSecretKey(key) {
-  const lower = key.toLowerCase();
-  return SECRET_KEYS.has(lower) || SECRET_KEYS.has(lower.replace(/_/g, '')) || /secret|token|password|key|auth|credential/i.test(lower);
-}
-
-app.get('/api/env', checkPin, (req, res) => {
-  const env = {};
-  for (const [key, val] of Object.entries(process.env)) {
-    if (isSecretKey(key)) {
-      env[key] = val ? '••••••••' : '';
-    } else {
-      env[key] = val;
-    }
-  }
-  res.json({ env, count: Object.keys(env).length });
-});
 
 // ── Clipboard (server-side staging) ───────────────────────────────────
 let clipboard = { sources: [], action: null, createdAt: null };
@@ -1375,56 +951,7 @@ app.delete('/api/clipboard', checkPin, (req, res) => {
 });
 
 // ── Session persistence via tmux ──────────────────────────────────────
-const { execSync, execFileSync, spawn } = require('child_process');
-
 const TMUX = (() => { try { return execSync('command -v tmux', { stdio: ['ignore','pipe','ignore'] }).toString().trim(); } catch { return null; } })();
-
-// Auth rate limiter (separate, stricter)
-const authReqs = new Map();
-function authRateLimiter(req, res, next) {
-  if (!PIN) return next();
-  const now = Date.now();
-  const key = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || 'default';
-  let win = authReqs.get(key);
-  if (!win || now > win.resetAt) {
-    win = { count: 0, resetAt: now + 10000 };
-    authReqs.set(key, win);
-  }
-  win.count++;
-  if (win.count > 5) return res.status(429).json({ error: 'Too many attempts' });
-  next();
-}
-
-// Periodic cleanup of rate limiter maps (prevents unbounded memory growth)
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, win] of authReqs) { if (now > win.resetAt) authReqs.delete(key); }
-  for (const [key, win] of rateLimitWindows) { if (now > win.resetAt) rateLimitWindows.delete(key); }
-}, 60000);
-
-// Simple in-memory rate limiter
-const rateLimitWindows = new Map();
-function rateLimiter(req, res, next) {
-  const LIMITS = {
-    '/api/exec': { limit: 10, windowMs: 10000 },
-    '/api/search': { limit: 20, windowMs: 10000 },
-  };
-  const path = req.path;
-  const cfg = path === '/api/exec' ? LIMITS['/api/exec'] : path === '/api/search' ? LIMITS['/api/search'] : null;
-  if (!cfg) return next();
-  const now = Date.now();
-  const key = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || 'default';
-  let win = rateLimitWindows.get(key);
-  if (!win || now > win.resetAt) {
-    win = { count: 0, resetAt: now + cfg.windowMs };
-    rateLimitWindows.set(key, win);
-  }
-  win.count++;
-  if (win.count > cfg.limit) {
-    return res.status(429).json({ error: 'Too many requests, please wait' });
-  }
-  next();
-}
 
 function isValidPID(pid) {
   return typeof pid === 'number' && Number.isInteger(pid) && pid > 0;
@@ -1606,159 +1133,7 @@ wss.on('connection', (ws, req) => {
   ws.on('error', cleanup);
 });
 
-// ── MCP Exec API ──────────────────────────────────────────────────────
-function getShellAndArgs(command) {
-  if (os.platform() === 'win32') {
-    const shell = process.env.SHELL || 'powershell.exe';
-    const isPowerShell = shell.toLowerCase().includes('powershell') || shell.toLowerCase().includes('pwsh');
-    const isCmd = shell.toLowerCase().includes('cmd');
-    const args = isPowerShell ? ['-Command', command] : isCmd ? ['/c', command] : ['-c', command];
-    return { shell, args };
-  } else {
-    const shell = process.env.SHELL || (fs.existsSync('/bin/bash') ? '/bin/bash' : 'sh');
-    return { shell, args: ['-c', command] };
-  }
-}
 
-function killProcessGroup(pid) {
-  if (!isValidPID(pid)) return;
-  try {
-    if (os.platform() === 'win32') {
-      execSync(`taskkill /pid ${pid} /T /F`, { stdio: 'ignore' });
-    } else {
-      process.kill(-pid, 'SIGKILL');
-    }
-  } catch (e) {
-    try { process.kill(pid, 'SIGKILL'); } catch {}
-  }
-}
-
-const execEnv = (() => {
-  const safe = { HOME: process.env.HOME || '', USER: process.env.USER || '', PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin', LANG: process.env.LANG || 'C.UTF-8', SHELL: SHELL };
-  if (process.env.NODE_ENV) safe.NODE_ENV = process.env.NODE_ENV;
-  return safe;
-})();
-
-app.post('/api/exec', rateLimiter, checkPin, (req, res) => {
-  const { command, cwd: reqCwd, timeout = 60000 } = req.body;
-  if (!command) return res.status(400).json({ error: 'command required' });
-
-  const execTimeout = Math.min(Math.max(1000, Number(timeout) || 60000), 300000);
-
-  let execCwd;
-  try {
-    execCwd = realPath(reqCwd || WORKSPACE_ROOT);
-  } catch (e) {
-    return res.status(403).json({ error: e.message });
-  }
-
-  let stdout = '', stderr = '';
-  const start = Date.now();
-  const maxBufferSize = 10 * 1024 * 1024;
-
-  const { shell, args } = getShellAndArgs(command);
-  const proc = spawn(shell, args, {
-    cwd: execCwd,
-    env: execEnv,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    detached: os.platform() !== 'win32'
-  });
-
-  let killed = false;
-
-  proc.stdout.on('data', d => {
-    if (killed) return;
-    if (stdout.length + d.length > maxBufferSize) {
-      killed = true;
-      try { killProcessGroup(proc.pid); } catch {}
-      return;
-    }
-    stdout += d.toString();
-  });
-  proc.stderr.on('data', d => {
-    if (killed) return;
-    if (stderr.length + d.length > maxBufferSize) {
-      killed = true;
-      try { killProcessGroup(proc.pid); } catch {}
-      return;
-    }
-    stderr += d.toString();
-  });
-
-  const timer = setTimeout(() => {
-    if (killed) return;
-    killed = true;
-    try { killProcessGroup(proc.pid); } catch {}
-    if (!res.headersSent)
-      res.status(408).json({ error: 'timeout', stdout, stderr, duration: Date.now() - start });
-  }, execTimeout);
-
-  proc.on('close', code => {
-    clearTimeout(timer);
-    if (res.headersSent) return;
-    res.json({ exitCode: code, stdout, stderr, duration: Date.now() - start });
-  });
-
-  proc.on('error', e => {
-    clearTimeout(timer);
-    if (res.headersSent) return;
-    res.status(500).json({ error: e.message, stdout, stderr });
-  });
-});
-
-app.get('/api/exec/stream', checkPin, (req, res) => {
-  const { command, cwd: reqCwd } = req.query;
-  if (!command) { res.status(400).end('command required'); return; }
-
-  let execCwd;
-  try {
-    execCwd = realPath(reqCwd || WORKSPACE_ROOT);
-  } catch (e) {
-    return res.status(403).json({ error: e.message });
-  }
-
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-
-  let sendQueue = [];
-  let draining = false;
-
-  const send = (type, data) => {
-    if (res.writableEnded) return;
-    const chunk = `data: ${JSON.stringify({ type, data })}\n\n`;
-    if (draining) { sendQueue.push(chunk); return; }
-    const canContinue = res.write(chunk);
-    if (!canContinue) {
-      draining = true;
-      res.once('drain', () => {
-        draining = false;
-        while (sendQueue.length > 0) {
-          const q = sendQueue.shift();
-          if (res.writableEnded) { sendQueue = []; return; }
-          if (!res.write(q)) { draining = true; return; }
-        }
-      });
-    }
-  };
-
-  const { shell, args } = getShellAndArgs(command);
-  const proc = spawn(shell, args, {
-    cwd: execCwd,
-    env: execEnv,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    detached: os.platform() !== 'win32'
-  });
-
-  proc.stdout.on('data', d => send('stdout', d.toString()));
-  proc.stderr.on('data', d => send('stderr', d.toString()));
-
-  proc.on('close', code => { send('exit', code); res.end(); });
-  proc.on('error', e => { send('error', e.message); res.end(); });
-
-  req.on('close', () => { try { killProcessGroup(proc.pid); } catch {} });
-});
 
 // ── File search (fuzzy finder) ──────────────────────────────────────
 app.get('/api/search', rateLimiter, checkPin, async (req, res) => {
@@ -1959,7 +1334,7 @@ app.post('/api/tunnel', checkPin, async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: 'url required' });
 
-  try { require('child_process').execSync(os.platform() === 'win32' ? 'where cloudflared' : 'command -v cloudflared', { stdio: 'ignore' }); }
+  try { execSync(os.platform() === 'win32' ? 'where cloudflared' : 'command -v cloudflared', { stdio: 'ignore' }); }
   catch { return res.status(500).json({ error: 'cloudflared not installed' }); }
 
   const proc = spawn('cloudflared', ['tunnel', '--url', url], {
