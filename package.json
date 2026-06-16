@@ -75,12 +75,17 @@
     "mime-types": "^2.1.35",
     "multer": "^2.0.0",
     "node-pty": "^1.0.0",
-    "ws": "^8.16.0"
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "electron": "^42.2.0",
     "electron-builder": "^26.8.1",
     "nodemon": "^3.1.14"
+  },
+  "overrides": {
+    "form-data": "4.0.6",
+    "js-yaml": "4.2.0",
+    "tar": "7.5.16"
   },
   "allowScripts": {
     "electron-winstaller@5.4.0": true,
