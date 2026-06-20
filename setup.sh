@@ -90,7 +90,7 @@ install_node
 
 # ── python3-build-tools for node-pty ─────────────────────────
 if [[ "$OS" == "Linux" ]] && command -v apt-get &>/dev/null; then
-  dpkg -l python3-dev make g++ &>/dev/null 2>&1 || {
+  dpkg -s python3-dev make g++ &>/dev/null 2>&1 || {
     info "Installing build tools for node-pty..."
     sudo apt-get install -y python3-dev make g++ &>/dev/null || true
   }
@@ -98,7 +98,7 @@ fi
 
 # ── npm dependencies ─────────────────────────────────────────
 info "Installing npm dependencies..."
-npm install --loglevel=error 2>&1 | grep -v "^npm warn" || true
+npm install --loglevel=error 2>&1 | grep -v "^npm warn" || [ "${PIPESTATUS[0]}" -eq 0 ]
 success "Dependencies installed"
 
 # ── Configuration ─────────────────────────────────────────────
@@ -241,7 +241,7 @@ echo "$SERVER_PID" > "$SCRIPT_DIR/webtun.pid"
 
 # Wait for server
 SERVER_UP=false
-for i in {1..10}; do
+for _ in {1..10}; do
   sleep 0.5
   if command -v curl &>/dev/null; then
     if curl -sf "http://localhost:$PORT/api/auth/required" &>/dev/null; then
@@ -255,7 +255,7 @@ for i in {1..10}; do
     fi
   else
     # No curl or wget — try a basic TCP check
-    if (echo > /dev/tcp/localhost/$PORT) 2>/dev/null; then
+    if (echo > "/dev/tcp/localhost/$PORT") 2>/dev/null; then
       SERVER_UP=true
       break
     fi
@@ -283,7 +283,7 @@ echo ""
 # Systemd offer
 if [[ "$OS" == "Linux" ]] && command -v systemctl &>/dev/null && [ ! -f "/etc/systemd/system/webtun.service" ]; then
   # Only offer systemd if we're the only process on the port (don't race with existing server)
-  if ! curl -sf "http://localhost:$PORT/api/auth/required" &>/dev/null; then
+  if curl -sf "http://localhost:$PORT/api/auth/required" &>/dev/null; then
     setup_systemd
   fi
 fi
@@ -303,7 +303,7 @@ if command -v cloudflared &>/dev/null; then
 
     # Wait up to 5 seconds for the tunnel URL, then exit
     echo "  ${YELLOW}Waiting for Cloudflare Tunnel URL...${RESET}"
-    for i in {1..5}; do
+    for _ in {1..5}; do
       TUNNEL_URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$TUNNEL_LOG" 2>/dev/null | head -1 || true)"
       if [ -n "$TUNNEL_URL" ]; then
         echo ""
