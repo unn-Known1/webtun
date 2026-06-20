@@ -78,7 +78,7 @@
 
 ### One-Command Install
 ```bash
-curl -fsSL https://raw.githubusercontent.com/unn-Known1/webtun/main/install.sh | bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/unn-Known1/webtun/main/install.sh)"
 ```
 
 ### Manual Setup
