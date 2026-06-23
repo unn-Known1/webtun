@@ -1904,7 +1904,7 @@ function initTerminal(tab) {
     windowsMode: false,
     convertEol: false,
     bellStyle: settings.bell ? 'sound' : 'none',
-    smoothScrollDuration: 100,
+    smoothScrollDuration: 80,
     selectionTheme: {
       extension: true,
       foreground: '#1a1b26',
@@ -1972,11 +1972,14 @@ function initTerminal(tab) {
     if (e.ctrlKey || e.metaKey) return; // Let pinch-zoom work
     const atTop = term.buffer.active.baseY === 0;
     const atBottom = term.buffer.active.baseY + term.rows >= term.buffer.active.length;
-    if (tilesMode && ((e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom))) return; // Let container scroll at boundaries in tiles mode
-    e.preventDefault();
-    if (e.deltaY < 0) term.scrollLines(-Math.ceil(Math.abs(e.deltaY) / 50));
-    else if (e.deltaY > 0) term.scrollLines(Math.ceil(e.deltaY / 50));
-  }, { passive: false });
+    if (tilesMode && ((e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom))) return;
+    // Normalize delta across devices (pixel / line / page modes)
+    let delta = e.deltaY;
+    if (e.deltaMode === 1) delta *= term.charHeight || 16;       // DOM_DELTA_LINE
+    else if (e.deltaMode === 2) delta *= (term.charHeight || 16) * term.rows; // DOM_DELTA_PAGE
+    const lines = Math.sign(delta) * Math.max(1, Math.round(Math.abs(delta) / (term.charHeight || 16)));
+    term.scrollLines(lines);
+  }, { passive: true });
 
   // Pinch-to-zoom on mobile
   let lastPinchDist = 0;
