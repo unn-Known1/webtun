@@ -1299,6 +1299,7 @@ app.get('/api/system', checkPin, async (req, res) => {
 // ── Cloudflared tunnel management ──────────────────────────────────
 const tunnels = new Map();
 const TUNNEL_FILE = path.join(__dirname, '.tunnels.json');
+const TUNNEL_URL_FILE = path.join(__dirname, 'tunnel-url.txt');
 
 function isCloudflaredProcess(pid) {
   if (!isValidPID(pid)) return false;
@@ -1320,6 +1321,18 @@ function saveTunnels() {
     id, localUrl: t.localUrl, tunnelUrl: t.tunnelUrl, createdAt: t.createdAt, pid: t.pid
   }));
   try { fs.writeFileSync(TUNNEL_FILE, JSON.stringify(arr, null, 2)); } catch {}
+  updateTunnelUrlFile();
+}
+
+function updateTunnelUrlFile() {
+  const active = Array.from(tunnels.values()).map(t => t.tunnelUrl).filter(Boolean);
+  try {
+    if (active.length > 0) {
+      fs.writeFileSync(TUNNEL_URL_FILE, active.join('\n') + '\n');
+    } else {
+      fs.writeFileSync(TUNNEL_URL_FILE, '');
+    }
+  } catch {}
 }
 
 function loadTunnels() {
@@ -1333,9 +1346,67 @@ function loadTunnels() {
   } catch {}
 }
 
+async function verifyTunnelUrl(url, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), 5000);
+      const res = await fetch(url, { method: 'HEAD', signal: ac.signal, redirect: 'follow' });
+      clearTimeout(timer);
+      if (res.ok) return true;
+    } catch {}
+    if (i < retries - 1) await new Promise(r => setTimeout(r, 2000));
+  }
+  return false;
+}
+
+function restartTunnel(id, entry) {
+  if (!entry.localUrl) return;
+  try { if (entry.proc) entry.proc.kill('SIGTERM'); } catch {}
+  try { if (entry.pid && isCloudflaredProcess(entry.pid)) process.kill(entry.pid, 'SIGTERM'); } catch {}
+  tunnels.delete(id);
+
+  const url = entry.localUrl;
+  const proc = spawn('cloudflared', ['tunnel', '--url', url], {
+    detached: true, stdio: ['ignore', 'pipe', 'pipe']
+  });
+  proc.unref();
+
+  const handler = data => {
+    const text = data.toString();
+    const m = text.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
+    if (m) {
+      const newUrl = m[0];
+      const newId = newUrl.replace(/^https:\/\//, '').replace(/\.trycloudflare\.com$/, '');
+      proc.stdout.removeAllListeners('data');
+      proc.stderr.removeAllListeners('data');
+      proc.stdout.resume();
+      proc.stderr.resume();
+      tunnels.set(newId, { proc, pid: proc.pid, localUrl: url, tunnelUrl: newUrl, createdAt: Date.now() });
+      saveTunnels();
+      updateTunnelUrlFile();
+      console.log(`  Tunnel restarted: ${newUrl} → ${url}`);
+    }
+  };
+  proc.stdout.on('data', handler);
+  proc.stderr.on('data', handler);
+  proc.on('error', () => {});
+  proc.on('exit', () => { proc.stdout.removeAllListeners('data'); proc.stderr.removeAllListeners('data'); });
+}
+
+const TUNNEL_CHECK_INTERVAL = 30000;
+setInterval(async () => {
+  for (const [id, entry] of tunnels) {
+    const alive = entry.proc !== null || (entry.pid && isCloudflaredProcess(entry.pid));
+    if (!alive) {
+      console.log(`  Tunnel ${id} dead — restarting…`);
+      restartTunnel(id, entry);
+    }
+  }
+}, TUNNEL_CHECK_INTERVAL);
+
 app.get('/api/tunnel', checkPin, async (req, res) => {
   const entries = Array.from(tunnels.entries());
-  // Quick health check on each tunnel's target server
   const results = await Promise.allSettled(entries.map(async ([id, t]) => {
     let alive = t.proc !== null;
     if (!alive && t.pid) { alive = isCloudflaredProcess(t.pid); }
@@ -1345,7 +1416,6 @@ app.get('/api/tunnel', checkPin, async (req, res) => {
         const ac = new AbortController();
         const timer = setTimeout(() => ac.abort(), 2000);
         const proto = t.localUrl.startsWith('https') ? 'https' : 'http';
-        // Only check http/https targets
         if (proto === 'http' || proto === 'https') {
           await fetch(t.localUrl, { method: 'HEAD', signal: ac.signal });
           clearTimeout(timer);
@@ -1353,7 +1423,17 @@ app.get('/api/tunnel', checkPin, async (req, res) => {
         }
       } catch {}
     }
-    return { id, localUrl: t.localUrl, tunnelUrl: t.tunnelUrl, createdAt: t.createdAt, alive, targetAlive };
+    let tunnelAlive = false;
+    if (t.tunnelUrl) {
+      try {
+        const ac = new AbortController();
+        const timer = setTimeout(() => ac.abort(), 3000);
+        await fetch(t.tunnelUrl, { method: 'HEAD', signal: ac.signal });
+        clearTimeout(timer);
+        tunnelAlive = true;
+      } catch {}
+    }
+    return { id, localUrl: t.localUrl, tunnelUrl: t.tunnelUrl, createdAt: t.createdAt, alive, targetAlive, tunnelAlive };
   }));
   const tunnels_list = results.map(r => r.status === 'fulfilled' ? r.value : null).filter(Boolean);
   res.json({ tunnels: tunnels_list });
@@ -1396,10 +1476,12 @@ app.post('/api/tunnel', checkPin, async (req, res) => {
       urlPromise,
       new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), timeout))
     ]);
+    // Verify tunnel URL is actually reachable
+    const urlOk = await verifyTunnelUrl(tunnelUrl);
     const id = tunnelUrl.replace(/^https:\/\//, '').replace(/\.trycloudflare\.com$/, '');
     tunnels.set(id, { proc, pid: proc.pid, localUrl: url, tunnelUrl, createdAt: Date.now() });
     saveTunnels();
-    res.json({ success: true, id, url: tunnelUrl });
+    res.json({ success: true, id, url: tunnelUrl, verified: urlOk });
   } catch (e) {
     try { proc.kill(); } catch {}
     res.status(500).json({ error: e.message === 'timeout' ? 'Timed out waiting for tunnel URL' : e.message });
