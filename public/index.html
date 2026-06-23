@@ -1129,6 +1129,10 @@ svg { display: block; }
             <label>Data Saver</label>
             <div class="toggle" id="s-datasaver" role="switch" tabindex="0" aria-checked="false" onclick="toggleSetting('datasaver')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('datasaver')}"></div>
           </div>
+          <div class="setting-row electron-only" style="display:none">
+            <label>Start on Login</label>
+            <div class="toggle" id="s-autostart" role="switch" tabindex="0" aria-checked="false" onclick="toggleSetting('autostart')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('autostart')}"></div>
+          </div>
         </div>
         <div class="settings-section">
           <h3>Tunnel</h3>
@@ -1338,8 +1342,10 @@ let hasTmux = false;
 let settings = {
   theme: 'light', fontSize: 14, font: "'SF Mono', 'Fira Code', Consolas, monospace",
   cursor: 'block', blink: true, scrollback: 5000, bell: false,
-  mobilekeys: false, confirmclose: true, datasaver: false
+  mobilekeys: false, confirmclose: true, datasaver: false, autostart: false
 };
+
+const isElectron = !!(window.electronAPI && window.electronAPI.isElectron);
 
 function uuid() {
   try {
@@ -3373,6 +3379,13 @@ function loadSettings() {
   document.getElementById('s-font').value = settings.font;
   document.getElementById('s-cursor').value = settings.cursor;
   syncToggle('blink'); syncToggle('bell'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver');
+  if (isElectron) {
+    document.querySelectorAll('.electron-only').forEach(el => el.style.display = '');
+    window.electronAPI.getAutostart().then(enabled => {
+      settings.autostart = enabled;
+      syncToggle('autostart');
+    }).catch(() => {});
+  }
 }
 
 function saveSettings() { localStorage.setItem('wt-settings', JSON.stringify(settings)); }
@@ -3390,6 +3403,14 @@ function syncToggle(k) {
 function toggleSetting(k) {
   settings[k] = !settings[k];
   syncToggle(k);
+  if (k === 'autostart') {
+    if (isElectron) {
+      window.electronAPI.setAutostart(settings.autostart).then(ok => {
+        if (!ok) { settings.autostart = false; syncToggle('autostart'); }
+      }).catch(() => { settings.autostart = false; syncToggle('autostart'); });
+    }
+    return;
+  }
   saveSettings();
   if (k === 'mobilekeys') {
     const mk = document.getElementById('mobile-keys');

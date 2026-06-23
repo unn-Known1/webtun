@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, shell, dialog } = require('electron');
+const { app, BrowserWindow, Menu, shell, dialog, ipcMain } = require('electron');
 const { fork } = require('child_process');
 const path = require('path');
 const http = require('http');
@@ -42,7 +42,8 @@ function createWindow() {
     icon: path.join(__dirname, '..', 'public', 'icon-512.png'),
     webPreferences: {
       nodeIntegration: false,
-      contextIsolation: true
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js')
     }
   });
 
@@ -103,4 +104,18 @@ app.on('before-quit', () => {
 
 app.on('activate', () => {
   if (mainWindow === null) createWindow();
+});
+
+// ── Auto-start on login ──────────────────────────────────────
+ipcMain.handle('get-autostart', () => {
+  return app.getLoginItemSettings().openAtLogin;
+});
+
+ipcMain.handle('set-autostart', (_event, enabled) => {
+  app.setLoginItemSettings({
+    openAtLogin: enabled,
+    path: process.execPath,
+    args: process.argv.slice(1).filter(a => a !== '--')
+  });
+  return app.getLoginItemSettings().openAtLogin;
 });
