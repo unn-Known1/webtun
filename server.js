@@ -1,4 +1,18 @@
-require('dotenv').config();
+// Load .env without dotenv dependency
+try {
+  const envPath = require('path').join(__dirname, '.env');
+  const envContent = require('fs').readFileSync(envPath, 'utf8');
+  envContent.split('\n').forEach(line => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) return;
+    const idx = trimmed.indexOf('=');
+    if (idx === -1) return;
+    const key = trimmed.slice(0, idx).trim();
+    const val = trimmed.slice(idx + 1).trim();
+    if (!(key in process.env)) process.env[key] = val;
+  });
+} catch {}
+
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
@@ -7,10 +21,39 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const mime = require('mime-types');
-const archiver = require('archiver');
 const crypto = require('crypto');
 const { execSync, execFileSync, spawn } = require('child_process');
+
+// MIME type lookup without mime-types dependency
+const MIME_MAP = {
+  '.html':'text/html','.htm':'text/html','.css':'text/css','.js':'application/javascript',
+  '.mjs':'application/javascript','.json':'application/json','.xml':'application/xml',
+  '.txt':'text/plain','.csv':'text/csv','.tsv':'text/tab-separated-values',
+  '.md':'text/markdown','.rtf':'text/rtf',
+  '.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif',
+  '.bmp':'image/bmp','.ico':'image/x-icon','.svg':'image/svg+xml','.webp':'image/webp',
+  '.avif':'image/avif','.tif':'image/tiff','.tiff':'image/tiff',
+  '.mp3':'audio/mpeg','.mp4':'video/mp4','.webm':'video/webm','.ogg':'audio/ogg',
+  '.wav':'audio/wav','.flac':'audio/flac','.aac':'audio/aac','.m4a':'audio/mp4',
+  '.pdf':'application/pdf','.zip':'application/zip','.gz':'application/gzip',
+  '.tar':'application/x-tar','.7z':'application/x-7z-compressed',
+  '.rar':'application/vnd.rar','.bz2':'application/x-bzip2','.xz':'application/x-xz',
+  '.doc':'application/msword','.docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xls':'application/vnd.ms-excel','.xlsx':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.ppt':'application/vnd.ms-powerpoint','.pptx':'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  '.woff':'font/woff','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.eot':'application/vnd.ms-fontobject',
+  '.wasm':'application/wasm','.map':'application/json','.tgz':'application/gzip',
+  '.sh':'text/x-shellscript','.py':'text/x-python','.rb':'text/x-ruby',
+  '.java':'text/x-java','.c':'text/x-c','.h':'text/x-c','.cpp':'text/x-c++',
+  '.go':'text/x-go','.rs':'text/x-rust','.php':'text/x-php','.pl':'text/x-perl',
+  '.sql':'application/sql','.graphql':'application/graphql',
+  '.yaml':'text/yaml','.yml':'text/yaml','.toml':'application/toml','.ini':'text/plain',
+  '.env':'text/plain','.lock':'text/plain',
+};
+function mimeLookup(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  return MIME_MAP[ext] || 'application/octet-stream';
+}
 
 // In-memory rate limiter factory
 const rateLimitWindows = new Map();
@@ -368,20 +411,13 @@ app.post('/api/files/zip', checkPin, async (req, res) => {
       zipPath = path.join(path.dirname(p), zipName);
       counter++;
     }
-    const output = fs.createWriteStream(zipPath);
-    const archive = archiver('zip', { zlib: { level: 6 } });
-    await new Promise((resolve, reject) => {
-      archive.on('error', err => reject(err));
-      output.on('close', resolve);
-      output.on('error', reject);
-      archive.pipe(output);
-      if (st.isDirectory()) {
-        archive.directory(p, baseName, { followSymlinks: false });
-      } else {
-        archive.file(p, { name: baseName });
-      }
-      archive.finalize();
-    });
+    const zipDir = path.dirname(zipPath);
+    const zipTarget = path.basename(zipPath);
+    if (st.isDirectory()) {
+      execSync(`zip -r -6 "${zipTarget}" "${baseName}"`, { cwd: zipDir, stdio: 'pipe' });
+    } else {
+      execSync(`zip -6 "${zipTarget}" "${baseName}"`, { cwd: zipDir, stdio: 'pipe' });
+    }
     res.json({ success: true, name: zipName });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -399,21 +435,23 @@ app.post('/api/files/unzip', checkPin, async (req, res) => {
     if (ext !== '.zip') return res.status(400).json({ error: 'Not a zip file' });
     const destDir = path.join(path.dirname(p), path.basename(p, '.zip'));
     await fsPromises.mkdir(destDir, { recursive: true });
-    const AdmZip = require('adm-zip');
-    const zip = new AdmZip(p);
-    const entries = zip.getEntries();
-    for (const entry of entries) {
-      const entryPath = path.normalize(entry.entryName);
-      if (entryPath.startsWith('..') || path.isAbsolute(entryPath)) {
-        return res.status(400).json({ error: 'Invalid zip entry: ' + entry.entryName });
-      }
-      const target = path.join(destDir, entryPath);
-      if (!target.startsWith(destDir + path.sep) && target !== destDir) {
-        return res.status(400).json({ error: 'Zip entry escapes destination directory' });
+    // Security: scan zip entries before extraction
+    const unzipList = execSync(`unzip -l "${p}"`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
+    for (const line of unzipList.split('\n')) {
+      const match = line.match(/^\s*\S+\s+\S+\s+(.+)$/);
+      if (match) {
+        const entryPath = path.normalize(match[1]);
+        if (entryPath.startsWith('..') || path.isAbsolute(entryPath)) {
+          return res.status(400).json({ error: 'Invalid zip entry: ' + match[1] });
+        }
+        const target = path.join(destDir, entryPath);
+        if (!target.startsWith(destDir + path.sep) && target !== destDir) {
+          return res.status(400).json({ error: 'Zip entry escapes destination directory' });
+        }
       }
     }
     try {
-      zip.extractAllTo(destDir, true);
+      execSync(`unzip -o "${p}" -d "${destDir}"`, { stdio: 'pipe' });
     } catch (e) {
       return res.status(500).json({ error: e.message });
     }
@@ -454,7 +492,7 @@ app.post('/api/files/write', checkPin, async (req, res) => {
 app.get('/api/files/image', checkPin, async (req, res) => {
   try {
     const p = resolvePath(req.query.path);
-    const mimeType = mime.lookup(p) || 'application/octet-stream';
+    const mimeType = mimeLookup(p);
     res.setHeader('Content-Type', mimeType);
     res.setHeader('Cache-Control', 'private, max-age=3600');
     const stream = fs.createReadStream(p);
@@ -478,16 +516,16 @@ app.get('/api/files/download', checkPin, async (req, res) => {
     if (st.isDirectory()) {
       res.setHeader('Content-Type', 'application/zip');
       res.setHeader('Content-Disposition', `attachment; filename="${path.basename(p)}.zip"`);
-      const archive = archiver('zip', { zlib: { level: 6 } });
-      archive.on('error', err => {
+      // Stream zip to response via system zip command
+      const zipProc = spawn('zip', ['-r', '-6', '-', path.basename(p)], { cwd: path.dirname(p), stdio: ['ignore', 'pipe', 'pipe'] });
+      zipProc.stdout.pipe(res);
+      zipProc.on('error', err => {
         if (!res.headersSent) res.status(500).json({ error: err.message });
       });
-      archive.pipe(res);
-      // Skip symlinks in directory archives to prevent boundary escape
-      archive.directory(p, path.basename(p), { followSymlinks: false });
-      await archive.finalize();
+      zipProc.on('close', code => { if (code !== 0 && !res.headersSent) res.status(500).json({ error: 'zip failed' }); });
+      return;
     } else {
-      const mimeType = mime.lookup(p) || 'application/octet-stream';
+      const mimeType = mimeLookup(p);
       res.setHeader('Content-Type', mimeType);
       res.setHeader('Content-Disposition', `attachment; filename="${path.basename(p)}"`);
       const stream = fs.createReadStream(p);
@@ -763,22 +801,13 @@ app.post('/api/files/batch-zip', checkPin, async (req, res) => {
       dest = origDest.replace(/(\.zip)?$/, ` (${counter})${ext}`);
       counter++;
     }
-    const output = fs.createWriteStream(dest);
-    const archive = archiver('zip', { zlib: { level: 6 } });
-    await new Promise((resolve, reject) => {
-      archive.on('error', err => reject(err));
-      output.on('close', resolve);
-      output.on('error', reject);
-      archive.pipe(output);
-      for (const s of resolved) {
-        try {
-          const st = fs.statSync(s);
-          if (st.isDirectory()) archive.directory(s, path.basename(s), { followSymlinks: false });
-          else archive.file(s, { name: path.basename(s) });
-        } catch {}
-      }
-      archive.finalize();
+    const zipDir = path.dirname(dest);
+    const zipTarget = path.basename(dest);
+    const zipArgs = resolved.map(s => {
+      const rel = path.relative(zipDir, s);
+      return `"${rel}"`;
     });
+    execSync(`zip -r -6 "${zipTarget}" ${zipArgs.join(' ')}`, { cwd: zipDir, stdio: 'pipe' });
     res.json({ success: true, name: path.basename(dest), files: req.body.sources.length });
   } catch (e) {
     res.status(500).json({ error: e.message });

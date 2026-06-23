@@ -68,24 +68,20 @@
     }
   },
   "dependencies": {
-    "adm-zip": "^0.5.16",
-    "archiver": "^6.0.1",
-    "dotenv": "^16.4.1",
     "express": "^4.18.2",
-    "mime-types": "^2.1.35",
     "multer": "^2.0.0",
     "node-pty": "^1.0.0",
     "ws": "^8.21.0"
   },
-  "devDependencies": {
+  "optionalDependencies": {
     "electron": "^42.2.0",
-    "electron-builder": "^26.8.1",
+    "electron-builder": "^26.8.1"
+  },
+  "devDependencies": {
     "nodemon": "^3.1.14"
   },
   "overrides": {
-    "form-data": "4.0.6",
-    "js-yaml": "4.2.0",
-    "tar": "7.5.16"
+    "form-data": "4.0.6"
   },
   "allowScripts": {
     "electron-winstaller@5.4.0": true,
