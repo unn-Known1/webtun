@@ -634,7 +634,83 @@ svg { display: block; }
 #finder-empty { text-align: center; color: var(--fg2); padding: 20px; font-size: 13px; }
 
 /* ═══════════════════════════════════════════════════════
-   SYSTEM STATS
+   COMMAND LIBRARY BUBBLE
+   ═══════════════════════════════════════════════════════ */
+#cmd-lib-panel {
+  position: absolute; top: 42px; right: 12px; z-index: 25;
+  width: 380px; max-height: 480px;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px var(--shadow-color);
+  display: none; flex-direction: column; overflow: hidden;
+}
+#cmd-lib-panel.open { display: flex; }
+#cmd-lib-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+#cmd-lib-header h3 {
+  font-size: 13px; font-weight: 700; color: var(--fg); flex: 1;
+  display: flex; align-items: center; gap: 6px;
+}
+#cmd-lib-search {
+  width: calc(100% - 28px); height: 28px; font-size: 12px; margin: 8px 14px 0;
+}
+#cmd-lib-list {
+  flex: 1; overflow-y: auto; padding: 6px; min-height: 0;
+}
+#cmd-lib-empty {
+  text-align: center; color: var(--fg2); padding: 24px 16px; font-size: 12px;
+}
+.cmd-lib-section {
+  margin-bottom: 4px;
+}
+.cmd-lib-section-title {
+  font-size: 10px; color: var(--fg2); text-transform: uppercase;
+  letter-spacing: 0.5px; padding: 6px 8px 3px; font-weight: 600;
+}
+.cmd-lib-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 8px; border-radius: var(--radius); cursor: pointer;
+  transition: background var(--transition-fast);
+}
+.cmd-lib-item:hover { background: var(--bg4); }
+.cmd-lib-item .cmd-lib-name {
+  flex: 1; font-size: 12px; color: var(--fg); font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cmd-lib-item .cmd-lib-cmd {
+  flex: 2; font-size: 11px; color: var(--fg2); font-family: var(--font);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cmd-lib-item .cmd-lib-run {
+  width: 26px; height: 26px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius); color: var(--green);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.cmd-lib-item .cmd-lib-run:hover { background: var(--bg4); color: var(--green); }
+.cmd-lib-item .cmd-lib-del {
+  width: 22px; height: 22px; flex-shrink: 0;
+  display: none; align-items: center; justify-content: center;
+  border-radius: var(--radius-sm); color: var(--fg2);
+  font-size: 12px;
+}
+.cmd-lib-item:hover .cmd-lib-del { display: flex; }
+.cmd-lib-item .cmd-lib-del:hover { color: var(--red); background: var(--bg4); }
+#cmd-lib-footer {
+  display: flex; gap: 6px; padding: 8px 14px; border-top: 1px solid var(--border); flex-shrink: 0;
+}
+#cmd-lib-footer input {
+  flex: 1; height: 28px; font-size: 12px; min-width: 0;
+}
+#cmd-lib-footer .btn { height: 28px; padding: 0 12px; font-size: 12px; flex-shrink: 0; }
+@media (max-width: 480px) {
+  #cmd-lib-panel { width: calc(100vw - 16px); right: 8px; }
+}
+
+/* ═══════════════════════════════════════════════════════
+    SYSTEM STATS
    ═══════════════════════════════════════════════════════ */
 #sys-overlay .modal { width: 520px; max-width: 95vw; }
 .sys-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
@@ -760,6 +836,9 @@ svg { display: block; }
     <button class="icon-btn" id="search-toggle" aria-label="Search" title="Search (Ctrl+F)" onclick="toggleSearch()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
     </button>
+    <button class="icon-btn" id="cmd-lib-toggle" aria-label="Command Library" title="Command Library" onclick="toggleCmdLib()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+    </button>
     <button class="icon-btn" id="system-stats-btn" aria-label="System Stats" title="System Stats" onclick="openSystemStats()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="4" rx="1"/><rect x="2" y="10" width="20" height="4" rx="1"/><rect x="2" y="18" width="20" height="4" rx="1"/><circle cx="6" cy="4" r="1" fill="currentColor"/><circle cx="6" cy="12" r="1" fill="currentColor"/><circle cx="6" cy="20" r="1" fill="currentColor"/></svg>
     </button>
@@ -860,6 +939,26 @@ svg { display: block; }
             <button class="search-btn" title="Close (Esc)" onclick="closeSearch()">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
+          </div>
+        </div>
+
+        <!-- Command Library Panel -->
+        <div id="cmd-lib-panel">
+          <div id="cmd-lib-header">
+            <h3>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+              Command Library
+            </h3>
+            <button class="icon-btn" style="width:24px;height:24px" onclick="toggleCmdLib()" title="Close">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <input id="cmd-lib-search" type="text" placeholder="Filter commands…" oninput="filterCmdLib()">
+          <div id="cmd-lib-list"></div>
+          <div id="cmd-lib-footer">
+            <input id="cmd-lib-name-input" type="text" placeholder="Name" onkeydown="if(event.key==='Enter')document.getElementById('cmd-lib-cmd-input').focus()">
+            <input id="cmd-lib-cmd-input" type="text" placeholder="Command (e.g. ls -la)" onkeydown="if(event.key==='Enter')addCustomCmd()">
+            <button class="btn btn-primary" onclick="addCustomCmd()">Add</button>
           </div>
         </div>
 
@@ -1217,9 +1316,8 @@ svg { display: block; }
   <button class="btn btn-primary" style="height:32px;padding:0 12px;font-size:12px" onclick="installPWA()">Install</button>
 </div>
 
+<script src="/commands.js"></script>
 <script>
-// ═══════════════════════════════════════════════════════
-// STATE
 // ═══════════════════════════════════════════════════════
 let authToken = '';
 let tabs = [];
@@ -3780,6 +3878,7 @@ function setupKeyboardShortcuts() {
         return;
       }
       if (document.getElementById('search-bar').classList.contains('open')) closeSearch();
+      if (document.getElementById('cmd-lib-panel').classList.contains('open')) toggleCmdLib();
       if (document.getElementById('settings-panel').classList.contains('open')) closeSettings();
       document.querySelectorAll('.overlay.open').forEach(el => {
         const id = el.id;
@@ -4461,6 +4560,162 @@ function finderKeydown(e) {
   if (e.key === 'ArrowUp') { e.preventDefault(); if (finderIdx > 0) { finderIdx--; items.forEach((el,i) => el.classList.toggle('selected', i === finderIdx)); if (items[finderIdx]) items[finderIdx].scrollIntoView({ block: 'nearest' }); } }
   if (e.key === 'Enter' && finderIdx >= 0 && items[finderIdx]) { e.preventDefault(); items[finderIdx].click(); }
   if (e.key === 'Escape') closeOverlay('finder-overlay');
+}
+
+// ═══════════════════════════════════════════════════════
+// COMMAND LIBRARY
+// ═══════════════════════════════════════════════════════
+const DEFAULT_CMDS = window.DEFAULT_CMDS || [];
+
+function getCmdLib() {
+  try { return JSON.parse(localStorage.getItem('wt-cmdlib')) || []; } catch(e) { return []; }
+}
+function saveCmdLib(cmds) {
+  localStorage.setItem('wt-cmdlib', JSON.stringify(cmds));
+}
+
+function toggleCmdLib() {
+  const panel = document.getElementById('cmd-lib-panel');
+  const isOpen = panel.classList.contains('open');
+  panel.classList.toggle('open');
+  document.getElementById('cmd-lib-toggle').classList.toggle('active', !isOpen);
+  if (!isOpen) {
+    renderCmdLib();
+    document.getElementById('cmd-lib-search').value = '';
+    document.getElementById('cmd-lib-search').focus();
+    setTimeout(() => {
+      document.addEventListener('click', closeCmdLibOnClickOutside, true);
+    }, 0);
+  } else {
+    document.removeEventListener('click', closeCmdLibOnClickOutside, true);
+  }
+}
+
+function closeCmdLibOnClickOutside(e) {
+  const panel = document.getElementById('cmd-lib-panel');
+  const btn = document.getElementById('cmd-lib-toggle');
+  if (!panel.classList.contains('open')) {
+    document.removeEventListener('click', closeCmdLibOnClickOutside, true);
+    return;
+  }
+  if (panel.contains(e.target) || btn.contains(e.target)) return;
+  toggleCmdLib();
+}
+
+function renderCmdLib(filter) {
+  const list = document.getElementById('cmd-lib-list');
+  const custom = getCmdLib();
+  const q = (filter || document.getElementById('cmd-lib-search').value || '').toLowerCase();
+  const all = DEFAULT_CMDS.concat(custom.map(c => ({ ...c, custom: true })));
+  const filtered = q ? all.filter(c => c.name.toLowerCase().includes(q) || c.cmd.toLowerCase().includes(q) || (c.cat || '').toLowerCase().includes(q)) : all;
+
+  if (filtered.length === 0) {
+    list.innerHTML = '<div id="cmd-lib-empty">No commands found</div>';
+    return;
+  }
+
+  list.innerHTML = '';
+  const cats = {};
+  filtered.forEach(c => {
+    const cat = c.cat || (c.custom ? 'My Commands' : 'Other');
+    if (!cats[cat]) cats[cat] = [];
+    cats[cat].push(c);
+  });
+
+  Object.keys(cats).forEach(cat => {
+    const section = document.createElement('div');
+    section.className = 'cmd-lib-section';
+    const title = document.createElement('div');
+    title.className = 'cmd-lib-section-title';
+    title.textContent = cat;
+    section.appendChild(title);
+
+    cats[cat].forEach(c => {
+      const item = document.createElement('div');
+      item.className = 'cmd-lib-item';
+      item.title = c.cmd;
+      const name = document.createElement('span');
+      name.className = 'cmd-lib-name';
+      name.textContent = c.name;
+      const cmd = document.createElement('span');
+      cmd.className = 'cmd-lib-cmd';
+      cmd.textContent = c.cmd;
+      const runBtn = document.createElement('button');
+      runBtn.className = 'cmd-lib-run';
+      runBtn.title = 'Run in terminal';
+      runBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6,3 20,12 6,21"/></svg>';
+      runBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        runCmdLib(c.cmd);
+      });
+      item.appendChild(name);
+      item.appendChild(cmd);
+      item.appendChild(runBtn);
+
+      if (c.custom) {
+        const delBtn = document.createElement('button');
+        delBtn.className = 'cmd-lib-del';
+        delBtn.title = 'Delete';
+        delBtn.textContent = '×';
+        delBtn.addEventListener('click', e => {
+          e.stopPropagation();
+          deleteCustomCmd(c.name, c.cmd);
+        });
+        item.appendChild(delBtn);
+      }
+
+      item.addEventListener('click', () => runCmdLib(c.cmd));
+      section.appendChild(item);
+    });
+    list.appendChild(section);
+  });
+}
+
+function filterCmdLib() {
+  renderCmdLib();
+}
+
+function runCmdLib(cmd) {
+  const tab = getActiveTab();
+  if (!tab || !tab.ws || tab.ws.readyState !== WebSocket.OPEN) {
+    toast('No active terminal', 'error');
+    return;
+  }
+  const text = cmd + '\n';
+  const enc = new TextEncoder().encode(text);
+  const buf = new Uint8Array(1 + enc.length);
+  buf[0] = 0x00;
+  buf.set(enc, 1);
+  tab.ws.send(buf.buffer);
+  tab.term?.focus();
+  toast('Running: ' + cmd, 'info');
+}
+
+function addCustomCmd() {
+  const nameInput = document.getElementById('cmd-lib-name-input');
+  const cmdInput = document.getElementById('cmd-lib-cmd-input');
+  const name = nameInput.value.trim();
+  const cmd = cmdInput.value.trim();
+  if (!cmd) { toast('Enter a command', 'error'); return; }
+  const custom = getCmdLib();
+  if (custom.some(c => c.name === name && c.cmd === cmd)) {
+    toast('Command already exists', 'info');
+    return;
+  }
+  custom.push({ name: name || cmd, cmd, cat: 'My Commands' });
+  saveCmdLib(custom);
+  nameInput.value = '';
+  cmdInput.value = '';
+  renderCmdLib();
+  toast('Command added', 'success');
+}
+
+function deleteCustomCmd(name, cmd) {
+  let custom = getCmdLib();
+  custom = custom.filter(c => !(c.name === name && c.cmd === cmd));
+  saveCmdLib(custom);
+  renderCmdLib();
+  toast('Command removed', 'info');
 }
 
 // ═══════════════════════════════════════════════════════
