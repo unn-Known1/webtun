@@ -1342,7 +1342,7 @@ let hasTmux = false;
 let settings = {
   theme: 'light', fontSize: 14, font: "'SF Mono', 'Fira Code', Consolas, monospace",
   cursor: 'block', blink: true, scrollback: 5000, bell: false,
-  mobilekeys: false, confirmclose: true, datasaver: false, autostart: false
+  mobilekeys: false, confirmclose: true, datasaver: false, autostart: false, keepAwake: false
 };
 
 const isElectron = !!(window.electronAPI && window.electronAPI.isElectron);
@@ -3371,6 +3371,7 @@ function loadSettings() {
       if (typeof s.mobilekeys === 'boolean') settings.mobilekeys = s.mobilekeys;
       if (typeof s.confirmclose === 'boolean') settings.confirmclose = s.confirmclose;
       if (typeof s.datasaver === 'boolean') settings.datasaver = s.datasaver;
+      if (typeof s.keepAwake === 'boolean') settings.keepAwake = s.keepAwake;
     }
   } catch(e) { console.warn(e); }
   document.getElementById('s-theme').value = settings.theme;
@@ -3379,6 +3380,8 @@ function loadSettings() {
   document.getElementById('s-font').value = settings.font;
   document.getElementById('s-cursor').value = settings.cursor;
   syncToggle('blink'); syncToggle('bell'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver');
+  syncKeepAwakeUI();
+  if (settings.keepAwake && hasWakeLock) { requestWakeLock(); }
   if (isElectron) {
     document.querySelectorAll('.electron-only').forEach(el => el.style.display = '');
     window.electronAPI.getAutostart().then(enabled => {
@@ -3828,20 +3831,46 @@ function toggleEditorSplit() {
 
 // ═══════════════════════════════════════════════════════
 let wakeLock = null;
-async function toggleKeepAwake(enabled) {
-  if (enabled) {
-    try {
-      wakeLock = await navigator.wakeLock.request('screen');
-    } catch (err) {
-      console.warn('Wake Lock error:', err);
-    }
-  } else {
-    if (wakeLock) {
-      wakeLock.release();
-      wakeLock = null;
-    }
+const hasWakeLock = 'wakeLock' in navigator;
+
+async function requestWakeLock() {
+  if (!hasWakeLock) return false;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => { wakeLock = null; });
+    return true;
+  } catch (err) {
+    console.warn('Wake Lock error:', err);
+    return false;
   }
 }
+
+async function toggleKeepAwake(enabled) {
+  settings.keepAwake = enabled;
+  saveSettings();
+  if (enabled) {
+    const ok = await requestWakeLock();
+    if (!ok && !isElectron) {
+      toast('Screen wake lock not supported or denied', 'error');
+    } else if (!ok && isElectron) {
+      toast('Wake lock not available in Electron', 'info');
+    }
+  } else {
+    if (wakeLock) { wakeLock.release(); wakeLock = null; }
+  }
+  syncKeepAwakeUI();
+}
+
+function syncKeepAwakeUI() {
+  const cb = document.getElementById('keep-awake-cb');
+  if (cb) cb.checked = !!settings.keepAwake;
+}
+
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && settings.keepAwake && !wakeLock) {
+    await requestWakeLock();
+  }
+});
 
 function moveTabToEnd(fromId) {
   if (isNaN(fromId)) return;
