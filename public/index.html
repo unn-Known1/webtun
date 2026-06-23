@@ -1973,13 +1973,17 @@ function initTerminal(tab) {
     const atTop = term.buffer.active.baseY === 0;
     const atBottom = term.buffer.active.baseY + term.rows >= term.buffer.active.length;
     if (tilesMode && ((e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom))) return;
-    // Normalize delta across devices (pixel / line / page modes)
+    e.preventDefault();
+    // Normalize delta: DOM_DELTA_LINE(1) and DOM_DELTA_PAGE(2) → pixels
     let delta = e.deltaY;
-    if (e.deltaMode === 1) delta *= term.charHeight || 16;       // DOM_DELTA_LINE
-    else if (e.deltaMode === 2) delta *= (term.charHeight || 16) * term.rows; // DOM_DELTA_PAGE
-    const lines = Math.sign(delta) * Math.max(1, Math.round(Math.abs(delta) / (term.charHeight || 16)));
+    if (e.deltaMode === 1) delta *= 16;
+    else if (e.deltaMode === 2) delta *= 16 * term.rows;
+    // Convert pixels to lines — get line height from DOM, fallback to 16
+    const rowsEl = tab.wrapper.querySelector('.xterm-rows');
+    const lineHeight = rowsEl && rowsEl.children[0] ? rowsEl.children[0].getBoundingClientRect().height || 16 : 16;
+    const lines = Math.sign(delta) * Math.max(1, Math.round(Math.abs(delta) / lineHeight));
     term.scrollLines(lines);
-  }, { passive: true });
+  }, { passive: false });
 
   // Pinch-to-zoom on mobile
   let lastPinchDist = 0;
