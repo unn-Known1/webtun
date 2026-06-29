@@ -112,13 +112,13 @@ npm start
 ┌─────────────────────────────────────────────────────────────┐
 │                      Node.js Server                         │
 │  ┌────────────┐  ┌─────────────┐  ┌────────────────────┐    │
-│  │  WebSocket │  │   File API  │  │ Cloudflare Tunnel  │    │
+│  │  WebSocket │  │   File API  │  │ Cloudflare Tunnel   │    │
 │  │  Handler   │  │ (read/write)│  │     Manager        │    │
 │  └─────┬──────┘  └──────┬──────┘  └─────────┬──────────┘    │
 │        │                │                   │               │
 │        ▼                ▼                   ▼               │
 │  ┌─────────┐  ┌────────────────┐  ┌──────────────────────┐  │
-│  │ node-pty│  │Local Filesystem│  │ cloudflared daemon   │  │
+│  │ node-pty│  │Local Filesystem│  │ cloudflared daemon    │  │
 │  │ (shell) │  │(your server)   │  │ (exposes to internet)│  │
 │  └─────────┘  └────────────────┘  └──────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
