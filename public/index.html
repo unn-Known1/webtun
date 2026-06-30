@@ -1146,6 +1146,23 @@ svg { display: block; }
           <div id="tunnel-list"></div>
           <div id="tunnel-status" style="font-size:11px;color:var(--fg2);min-height:16px;margin-top:2px"></div>
         </div>
+        <div class="settings-section" style="margin-top:12px;border-top:1px solid var(--border);padding-top:16px">
+          <h3>About</h3>
+          <div style="display:flex;flex-direction:column;gap:8px;font-size:12px;color:var(--fg2)">
+            <div style="display:flex;align-items:center;gap:8px">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+              <span>WebTun</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--fg2)" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              <span>Made by <a href="https://github.com/unn-Known1" target="_blank" rel="noopener" style="color:var(--accent)">Gaurang Patel</a></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--fg2)" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              <a href="https://github.com/unn-Known1/webtun" target="_blank" rel="noopener" style="color:var(--accent)">https://github.com/unn-Known1/webtun</a>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -1967,18 +1984,21 @@ function initTerminal(tab) {
     if (!tab.closed) connectWebSocket(tab, false);
   });
 
-  // Ensure wheel events scroll the terminal even when mouse events are captured by apps
+  // Scroll terminal on wheel; yield to TUI apps when mouse tracking is active
   tab.wrapper.addEventListener('wheel', e => {
-    if (e.ctrlKey || e.metaKey) return; // Let pinch-zoom work
+    if (e.ctrlKey || e.metaKey) return;
+    // When a TUI app (vim, htop, tmux…) has mouse tracking on, let the app handle scroll
+    try {
+      const core = term._core;
+      if (core && core.coreMouseService && core.coreMouseService.isMouseTrackingActive()) return;
+    } catch (_) {}
     const atTop = term.buffer.active.baseY === 0;
     const atBottom = term.buffer.active.baseY + term.rows >= term.buffer.active.length;
     if (tilesMode && ((e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom))) return;
     e.preventDefault();
-    // Normalize delta: DOM_DELTA_LINE(1) and DOM_DELTA_PAGE(2) → pixels
     let delta = e.deltaY;
     if (e.deltaMode === 1) delta *= 16;
     else if (e.deltaMode === 2) delta *= 16 * term.rows;
-    // Convert pixels to lines — get line height from DOM, fallback to 16
     const rowsEl = tab.wrapper.querySelector('.xterm-rows');
     const lineHeight = rowsEl && rowsEl.children[0] ? rowsEl.children[0].getBoundingClientRect().height || 16 : 16;
     const lines = Math.sign(delta) * Math.max(1, Math.round(Math.abs(delta) / lineHeight));
@@ -4257,17 +4277,32 @@ function setupDragDrop() {
   const overlay = document.getElementById('drop-overlay');
   let dragCnt = 0;
 
+  function isFileDrag(e) {
+    const types = e.dataTransfer?.types;
+    if (!types) return false;
+    for (let i = 0; i < types.length; i++) {
+      if (types[i] === 'Files') return true;
+    }
+    return false;
+  }
+
   document.addEventListener('dragenter', e => {
+    if (!isFileDrag(e)) return;
     e.preventDefault();
     dragCnt++;
     overlay.classList.add('active');
   });
-  document.addEventListener('dragleave', () => {
+  document.addEventListener('dragleave', e => {
+    if (!isFileDrag(e)) return;
     dragCnt--;
     if (dragCnt <= 0) { dragCnt = 0; overlay.classList.remove('active'); }
   });
-  document.addEventListener('dragover', e => e.preventDefault());
+  document.addEventListener('dragover', e => {
+    if (!isFileDrag(e)) return;
+    e.preventDefault();
+  });
   document.addEventListener('drop', async e => {
+    if (!isFileDrag(e)) return;
     e.preventDefault();
     dragCnt = 0;
     overlay.classList.remove('active');
