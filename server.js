@@ -23,6 +23,7 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { execSync, execFileSync, spawn } = require('child_process');
+const browserManager = require('./browser-manager');
 
 // MIME type lookup without mime-types dependency
 const MIME_MAP = {
@@ -98,10 +99,9 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Security headers
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; connect-src 'self' https://*.trycloudflare.com wss:; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:;");
+  res.setHeader('Content-Security-Policy', "default-src 'self' http: https:; connect-src 'self' https://*.trycloudflare.com wss:; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline' 'unsafe-eval'; style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; font-src 'self' data: https:; img-src 'self' data: blob: https:; frame-src 'self';");
   next();
 });
 
@@ -1027,6 +1027,73 @@ app.delete('/api/sessions/:id', checkPin, (req, res) => {
   res.json({ success: true });
 });
 
+// ── Browser API (CloakBrowser) ────────────────────────────────────────
+app.post('/api/browser/launch', checkPin, async (req, res) => {
+  try {
+    const { tabId, url, width, height } = req.body;
+    if (!tabId) return res.status(400).json({ error: 'tabId required' });
+    const entry = await browserManager.launchBrowser(tabId, { width, height });
+    if (url) await entry.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    res.json({ success: true, url: entry.page.url(), title: await entry.page.title() });
+  } catch (e) {
+    console.error('[Browser] launch error:', e.message, e.stack);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/browser/navigate', checkPin, async (req, res) => {
+  try {
+    const { tabId, url } = req.body;
+    if (!tabId || !url) return res.status(400).json({ error: 'tabId and url required' });
+    const result = await browserManager.navigateBrowser(tabId, url);
+    res.json({ success: true, ...result });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/browser/:tabId', checkPin, async (req, res) => {
+  try {
+    await browserManager.closeBrowser(req.params.tabId);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Reverse proxy: serves CloakBrowser page content with rewritten URLs for iframe embedding
+app.get('/browser/:tabId', checkPin, async (req, res) => {
+  try {
+    const entry = browserManager.getBrowser(req.params.tabId);
+    if (!entry) return res.status(404).send('Browser not found');
+    const url = req.query.url;
+    if (url) {
+      await entry.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    }
+    const proto = req.protocol;
+    const host = req.get('host');
+    const proxyBase = `${proto}://${host}`;
+    const result = await browserManager.getPageContent(req.params.tabId, proxyBase);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(result.html);
+  } catch (e) {
+    res.status(500).send(`Error: ${e.message}`);
+  }
+});
+
+// Proxy sub-resources (CSS, JS, images) loaded by the browser page
+app.get('/browser/:tabId/proxy', checkPin, async (req, res) => {
+  try {
+    const resourceUrl = req.query.url;
+    if (!resourceUrl) return res.status(400).send('url required');
+    const result = await browserManager.fetchResource(req.params.tabId, resourceUrl);
+    res.setHeader('Content-Type', result.contentType);
+    res.status(result.status).send(result.body);
+  } catch (e) {
+    res.status(502).send(`Proxy error: ${e.message}`);
+  }
+});
+
 // ── WebSocket terminal ────────────────────────────────────────────────
 // Binary protocol (fast, no JSON per keystroke):
 //   Server → Client:  [type:1B][payload]
@@ -1543,6 +1610,11 @@ server.listen(PORT, HOST, () => {
    console.log(`    DELETE /api/files/trash/all               — empty entire trash`);
    console.log(`    GET    /api/files/preview?path=<file>      — file preview (md→html, code)`);
    console.log(`    GET    /api/files/tail?path=<file>&lines=N  — tail log file (SSE)`);
+   console.log(`  Browser API:`);
+   console.log(`    POST   /api/browser/launch                — launch browser  { tabId, url?, width?, height? }`);
+   console.log(`    POST   /api/browser/navigate              — navigate         { tabId, url }`);
+   console.log(`    DELETE /api/browser/:tabId                 — close browser`);
+   console.log(`    GET    /browser/:tabId?url=<url>           — proxy page content (for iframe)`);
    console.log(`  Git API:`);
    console.log(`    GET    /api/git/status?path=<dir>           — git status`);
    console.log(`    POST   /api/git/diff                        — git diff       { path, file? }`);
@@ -1579,6 +1651,7 @@ process.on('SIGINT', () => { try { cleanup(); } catch {}; process.exit(0); });
 process.on('exit', () => { try { cleanup(); } catch {} });
 
 function cleanup() {
+  browserManager.closeAll();
   for (const [id, entry] of tunnels) {
     try {
       if (entry.proc) entry.proc.kill('SIGTERM');

@@ -134,6 +134,7 @@ a { color: var(--accent); text-decoration: none; }
   .tab { height: 38px; }
   .tab .tab-close { width: 44px; height: 44px; }
   #new-tab-btn { width: 36px; height: 36px; }
+  #new-browser-tab-btn { width: 36px; height: 36px; }
   .icon-btn { width: 40px; height: 40px; }
   .file-action-btn { width: 36px; height: 36px; }
 }
@@ -176,6 +177,84 @@ svg { display: block; }
 .term-tile-header .tth-close:hover { opacity: 1; background: var(--border); }
 #terminals.tiles-mode .xterm { flex: 1; }
 #mobile-keys { display: none; height: var(--mobilekey-h); background: var(--bg3); border-top: 1px solid var(--border); flex-shrink: 0; overflow-x: auto; overflow-y: hidden; white-space: nowrap; padding: 4px 6px; gap: 4px; padding-bottom: calc(4px + env(safe-area-inset-bottom)); min-height: calc(var(--mobilekey-h) + env(safe-area-inset-bottom)); }
+
+/* ═══════════════════════════════════════════════════════
+   BROWSER TAB
+   ═══════════════════════════════════════════════════════ */
+.browser-wrapper {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+.browser-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.browser-nav-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius);
+  color: var(--fg2);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.browser-nav-btn:hover {
+  background: var(--bg4);
+  color: var(--fg);
+}
+.browser-url-input {
+  flex: 1;
+  height: 28px;
+  font-size: 12px;
+  padding: 0 10px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg);
+  outline: none;
+  font-family: var(--font);
+}
+.browser-url-input:focus {
+  border-color: var(--accent);
+}
+.browser-iframe {
+  flex: 1;
+  width: 100%;
+  border: none;
+  background: var(--bg);
+}
+.browser-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: var(--bg);
+  color: var(--fg2);
+  font-size: 13px;
+  z-index: 5;
+}
+.browser-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 /* ═══════════════════════════════════════════════════════
    EDITOR SPLIT VIEW
    ═══════════════════════════════════════════════════════ */
@@ -328,6 +407,8 @@ svg { display: block; }
 .tab-close:hover { opacity: 1; background: var(--border); }
 #new-tab-btn { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius); color: var(--fg2); flex-shrink: 0; }
 #new-tab-btn:hover { background: var(--bg4); color: var(--fg); }
+#new-browser-tab-btn { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius); color: var(--fg2); flex-shrink: 0; }
+#new-browser-tab-btn:hover { background: var(--bg4); color: var(--fg); }
 
 /* ═══════════════════════════════════════════════════════
    SIDEBAR / FILE EXPLORER
@@ -407,6 +488,7 @@ svg { display: block; }
 .ctx-item:focus-visible,
 .iv-close:focus-visible,
 #new-tab-btn:focus-visible,
+#new-browser-tab-btn:focus-visible,
 #pin-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 #search-input:focus-visible,
 #path-input:focus-visible,
@@ -921,6 +1003,9 @@ svg { display: block; }
         <button id="new-tab-btn" onclick="newTab()" title="New terminal">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
+        <button id="new-browser-tab-btn" onclick="newBrowserTab()" title="New browser tab">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        </button>
       </div>
       <div id="editor-split-area">
         <div id="terminals">
@@ -1391,7 +1476,13 @@ function preventDoubleTap(el, fn, delay = 1000) {
 }
 
 function saveTabState() {
-  const state = tabs.map(t => ({ id: t.id, sessionId: t.sessionId, title: t.title }));
+  const state = tabs.map(t => ({
+    id: t.id,
+    sessionId: t.sessionId,
+    title: t.title,
+    type: t.type || 'terminal',
+    url: t.url || ''
+  }));
   try { localStorage.setItem('wt-tabs', JSON.stringify(state)); } catch(e) { console.warn('Failed to save tabs:', e); }
 }
 
@@ -1511,7 +1602,11 @@ async function unlockApp() {
     (async () => {
       for (const s of saved) {
         await new Promise(resolve => setTimeout(resolve, 100));
-        try { newTab(s.title, s.sessionId); } catch (e) { console.warn('Tab restore failed:', e); }
+        try {
+          const type = s.type || 'terminal';
+          const url = s.url || '';
+          newTab(s.title, s.sessionId, null, type, url);
+        } catch (e) { console.warn('Tab restore failed:', e); }
       }
     })();
   } else {
@@ -1696,7 +1791,11 @@ function createTabButton(tab) {
   const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   icon.setAttribute('width', '12'); icon.setAttribute('height', '12'); icon.setAttribute('viewBox', '0 0 24 24');
   icon.setAttribute('fill', 'none'); icon.setAttribute('stroke', 'currentColor'); icon.setAttribute('stroke-width', '2');
-  icon.innerHTML = '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>';
+  if (tab.type === 'browser') {
+    icon.innerHTML = '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>';
+  } else {
+    icon.innerHTML = '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>';
+  }
   tabEl.appendChild(icon);
 
   const titleSpan = document.createElement('span');
@@ -1734,15 +1833,192 @@ function createTerminalWrapper(tab) {
   tab.wrapper = wrapper;
 }
 
-function newTab(title, sessionId, dir) {
+function createBrowserWrapper(tab) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'term-wrapper browser-wrapper';
+  wrapper.dataset.id = tab.id;
+
+  const toolbar = document.createElement('div');
+  toolbar.className = 'browser-toolbar';
+
+  const backBtn = document.createElement('button');
+  backBtn.className = 'browser-nav-btn';
+  backBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>';
+  backBtn.title = 'Back';
+  backBtn.onclick = () => browserBack(tab);
+  toolbar.appendChild(backBtn);
+
+  const fwdBtn = document.createElement('button');
+  fwdBtn.className = 'browser-nav-btn';
+  fwdBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>';
+  fwdBtn.title = 'Forward';
+  fwdBtn.onclick = () => browserForward(tab);
+  toolbar.appendChild(fwdBtn);
+
+  const refreshBtn = document.createElement('button');
+  refreshBtn.className = 'browser-nav-btn';
+  refreshBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>';
+  refreshBtn.title = 'Refresh';
+  refreshBtn.onclick = () => browserRefresh(tab);
+  toolbar.appendChild(refreshBtn);
+
+  const urlInput = document.createElement('input');
+  urlInput.type = 'text';
+  urlInput.className = 'browser-url-input';
+  urlInput.placeholder = 'Enter URL...';
+  urlInput.value = tab.url || '';
+  urlInput.onkeydown = (e) => {
+    if (e.key === 'Enter') {
+      const url = urlInput.value.trim();
+      if (url) navigateBrowser(tab, url.startsWith('http') ? url : 'https://' + url);
+    }
+  };
+  toolbar.appendChild(urlInput);
+  tab.urlInput = urlInput;
+
+  wrapper.appendChild(toolbar);
+
+  const iframe = document.createElement('iframe');
+  iframe.className = 'browser-iframe';
+  iframe.sandbox = 'allow-scripts allow-forms allow-popups';
+  iframe.setAttribute('loading', 'eager');
+  tab.iframe = iframe;
+  wrapper.appendChild(iframe);
+
+  const loading = document.createElement('div');
+  loading.className = 'browser-loading';
+  loading.innerHTML = '<div class="browser-spinner"></div><span>Loading...</span>';
+  tab.browserLoading = loading;
+  wrapper.appendChild(loading);
+
+  document.getElementById('terminals').appendChild(wrapper);
+  tab.wrapper = wrapper;
+}
+
+function initBrowser(tab) {
+  if (tab.closed || !tab.iframe) return;
+
+  const loading = tab.browserLoading;
+  const iframe = tab.iframe;
+
+  iframe.onload = () => {
+    if (loading) loading.style.display = 'none';
+    try {
+      const title = iframe.contentDocument?.title || 'Browser';
+      tab.title = title;
+      if (tab.el) tab.el.querySelector('.tab-title').textContent = title;
+      const currentUrl = iframe.contentWindow?.location?.href || '';
+      if (currentUrl && tab.urlInput) tab.urlInput.value = currentUrl;
+      tab.url = currentUrl;
+      saveTabState();
+    } catch (e) {
+      // Cross-origin - can't access contentDocument
+    }
+  };
+
+  iframe.onerror = () => {
+    if (loading) {
+      loading.innerHTML = '<span style="color:var(--red)">Failed to load page</span>';
+    }
+  };
+
+  // Launch browser on server and load initial URL
+  const url = tab.url || 'about:blank';
+  api('/api/browser/launch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tabId: String(tab.id), url, width: 1280, height: 720 })
+  }).then(r => {
+    if (r.success) {
+      iframe.src = `/browser/${tab.id}?token=${encodeURIComponent(authToken)}&url=${encodeURIComponent(url)}`;
+      tab.url = url;
+      if (tab.urlInput) tab.urlInput.value = url;
+    } else {
+      if (loading) loading.innerHTML = `<span style="color:var(--red)">${r.error || 'Failed to launch browser'}</span>`;
+    }
+  }).catch(e => {
+    if (loading) loading.innerHTML = `<span style="color:var(--red)">Error: ${e.message}</span>`;
+  });
+}
+
+function navigateBrowser(tab, url) {
+  if (!tab || tab.type !== 'browser') return;
+  if (tab.urlInput) tab.urlInput.value = url;
+  if (tab.browserLoading) {
+    tab.browserLoading.style.display = 'flex';
+    tab.browserLoading.innerHTML = '<div class="browser-spinner"></div><span>Loading...</span>';
+  }
+  api('/api/browser/navigate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tabId: String(tab.id), url })
+  }).then(r => {
+    if (r.success) {
+      tab.url = r.url || url;
+      if (tab.iframe) tab.iframe.src = `/browser/${tab.id}?token=${encodeURIComponent(authToken)}&url=${encodeURIComponent(tab.url)}`;
+      if (tab.urlInput) tab.urlInput.value = tab.url;
+      tab.title = r.title || 'Browser';
+      if (tab.el) tab.el.querySelector('.tab-title').textContent = tab.title;
+      saveTabState();
+    } else {
+      if (tab.browserLoading) tab.browserLoading.innerHTML = `<span style="color:var(--red)">${r.error || 'Navigation failed'}</span>`;
+    }
+  }).catch(e => {
+    if (tab.browserLoading) tab.browserLoading.innerHTML = `<span style="color:var(--red)">Error: ${e.message}</span>`;
+  });
+}
+
+function browserBack(tab) {
+  if (tab.iframe) {
+    try { tab.iframe.contentWindow.history.back(); } catch {}
+  }
+}
+
+function browserForward(tab) {
+  if (tab.iframe) {
+    try { tab.iframe.contentWindow.history.forward(); } catch {}
+  }
+}
+
+function browserRefresh(tab) {
+  if (tab.iframe) {
+    if (tab.browserLoading) {
+      tab.browserLoading.style.display = 'flex';
+      tab.browserLoading.innerHTML = '<div class="browser-spinner"></div><span>Loading...</span>';
+    }
+    tab.iframe.reload?.() || (tab.iframe.src = tab.iframe.src);
+  }
+}
+
+function newBrowserTab(url) {
+  return newTab(null, null, null, 'browser', url || '');
+}
+
+function newTab(title, sessionId, dir, type = 'terminal', url = '') {
   const id = ++tabCounter;
   const sid = sessionId || (hasTmux ? uuid() : null);
-  const tab = { id, sessionId: sid, title: title || `Term ${nextTermNumber()}`, term: null, fitAddon: null, searchAddon: null, ws: null, el: null, wrapper: null, closed: false, reconnectDelay: 1000, dataDisposable: null, resizeDisposable: null, resizeObserver: null, cwd: dir || currentPath };
+  const tab = {
+    id, sessionId: sid,
+    title: title || (type === 'browser' ? 'Browser' : `Term ${nextTermNumber()}`),
+    type: type,
+    url: url,
+    term: null, fitAddon: null, searchAddon: null, ws: null,
+    el: null, wrapper: null, closed: false, reconnectDelay: 1000,
+    dataDisposable: null, resizeDisposable: null, resizeObserver: null,
+    cwd: dir || currentPath,
+    iframe: null, browserLoading: null
+  };
   tabs.push(tab);
   createTabButton(tab);
-  createTerminalWrapper(tab);
-  activateTab(id);
-  setTimeout(() => { initTerminal(tab); if (tilesMode) layoutTiles(); }, 50);
+  if (type === 'browser') {
+    createBrowserWrapper(tab);
+    activateTab(id);
+    setTimeout(() => { initBrowser(tab); if (tilesMode) layoutTiles(); }, 50);
+  } else {
+    createTerminalWrapper(tab);
+    activateTab(id);
+    setTimeout(() => { initTerminal(tab); if (tilesMode) layoutTiles(); }, 50);
+  }
   saveTabState();
   return tab;
 }
@@ -1875,7 +2151,14 @@ function manualReconnect() {
 
 function closeTab(e, id) {
   e.stopPropagation();
-  if (settings.confirmclose) { if (!confirm(tabs.length === 1 ? 'Close last terminal?' : 'Close terminal?')) return; }
+  const tab = tabs.find(t => t.id === id);
+  const tabType = tab?.type || 'terminal';
+  if (settings.confirmclose) {
+    const msg = tabType === 'browser'
+      ? (tabs.length === 1 ? 'Close last browser?' : 'Close browser?')
+      : (tabs.length === 1 ? 'Close last terminal?' : 'Close terminal?');
+    if (!confirm(msg)) return;
+  }
 
   // Check for unsaved editor changes
   const editorOpen = document.getElementById('editor-view').classList.contains('open');
@@ -1884,11 +2167,17 @@ function closeTab(e, id) {
     if (!confirm('You have unsaved changes. Close anyway?')) return;
   }
 
-  const tab = tabs.find(t => t.id === id);
   if (!tab) return;
   tab.closed = true;
   clearTimeout(tab.reconnectTimer);
-  cleanupWebSocket(tab);
+
+  if (tabType === 'browser') {
+    // Close browser on server
+    api(`/api/browser/${tab.id}`, { method: 'DELETE' }).catch(() => {});
+  } else {
+    cleanupWebSocket(tab);
+  }
+
   // Clean up selection/scroll mode state
   if (termSelectMode) {
     const ta = tab.textarea || tab.term?.textarea || tab.term?.element?.querySelector('.xterm-textarea, textarea');

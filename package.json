@@ -68,9 +68,11 @@
     }
   },
   "dependencies": {
+    "cloakbrowser": "^0.4.8",
     "express": "^4.18.2",
     "multer": "^2.0.0",
     "node-pty": "^1.0.0",
+    "playwright-core": "^1.61.1",
     "ws": "^8.21.0"
   },
   "optionalDependencies": {
