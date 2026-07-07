@@ -41,7 +41,6 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
 - **CSP** in `server.js:33` allows CDN scripts from `cdn.jsdelivr.net`.
 - **File API** workspace root: `WORKSPACE_ROOT` env var, falls back to `os.homedir()`.
 - `public/sw.js` enables PWA installability.
-- **`cloakbrowser`** and **`playwright-core`** in `dependencies` are unused in the codebase.
 
 ## Architecture Notables
 
@@ -66,4 +65,5 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
   - `GET /api/search?q=&path=` — async file search (max depth 4, max 50 results)
 - **Auth endpoint**: `POST /api/auth` and `GET /api/auth/required` — rate-limited separately.
 - **REST command execution**: `POST /api/exec` (with timeout, max 10MB output, 300s max timeout) and `GET /api/exec/stream` (SSE streaming).
+- **Browser proxy** (`browser-manager.js`): pure HTTP proxy-based browser tabs — no headless browser needed. Uses Node.js `fetch()` to retrieve pages, rewrites HTML/URLs for iframe embedding, intercepts form submissions, and proxies sub-resources through the server.
 - **Startup cleanup** (`server.js:1122-1123`): loads persisted tunnels, kills orphan `wt-*` tmux sessions.
