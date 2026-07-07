@@ -143,12 +143,12 @@ async function getPageContent(tabId, proxyBase) {
   const baseUrl = new URL(pageUrl);
   const proxyPrefix = `${proxyBase}/browser/${tabId}/proxy`;
 
-  // Remove existing <base> tags
+  // Remove existing <base> tags so they don't interfere with attribute rewriting
   html = html.replace(/<base[^>]*>/gi, '');
 
-  // Rewrite src/href/action/poster/background attributes
+  // Rewrite src/href/poster/background attributes (NOT action — forms navigate via interceptor)
   html = html.replace(
-    /((?:src|href|action|poster|background)\s*=\s*)["']([^"']*?)["']/gi,
+    /((?:src|href|poster|background)\s*=\s*)["']([^"']*?)["']/gi,
     (match, prefix, url) => {
       if (url.startsWith('data:') || url.startsWith('javascript:') || url.startsWith('#') || url.startsWith('blob:') || url.startsWith('mailto:')) return match;
       try {
@@ -181,7 +181,7 @@ async function getPageContent(tabId, proxyBase) {
     }
   );
 
-  // Inject interceptor script for dynamic loads (fetch, XHR, dynamic DOM)
+  // Inject interceptor script for dynamic loads (fetch, XHR, dynamic DOM) + form interception
   const interceptorScript = `<script>
 (function() {
   var PROXY = "${proxyPrefix}";
@@ -207,7 +207,7 @@ async function getPageContent(tabId, proxyBase) {
     mutations.forEach(function(m) {
       m.addedNodes.forEach(function(node) {
         if (node.nodeType !== 1) return;
-        ['src','href','action'].forEach(function(attr) {
+        ['src','href'].forEach(function(attr) {
           var val = node.getAttribute(attr);
           if (val && !val.startsWith('data:') && !val.startsWith('blob:')) {
             try {
@@ -220,9 +220,29 @@ async function getPageContent(tabId, proxyBase) {
     });
   });
   observer.observe(document, { childList: true, subtree: true });
+
+  // Intercept form submissions — route through proxy
+  var tabId = window.location.pathname.split('/').filter(Boolean)[1];
+  var token = new URLSearchParams(window.location.search).get('token');
+  document.addEventListener('submit', function(e) {
+    var form = e.target;
+    var action = (form.getAttribute('action') || '').trim();
+    if (!action || action === '#' || action.startsWith('javascript:') || action.startsWith('data:')) return;
+    var method = (form.method || 'GET').toUpperCase();
+    if (method !== 'GET') return;
+    e.preventDefault();
+    var formData = new FormData(form);
+    var params = new URLSearchParams(formData).toString();
+    try {
+      var absUrl = new URL(action, ORIGIN).href;
+      if (params) absUrl += (absUrl.includes('?') ? '&' : '?') + params;
+      window.location.href = '/browser/' + tabId + '?token=' + encodeURIComponent(token || '') + '&url=' + encodeURIComponent(absUrl);
+    } catch(e) {}
+  });
 })();
 </script>`;
-  html = html.replace(/<\/head>/i, interceptorScript + '</head>');
+  const safeUrl = pageUrl.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  html = html.replace(/<\/head>/i, '<base href="' + safeUrl + '">' + interceptorScript + '</head>');
 
   return { html, url: pageUrl, title: await entry.page.title() };
 }
