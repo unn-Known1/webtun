@@ -1052,6 +1052,39 @@ app.post('/api/browser/navigate', checkPin, async (req, res) => {
   }
 });
 
+app.post('/api/browser/back', checkPin, async (req, res) => {
+  try {
+    const { tabId } = req.body;
+    if (!tabId) return res.status(400).json({ error: 'tabId required' });
+    const result = await browserManager.browserGoBack(tabId);
+    res.json({ success: true, ...result });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/browser/forward', checkPin, async (req, res) => {
+  try {
+    const { tabId } = req.body;
+    if (!tabId) return res.status(400).json({ error: 'tabId required' });
+    const result = await browserManager.browserGoForward(tabId);
+    res.json({ success: true, ...result });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/browser/refresh', checkPin, async (req, res) => {
+  try {
+    const { tabId } = req.body;
+    if (!tabId) return res.status(400).json({ error: 'tabId required' });
+    const result = await browserManager.refreshBrowser(tabId);
+    res.json({ success: true, ...result });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.delete('/api/browser/:tabId', checkPin, async (req, res) => {
   try {
     await browserManager.closeBrowser(req.params.tabId);
@@ -1088,6 +1121,13 @@ app.get('/browser/:tabId/proxy', checkPin, async (req, res) => {
     if (!resourceUrl) return res.status(400).send('url required');
     const result = await browserManager.fetchResource(req.params.tabId, resourceUrl);
     res.setHeader('Content-Type', result.contentType);
+    if (result.cached) {
+      res.setHeader('X-Cache', 'H Birgitte');
+    }
+    // Cache publicly for 5 minutes if successful
+    if (result.status >= 200 && result.status < 300) {
+      res.setHeader('Cache-Control', 'public, max-age=300');
+    }
     res.status(result.status).send(result.body);
   } catch (e) {
     res.status(502).send(`Proxy error: ${e.message}`);

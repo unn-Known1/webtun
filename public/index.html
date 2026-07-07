@@ -1880,7 +1880,7 @@ function createBrowserWrapper(tab) {
 
   const iframe = document.createElement('iframe');
   iframe.className = 'browser-iframe';
-  iframe.sandbox = 'allow-scripts allow-forms allow-popups';
+  iframe.sandbox = 'allow-scripts allow-forms allow-popups allow-same-origin';
   iframe.setAttribute('loading', 'eager');
   tab.iframe = iframe;
   wrapper.appendChild(iframe);
@@ -1922,23 +1922,36 @@ function initBrowser(tab) {
     }
   };
 
-  // Launch browser on server and load initial URL
+  // Launch browser on server and load initial URL with retry
   const url = tab.url || 'about:blank';
-  api('/api/browser/launch', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tabId: String(tab.id), url, width: 1280, height: 720 })
-  }).then(r => {
-    if (r.success) {
-      iframe.src = `/browser/${tab.id}?token=${encodeURIComponent(authToken)}&url=${encodeURIComponent(url)}`;
-      tab.url = url;
-      if (tab.urlInput) tab.urlInput.value = url;
-    } else {
-      if (loading) loading.innerHTML = `<span style="color:var(--red)">${r.error || 'Failed to launch browser'}</span>`;
-    }
-  }).catch(e => {
-    if (loading) loading.innerHTML = `<span style="color:var(--red)">Error: ${e.message}</span>`;
-  });
+  let retryCount = 0;
+  const maxRetries = 3;
+
+  function doLaunch() {
+    api('/api/browser/launch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tabId: String(tab.id), url, width: 1280, height: 720 })
+    }).then(r => {
+      if (r.success) {
+        iframe.src = `/browser/${tab.id}?token=${encodeURIComponent(authToken)}&url=${encodeURIComponent(url)}`;
+        tab.url = url;
+        if (tab.urlInput) tab.urlInput.value = url;
+      } else {
+        throw new Error(r.error || 'Failed to launch browser');
+      }
+    }).catch(e => {
+      retryCount++;
+      if (retryCount <= maxRetries) {
+        if (loading) loading.innerHTML = `<div class="browser-spinner"></div><span>Retrying (${retryCount}/${maxRetries})...</span>`;
+        setTimeout(doLaunch, 1000 * retryCount);
+      } else {
+        if (loading) loading.innerHTML = `<span style="color:var(--red)">Error: ${e.message}</span>`;
+      }
+    });
+  }
+
+  doLaunch();
 }
 
 function navigateBrowser(tab, url) {
@@ -1969,25 +1982,83 @@ function navigateBrowser(tab, url) {
 }
 
 function browserBack(tab) {
-  if (tab.iframe) {
-    try { tab.iframe.contentWindow.history.back(); } catch {}
+  if (!tab || tab.type !== 'browser') return;
+  if (tab.browserLoading) {
+    tab.browserLoading.style.display = 'flex';
+    tab.browserLoading.innerHTML = '<div class="browser-spinner"></div><span>Loading...</span>';
   }
+  api('/api/browser/back', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tabId: String(tab.id) })
+  }).then(r => {
+    if (r.success) {
+      tab.url = r.url || '';
+      tab.title = r.title || 'Browser';
+      if (tab.iframe) tab.iframe.src = `/browser/${tab.id}?token=${encodeURIComponent(authToken)}&url=${encodeURIComponent(tab.url)}`;
+      if (tab.urlInput) tab.urlInput.value = tab.url;
+      if (tab.el) tab.el.querySelector('.tab-title').textContent = tab.title;
+      saveTabState();
+    } else {
+      if (tab.browserLoading) tab.browserLoading.style.display = 'none';
+    }
+  }).catch(e => {
+    if (tab.browserLoading) tab.browserLoading.style.display = 'none';
+    console.warn('browserBack error:', e.message);
+  });
 }
 
 function browserForward(tab) {
-  if (tab.iframe) {
-    try { tab.iframe.contentWindow.history.forward(); } catch {}
+  if (!tab || tab.type !== 'browser') return;
+  if (tab.browserLoading) {
+    tab.browserLoading.style.display = 'flex';
+    tab.browserLoading.innerHTML = '<div class="browser-spinner"></div><span>Loading...</span>';
   }
+  api('/api/browser/forward', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tabId: String(tab.id) })
+  }).then(r => {
+    if (r.success) {
+      tab.url = r.url || '';
+      tab.title = r.title || 'Browser';
+      if (tab.iframe) tab.iframe.src = `/browser/${tab.id}?token=${encodeURIComponent(authToken)}&url=${encodeURIComponent(tab.url)}`;
+      if (tab.urlInput) tab.urlInput.value = tab.url;
+      if (tab.el) tab.el.querySelector('.tab-title').textContent = tab.title;
+      saveTabState();
+    } else {
+      if (tab.browserLoading) tab.browserLoading.style.display = 'none';
+    }
+  }).catch(e => {
+    if (tab.browserLoading) tab.browserLoading.style.display = 'none';
+    console.warn('browserForward error:', e.message);
+  });
 }
 
 function browserRefresh(tab) {
-  if (tab.iframe) {
-    if (tab.browserLoading) {
-      tab.browserLoading.style.display = 'flex';
-      tab.browserLoading.innerHTML = '<div class="browser-spinner"></div><span>Loading...</span>';
-    }
-    tab.iframe.reload?.() || (tab.iframe.src = tab.iframe.src);
+  if (!tab || tab.type !== 'browser') return;
+  if (tab.browserLoading) {
+    tab.browserLoading.style.display = 'flex';
+    tab.browserLoading.innerHTML = '<div class="browser-spinner"></div><span>Loading...</span>';
   }
+  api('/api/browser/refresh', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tabId: String(tab.id) })
+  }).then(r => {
+    if (r.success) {
+      tab.url = r.url || '';
+      tab.title = r.title || 'Browser';
+      if (tab.iframe) tab.iframe.src = `/browser/${tab.id}?token=${encodeURIComponent(authToken)}&url=${encodeURIComponent(tab.url)}`;
+      if (tab.urlInput) tab.urlInput.value = tab.url;
+      if (tab.el) tab.el.querySelector('.tab-title').textContent = tab.title;
+      saveTabState();
+    }
+  }).catch(e => {
+    console.warn('browserRefresh error:', e.message);
+    // Fallback: try iframe reload
+    if (tab.iframe) tab.iframe.reload?.() || (tab.iframe.src = tab.iframe.src);
+  });
 }
 
 function newBrowserTab(url) {
