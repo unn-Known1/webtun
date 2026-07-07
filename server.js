@@ -1032,9 +1032,14 @@ app.post('/api/browser/launch', checkPin, async (req, res) => {
   try {
     const { tabId, url, width, height } = req.body;
     if (!tabId) return res.status(400).json({ error: 'tabId required' });
-    const entry = await browserManager.launchBrowser(tabId, { width, height });
-    if (url) await entry.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    res.json({ success: true, url: entry.page.url(), title: await entry.page.title() });
+    await browserManager.launchBrowser(tabId, { width, height });
+    let title = '', currentUrl = '';
+    if (url) {
+      const result = await browserManager.navigateBrowser(tabId, url);
+      currentUrl = result.url;
+      title = result.title;
+    }
+    res.json({ success: true, url: currentUrl, title });
   } catch (e) {
     console.error('[Browser] launch error:', e.message, e.stack);
     res.status(500).json({ error: e.message });
@@ -1094,19 +1099,17 @@ app.delete('/api/browser/:tabId', checkPin, async (req, res) => {
   }
 });
 
-// Reverse proxy: serves CloakBrowser page content with rewritten URLs for iframe embedding
+// Reverse proxy: fetches pages and serves with URL rewriting for iframe embedding
 app.get('/browser/:tabId', checkPin, async (req, res) => {
   try {
     const entry = browserManager.getBrowser(req.params.tabId);
     if (!entry) return res.status(404).send('Browser not found');
-    const url = req.query.url;
-    if (url) {
-      await entry.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    }
+    const targetUrl = req.query.url;
+    if (!targetUrl) return res.status(400).send('url query parameter required');
     const proto = req.protocol;
     const host = req.get('host');
     const proxyBase = `${proto}://${host}`;
-    const result = await browserManager.getPageContent(req.params.tabId, proxyBase);
+    const result = await browserManager.getPageContent(req.params.tabId, proxyBase, targetUrl);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.send(result.html);
   } catch (e) {
@@ -1121,10 +1124,6 @@ app.get('/browser/:tabId/proxy', checkPin, async (req, res) => {
     if (!resourceUrl) return res.status(400).send('url required');
     const result = await browserManager.fetchResource(req.params.tabId, resourceUrl);
     res.setHeader('Content-Type', result.contentType);
-    if (result.cached) {
-      res.setHeader('X-Cache', 'H Birgitte');
-    }
-    // Cache publicly for 5 minutes if successful
     if (result.status >= 200 && result.status < 300) {
       res.setHeader('Cache-Control', 'public, max-age=300');
     }
@@ -1651,10 +1650,13 @@ server.listen(PORT, HOST, () => {
    console.log(`    GET    /api/files/preview?path=<file>      — file preview (md→html, code)`);
    console.log(`    GET    /api/files/tail?path=<file>&lines=N  — tail log file (SSE)`);
    console.log(`  Browser API:`);
-   console.log(`    POST   /api/browser/launch                — launch browser  { tabId, url?, width?, height? }`);
-   console.log(`    POST   /api/browser/navigate              — navigate         { tabId, url }`);
-   console.log(`    DELETE /api/browser/:tabId                 — close browser`);
-   console.log(`    GET    /browser/:tabId?url=<url>           — proxy page content (for iframe)`);
+    console.log(`    POST   /api/browser/launch                — launch browser  { tabId, url?, width?, height? }`);
+    console.log(`    POST   /api/browser/navigate              — navigate         { tabId, url }`);
+    console.log(`    POST   /api/browser/back                  — go back          { tabId }`);
+    console.log(`    POST   /api/browser/forward               — go forward       { tabId }`);
+    console.log(`    POST   /api/browser/refresh               — refresh          { tabId }`);
+    console.log(`    DELETE /api/browser/:tabId                 — close browser`);
+    console.log(`    GET    /browser/:tabId                     — proxy page content (for iframe)`);
    console.log(`  Git API:`);
    console.log(`    GET    /api/git/status?path=<dir>           — git status`);
    console.log(`    POST   /api/git/diff                        — git diff       { path, file? }`);
@@ -1673,7 +1675,9 @@ server.listen(PORT, HOST, () => {
    console.log(`    GET    /api/clipboard                       — clipboard contents`);
    console.log(`    POST   /api/clipboard                       — set clipboard  { sources, action }`);
    console.log(`    POST   /api/clipboard/paste                 — paste          { destination, conflict? }`);
-   console.log(`    DELETE /api/clipboard                       — clear clipboard`);
+    console.log(`    DELETE /api/clipboard                       — clear clipboard`);
+  // Pre-launch shared browser so first browser tab is instant
+  browserManager.prewarm().catch(() => {});
 });
 
 process.on('uncaughtException', e => {

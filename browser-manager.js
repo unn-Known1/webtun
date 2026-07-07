@@ -1,152 +1,53 @@
-// CloakBrowser lifecycle manager + reverse proxy with URL rewriting
-// Uses dynamic import() because cloakbrowser is ESM-only
+// Pure HTTP proxy-based browsing — no headless browser needed
+// Fast, lightweight, and uses zero Chromium processes
 const { URL } = require('url');
 
-// ── Configuration ─────────────────────────────────────────────────────
-const MAX_BROWSERS = 5;           // max concurrent browser instances
-const IDLE_TIMEOUT_MS = 600000; // 10 minutes idle before auto-close
-const CACHE_MAX_SIZE = 50;        // max cached resources per browser
-const CACHE_TTL_MS = 300000;      // 5 minutes cache TTL
-const CLEANUP_INTERVAL_MS = 60000; // run cleanup every minute
+const MAX_TABS = 20;
+const IDLE_TIMEOUT_MS = 600000;
+const FETCH_TIMEOUT_MS = 20000;
+const CLEANUP_INTERVAL_MS = 60000;
 
-// ── State ─────────────────────────────────────────────────────────────
-const browsers = new Map(); // tabId -> { browser, context, page, baseUrl, lastAccessed, history }
-let cloakbrowser = null;
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
-// ── Lightweight LRU-ish cache for proxied resources ───────────────────
-class ResourceCache {
-  constructor(maxSize, ttlMs) {
-    this.maxSize = maxSize;
-    this.ttlMs = ttlMs;
-    this.store = new Map(); // key -> { body, contentType, status, createdAt }
-  }
-  get(key) {
-    const entry = this.store.get(key);
-    if (!entry) return null;
-    if (Date.now() - entry.createdAt > this.ttlMs) {
-      this.store.delete(key);
-      return null;
-    }
-    // promote to most-recently-used by re-setting
-    this.store.delete(key);
-    this.store.set(key, entry);
-    return entry;
-  }
-  set(key, value) {
-    if (this.store.size >= this.maxSize) {
-      const firstKey = this.store.keys().next().value;
-      this.store.delete(firstKey);
-    }
-    this.store.set(key, { ...value, createdAt: Date.now() });
-  }
-  clear() { this.store.clear(); }
-}
+const tabs = new Map();
 
-// ── CloakBrowser dynamic import ─────────────────────────────────────
-async function ensureCloakBrowser() {
-  if (!cloakbrowser) cloakbrowser = await import('cloakbrowser');
-  return cloakbrowser;
-}
-
-// ── Browser lifecycle ──────────────────────────────────────────────────
-async function launchBrowser(tabId, opts = {}) {
-  if (browsers.has(tabId)) return browsers.get(tabId);
-
-  // Enforce max browsers limit (close oldest idle)
-  if (browsers.size >= MAX_BROWSERS) {
-    const oldest = [...browsers.entries()].sort((a, b) => a[1].lastAccessed - b[1].lastAccessed)[0];
-    if (oldest) {
-      console.log(`[Browser] Max limit reached. Closing oldest tab: ${oldest[0]}`);
-      await closeBrowser(oldest[0]);
-    }
+// ── HTTP fetching ─────────────────────────────────────────────────────
+async function httpFetch(url, opts = {}) {
+  const parsed = new URL(url);
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('Only http/https URLs supported');
   }
 
-  const cb = await ensureCloakBrowser();
-  const browser = await cb.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    ...opts
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), opts.timeout || FETCH_TIMEOUT_MS);
 
-  const context = await browser.newContext({
-    viewport: { width: opts.width || 1280, height: opts.height || 720 },
-    bypassCSP: true
-  });
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': opts.ua || UA,
+        'Accept': opts.accept || 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        ...(opts.headers || {})
+      },
+      redirect: 'follow',
+    });
 
-  const page = await context.newPage();
-  const entry = {
-    browser,
-    context,
-    page,
-    baseUrl: '',
-    lastAccessed: Date.now(),
-    history: { canGoBack: false, canGoForward: false },
-    cache: new ResourceCache(CACHE_MAX_SIZE, CACHE_TTL_MS)
-  };
-  browsers.set(tabId, entry);
-  return entry;
+    const ct = res.headers.get('content-type') || 'application/octet-stream';
+    const body = Buffer.from(await res.arrayBuffer());
+    return { body, contentType: ct, status: res.status, finalUrl: res.url };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
-function getBrowser(tabId) {
-  const entry = browsers.get(tabId) || null;
-  if (entry) entry.lastAccessed = Date.now();
-  return entry;
-}
-
-async function navigateBrowser(tabId, url) {
-  const entry = browsers.get(tabId);
-  if (!entry) throw new Error('Browser not found');
-  entry.lastAccessed = Date.now();
-  entry.cache.clear();
-  await entry.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-  entry.baseUrl = entry.page.url();
-  return { url: entry.page.url(), title: await entry.page.title() };
-}
-
-// Server-side history navigation
-async function browserGoBack(tabId) {
-  const entry = browsers.get(tabId);
-  if (!entry) throw new Error('Browser not found');
-  entry.lastAccessed = Date.now();
-  await entry.page.goBack({ waitUntil: 'domcontentloaded', timeout: 30000 });
-  entry.baseUrl = entry.page.url();
-  return { url: entry.page.url(), title: await entry.page.title() };
-}
-
-async function browserGoForward(tabId) {
-  const entry = browsers.get(tabId);
-  if (!entry) throw new Error('Browser not found');
-  entry.lastAccessed = Date.now();
-  await entry.page.goForward({ waitUntil: 'domcontentloaded', timeout: 30000 });
-  entry.baseUrl = entry.page.url();
-  return { url: entry.page.url(), title: await entry.page.title() };
-}
-
-async function refreshBrowser(tabId) {
-  const entry = browsers.get(tabId);
-  if (!entry) throw new Error('Browser not found');
-  entry.lastAccessed = Date.now();
-  entry.cache.clear();
-  await entry.page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
-  entry.baseUrl = entry.page.url();
-  return { url: entry.page.url(), title: await entry.page.title() };
-}
-
-// ── Page content proxy with URL rewriting ─────────────────────────────
-async function getPageContent(tabId, proxyBase) {
-  const entry = browsers.get(tabId);
-  if (!entry) throw new Error('Browser not found');
-  entry.lastAccessed = Date.now();
-
-  let html = await entry.page.content();
-  const pageUrl = entry.page.url();
-  const baseUrl = new URL(pageUrl);
+// ── URL rewriting ────────────────────────────────────────────────────
+function rewriteHtml(html, pageUrl, proxyBase, tabId) {
   const proxyPrefix = `${proxyBase}/browser/${tabId}/proxy`;
+  const baseUrl = new URL(pageUrl);
 
-  // Remove existing <base> tags so they don't interfere with attribute rewriting
   html = html.replace(/<base[^>]*>/gi, '');
 
-  // Rewrite src/href/poster/background attributes (NOT action — forms navigate via interceptor)
   html = html.replace(
     /((?:src|href|poster|background)\s*=\s*)["']([^"']*?)["']/gi,
     (match, prefix, url) => {
@@ -158,7 +59,6 @@ async function getPageContent(tabId, proxyBase) {
     }
   );
 
-  // Rewrite CSS url() references
   html = html.replace(
     /url\(\s*["']?([^"')]+?)["']?\s*\)/gi,
     (match, url) => {
@@ -170,7 +70,6 @@ async function getPageContent(tabId, proxyBase) {
     }
   );
 
-  // Rewrite @import statements
   html = html.replace(
     /@import\s+["']([^"']+?)["']/gi,
     (match, url) => {
@@ -181,122 +80,168 @@ async function getPageContent(tabId, proxyBase) {
     }
   );
 
-  // Inject interceptor script for dynamic loads (fetch, XHR, dynamic DOM) + form interception
-  const interceptorScript = `<script>
-(function() {
-  var PROXY = "${proxyPrefix}";
-  var ORIGIN = "${baseUrl.origin}";
-  function rewriteUrl(u) {
-    try {
-      var abs = new URL(u, ORIGIN).href;
-      if (abs.startsWith(ORIGIN)) return PROXY + "?url=" + encodeURIComponent(abs);
-    } catch(e) {}
-    return u;
-  }
-  var origFetch = window.fetch;
-  window.fetch = function(input, init) {
-    if (typeof input === 'string') input = rewriteUrl(input);
-    else if (input && input.url) input = new Request(rewriteUrl(input.url), input);
-    return origFetch.call(this, input, init);
-  };
-  var origOpen = XMLHttpRequest.prototype.open;
-  XMLHttpRequest.prototype.open = function(method, url) {
-    return origOpen.call(this, method, rewriteUrl(url));
-  };
-  var observer = new MutationObserver(function(mutations) {
-    mutations.forEach(function(m) {
-      m.addedNodes.forEach(function(node) {
-        if (node.nodeType !== 1) return;
-        ['src','href'].forEach(function(attr) {
-          var val = node.getAttribute(attr);
-          if (val && !val.startsWith('data:') && !val.startsWith('blob:')) {
-            try {
-              var abs = new URL(val, ORIGIN).href;
-              if (abs.startsWith(ORIGIN)) node.setAttribute(attr, PROXY + "?url=" + encodeURIComponent(abs));
-            } catch(e) {}
-          }
-        });
-      });
-    });
-  });
-  observer.observe(document, { childList: true, subtree: true });
-
-  // Intercept form submissions — route through proxy
-  var tabId = window.location.pathname.split('/').filter(Boolean)[1];
-  var token = new URLSearchParams(window.location.search).get('token');
-  document.addEventListener('submit', function(e) {
-    var form = e.target;
-    var action = (form.getAttribute('action') || '').trim();
-    if (!action || action === '#' || action.startsWith('javascript:') || action.startsWith('data:')) return;
-    var method = (form.method || 'GET').toUpperCase();
-    if (method !== 'GET') return;
-    e.preventDefault();
-    var formData = new FormData(form);
-    var params = new URLSearchParams(formData).toString();
-    try {
-      var absUrl = new URL(action, ORIGIN).href;
-      if (params) absUrl += (absUrl.includes('?') ? '&' : '?') + params;
-      window.location.href = '/browser/' + tabId + '?token=' + encodeURIComponent(token || '') + '&url=' + encodeURIComponent(absUrl);
-    } catch(e) {}
-  });
-})();
-</script>`;
+  const interceptor = buildInterceptor(proxyPrefix, baseUrl.origin);
   const safeUrl = pageUrl.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-  html = html.replace(/<\/head>/i, '<base href="' + safeUrl + '">' + interceptorScript + '</head>');
+  html = html.replace(/<\/head>/i, '<base href="' + safeUrl + '">' + interceptor + '</head>');
 
-  return { html, url: pageUrl, title: await entry.page.title() };
+  return html;
 }
 
-// ── Resource proxy with caching ──────────────────────────────────────
-async function fetchResource(tabId, resourceUrl) {
-  const entry = browsers.get(tabId);
+function rewriteCss(css, cssUrl) {
+  const baseUrl = new URL(cssUrl);
+  return css.replace(
+    /url\(\s*["']?([^"')]+?)["']?\s*\)/gi,
+    (match, url) => {
+      if (url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('http://') || url.startsWith('https://')) return match;
+      try {
+        const abs = new URL(url, baseUrl).href;
+        return `url("${abs}")`;
+      } catch { return match; }
+    }
+  );
+}
+
+function buildInterceptor(proxyPrefix, origin) {
+  return `<script>
+(function(){
+  var PROXY="${proxyPrefix}", ORIGIN="${origin}";
+  function rw(u){try{var a=new URL(u,ORIGIN).href;if(a.startsWith(ORIGIN))return PROXY+'?url='+encodeURIComponent(a)}catch(){}return u}
+  var f=window.fetch;window.fetch=function(i,n){if(typeof i==='string')i=rw(i);else if(i&&i.url)i=new Request(rw(i.url),i);return f.call(this,i,n)}
+  var o=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){return o.call(this,m,rw(u))}
+  var tabId=window.location.pathname.split('/').filter(Boolean)[1],token=new URLSearchParams(window.location.search).get('token')
+  document.addEventListener('submit',function(e){
+    var form=e.target,action=(form.getAttribute('action')||'').trim()
+    if(!action||action==='#'||action.startsWith('javascript:')||action.startsWith('data:'))return
+    var method=(form.method||'GET').toUpperCase();if(method!=='GET')return
+    e.preventDefault()
+    var fd=new FormData(form),p=new URLSearchParams(fd).toString()
+    try{var abs=new URL(action,ORIGIN).href;if(p)abs+=(abs.includes('?')?'&':'?')+p;window.location.href='/browser/'+tabId+'?token='+encodeURIComponent(token||'')+'&url='+encodeURIComponent(abs)}catch(){}
+  })
+  new MutationObserver(function(m){m.forEach(function(m){m.addedNodes.forEach(function(n){
+    if(n.nodeType!==1)return;['src','href'].forEach(function(a){
+      var v=n.getAttribute(a);if(v&&!v.startsWith('data:')&&!v.startsWith('blob:')){try{var ab=new URL(v,ORIGIN).href;if(ab.startsWith(ORIGIN))n.setAttribute(a,PROXY+'?url='+encodeURIComponent(ab))}catch(){}}
+    })
+  })})}).observe(document,{childList:true,subtree:true})
+})();
+</script>`;
+}
+
+// ── Tab lifecycle ────────────────────────────────────────────────────
+async function launchBrowser(tabId, opts = {}) {
+  if (tabs.has(tabId)) return tabs.get(tabId);
+  const entry = { history: [], historyIndex: -1, currentUrl: '', lastAccessed: Date.now() };
+  tabs.set(tabId, entry);
+  return entry;
+}
+
+function getBrowser(tabId) {
+  const entry = tabs.get(tabId) || null;
+  if (entry) entry.lastAccessed = Date.now();
+  return entry;
+}
+
+async function navigateBrowser(tabId, url) {
+  const entry = tabs.get(tabId);
+  if (!entry) throw new Error('Browser not found');
+  entry.lastAccessed = Date.now();
+  entry.history = entry.history.slice(0, entry.historyIndex + 1);
+  entry.history.push(url);
+  entry.historyIndex = entry.history.length - 1;
+  entry.currentUrl = url;
+  return { url, title: '' };
+}
+
+async function browserGoBack(tabId) {
+  const entry = tabs.get(tabId);
+  if (!entry || entry.historyIndex <= 0) throw new Error('No back history');
+  entry.lastAccessed = Date.now();
+  entry.historyIndex--;
+  entry.currentUrl = entry.history[entry.historyIndex];
+  return { url: entry.currentUrl, title: '' };
+}
+
+async function browserGoForward(tabId) {
+  const entry = tabs.get(tabId);
+  if (!entry || entry.historyIndex >= entry.history.length - 1) throw new Error('No forward history');
+  entry.lastAccessed = Date.now();
+  entry.historyIndex++;
+  entry.currentUrl = entry.history[entry.historyIndex];
+  return { url: entry.currentUrl, title: '' };
+}
+
+async function refreshBrowser(tabId) {
+  const entry = tabs.get(tabId);
+  if (!entry) throw new Error('Browser not found');
+  entry.lastAccessed = Date.now();
+  return { url: entry.currentUrl, title: '' };
+}
+
+// ── Page content fetching ────────────────────────────────────────────
+async function getPageContent(tabId, proxyBase, targetUrl) {
+  const entry = tabs.get(tabId);
   if (!entry) throw new Error('Browser not found');
   entry.lastAccessed = Date.now();
 
-  const cacheKey = resourceUrl;
-  const cached = entry.cache.get(cacheKey);
-  if (cached) {
-    return { body: cached.body, contentType: cached.contentType, status: cached.status, cached: true };
+  if (!targetUrl) targetUrl = entry.currentUrl;
+  if (!targetUrl) throw new Error('No URL to fetch');
+
+  const result = await httpFetch(targetUrl);
+  let html = result.body.toString('utf-8');
+
+  if (!html.toLowerCase().includes('<html')) {
+    html = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>' + html + '</body></html>';
   }
 
-  try {
-    const response = await entry.page.context().request.get(resourceUrl, { timeout: 15000 });
-    const body = await response.body();
-    const contentType = response.headers()['content-type'] || 'application/octet-stream';
-    const status = response.status();
+  entry.currentUrl = result.finalUrl;
+  const title = html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1] || targetUrl;
 
-    entry.cache.set(cacheKey, { body, contentType, status });
-    return { body, contentType, status, cached: false };
-  } catch (e) {
-    throw new Error(`Failed to fetch: ${e.message}`);
+  return {
+    html: rewriteHtml(html, result.finalUrl, proxyBase, tabId),
+    url: result.finalUrl,
+    title
+  };
+}
+
+async function fetchResource(tabId, resourceUrl) {
+  const entry = tabs.get(tabId);
+  if (!entry) throw new Error('Browser not found');
+  entry.lastAccessed = Date.now();
+
+  const result = await httpFetch(resourceUrl, {
+    accept: '*/*'
+  });
+  let body = result.body;
+
+  // Rewrite relative URLs in CSS
+  if (result.contentType.includes('text/css')) {
+    const css = body.toString('utf-8');
+    body = Buffer.from(rewriteCss(css, resourceUrl), 'utf-8');
   }
+
+  return { body, contentType: result.contentType, status: result.status };
 }
 
 // ── Cleanup ──────────────────────────────────────────────────────────
 async function closeBrowser(tabId) {
-  const entry = browsers.get(tabId);
-  if (!entry) return;
-  try { await entry.context.close(); } catch {}
-  try { await entry.browser.close(); } catch {}
-  browsers.delete(tabId);
+  tabs.delete(tabId);
 }
 
-function closeAll() {
-  for (const [tabId] of browsers) closeBrowser(tabId).catch(() => {});
+async function closeAll() {
+  tabs.clear();
 }
 
-// Periodically cleanup idle browsers
+async function prewarm() {}
+
 function startIdleCleanup() {
   setInterval(() => {
     const now = Date.now();
-    for (const [tabId, entry] of browsers) {
+    for (const [tabId, entry] of tabs) {
       if (now - entry.lastAccessed > IDLE_TIMEOUT_MS) {
-        console.log(`[Browser] Closing idle tab: ${tabId}`);
-        closeBrowser(tabId).catch(() => {});
+        tabs.delete(tabId);
       }
     }
   }, CLEANUP_INTERVAL_MS);
 }
 startIdleCleanup();
 
-module.exports = { launchBrowser, getBrowser, navigateBrowser, browserGoBack, browserGoForward, refreshBrowser, getPageContent, fetchResource, closeBrowser, closeAll };
+module.exports = { launchBrowser, getBrowser, navigateBrowser, browserGoBack, browserGoForward, refreshBrowser, getPageContent, fetchResource, closeBrowser, closeAll, prewarm, httpFetch };
