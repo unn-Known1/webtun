@@ -1,0 +1,28 @@
+# Development
+.mimocode/
+.opencode/
+.specify/
+.github/
+nodemon.json
+
+# Electron (optional, not needed for npm usage)
+electron/
+
+# Shell scripts (setup/install are for git clone users)
+setup.sh
+install.sh
+stop.sh
+
+# Config & logs
+.env
+*.log
+webtun.pid
+.tunnels.json
+tunnel-url.txt
+
+# Build output
+dist/
+release/
+
+# Docs
+AGENTS.md

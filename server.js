@@ -1506,78 +1506,6 @@ app.delete('/api/tunnel', checkPin, (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────────
 
-loadTunnels();
-cleanupOrphanTmuxSessions();
-
-server.listen(PORT, HOST, () => {
-  console.log(`\n  WebTun running → http://localhost:${PORT}\n`);
-  if (PIN) console.log(`  PIN protection enabled\n`);
-  console.log(`  File API examples:`);
-  console.log(`    GET    /api/files?path=<dir>             — list directory`);
-  console.log(`    GET    /api/files/read?path=<file>       — read file content`);
-  console.log(`    POST   /api/files/write                  — write file  { path, content }`);
-  console.log(`    POST   /api/files/upload?path=<dir>      — upload files (multipart)`);
-  console.log(`    GET    /api/files/download?path=<path>   — download file/dir`);
-  console.log(`    GET    /api/files/image?path=<file>      — view image inline`);
-  console.log(`    POST   /api/files/rename                 — rename       { oldPath, newName }`);
-  console.log(`    POST   /api/files/copy                   — copy         { source, destination, conflict? }`);
-  console.log(`    POST   /api/files/move                   — move         { source, destination, conflict? }`);
-  console.log(`    DELETE /api/files?path=<path>            — delete file/dir`);
-  console.log(`    POST   /api/files/mkdir                  — create dir   { path }`);
-  console.log(`    POST   /api/files/touch                  — create file  { path }`);
-  console.log(`    POST   /api/files/zip                    — create zip   { path }`);
-  console.log(`    POST   /api/files/unzip                  — extract zip  { path }`);
-   console.log(`    GET    /api/search?q=<query>&path=<dir>  — search files`);
-   console.log(`    GET    /api/files/stat?path=<path>        — file metadata`);
-   console.log(`    POST   /api/files/batch-delete            — bulk delete     { paths: [...] }`);
-   console.log(`    POST   /api/files/batch-copy              — bulk copy       { sources: [...], destination, conflict? }`);
-   console.log(`    POST   /api/files/batch-move              — bulk move       { sources: [...], destination, conflict? }`);
-   console.log(`    POST   /api/files/chmod                   — change perms    { path, mode }`);
-   console.log(`    POST   /api/files/symlink                 — create symlink  { target, linkPath }`);
-   console.log(`    POST   /api/files/search-content          — full-text search { query, path, pattern?, maxResults? }`);
-   console.log(`    POST   /api/files/batch-zip               — multi-source zip { sources: [...], destination }`);
-   console.log(`    POST   /api/files/trash                   — trash files     { paths: [...] }`);
-   console.log(`    GET    /api/files/trash                   — list trash`);
-   console.log(`    POST   /api/files/trash/restore           — restore trash   { path }`);
-   console.log(`    DELETE /api/files/trash?path=<path>       — delete trash item permanently`);
-   console.log(`    DELETE /api/files/trash/all               — empty entire trash`);
-   console.log(`    GET    /api/files/preview?path=<file>      — file preview (md→html, code)`);
-   console.log(`    GET    /api/files/tail?path=<file>&lines=N  — tail log file (SSE)`);
-   console.log(`  Git API:`);
-   console.log(`    GET    /api/git/status?path=<dir>           — git status`);
-   console.log(`    POST   /api/git/diff                        — git diff       { path, file? }`);
-   console.log(`    POST   /api/git/add                         — git add        { path, files? }`);
-   console.log(`    POST   /api/git/commit                      — git commit     { path, message }`);
-   console.log(`    GET    /api/git/log?path=<dir>&maxCount=N   — git log`);
-   console.log(`    POST   /api/git/push                        — git push       { path, remote?, branch? }`);
-   console.log(`    POST   /api/git/pull                        — git pull       { path, remote?, branch? }`);
-   console.log(`    GET    /api/git/branches?path=<dir>         — list branches`);
-   console.log(`    POST   /api/git/branch                      — create branch  { path, name, switch? }`);
-   console.log(`    GET    /api/git/remote?path=<dir>           — list remotes`);
-   console.log(`  System:`);
-   console.log(`    GET    /api/system/network                  — network interfaces, ports`);
-   console.log(`    GET    /api/env                             — environment variables`);
-   console.log(`  Clipboard:`);
-   console.log(`    GET    /api/clipboard                       — clipboard contents`);
-   console.log(`    POST   /api/clipboard                       — set clipboard  { sources, action }`);
-   console.log(`    POST   /api/clipboard/paste                 — paste          { destination, conflict? }`);
-   console.log(`    DELETE /api/clipboard                       — clear clipboard`);
-});
-
-process.on('uncaughtException', e => {
-  console.error('Uncaught:', e.message);
-  try { cleanup(); } catch {}
-  process.exit(1);
-});
-process.on('unhandledRejection', e => {
-  console.error('Unhandled:', e);
-  // Don't exit on unhandled rejection — log and continue
-});
-
-process.on('SIGTERM', () => { try { cleanup(); } catch {}; process.exit(0); });
-process.on('SIGINT', () => { try { cleanup(); } catch {}; process.exit(0); });
-process.on('exit', () => { try { cleanup(); } catch {} });
-
 function cleanup() {
   for (const [id, entry] of tunnels) {
     try {
@@ -1594,4 +1522,89 @@ function cleanup() {
       }
     } catch {}
   }
+}
+
+function startServer(opts = {}) {
+  const port = opts.port || PORT;
+  const host = opts.host || HOST;
+
+  loadTunnels();
+  cleanupOrphanTmuxSessions();
+
+  return new Promise((resolve) => {
+    server.listen(port, host, () => {
+      console.log(`\n  WebTun running → http://localhost:${port}\n`);
+      if (PIN) console.log(`  PIN protection enabled\n`);
+      console.log(`  File API examples:`);
+      console.log(`    GET    /api/files?path=<dir>             — list directory`);
+      console.log(`    GET    /api/files/read?path=<file>       — read file content`);
+      console.log(`    POST   /api/files/write                  — write file  { path, content }`);
+      console.log(`    POST   /api/files/upload?path=<dir>      — upload files (multipart)`);
+      console.log(`    GET    /api/files/download?path=<path>   — download file/dir`);
+      console.log(`    GET    /api/files/image?path=<file>      — view image inline`);
+      console.log(`    POST   /api/files/rename                 — rename       { oldPath, newName }`);
+      console.log(`    POST   /api/files/copy                   — copy         { source, destination, conflict? }`);
+      console.log(`    POST   /api/files/move                   — move         { source, destination, conflict? }`);
+      console.log(`    DELETE /api/files?path=<path>            — delete file/dir`);
+      console.log(`    POST   /api/files/mkdir                  — create dir   { path }`);
+      console.log(`    POST   /api/files/touch                  — create file  { path }`);
+      console.log(`    POST   /api/files/zip                    — create zip   { path }`);
+      console.log(`    POST   /api/files/unzip                  — extract zip  { path }`);
+      console.log(`    GET    /api/search?q=<query>&path=<dir>  — search files`);
+      console.log(`    GET    /api/files/stat?path=<path>        — file metadata`);
+      console.log(`    POST   /api/files/batch-delete            — bulk delete     { paths: [...] }`);
+      console.log(`    POST   /api/files/batch-copy              — bulk copy       { sources: [...], destination, conflict? }`);
+      console.log(`    POST   /api/files/batch-move              — bulk move       { sources: [...], destination, conflict? }`);
+      console.log(`    POST   /api/files/chmod                   — change perms    { path, mode }`);
+      console.log(`    POST   /api/files/symlink                 — create symlink  { target, linkPath }`);
+      console.log(`    POST   /api/files/search-content          — full-text search { query, path, pattern?, maxResults? }`);
+      console.log(`    POST   /api/files/batch-zip               — multi-source zip { sources: [...], destination }`);
+      console.log(`    POST   /api/files/trash                   — trash files     { paths: [...] }`);
+      console.log(`    GET    /api/files/trash                   — list trash`);
+      console.log(`    POST   /api/files/trash/restore           — restore trash   { path }`);
+      console.log(`    DELETE /api/files/trash?path=<path>       — delete trash item permanently`);
+      console.log(`    DELETE /api/files/trash/all               — empty entire trash`);
+      console.log(`    GET    /api/files/preview?path=<file>      — file preview (md→html, code)`);
+      console.log(`    GET    /api/files/tail?path=<file>&lines=N  — tail log file (SSE)`);
+      console.log(`  Git API:`);
+      console.log(`    GET    /api/git/status?path=<dir>           — git status`);
+      console.log(`    POST   /api/git/diff                        — git diff       { path, file? }`);
+      console.log(`    POST   /api/git/add                         — git add        { path, files? }`);
+      console.log(`    POST   /api/git/commit                      — git commit     { path, message }`);
+      console.log(`    GET    /api/git/log?path=<dir>&maxCount=N   — git log`);
+      console.log(`    POST   /api/git/push                        — git push       { path, remote?, branch? }`);
+      console.log(`    POST   /api/git/pull                        — git pull       { path, remote?, branch? }`);
+      console.log(`    GET    /api/git/branches?path=<dir>         — list branches`);
+      console.log(`    POST   /api/git/branch                      — create branch  { path, name, switch? }`);
+      console.log(`    GET    /api/git/remote?path=<dir>           — list remotes`);
+      console.log(`  System:`);
+      console.log(`    GET    /api/system/network                  — network interfaces, ports`);
+      console.log(`    GET    /api/env                             — environment variables`);
+      console.log(`  Clipboard:`);
+      console.log(`    GET    /api/clipboard                       — clipboard contents`);
+      console.log(`    POST   /api/clipboard                       — set clipboard  { sources, action }`);
+      console.log(`    POST   /api/clipboard/paste                 — paste          { destination, conflict? }`);
+      console.log(`    DELETE /api/clipboard                       — clear clipboard`);
+      resolve(server);
+    });
+  });
+}
+
+process.on('uncaughtException', e => {
+  console.error('Uncaught:', e.message);
+  try { cleanup(); } catch {}
+  process.exit(1);
+});
+process.on('unhandledRejection', e => {
+  console.error('Unhandled:', e);
+});
+
+process.on('SIGTERM', () => { try { cleanup(); } catch {}; process.exit(0); });
+process.on('SIGINT', () => { try { cleanup(); } catch {}; process.exit(0); });
+process.on('exit', () => { try { cleanup(); } catch {} });
+
+module.exports = { app, server, startServer, PORT, PIN, WORKSPACE_ROOT };
+
+if (require.main === module) {
+  startServer();
 }

@@ -3,6 +3,9 @@ node_modules/
 *.log
 webtun.pid
 webtun.log
+cloudflared.log
 .tunnels.json
+.mimocode
+.opencode
 dist/
 release/

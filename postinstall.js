@@ -101,7 +101,20 @@ try {
   console.log('  cloudflared installed');
   cleanup();
 } catch (e) {
-  console.log('  cloudflared install failed: ' + e.message + ' — skipping');
+  // When installed globally via npm, /usr/local/bin may not be writable.
+  // In that case, download to a local path and suggest manual install.
+  if (e.code === 'EACCES' || e.code === 'EPERM') {
+    const localDest = path.join(process.cwd(), 'cloudflared' + (platform === 'win32' ? '.exe' : ''));
+    try {
+      installBin(tmp, localDest);
+      console.log('  cloudflared installed to ' + localDest);
+      console.log('  Move it to your PATH: sudo mv ' + localDest + ' /usr/local/bin/');
+    } catch (e2) {
+      console.log('  cloudflared install failed: ' + e2.message + ' — skipping');
+    }
+  } else {
+    console.log('  cloudflared install failed: ' + e.message + ' — skipping');
+  }
   cleanup();
   process.exit(0);
 }

@@ -1,15 +1,24 @@
 {
   "name": "webtun",
   "version": "1.4.0",
-  "private": true,
   "description": "Self-hosted web terminal with Cloudflare Tunnel, file explorer, and PWA support",
   "author": {
     "name": "Gaurang Patel",
     "email": "ptelgm.yt@gmail.com"
   },
-  "main": "electron/main.js",
+  "license": "MIT",
+  "main": "server.js",
+  "bin": {
+    "webtun": "bin/webtun.js"
+  },
+  "files": [
+    "bin/",
+    "server.js",
+    "public/",
+    "postinstall.js"
+  ],
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=18.0.0"
   },
   "scripts": {
     "start": "node server.js",
@@ -19,8 +28,24 @@
     "dist": "electron-builder",
     "dist:win": "electron-builder --win",
     "dist:linux": "electron-builder --linux",
+    "dist:mac": "electron-builder --mac",
     "postinstall": "node postinstall.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/unn-Known1/webtun.git"
+  },
+  "keywords": [
+    "terminal",
+    "web-terminal",
+    "ssh",
+    "remote-access",
+    "cloudflare",
+    "tunnel",
+    "file-manager",
+    "pwa",
+    "self-hosted"
+  ],
   "build": {
     "appId": "com.webtun.app",
     "productName": "WebTun",
