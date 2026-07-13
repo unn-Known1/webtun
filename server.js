@@ -20,11 +20,22 @@ let pty;
 try {
   pty = require('node-pty');
 } catch (e) {
-  console.error('\n  Error: node-pty failed to load. Terminal functionality requires native build tools.');
-  console.error('  Install build tools and reinstall:');
+  console.error('');
+  console.error('  Error: node-pty native module not found.');
+  console.error('');
+  console.error('  npm 12+ blocks install scripts by default. To fix:');
+  console.error('');
+  console.error('  Option 1 — Allow scripts once:');
+  console.error('    npm install -g --allow-scripts=webtun,node-pty webtun');
+  console.error('');
+  console.error('  Option 2 — Allow scripts globally (one-time):');
+  console.error('    npm config set allow-scripts=webtun,node-pty --location=user');
+  console.error('    npm install -g webtun');
+  console.error('');
+  console.error('  Option 3 — If building from source, install build tools first:');
   console.error('    Linux:  sudo apt-get install -y python3 make g++');
   console.error('    macOS:  xcode-select --install');
-  console.error('  Then reinstall: npm install webtun\n');
+  console.error('');
   process.exit(1);
 }
 const multer = require('multer');

@@ -106,7 +106,17 @@ npx webtun --tunnel               # With Cloudflare Tunnel
 npx webtun -p 4000 -t             # Port 4000 + tunnel
 ```
 
-**Note:** `node-pty` requires build tools on first install:
+**Note:** npm 12+ blocks install scripts by default. Allow them for `node-pty` (native module):
+```bash
+# Allow scripts once during install
+npm install -g --allow-scripts=webtun,node-pty webtun
+
+# Or allow globally (one-time setup)
+npm config set allow-scripts=webtun,node-pty --location=user
+npm install -g webtun
+```
+
+Build tools are also required (for compiling native modules):
 ```bash
 # Debian/Ubuntu
 sudo apt-get install -y python3 make g++
