@@ -16,7 +16,17 @@ try {
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
-const pty = require('node-pty');
+let pty;
+try {
+  pty = require('node-pty');
+} catch (e) {
+  console.error('\n  Error: node-pty failed to load. Terminal functionality requires native build tools.');
+  console.error('  Install build tools and reinstall:');
+  console.error('    Linux:  sudo apt-get install -y python3 make g++');
+  console.error('    macOS:  xcode-select --install');
+  console.error('  Then reinstall: npm install webtun\n');
+  process.exit(1);
+}
 const multer = require('multer');
 const fs = require('fs');
 const path = require('path');

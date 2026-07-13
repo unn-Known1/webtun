@@ -107,9 +107,5 @@
   },
   "overrides": {
     "form-data": "4.0.6"
-  },
-  "allowScripts": {
-    "electron-winstaller@5.4.0": true,
-    "node-pty@1.1.0": true
   }
 }
