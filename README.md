@@ -76,6 +76,45 @@
 
 ## Quick Start
 
+### npm (Recommended)
+```bash
+npx webtun
+```
+
+Install globally:
+```bash
+npm install -g webtun
+webtun
+```
+
+**Options:**
+| Flag | Description |
+|------|-------------|
+| `--port, -p` | Port (default: 3000) |
+| `--host, -h` | Host (default: 0.0.0.0) |
+| `--pin` | Authentication PIN |
+| `--tunnel, -t` | Start Cloudflare Tunnel |
+| `--help` | Show help |
+| `--version` | Show version |
+
+**Examples:**
+```bash
+npx webtun                        # Start on port 3000
+npx webtun --port 8080            # Custom port
+npx webtun --pin secret123        # With PIN protection
+npx webtun --tunnel               # With Cloudflare Tunnel
+npx webtun -p 4000 -t             # Port 4000 + tunnel
+```
+
+**Note:** `node-pty` requires build tools on first install:
+```bash
+# Debian/Ubuntu
+sudo apt-get install -y python3 make g++
+
+# macOS
+xcode-select --install
+```
+
 ### One-Command Install
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/unn-Known1/webtun/main/install.sh)"
