@@ -14,7 +14,6 @@ try {
 } catch {}
 
 const express = require('express');
-const http = require('http');
 const WebSocket = require('ws');
 let pty;
 try {
@@ -33,8 +32,10 @@ try {
   console.error('    npm install -g webtun');
   console.error('');
   console.error('  Option 3 — If building from source, install build tools first:');
-  console.error('    Linux:  sudo apt-get install -y python3 make g++');
-  console.error('    macOS:  xcode-select --install');
+  console.error('    Linux:   sudo apt-get install -y python3 make g++');
+  console.error('    macOS:   xcode-select --install');
+  console.error('    Windows: install "Desktop development with C++" (Visual Studio Build Tools)');
+  console.error('             https://visualstudio.microsoft.com/visual-cpp-build-tools/');
   console.error('');
   process.exit(1);
 }
@@ -44,6 +45,10 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { execSync, execFileSync, spawn } = require('child_process');
+const archiver = require('archiver');
+const yauzl = require('yauzl');
+const https = require('https');
+const http = require('http');
 
 // MIME type lookup without mime-types dependency
 const MIME_MAP = {
@@ -147,6 +152,10 @@ app.get('/api/auth/required', (req, res) => {
   res.json({ required: !!PIN });
 });
 
+app.get('/api/version', (req, res) => {
+  res.json({ version: require('./package.json').version });
+});
+
 app.post('/api/auth', authRateLimiter, (req, res) => {
   const { pin } = req.body;
   if (!PIN || (pin && constantTimeEqual(pin, PIN))) {
@@ -175,6 +184,188 @@ function realPath(targetPath) {
   if (!targetPath) return WORKSPACE_ROOT;
   const resolved = path.resolve(targetPath);
   try { return fs.realpathSync(resolved); } catch { return resolved; }
+}
+
+// Case-aware path containment (Windows paths are case-insensitive).
+function pathContained(parent, child) {
+  let p = path.resolve(parent);
+  let c = path.resolve(child);
+  if (os.platform() === 'win32') {
+    p = p.replace(/\\/g, '/').toLowerCase();
+    c = c.replace(/\\/g, '/').toLowerCase();
+    if (!p.endsWith('/')) p += '/';
+    return c === p.slice(0, -1) || c.startsWith(p);
+  }
+  return c === p || c.startsWith(p + path.sep);
+}
+
+async function renameWithFallback(src, dst) {
+  try {
+    await fsPromises.rename(src, dst);
+  } catch (e) {
+    if (e.code === 'EXDEV') {
+      await fsPromises.cp(src, dst, { recursive: true, force: true });
+      await fsPromises.rm(src, { recursive: true, force: true });
+    } else {
+      throw e;
+    }
+  }
+}
+
+async function dirSize(dir) {
+  let total = 0;
+  async function walk(d) {
+    let entries;
+    try { entries = await fsPromises.readdir(d, { withFileTypes: true }); } catch { return; }
+    await Promise.all(entries.map(async e => {
+      const full = path.join(d, e.name);
+      try {
+        if (e.isDirectory()) await walk(full);
+        else if (e.isFile()) {
+          const st = await fsPromises.stat(full);
+          total += st.size;
+        }
+      } catch {}
+    }));
+  }
+  await walk(dir);
+  return total;
+}
+
+function createZipArchive(entries, zipPath) {
+  return new Promise((resolve, reject) => {
+    const output = fs.createWriteStream(zipPath);
+    const archive = archiver('zip', { zlib: { level: 6 } });
+    output.on('close', () => resolve());
+    output.on('error', reject);
+    archive.on('error', reject);
+    archive.pipe(output);
+    for (const entry of entries) {
+      try {
+        const st = fs.statSync(entry.fullPath);
+        if (st.isDirectory()) archive.directory(entry.fullPath, entry.nameInZip);
+        else archive.file(entry.fullPath, { name: entry.nameInZip });
+      } catch (e) {
+        return reject(e);
+      }
+    }
+    archive.finalize();
+  });
+}
+
+function streamZipDirectory(dirPath, res) {
+  const archive = archiver('zip', { zlib: { level: 6 } });
+  archive.on('error', err => {
+    if (!res.headersSent) res.status(500).json({ error: err.message });
+    else res.end();
+  });
+  archive.pipe(res);
+  archive.directory(dirPath, path.basename(dirPath));
+  archive.finalize();
+}
+
+function extractZip(zipPath, destDir) {
+  return new Promise((resolve, reject) => {
+    yauzl.open(zipPath, { lazyEntries: true }, (err, zipfile) => {
+      if (err) return reject(err);
+      zipfile.readEntry();
+      zipfile.on('entry', entry => {
+        const entryName = entry.fileName.replace(/\\/g, '/');
+        const entryPath = path.normalize(entryName);
+        if (entryPath.startsWith('..') || path.isAbsolute(entryPath) || entryName.includes('\0')) {
+          return reject(new Error('Invalid zip entry: ' + entry.fileName));
+        }
+        const target = path.join(destDir, entryPath);
+        if (!pathContained(destDir, target)) {
+          return reject(new Error('Zip entry escapes destination directory'));
+        }
+        if (/\/$/.test(entryName)) {
+          fs.mkdirSync(target, { recursive: true });
+          zipfile.readEntry();
+          return;
+        }
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        zipfile.openReadStream(entry, (err2, readStream) => {
+          if (err2) return reject(err2);
+          const writeStream = fs.createWriteStream(target);
+          readStream.on('error', reject);
+          writeStream.on('error', reject);
+          writeStream.on('close', () => zipfile.readEntry());
+          readStream.pipe(writeStream);
+        });
+      });
+      zipfile.on('end', () => resolve());
+      zipfile.on('error', reject);
+    });
+  });
+}
+
+function findCloudflared() {
+  const isWin = os.platform() === 'win32';
+  const name = isWin ? 'cloudflared.exe' : 'cloudflared';
+  const candidates = [
+    path.join(__dirname, name),
+    path.join(process.cwd(), name),
+  ];
+  if (isWin) {
+    const localApp = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+    candidates.push(path.join(localApp, 'cloudflared', name));
+    const pf = process.env.ProgramW6432 || process.env.ProgramFiles;
+    if (pf) candidates.push(path.join(pf, 'cloudflared', name));
+  } else {
+    candidates.push(path.join(os.homedir(), '.local', 'bin', name));
+    candidates.push('/usr/local/bin/' + name);
+    candidates.push('/usr/bin/' + name);
+  }
+  for (const c of candidates) {
+    try { if (fs.existsSync(c) && fs.statSync(c).isFile()) return c; } catch {}
+  }
+  try {
+    const cmd = isWin ? 'where cloudflared' : 'command -v cloudflared';
+    const out = execSync(cmd, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().split(/\r?\n/)[0];
+    if (out && fs.existsSync(out)) return out;
+  } catch {}
+  return null;
+}
+
+function killPid(pid, signal = 'SIGTERM') {
+  if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0) return;
+  try {
+    if (os.platform() === 'win32') {
+      execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' });
+    } else {
+      process.kill(pid, signal);
+    }
+  } catch {}
+}
+
+function buildSessionEnv() {
+  if (os.platform() === 'win32') {
+    const env = { ...process.env };
+    env.TERM = env.TERM || 'xterm-256color';
+    env.COLORTERM = env.COLORTERM || 'truecolor';
+    if (!env.HOME && env.USERPROFILE) env.HOME = env.USERPROFILE;
+    if (!env.USER && env.USERNAME) env.USER = env.USERNAME;
+    env.SHELL = SHELL;
+    // Prefer Path (Windows) over PATH if both set
+    if (env.Path && !env.PATH) env.PATH = env.Path;
+    return env;
+  }
+  const safe = {
+    TERM: 'xterm-256color',
+    COLORTERM: 'truecolor',
+    HOME: process.env.HOME || '',
+    USER: process.env.USER || '',
+    PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin',
+    LANG: process.env.LANG || 'C.UTF-8',
+    SHELL
+  };
+  if (process.env.NODE_ENV) safe.NODE_ENV = process.env.NODE_ENV;
+  // Preserve common terminal/locale vars when present
+  for (const k of ['LC_ALL', 'LC_CTYPE', 'TERM_PROGRAM', 'COLORFGBG']) {
+    if (process.env[k]) safe[k] = process.env[k];
+  }
+  return safe;
 }
 
 async function safeStat(p) {
@@ -284,7 +475,7 @@ app.post('/api/files/rename', checkPin, async (req, res) => {
     }
     const oldPath = realPath(req.body.oldPath);
     const newPath = realPath(path.join(path.dirname(oldPath), req.body.newName));
-    await fsPromises.rename(oldPath, newPath);
+    await renameWithFallback(oldPath, newPath);
     res.json({ success: true, newPath });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -333,7 +524,7 @@ async function resolveCopyMove(src, dst, conflict, isMove) {
       }
       await fsPromises.rm(src, { recursive: true, force: true });
     } else {
-      await fsPromises.rename(src, dst);
+      await renameWithFallback(src, dst);
     }
   } else {
     if (isDir) {
@@ -421,7 +612,7 @@ app.post('/api/files/zip', checkPin, async (req, res) => {
       return res.status(400).json({ error: 'path is required', usage: 'POST JSON { "path": "<file_or_dir>" }' });
     }
     const p = realPath(req.body.path);
-    const st = await fsPromises.stat(p);
+    await fsPromises.stat(p);
     const baseName = path.basename(p);
     let zipName = baseName + '.zip';
     let zipPath = path.join(path.dirname(p), zipName);
@@ -432,13 +623,7 @@ app.post('/api/files/zip', checkPin, async (req, res) => {
       zipPath = path.join(path.dirname(p), zipName);
       counter++;
     }
-    const zipDir = path.dirname(zipPath);
-    const zipTarget = path.basename(zipPath);
-    if (st.isDirectory()) {
-      execSync(`zip -r -6 "${zipTarget}" "${baseName}"`, { cwd: zipDir, stdio: 'pipe' });
-    } else {
-      execSync(`zip -6 "${zipTarget}" "${baseName}"`, { cwd: zipDir, stdio: 'pipe' });
-    }
+    await createZipArchive([{ fullPath: p, nameInZip: baseName }], zipPath);
     res.json({ success: true, name: zipName });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -456,23 +641,8 @@ app.post('/api/files/unzip', checkPin, async (req, res) => {
     if (ext !== '.zip') return res.status(400).json({ error: 'Not a zip file' });
     const destDir = path.join(path.dirname(p), path.basename(p, '.zip'));
     await fsPromises.mkdir(destDir, { recursive: true });
-    // Security: scan zip entries before extraction
-    const unzipList = execSync(`unzip -l "${p}"`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
-    for (const line of unzipList.split('\n')) {
-      const match = line.match(/^\s*\S+\s+\S+\s+(.+)$/);
-      if (match) {
-        const entryPath = path.normalize(match[1]);
-        if (entryPath.startsWith('..') || path.isAbsolute(entryPath)) {
-          return res.status(400).json({ error: 'Invalid zip entry: ' + match[1] });
-        }
-        const target = path.join(destDir, entryPath);
-        if (!target.startsWith(destDir + path.sep) && target !== destDir) {
-          return res.status(400).json({ error: 'Zip entry escapes destination directory' });
-        }
-      }
-    }
     try {
-      execSync(`unzip -o "${p}" -d "${destDir}"`, { stdio: 'pipe' });
+      await extractZip(p, destDir);
     } catch (e) {
       return res.status(500).json({ error: e.message });
     }
@@ -537,13 +707,7 @@ app.get('/api/files/download', checkPin, async (req, res) => {
     if (st.isDirectory()) {
       res.setHeader('Content-Type', 'application/zip');
       res.setHeader('Content-Disposition', `attachment; filename="${path.basename(p)}.zip"`);
-      // Stream zip to response via system zip command
-      const zipProc = spawn('zip', ['-r', '-6', '-', path.basename(p)], { cwd: path.dirname(p), stdio: ['ignore', 'pipe', 'pipe'] });
-      zipProc.stdout.pipe(res);
-      zipProc.on('error', err => {
-        if (!res.headersSent) res.status(500).json({ error: err.message });
-      });
-      zipProc.on('close', code => { if (code !== 0 && !res.headersSent) res.status(500).json({ error: 'zip failed' }); });
+      streamZipDirectory(p, res);
       return;
     } else {
       const mimeType = mimeLookup(p);
@@ -573,7 +737,7 @@ app.post('/api/files/upload', checkPin, (req, res) => {
       try {
         const safeName = path.basename(file.originalname).replace(/[^a-zA-Z0-9_.\-]/g, '_');
         const finalDest = path.join(destDir, safeName);
-        if (!finalDest.startsWith(destDir + path.sep) && finalDest !== destDir) {
+        if (!pathContained(destDir, finalDest)) {
           return cb(new Error('Invalid upload destination'));
         }
         const subPath = path.dirname(finalDest);
@@ -641,8 +805,7 @@ app.get('/api/files/size', checkPin, async (req, res) => {
     if (!st.isDirectory()) {
       return res.json({ path: p, size: st.size, isDir: false });
     }
-    const out = execFileSync('du', ['-sb', p], { encoding: 'utf8', stdio: 'pipe', timeout: 30000 });
-    const size = parseInt(out.split('\t')[0], 10);
+    const size = await dirSize(p);
     res.json({ path: p, size, isDir: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -812,23 +975,18 @@ app.post('/api/files/batch-zip', checkPin, async (req, res) => {
     }
     let dest = realPath(req.body.destination);
     const resolved = req.body.sources.map(s => realPath(s));
-    // Prevent zipping workspace root
     // Auto-rename if destination exists
     let counter = 1;
     const ext = '.zip';
     const origDest = dest;
     while (true) {
       try { await fsPromises.access(dest); } catch { break; }
-      dest = origDest.replace(/(\.zip)?$/, ` (${counter})${ext}`);
+      dest = origDest.replace(/(\.zip)?$/i, ` (${counter})${ext}`);
       counter++;
     }
-    const zipDir = path.dirname(dest);
-    const zipTarget = path.basename(dest);
-    const zipArgs = resolved.map(s => {
-      const rel = path.relative(zipDir, s);
-      return `"${rel}"`;
-    });
-    execSync(`zip -r -6 "${zipTarget}" ${zipArgs.join(' ')}`, { cwd: zipDir, stdio: 'pipe' });
+    await fsPromises.mkdir(path.dirname(dest), { recursive: true });
+    const entries = resolved.map(s => ({ fullPath: s, nameInZip: path.basename(s) }));
+    await createZipArchive(entries, dest);
     res.json({ success: true, name: path.basename(dest), files: req.body.sources.length });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -1091,11 +1249,7 @@ wss.on('connection', (ws, req) => {
   }
   const sessionId = (url.searchParams.get('session') || '').replace(/[^a-zA-Z0-9_-]/g, '');
 
-  const sessionEnv = (() => {
-    const safe = { TERM: 'xterm-256color', COLORTERM: 'truecolor', HOME: process.env.HOME || '', USER: process.env.USER || '', PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin', LANG: process.env.LANG || 'C.UTF-8', SHELL: SHELL };
-    if (process.env.NODE_ENV) safe.NODE_ENV = process.env.NODE_ENV;
-    return safe;
-  })();
+  const sessionEnv = buildSessionEnv();
 
   const send = (type, payload) => {
     if (ws.readyState !== WebSocket.OPEN) return;
@@ -1381,16 +1535,31 @@ async function verifyTunnelUrl(url, retries = 3) {
   return false;
 }
 
+function spawnCloudflared(args, opts = {}) {
+  const bin = findCloudflared();
+  if (!bin) {
+    const err = new Error('cloudflared not installed');
+    err.code = 'ENOENT';
+    throw err;
+  }
+  return spawn(bin, args, opts);
+}
+
 function restartTunnel(id, entry) {
   if (!entry.localUrl) return;
   try { if (entry.proc) entry.proc.kill('SIGTERM'); } catch {}
-  try { if (entry.pid && isCloudflaredProcess(entry.pid)) process.kill(entry.pid, 'SIGTERM'); } catch {}
+  try { if (entry.pid && isCloudflaredProcess(entry.pid)) killPid(entry.pid); } catch {}
   tunnels.delete(id);
 
   const url = entry.localUrl;
-  const proc = spawn('cloudflared', ['tunnel', '--url', url], {
-    detached: true, stdio: ['ignore', 'pipe', 'pipe']
-  });
+  let proc;
+  try {
+    proc = spawnCloudflared(['tunnel', '--url', url], {
+      detached: true, stdio: ['ignore', 'pipe', 'pipe']
+    });
+  } catch {
+    return;
+  }
   proc.unref();
 
   const handler = data => {
@@ -1464,12 +1633,18 @@ app.post('/api/tunnel', checkPin, async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: 'url required' });
 
-  try { execSync(os.platform() === 'win32' ? 'where cloudflared' : 'command -v cloudflared', { stdio: 'ignore' }); }
-  catch { return res.status(500).json({ error: 'cloudflared not installed' }); }
+  if (!findCloudflared()) {
+    return res.status(500).json({ error: 'cloudflared not installed' });
+  }
 
-  const proc = spawn('cloudflared', ['tunnel', '--url', url], {
-    detached: true, stdio: ['ignore', 'pipe', 'pipe']
-  });
+  let proc;
+  try {
+    proc = spawnCloudflared(['tunnel', '--url', url], {
+      detached: true, stdio: ['ignore', 'pipe', 'pipe']
+    });
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
   proc.unref();
   let tunnelUrl = null;
   const timeout = 15000;
@@ -1493,7 +1668,7 @@ app.post('/api/tunnel', checkPin, async (req, res) => {
   });
 
   try {
-    const result = await Promise.race([
+    await Promise.race([
       urlPromise,
       new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), timeout))
     ]);
@@ -1504,7 +1679,7 @@ app.post('/api/tunnel', checkPin, async (req, res) => {
     saveTunnels();
     res.json({ success: true, id, url: tunnelUrl, verified: urlOk });
   } catch (e) {
-    try { proc.kill(); } catch {}
+    try { if (proc.pid) killPid(proc.pid); else proc.kill(); } catch {}
     res.status(500).json({ error: e.message === 'timeout' ? 'Timed out waiting for tunnel URL' : e.message });
   }
 });
@@ -1515,9 +1690,10 @@ app.delete('/api/tunnel', checkPin, (req, res) => {
   const entry = tunnels.get(id);
   try {
     if (entry.proc) {
-      entry.proc.kill('SIGTERM');
+      try { entry.proc.kill('SIGTERM'); } catch {}
+      if (entry.proc.pid) killPid(entry.proc.pid);
     } else if (entry.pid && isCloudflaredProcess(entry.pid)) {
-      process.kill(entry.pid, 'SIGTERM');
+      killPid(entry.pid);
     }
   } catch {}
   tunnels.delete(id);
@@ -1530,8 +1706,12 @@ app.delete('/api/tunnel', checkPin, (req, res) => {
 function cleanup() {
   for (const [id, entry] of tunnels) {
     try {
-      if (entry.proc) entry.proc.kill('SIGTERM');
-      else if (entry.pid && isCloudflaredProcess(entry.pid)) process.kill(entry.pid, 'SIGTERM');
+      if (entry.proc) {
+        try { entry.proc.kill('SIGTERM'); } catch {}
+        if (entry.proc.pid) killPid(entry.proc.pid);
+      } else if (entry.pid && isCloudflaredProcess(entry.pid)) {
+        killPid(entry.pid);
+      }
     } catch {}
   }
   if (TMUX) {
@@ -1552,60 +1732,12 @@ function startServer(opts = {}) {
   loadTunnels();
   cleanupOrphanTmuxSessions();
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
     server.listen(port, host, () => {
-      console.log(`\n  WebTun running → http://localhost:${port}\n`);
-      if (PIN) console.log(`  PIN protection enabled\n`);
-      console.log(`  File API examples:`);
-      console.log(`    GET    /api/files?path=<dir>             — list directory`);
-      console.log(`    GET    /api/files/read?path=<file>       — read file content`);
-      console.log(`    POST   /api/files/write                  — write file  { path, content }`);
-      console.log(`    POST   /api/files/upload?path=<dir>      — upload files (multipart)`);
-      console.log(`    GET    /api/files/download?path=<path>   — download file/dir`);
-      console.log(`    GET    /api/files/image?path=<file>      — view image inline`);
-      console.log(`    POST   /api/files/rename                 — rename       { oldPath, newName }`);
-      console.log(`    POST   /api/files/copy                   — copy         { source, destination, conflict? }`);
-      console.log(`    POST   /api/files/move                   — move         { source, destination, conflict? }`);
-      console.log(`    DELETE /api/files?path=<path>            — delete file/dir`);
-      console.log(`    POST   /api/files/mkdir                  — create dir   { path }`);
-      console.log(`    POST   /api/files/touch                  — create file  { path }`);
-      console.log(`    POST   /api/files/zip                    — create zip   { path }`);
-      console.log(`    POST   /api/files/unzip                  — extract zip  { path }`);
-      console.log(`    GET    /api/search?q=<query>&path=<dir>  — search files`);
-      console.log(`    GET    /api/files/stat?path=<path>        — file metadata`);
-      console.log(`    POST   /api/files/batch-delete            — bulk delete     { paths: [...] }`);
-      console.log(`    POST   /api/files/batch-copy              — bulk copy       { sources: [...], destination, conflict? }`);
-      console.log(`    POST   /api/files/batch-move              — bulk move       { sources: [...], destination, conflict? }`);
-      console.log(`    POST   /api/files/chmod                   — change perms    { path, mode }`);
-      console.log(`    POST   /api/files/symlink                 — create symlink  { target, linkPath }`);
-      console.log(`    POST   /api/files/search-content          — full-text search { query, path, pattern?, maxResults? }`);
-      console.log(`    POST   /api/files/batch-zip               — multi-source zip { sources: [...], destination }`);
-      console.log(`    POST   /api/files/trash                   — trash files     { paths: [...] }`);
-      console.log(`    GET    /api/files/trash                   — list trash`);
-      console.log(`    POST   /api/files/trash/restore           — restore trash   { path }`);
-      console.log(`    DELETE /api/files/trash?path=<path>       — delete trash item permanently`);
-      console.log(`    DELETE /api/files/trash/all               — empty entire trash`);
-      console.log(`    GET    /api/files/preview?path=<file>      — file preview (md→html, code)`);
-      console.log(`    GET    /api/files/tail?path=<file>&lines=N  — tail log file (SSE)`);
-      console.log(`  Git API:`);
-      console.log(`    GET    /api/git/status?path=<dir>           — git status`);
-      console.log(`    POST   /api/git/diff                        — git diff       { path, file? }`);
-      console.log(`    POST   /api/git/add                         — git add        { path, files? }`);
-      console.log(`    POST   /api/git/commit                      — git commit     { path, message }`);
-      console.log(`    GET    /api/git/log?path=<dir>&maxCount=N   — git log`);
-      console.log(`    POST   /api/git/push                        — git push       { path, remote?, branch? }`);
-      console.log(`    POST   /api/git/pull                        — git pull       { path, remote?, branch? }`);
-      console.log(`    GET    /api/git/branches?path=<dir>         — list branches`);
-      console.log(`    POST   /api/git/branch                      — create branch  { path, name, switch? }`);
-      console.log(`    GET    /api/git/remote?path=<dir>           — list remotes`);
-      console.log(`  System:`);
-      console.log(`    GET    /api/system/network                  — network interfaces, ports`);
-      console.log(`    GET    /api/env                             — environment variables`);
-      console.log(`  Clipboard:`);
-      console.log(`    GET    /api/clipboard                       — clipboard contents`);
-      console.log(`    POST   /api/clipboard                       — set clipboard  { sources, action }`);
-      console.log(`    POST   /api/clipboard/paste                 — paste          { destination, conflict? }`);
-      console.log(`    DELETE /api/clipboard                       — clear clipboard`);
+      console.log(`\n  WebTun running → http://localhost:${port}`);
+      if (PIN) console.log(`  PIN protection enabled`);
+      console.log('');
       resolve(server);
     });
   });
@@ -1624,7 +1756,7 @@ process.on('SIGTERM', () => { try { cleanup(); } catch {}; process.exit(0); });
 process.on('SIGINT', () => { try { cleanup(); } catch {}; process.exit(0); });
 process.on('exit', () => { try { cleanup(); } catch {} });
 
-module.exports = { app, server, startServer, PORT, PIN, WORKSPACE_ROOT };
+module.exports = { app, server, startServer, PORT, PIN, WORKSPACE_ROOT, findCloudflared };
 
 if (require.main === module) {
   startServer();

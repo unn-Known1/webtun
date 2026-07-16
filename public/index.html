@@ -1152,6 +1152,7 @@ svg { display: block; }
             <div style="display:flex;align-items:center;gap:8px">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
               <span>WebTun</span>
+              <span id="about-version" style="color:var(--fg3);font-size:11px"></span>
             </div>
             <div style="display:flex;align-items:center;gap:8px">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--fg2)" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -2437,27 +2438,74 @@ function formatSize(bytes) {
   return (bytes / 1073741824).toFixed(1) + ' GB';
 }
 
-function renderBreadcrumb(path) {
+function renderBreadcrumb(fullPath) {
   const el = document.getElementById('file-breadcrumb');
   if (!el) return;
-  const parts = path.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
+  const isWin = /\\/.test(fullPath) || /^[A-Za-z]:/.test(fullPath);
+  const sep = isWin ? '\\' : '/';
   let html = '';
-  let accumulated = '';
-  for (const part of parts) {
-    accumulated += '/' + part;
-    const isLast = part === parts[parts.length - 1];
-    if (isLast) {
-      html += `<span style="color:var(--fg);font-weight:500">${escHtml(part)}</span>`;
+
+  if (isWin) {
+    // e.g. C:\Users\name or \\server\share\path
+    const normalized = fullPath.replace(/\//g, '\\');
+    const unc = normalized.startsWith('\\\\');
+    let rest = normalized;
+    let accumulated = '';
+    const segments = [];
+
+    if (unc) {
+      const m = normalized.match(/^\\\\[^\\]+\\[^\\]+/);
+      if (m) {
+        segments.push({ label: m[0], path: m[0] });
+        rest = normalized.slice(m[0].length).replace(/^\\+/, '');
+        accumulated = m[0];
+      }
     } else {
-      html += `<a href="#" data-path="${escHtml(accumulated)}" style="color:var(--accent);text-decoration:none;padding:4px 2px;display:inline-block">${escHtml(part)}</a>`;
-      html += `<span style="color:var(--fg2);margin:0 2px">/</span>`;
+      const driveMatch = normalized.match(/^([A-Za-z]:)(.*)$/);
+      if (driveMatch) {
+        const root = driveMatch[1] + '\\';
+        segments.push({ label: driveMatch[1], path: root });
+        rest = (driveMatch[2] || '').replace(/^\\+/, '');
+        accumulated = root;
+      }
+    }
+
+    const parts = rest.split('\\').filter(Boolean);
+    for (let i = 0; i < parts.length; i++) {
+      accumulated = accumulated.endsWith('\\') ? accumulated + parts[i] : accumulated + '\\' + parts[i];
+      segments.push({ label: parts[i], path: accumulated });
+    }
+
+    if (!segments.length) {
+      html = `<span style="color:var(--fg2)">\\</span><span style="color:var(--fg2);font-size:11px;margin-left:6px">(root)</span>`;
+    } else {
+      html = segments.map((seg, i) => {
+        const isLast = i === segments.length - 1;
+        if (isLast) return `<span style="color:var(--fg);font-weight:500">${escHtml(seg.label)}</span>`;
+        return `<a href="#" data-path="${escHtml(seg.path)}" style="color:var(--accent);text-decoration:none;padding:4px 2px;display:inline-block">${escHtml(seg.label)}</a>` +
+          `<span style="color:var(--fg2);margin:0 2px">\\</span>`;
+      }).join('');
+    }
+  } else {
+    const parts = fullPath.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
+    let accumulated = '';
+    for (const part of parts) {
+      accumulated += '/' + part;
+      const isLast = part === parts[parts.length - 1];
+      if (isLast) {
+        html += `<span style="color:var(--fg);font-weight:500">${escHtml(part)}</span>`;
+      } else {
+        html += `<a href="#" data-path="${escHtml(accumulated)}" style="color:var(--accent);text-decoration:none;padding:4px 2px;display:inline-block">${escHtml(part)}</a>`;
+        html += `<span style="color:var(--fg2);margin:0 2px">/</span>`;
+      }
+    }
+    if (!parts.length) {
+      html = `<span style="color:var(--fg2)">/</span><span style="color:var(--fg2);font-size:11px;margin-left:6px">(root)</span>`;
     }
   }
-  if (!parts.length) {
-    html = `<span style="color:var(--fg2)">/</span><span style="color:var(--fg2);font-size:11px;margin-left:6px">(root)</span>`;
-  }
+
   el.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--fg2);margin-right:4px;vertical-align:middle"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>' + html;
-  
+
   if (!el.dataset.delegated) {
     el.addEventListener('click', e => {
       const a = e.target.closest('a[data-path]');
@@ -4946,6 +4994,12 @@ function registerSW() {
 // START
 // ═══════════════════════════════════════════════════════
 init().catch(e => console.error('Init failed:', e));
+
+// Set version in About section
+fetch('/api/version').then(r => r.json()).then(d => {
+  const el = document.getElementById('about-version');
+  if (el) el.textContent = 'v' + (d.version || '');
+}).catch(() => {});
 
 // Warn before closing if there are unsaved changes or active terminals
 window.addEventListener('beforeunload', e => {

@@ -23,7 +23,7 @@ function printHelp() {
     PORT                  Server port (default: 3000)
     HOST                  Bind address (default: 0.0.0.0)
     PIN                   Authentication PIN (empty = no auth)
-    SHELL                 Shell to use (default: /bin/bash or system shell)
+    SHELL                 Shell to use (default: PowerShell on Windows, bash/sh elsewhere)
     WORKSPACE_ROOT        Root directory for file operations (default: ~)
 
   Examples:
@@ -70,25 +70,20 @@ function parseArgs(argv) {
 }
 
 function startTunnel(port) {
-  const { execSync, spawn } = require('child_process');
-  const os = require('os');
+  const { spawn } = require('child_process');
+  const { findCloudflared } = require('../server');
 
-  // Check if cloudflared is installed
-  try {
-    if (os.platform() === 'win32') {
-      execSync('where cloudflared', { stdio: 'ignore' });
-    } else {
-      execSync('command -v cloudflared', { stdio: 'ignore' });
-    }
-  } catch {
+  const bin = findCloudflared();
+  if (!bin) {
     console.error('\n  Error: cloudflared is not installed.');
     console.error('  Install it from: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/');
+    console.error('  Or re-run: npm install webtun  (postinstall downloads it)');
     return;
   }
 
-  console.log('\n  Starting Cloudflare Tunnel...');
+  console.log('  Starting Cloudflare Tunnel...');
 
-  const proc = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${port}`], {
+  const proc = spawn(bin, ['tunnel', '--url', `http://localhost:${port}`], {
     stdio: ['ignore', 'pipe', 'pipe']
   });
 
@@ -121,23 +116,22 @@ function startTunnel(port) {
     }
   });
 
-  // Cleanup on exit
-  process.on('SIGINT', () => {
+  const stop = () => {
     try { proc.kill('SIGTERM'); } catch {}
     process.exit(0);
-  });
-  process.on('SIGTERM', () => {
-    try { proc.kill('SIGTERM'); } catch {}
-    process.exit(0);
-  });
+  };
+  process.on('SIGINT', stop);
+  process.on('SIGTERM', stop);
 }
 
 const opts = parseArgs(args);
-const { startServer } = require('../server');
+const { startServer, PORT } = require('../server');
+
+const listenPort = opts.port || PORT;
 
 startServer(opts).then(() => {
   if (opts.tunnel) {
-    startTunnel(opts.port || 3000);
+    startTunnel(listenPort);
   }
 }).catch(err => {
   console.error('Failed to start server:', err.message);

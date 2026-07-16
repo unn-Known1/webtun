@@ -1,31 +1,72 @@
-const { app, BrowserWindow, Menu, shell, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain } = require('electron');
 const { fork } = require('child_process');
 const path = require('path');
 const http = require('http');
+const fs = require('fs');
 
 let mainWindow;
 let serverProcess;
 const PORT = process.env.PORT || 3000;
 
+function resolveNodeModules() {
+  // Packaged app: resources/node_modules or app.asar.unpacked/node_modules
+  if (app.isPackaged) {
+    const candidates = [
+      path.join(process.resourcesPath, 'node_modules'),
+      path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules'),
+      path.join(path.dirname(app.getAppPath()), 'node_modules'),
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(c)) return c;
+    }
+  }
+  return path.join(__dirname, '..', 'node_modules');
+}
+
 function startServer() {
   return new Promise((resolve, reject) => {
     const serverPath = path.join(__dirname, '..', 'server.js');
+    const nodeModules = resolveNodeModules();
+    const env = {
+      ...process.env,
+      PORT: String(PORT),
+      HOST: '127.0.0.1',
+    };
+    // Ensure forked server can resolve deps when packaged
+    env.NODE_PATH = [nodeModules, env.NODE_PATH].filter(Boolean).join(path.delimiter);
+
     serverProcess = fork(serverPath, [], {
-      env: { ...process.env, PORT: String(PORT), HOST: '127.0.0.1' },
+      env,
       stdio: ['ignore', 'pipe', 'pipe']
     });
 
     serverProcess.stdout.on('data', d => console.log('[server]', d.toString().trim()));
     serverProcess.stderr.on('data', d => console.error('[server]', d.toString().trim()));
 
-    serverProcess.on('exit', code => {
-      if (code !== 0) console.error(`Server exited with code ${code}`);
-    });
+    let settled = false;
+    const fail = (msg) => {
+      if (settled) return;
+      settled = true;
+      reject(new Error(msg));
+    };
 
+    serverProcess.on('exit', code => {
+      if (code !== 0) {
+        console.error(`Server exited with code ${code}`);
+        fail(`Server exited with code ${code}`);
+      }
+    });
+    serverProcess.on('error', err => fail(err.message));
+
+    const deadline = Date.now() + 30000;
     const check = () => {
+      if (settled) return;
+      if (Date.now() > deadline) return fail('Server start timed out');
       http.get(`http://127.0.0.1:${PORT}/api/auth/required`, res => {
-        if (res.statusCode === 200) resolve();
-        else setTimeout(check, 200);
+        if (res.statusCode === 200) {
+          settled = true;
+          resolve();
+        } else setTimeout(check, 200);
       }).on('error', () => setTimeout(check, 200));
     };
     setTimeout(check, 500);
@@ -97,7 +138,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   if (serverProcess) {
-    serverProcess.kill('SIGTERM');
+    try { serverProcess.kill('SIGTERM'); } catch {}
     serverProcess = null;
   }
 });
