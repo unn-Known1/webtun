@@ -1912,14 +1912,16 @@ function connectWebSocket(tab, isReconnect = false) {
       }
       if (ch === 13 || ch === 10) { // Enter
         const cmd = tab._histBuf.trim();
+        console.log('[hist-debug] ENTER buf=' + JSON.stringify(tab._histBuf) + ' cmd=' + JSON.stringify(cmd));
         if (cmd) {
-          try { addToCmdHist(cmd); } catch(e) {}
+          addToCmdHist(cmd);
         }
         tab._histBuf = '';
       } else if (ch === 127 || ch === 8) { // Backspace
         tab._histBuf = tab._histBuf.slice(0, -1);
       } else if (ch >= 32) {
         tab._histBuf += data[i];
+        console.log('[hist-debug] CHAR ch=' + ch + ' buf=' + JSON.stringify(tab._histBuf));
       }
     }
     const enc = new TextEncoder().encode(data);
@@ -5305,10 +5307,13 @@ async function addToCmdHist(cmd) {
   // Strip any remaining ANSI escape sequences
   const clean = cmd.replace(/\x1b\[[0-9;]*[a-zA-Z~]/g, '').replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '').trim();
   if (!clean) return;
+  console.log('[hist-debug] addToCmdHist posting:', JSON.stringify(clean));
   try {
-    await fetch('/api/history', { method: 'POST', headers: histHeaders(), body: JSON.stringify({ cmd: clean, max: cmdHistMax }) });
+    const r = await fetch('/api/history', { method: 'POST', headers: histHeaders(), body: JSON.stringify({ cmd: clean, max: cmdHistMax }) });
+    const d = await r.json();
+    console.log('[hist-debug] API response:', d.success, 'items:', d.history?.length);
     await getCmdHist();
-  } catch {}
+  } catch(e) { console.error('[hist-debug] addToCmdHist error:', e); }
 }
 async function removeCmdHistItem(idx) {
   try {
