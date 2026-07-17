@@ -1282,7 +1282,8 @@ wss.on('connection', (ws, req) => {
         });
       }
     } else {
-      proc = pty.spawn(SHELL, [], {
+      const shellArgs = os.platform() === 'win32' ? ['-NoLogo'] : ['-l'];
+      proc = pty.spawn(SHELL, shellArgs, {
         name: 'xterm-256color', cols, rows, cwd,
         env: sessionEnv
       });
@@ -1293,9 +1294,29 @@ wss.on('connection', (ws, req) => {
     return;
   }
 
-  proc.onData(data => send(0x00, data));
+  // Back-pressure: pause PTY output when WebSocket send buffer is full
+  let paused = false;
+  const HIGH_WATER = 4 * 1024 * 1024; // 4MB — pause PTY above this
+  const LOW_WATER  = 1 * 1024 * 1024; // 1MB — resume PTY below this
+
+  proc.onData(data => {
+    if (ws.readyState !== WebSocket.OPEN) return;
+    send(0x00, data);
+    // If WebSocket buffer is backing up, pause PTY to prevent OOM
+    if (!paused && ws.bufferedAmount > HIGH_WATER) {
+      try { proc.pause(); paused = true; } catch (_) {}
+    }
+  });
+
+  // Drain check: resume PTY when buffer drops
+  const drainCheck = setInterval(() => {
+    if (paused && ws.bufferedAmount < LOW_WATER) {
+      try { proc.resume(); paused = false; } catch (_) {}
+    }
+  }, 50);
 
   proc.onExit(() => {
+    clearInterval(drainCheck);
     if (!TMUX || !sessionId) send(0x01, Buffer.from([0]));
     ws.close();
   });
@@ -1314,8 +1335,8 @@ wss.on('connection', (ws, req) => {
       if (buf.length < 1) return;
       const type = buf[0];
       if (type === 0x00) {
-        // Limit input to 64KB per message
-        const payload = buf.slice(1, Math.min(buf.length, 65537));
+        // Limit input to 1MB per message
+        const payload = buf.slice(1, Math.min(buf.length, 1048577));
         proc.write(payload.toString('utf8'));
       } else if (type === 0x01 && buf.length >= 5) {
         const c = buf.readUInt16LE(1), r = buf.readUInt16LE(3);
@@ -1331,6 +1352,7 @@ wss.on('connection', (ws, req) => {
 
   const cleanup = () => {
     clearInterval(pingInterval);
+    clearInterval(drainCheck);
     try { proc.kill(); } catch {}
   };
   ws.on('close', cleanup);
