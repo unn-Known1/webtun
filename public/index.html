@@ -4552,6 +4552,7 @@ function pasteToTerminal() {
       const buf = new Uint8Array(1 + enc.length);
       buf[0] = 0x00; buf.set(enc, 1);
       tab.ws.send(buf.buffer);
+      tab.term?.focus();
       toast('Pasted to terminal', 'success');
     }
   };
