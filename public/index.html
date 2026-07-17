@@ -14,7 +14,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-search@0.15.0/lib/addon-search.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0.11.0/lib/addon-web-links.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-unicode11@0.6.0/lib/addon-unicode11.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-unicode11@0.7.0/lib/addon-unicode11.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-webgl@0.18.1/lib/addon-webgl.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
@@ -2016,13 +2016,16 @@ function initTerminal(tab) {
   const fitAddon = new FitAddon.FitAddon();
   const searchAddon = new SearchAddon.SearchAddon();
   const webLinksAddon = new WebLinksAddon.WebLinksAddon();
-  const unicodeAddon = new Unicode11Addon.Unicode11Addon();
 
   term.loadAddon(fitAddon);
   term.loadAddon(searchAddon);
   term.loadAddon(webLinksAddon);
-  term.loadAddon(unicodeAddon);
-  term.unicode.activeVersion = '11';
+
+  try {
+    const unicodeAddon = new Unicode11Addon.Unicode11Addon();
+    term.loadAddon(unicodeAddon);
+    term.unicode.activeVersion = '11';
+  } catch (_) {}
 
   // GPU-accelerated renderer — falls back to canvas if WebGL unavailable
   try {
