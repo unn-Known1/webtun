@@ -1900,7 +1900,9 @@ function connectWebSocket(tab, isReconnect = false) {
       const ch = data.charCodeAt(i);
       if (ch === 13 || ch === 10) { // Enter
         const cmd = tab._histBuf.trim();
-        if (cmd) addToCmdHist(cmd);
+        if (cmd) {
+          try { addToCmdHist(cmd); } catch(e) { console.error('[hist] error:', e); }
+        }
         tab._histBuf = '';
       } else if (ch === 127 || ch === 8) { // Backspace
         tab._histBuf = tab._histBuf.slice(0, -1);
@@ -5267,7 +5269,12 @@ function getCmdHist() {
   try { return JSON.parse(localStorage.getItem('wt-cmdhist')) || []; } catch(e) { return []; }
 }
 function saveCmdHist(hist) {
-  localStorage.setItem('wt-cmdhist', JSON.stringify(hist));
+  try {
+    localStorage.setItem('wt-cmdhist', JSON.stringify(hist));
+    console.log('[hist] saved to localStorage, count:', hist.length);
+  } catch(e) {
+    console.error('[hist] localStorage error:', e);
+  }
 }
 function loadHistMax() {
   try { cmdHistMax = Math.max(10, Math.min(500, JSON.parse(localStorage.getItem('wt-cmdhist-max')) || 50)); } catch(e) { cmdHistMax = 50; }
@@ -5285,10 +5292,11 @@ function addToCmdHist(cmd) {
     hist[0].time = Date.now();
     hist[0].count = (hist[0].count || 1) + 1;
   } else {
-    hist.unshift({ cmd, time: Date.now(), count: 1 });
+    hist.unshift({ cmd: cmd.trim(), time: Date.now(), count: 1 });
   }
   if (hist.length > cmdHistMax) hist.length = cmdHistMax;
   saveCmdHist(hist);
+  console.log('[hist] recorded:', cmd.trim(), 'total:', hist.length);
 }
 function removeCmdHistItem(idx) {
   const hist = getCmdHist();
@@ -5347,6 +5355,7 @@ function renderCmdHist() {
   const list = document.getElementById('cmd-hist-list');
   const empty = document.getElementById('cmd-hist-empty');
   const hist = getCmdHist();
+  console.log('[hist] renderCmdHist, items:', hist.length);
   const q = (document.getElementById('cmd-lib-search').value || '').toLowerCase();
   const filtered = q ? hist.filter(h => h.cmd.toLowerCase().includes(q)) : hist;
 
