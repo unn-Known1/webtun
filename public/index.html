@@ -5273,60 +5273,63 @@ function deleteCustomCmd(name, cmd) {
 }
 
 // ═══════════════════════════════════════════════════════
-// COMMAND HISTORY
+// COMMAND HISTORY (server-side storage)
 // ═══════════════════════════════════════════════════════
 let cmdHistMax = 50;
+let _cmdHistCache = [];
 
-function getCmdHist() {
-  try { return JSON.parse(localStorage.getItem('wt-cmdhist')) || []; } catch(e) { return []; }
+function histHeaders() {
+  return { 'Content-Type': 'application/json', 'x-pin-token': localStorage.getItem('wt-pin') || '' };
 }
-function saveCmdHist(hist) {
-  localStorage.setItem('wt-cmdhist', JSON.stringify(hist));
+function histHeadersDelete() {
+  return { 'x-pin-token': localStorage.getItem('wt-pin') || '' };
+}
+async function getCmdHist() {
+  try {
+    const r = await fetch('/api/history', { headers: histHeadersDelete() });
+    if (!r.ok) return _cmdHistCache;
+    const data = await r.json();
+    _cmdHistCache = data.history || [];
+    if (data.max) cmdHistMax = data.max;
+    return _cmdHistCache;
+  } catch { return _cmdHistCache; }
 }
 function loadHistMax() {
-  try { cmdHistMax = Math.max(10, Math.min(500, JSON.parse(localStorage.getItem('wt-cmdhist-max')) || 50)); } catch(e) { cmdHistMax = 50; }
-  const el = document.getElementById('cmd-hist-max');
-  if (el) el.value = cmdHistMax;
+  getCmdHist().then(() => {
+    const el = document.getElementById('cmd-hist-max');
+    if (el) el.value = cmdHistMax;
+  });
 }
-function saveHistMax() {
-  localStorage.setItem('wt-cmdhist-max', JSON.stringify(cmdHistMax));
-}
-function addToCmdHist(cmd) {
+async function addToCmdHist(cmd) {
   if (!cmd || !cmd.trim()) return;
   // Strip any remaining ANSI escape sequences
   const clean = cmd.replace(/\x1b\[[0-9;]*[a-zA-Z~]/g, '').replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '').trim();
   if (!clean) return;
-  const hist = getCmdHist();
-  // dedupe consecutive identical commands
-  if (hist.length && hist[0].cmd === clean) {
-    hist[0].time = Date.now();
-    hist[0].count = (hist[0].count || 1) + 1;
-  } else {
-    hist.unshift({ cmd: clean, time: Date.now(), count: 1 });
-  }
-  if (hist.length > cmdHistMax) hist.length = cmdHistMax;
-  saveCmdHist(hist);
+  try {
+    await fetch('/api/history', { method: 'POST', headers: histHeaders(), body: JSON.stringify({ cmd: clean, max: cmdHistMax }) });
+    await getCmdHist();
+  } catch {}
 }
-function removeCmdHistItem(idx) {
-  const hist = getCmdHist();
-  hist.splice(idx, 1);
-  saveCmdHist(hist);
-  renderCmdHist();
+async function removeCmdHistItem(idx) {
+  try {
+    await fetch('/api/history/' + idx, { method: 'DELETE', headers: histHeadersDelete() });
+    await getCmdHist();
+    renderCmdHist();
+  } catch {}
 }
-function clearCmdHist() {
-  saveCmdHist([]);
-  renderCmdHist();
-  toast('History cleared', 'info');
+async function clearCmdHist() {
+  try {
+    await fetch('/api/history', { method: 'DELETE', headers: histHeadersDelete() });
+    _cmdHistCache = [];
+    renderCmdHist();
+    toast('History cleared', 'info');
+  } catch {}
 }
-function updateHistMax(val) {
+async function updateHistMax(val) {
   cmdHistMax = Math.max(10, Math.min(500, val || 50));
-  saveHistMax();
-  const hist = getCmdHist();
-  if (hist.length > cmdHistMax) {
-    hist.length = cmdHistMax;
-    saveCmdHist(hist);
-  }
-  renderCmdHist();
+  try {
+    await fetch('/api/history', { method: 'POST', headers: histHeaders(), body: JSON.stringify({ cmd: '', max: cmdHistMax }) });
+  } catch {}
 }
 function switchCmdTab(tab) {
   const libBtn = document.getElementById('cmd-tab-lib');
@@ -5360,10 +5363,9 @@ function switchCmdTab(tab) {
   search.value = '';
   search.focus();
 }
-function renderCmdHist() {
+async function renderCmdHist() {
   const list = document.getElementById('cmd-hist-list');
-  const empty = document.getElementById('cmd-hist-empty');
-  const hist = getCmdHist();
+  const hist = await getCmdHist();
   const q = (document.getElementById('cmd-lib-search').value || '').toLowerCase();
   const filtered = q ? hist.filter(h => h.cmd.toLowerCase().includes(q)) : hist;
 

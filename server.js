@@ -1205,6 +1205,63 @@ app.delete('/api/clipboard', checkPin, (req, res) => {
   res.json({ success: true });
 });
 
+// ── Command history (server-side, persists across sessions) ────────────
+const HISTORY_FILE = path.join(__dirname, '.cmdhist.json');
+let cmdHistory = [];
+let cmdHistMax = 50;
+
+function loadCmdHistory() {
+  try { cmdHistory = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8')); } catch { cmdHistory = []; }
+}
+function saveCmdHistory() {
+  try { fs.writeFileSync(HISTORY_FILE, JSON.stringify(cmdHistory)); } catch {}
+}
+loadCmdHistory();
+
+app.get('/api/history', checkPin, (req, res) => {
+  res.json({ history: cmdHistory, max: cmdHistMax });
+});
+
+app.post('/api/history', checkPin, (req, res) => {
+  try {
+    const { cmd, max } = req.body;
+    if (!cmd || typeof cmd !== 'string' || !cmd.trim()) {
+      return res.status(400).json({ error: 'cmd string required' });
+    }
+    if (typeof max === 'number' && max >= 10 && max <= 500) {
+      cmdHistMax = max;
+    }
+    const clean = cmd.trim();
+    if (cmdHistory.length && cmdHistory[0].cmd === clean) {
+      cmdHistory[0].time = Date.now();
+      cmdHistory[0].count = (cmdHistory[0].count || 1) + 1;
+    } else {
+      cmdHistory.unshift({ cmd: clean, time: Date.now(), count: 1 });
+    }
+    if (cmdHistory.length > cmdHistMax) cmdHistory.length = cmdHistMax;
+    saveCmdHistory();
+    res.json({ success: true, history: cmdHistory });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/history', checkPin, (req, res) => {
+  cmdHistory = [];
+  saveCmdHistory();
+  res.json({ success: true });
+});
+
+app.delete('/api/history/:index', checkPin, (req, res) => {
+  const idx = parseInt(req.params.index);
+  if (isNaN(idx) || idx < 0 || idx >= cmdHistory.length) {
+    return res.status(400).json({ error: 'invalid index' });
+  }
+  cmdHistory.splice(idx, 1);
+  saveCmdHistory();
+  res.json({ success: true, history: cmdHistory });
+});
+
 // ── Session persistence via tmux ──────────────────────────────────────
 const TMUX = (() => { try { return execSync('command -v tmux', { stdio: ['ignore','pipe','ignore'] }).toString().trim(); } catch { return null; } })();
 

@@ -5,6 +5,7 @@ webtun.pid
 webtun.log
 cloudflared.log
 .tunnels.json
+.cmdhist.json
 .mimocode
 .opencode
 dist/
