@@ -1894,6 +1894,20 @@ function connectWebSocket(tab, isReconnect = false) {
 
   const sendInput = data => {
     if (ws.readyState !== WebSocket.OPEN) return;
+    // Track input buffer for command history
+    if (!tab._histBuf) tab._histBuf = '';
+    for (let i = 0; i < data.length; i++) {
+      const ch = data.charCodeAt(i);
+      if (ch === 13 || ch === 10) { // Enter
+        const cmd = tab._histBuf.trim();
+        if (cmd) addToCmdHist(cmd);
+        tab._histBuf = '';
+      } else if (ch === 127 || ch === 8) { // Backspace
+        tab._histBuf = tab._histBuf.slice(0, -1);
+      } else if (ch >= 32) {
+        tab._histBuf += data[i];
+      }
+    }
     const enc = new TextEncoder().encode(data);
     const buf = new Uint8Array(1 + enc.length);
     buf[0] = 0x00; buf.set(enc, 1);
@@ -5302,6 +5316,7 @@ function switchCmdTab(tab) {
   const libList = document.getElementById('cmd-lib-list');
   const histList = document.getElementById('cmd-hist-list');
   const histHeader = document.getElementById('cmd-hist-header');
+  const footer = document.getElementById('cmd-lib-footer');
   const search = document.getElementById('cmd-lib-search');
   if (tab === 'library') {
     libBtn.classList.add('active');
@@ -5309,6 +5324,7 @@ function switchCmdTab(tab) {
     libList.style.display = '';
     histList.style.display = 'none';
     histHeader.style.display = 'none';
+    footer.style.display = '';
     search.placeholder = 'Filter commands…';
     search.oninput = () => filterCmdLib();
     filterCmdLib();
@@ -5318,6 +5334,7 @@ function switchCmdTab(tab) {
     histList.style.display = '';
     libList.style.display = 'none';
     histHeader.style.display = '';
+    footer.style.display = 'none';
     search.placeholder = 'Filter history…';
     search.oninput = () => renderCmdHist();
     renderCmdHist();
