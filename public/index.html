@@ -1198,12 +1198,36 @@ svg { display: block; }
 </div>
 
 <!-- Terminal context menu -->
-<div id="term-ctx-menu" role="menu" style="position:fixed;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 4px 20px var(--shadow-color);z-index:500;display:none;min-width:160px;overflow:hidden">
+<div id="term-ctx-menu" role="menu" style="position:fixed;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 4px 20px var(--shadow-color);z-index:500;display:none;min-width:180px;overflow:hidden">
+  <!-- Clipboard -->
   <div class="ctx-item" id="term-ctx-copy" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</div>
   <div class="ctx-item" id="term-ctx-paste" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="14" y="2" width="8" height="8" rx="2"/><path d="M16 14H8M8 18h8"/><path d="M5 4h4"/><rect x="2" y="6" width="16" height="16" rx="2"/></svg> Paste</div>
-  <div class="ctx-item" id="term-ctx-select-all" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M15 3v18"/><path d="M3 9h18"/><path d="M3 15h18"/></svg> Select All</div>
   <div class="ctx-sep"></div>
-  <div class="ctx-item" id="term-ctx-clear" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg> Clear</div>
+  <div class="ctx-item" id="term-ctx-select-all" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M15 3v18"/><path d="M3 9h18"/><path d="M3 15h18"/></svg> Select All</div>
+  <div class="ctx-item" id="term-ctx-select-line" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/></svg> Select Line</div>
+  <!-- Search -->
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" id="term-ctx-find" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Find in Terminal</div>
+  <!-- View -->
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" id="term-ctx-zoom-in" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg> Zoom In</div>
+  <div class="ctx-item" id="term-ctx-zoom-out" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg> Zoom Out</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" id="term-ctx-scroll-top" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg> Scroll to Top</div>
+  <div class="ctx-item" id="term-ctx-scroll-bottom" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg> Scroll to Bottom</div>
+  <!-- Tab -->
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" id="term-ctx-new-tab" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New Tab Here</div>
+  <div class="ctx-item" id="term-ctx-rename" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg> Rename Tab</div>
+  <!-- Path -->
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" id="term-ctx-copy-cwd" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy Working Directory</div>
+  <div class="ctx-item" id="term-ctx-bookmark" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg> Bookmark Directory</div>
+  <!-- Control -->
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" id="term-ctx-interrupt" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg> Interrupt (Ctrl+C)</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item danger" id="term-ctx-clear" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg> Clear</div>
 </div>
 
 <!-- Fuzzy Finder Modal -->
@@ -2686,24 +2710,106 @@ function renderBreadcrumb(fullPath) {
 let fsClipboard = null;
 
 // Terminal context menu actions (registered once)
+function hideTermCtxMenu() { document.getElementById('term-ctx-menu').style.display = 'none'; }
 document.getElementById('term-ctx-copy').addEventListener('click', () => {
   const t = getActiveTab();
-  if (t?.term) { const sel = t.term.getSelection(); if (sel) navigator.clipboard.writeText(sel); }
-  document.getElementById('term-ctx-menu').style.display = 'none';
+  if (t?.term) {
+    const sel = t.term.getSelection();
+    if (sel) {
+      navigator.clipboard.writeText(sel).then(() => {
+        toast('Copied to clipboard', 'success');
+      }).catch(() => {
+        document.execCommand('copy');
+        toast('Copied to clipboard', 'success');
+      });
+    }
+  }
+  hideTermCtxMenu();
 });
 document.getElementById('term-ctx-paste').addEventListener('click', () => {
   pasteToTerminal();
-  document.getElementById('term-ctx-menu').style.display = 'none';
+  hideTermCtxMenu();
 });
 document.getElementById('term-ctx-select-all').addEventListener('click', () => {
   const t = getActiveTab();
   if (t?.term) t.term.selectAll();
-  document.getElementById('term-ctx-menu').style.display = 'none';
+  hideTermCtxMenu();
+});
+document.getElementById('term-ctx-select-line').addEventListener('click', () => {
+  selectTermLine();
+  hideTermCtxMenu();
+});
+document.getElementById('term-ctx-find').addEventListener('click', () => {
+  toggleSearch();
+  hideTermCtxMenu();
+});
+document.getElementById('term-ctx-zoom-in').addEventListener('click', () => {
+  applyFontSize((settings.fontSize || 14) + 1);
+  hideTermCtxMenu();
+});
+document.getElementById('term-ctx-zoom-out').addEventListener('click', () => {
+  applyFontSize((settings.fontSize || 14) - 1);
+  hideTermCtxMenu();
+});
+document.getElementById('term-ctx-new-tab').addEventListener('click', () => {
+  const t = getActiveTab();
+  newTab(null, null, t?.cwd || currentPath);
+  hideTermCtxMenu();
+});
+document.getElementById('term-ctx-copy-cwd').addEventListener('click', () => {
+  const t = getActiveTab();
+  const cwd = t?.cwd || currentPath;
+  if (cwd) {
+    navigator.clipboard.writeText(cwd).then(() => {
+      toast('Path copied', 'success');
+    }).catch(() => {
+      document.execCommand('copy');
+      toast('Path copied', 'success');
+    });
+  }
+  hideTermCtxMenu();
+});
+document.getElementById('term-ctx-bookmark').addEventListener('click', () => {
+  const t = getActiveTab();
+  const cwd = t?.cwd || currentPath;
+  if (cwd) {
+    const bm = getBookmarks();
+    if (bm.some(b => b.path === cwd)) { toast('Already bookmarked', 'info'); }
+    else {
+      const sep = cwd.includes('\\') ? '\\' : '/';
+      bm.push({ name: cwd.split(sep).filter(Boolean).pop() || cwd, path: cwd });
+      saveBookmarks(bm);
+      toast('Bookmarked', 'success');
+    }
+  }
+  hideTermCtxMenu();
+});
+document.getElementById('term-ctx-interrupt').addEventListener('click', () => {
+  sendKey('\x03');
+  hideTermCtxMenu();
+});
+document.getElementById('term-ctx-rename').addEventListener('click', () => {
+  const t = getActiveTab();
+  if (t?.el) {
+    const span = t.el.querySelector('.tab-title');
+    if (span) span.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+  }
+  hideTermCtxMenu();
+});
+document.getElementById('term-ctx-scroll-top').addEventListener('click', () => {
+  const t = getActiveTab();
+  if (t?.term) t.term.scrollToTop();
+  hideTermCtxMenu();
+});
+document.getElementById('term-ctx-scroll-bottom').addEventListener('click', () => {
+  const t = getActiveTab();
+  if (t?.term) t.term.scrollToBottom();
+  hideTermCtxMenu();
 });
 document.getElementById('term-ctx-clear').addEventListener('click', () => {
   const t = getActiveTab();
   if (t?.term) t.term.clear();
-  document.getElementById('term-ctx-menu').style.display = 'none';
+  hideTermCtxMenu();
 });
 
 function showCtxMenu(e, file) {
@@ -4191,6 +4297,11 @@ function setupKeyboardShortcuts() {
     if (ctrl && e.shiftKey && e.key === 'ArrowLeft') { e.preventDefault(); cycleTab(-1); }
     if (ctrl && e.shiftKey && e.key === 'r') { e.preventDefault(); refreshPreview(); }
     if (e.key === 'Escape') {
+      const termMenu = document.getElementById('term-ctx-menu');
+      if (termMenu && termMenu.style.display !== 'none') {
+        termMenu.style.display = 'none';
+        return;
+      }
       if (document.getElementById('ctx-menu').classList.contains('open')) {
         document.getElementById('ctx-menu').classList.remove('open');
         return;
@@ -4366,14 +4477,16 @@ function fallbackPaste(callback) {
     _pasteInput = document.createElement('textarea');
     _pasteInput.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;z-index:-1';
     document.body.appendChild(_pasteInput);
-    _pasteInput.addEventListener('input', () => {
-      callback(_pasteInput.value);
-      _pasteInput.value = '';
+    _pasteInput.addEventListener('paste', () => {
+      setTimeout(() => {
+        callback(_pasteInput.value);
+        _pasteInput.value = '';
+      }, 0);
     });
   }
   _pasteInput.value = '';
   _pasteInput.focus();
-  toast('Tap & hold to paste', 'info');
+  document.execCommand('paste');
 }
 
 function selectAllTerm() {
