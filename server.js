@@ -1225,11 +1225,13 @@ app.get('/api/history', checkPin, (req, res) => {
 app.post('/api/history', checkPin, (req, res) => {
   try {
     const { cmd, max } = req.body;
-    if (!cmd || typeof cmd !== 'string' || !cmd.trim()) {
-      return res.status(400).json({ error: 'cmd string required' });
-    }
     if (typeof max === 'number' && max >= 10 && max <= 500) {
       cmdHistMax = max;
+    }
+    if (!cmd || typeof cmd !== 'string' || !cmd.trim()) {
+      // No command — just updating max
+      saveCmdHistory();
+      return res.json({ success: true, history: cmdHistory, max: cmdHistMax });
     }
     const clean = cmd.trim();
     if (cmdHistory.length && cmdHistory[0].cmd === clean) {
