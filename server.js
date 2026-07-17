@@ -127,6 +127,14 @@ const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT ? path.resolve(process.env.WOR
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Handle malformed JSON gracefully
+app.use((err, req, res, next) => {
+  if (err.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'Invalid JSON' });
+  }
+  next(err);
+});
+
 // Security headers
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
