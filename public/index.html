@@ -660,6 +660,61 @@ svg { display: block; }
 #cmd-lib-search {
   width: calc(100% - 28px); height: 28px; font-size: 12px; margin: 8px 14px 0;
 }
+.cmd-lib-tabs {
+  display: flex; gap: 0; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.cmd-lib-tab {
+  flex: 1; height: 32px; font-size: 12px; font-weight: 600; color: var(--fg2);
+  background: none; border: none; border-bottom: 2px solid transparent;
+  cursor: pointer; transition: all var(--transition-fast);
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+}
+.cmd-lib-tab:hover { color: var(--fg); background: var(--bg3); }
+.cmd-lib-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+#cmd-hist-list {
+  flex: 1; overflow-y: auto; padding: 6px; min-height: 0; display: none;
+}
+#cmd-hist-empty {
+  text-align: center; color: var(--fg2); padding: 24px 16px; font-size: 12px;
+}
+.cmd-hist-item {
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+  border-radius: var(--radius-sm); cursor: default; font-size: 12px;
+  transition: background var(--transition-fast);
+}
+.cmd-hist-item:hover { background: var(--bg4); }
+.cmd-hist-item .cmd-hist-cmd {
+  flex: 1; color: var(--fg); font-family: var(--font); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.cmd-hist-item .cmd-hist-time {
+  font-size: 10px; color: var(--fg3); flex-shrink: 0;
+}
+.cmd-hist-item .cmd-hist-run {
+  width: 24px; height: 24px; display: none; align-items: center; justify-content: center;
+  border-radius: var(--radius-sm); color: var(--fg2); flex-shrink: 0; cursor: pointer;
+}
+.cmd-hist-item:hover .cmd-hist-run { display: flex; }
+.cmd-hist-item .cmd-hist-run:hover { background: var(--bg4); color: var(--green); }
+.cmd-hist-item .cmd-hist-del {
+  width: 24px; height: 24px; display: none; align-items: center; justify-content: center;
+  border-radius: var(--radius-sm); color: var(--fg2); flex-shrink: 0; cursor: pointer;
+}
+.cmd-hist-item:hover .cmd-hist-del { display: flex; }
+.cmd-hist-item .cmd-hist-del:hover { color: var(--red); background: var(--bg4); }
+.cmd-hist-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 10px; flex-shrink: 0;
+}
+.cmd-hist-header label { font-size: 11px; color: var(--fg2); display: flex; align-items: center; gap: 4px; }
+.cmd-hist-header input[type="number"] {
+  width: 52px; height: 22px; font-size: 11px; padding: 0 4px; text-align: center;
+}
+.cmd-hist-clear {
+  font-size: 11px; color: var(--red); background: none; border: none; cursor: pointer;
+  padding: 2px 6px; border-radius: var(--radius-sm);
+}
+.cmd-hist-clear:hover { background: var(--bg4); }
 #cmd-lib-list {
   flex: 1; overflow-y: auto; padding: 6px; min-height: 0;
 }
@@ -957,8 +1012,19 @@ svg { display: block; }
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
           </div>
+          <div class="cmd-lib-tabs">
+            <button class="cmd-lib-tab active" id="cmd-tab-lib" onclick="switchCmdTab('library')">Library</button>
+            <button class="cmd-lib-tab" id="cmd-tab-hist" onclick="switchCmdTab('history')">History</button>
+          </div>
           <input id="cmd-lib-search" type="text" placeholder="Filter commands…" oninput="filterCmdLib()">
           <div id="cmd-lib-list"></div>
+          <div id="cmd-hist-list">
+            <div id="cmd-hist-empty">No commands run yet</div>
+          </div>
+          <div class="cmd-hist-header" id="cmd-hist-header" style="display:none">
+            <label>Keep last <input type="number" id="cmd-hist-max" min="10" max="500" value="50" onchange="updateHistMax(+this.value)"> cmds</label>
+            <button class="cmd-hist-clear" onclick="clearCmdHist()">Clear History</button>
+          </div>
           <div id="cmd-lib-footer">
             <input id="cmd-lib-name-input" type="text" placeholder="Name" onkeydown="if(event.key==='Enter')document.getElementById('cmd-lib-cmd-input').focus()">
             <input id="cmd-lib-cmd-input" type="text" placeholder="Command (e.g. ls -la)" onkeydown="if(event.key==='Enter')addCustomCmd()">
@@ -5028,9 +5094,8 @@ function toggleCmdLib() {
   panel.classList.toggle('open');
   document.getElementById('cmd-lib-toggle').classList.toggle('active', !isOpen);
   if (!isOpen) {
-    renderCmdLib();
-    document.getElementById('cmd-lib-search').value = '';
-    document.getElementById('cmd-lib-search').focus();
+    loadHistMax();
+    switchCmdTab('library');
     setTimeout(() => {
       document.addEventListener('click', closeCmdLibOnClickOutside, true);
     }, 0);
@@ -5136,6 +5201,7 @@ function runCmdLib(cmd) {
   buf.set(enc, 1);
   tab.ws.send(buf.buffer);
   tab.term?.focus();
+  addToCmdHist(cmd);
   toast('Running: ' + cmd, 'info');
 }
 
@@ -5164,6 +5230,138 @@ function deleteCustomCmd(name, cmd) {
   saveCmdLib(custom);
   renderCmdLib();
   toast('Command removed', 'info');
+}
+
+// ═══════════════════════════════════════════════════════
+// COMMAND HISTORY
+// ═══════════════════════════════════════════════════════
+let cmdHistMax = 50;
+
+function getCmdHist() {
+  try { return JSON.parse(localStorage.getItem('wt-cmdhist')) || []; } catch(e) { return []; }
+}
+function saveCmdHist(hist) {
+  localStorage.setItem('wt-cmdhist', JSON.stringify(hist));
+}
+function loadHistMax() {
+  try { cmdHistMax = Math.max(10, Math.min(500, JSON.parse(localStorage.getItem('wt-cmdhist-max')) || 50)); } catch(e) { cmdHistMax = 50; }
+  const el = document.getElementById('cmd-hist-max');
+  if (el) el.value = cmdHistMax;
+}
+function saveHistMax() {
+  localStorage.setItem('wt-cmdhist-max', JSON.stringify(cmdHistMax));
+}
+function addToCmdHist(cmd) {
+  if (!cmd || !cmd.trim()) return;
+  const hist = getCmdHist();
+  // dedupe consecutive identical commands
+  if (hist.length && hist[0].cmd === cmd) {
+    hist[0].time = Date.now();
+    hist[0].count = (hist[0].count || 1) + 1;
+  } else {
+    hist.unshift({ cmd, time: Date.now(), count: 1 });
+  }
+  if (hist.length > cmdHistMax) hist.length = cmdHistMax;
+  saveCmdHist(hist);
+}
+function removeCmdHistItem(idx) {
+  const hist = getCmdHist();
+  hist.splice(idx, 1);
+  saveCmdHist(hist);
+  renderCmdHist();
+}
+function clearCmdHist() {
+  saveCmdHist([]);
+  renderCmdHist();
+  toast('History cleared', 'info');
+}
+function updateHistMax(val) {
+  cmdHistMax = Math.max(10, Math.min(500, val || 50));
+  saveHistMax();
+  const hist = getCmdHist();
+  if (hist.length > cmdHistMax) {
+    hist.length = cmdHistMax;
+    saveCmdHist(hist);
+  }
+  renderCmdHist();
+}
+function switchCmdTab(tab) {
+  const libBtn = document.getElementById('cmd-tab-lib');
+  const histBtn = document.getElementById('cmd-tab-hist');
+  const libList = document.getElementById('cmd-lib-list');
+  const histList = document.getElementById('cmd-hist-list');
+  const histHeader = document.getElementById('cmd-hist-header');
+  const search = document.getElementById('cmd-lib-search');
+  if (tab === 'library') {
+    libBtn.classList.add('active');
+    histBtn.classList.remove('active');
+    libList.style.display = '';
+    histList.style.display = 'none';
+    histHeader.style.display = 'none';
+    search.placeholder = 'Filter commands…';
+    search.oninput = () => filterCmdLib();
+    filterCmdLib();
+  } else {
+    histBtn.classList.add('active');
+    libBtn.classList.remove('active');
+    histList.style.display = '';
+    libList.style.display = 'none';
+    histHeader.style.display = '';
+    search.placeholder = 'Filter history…';
+    search.oninput = () => renderCmdHist();
+    renderCmdHist();
+  }
+  search.value = '';
+  search.focus();
+}
+function renderCmdHist() {
+  const list = document.getElementById('cmd-hist-list');
+  const empty = document.getElementById('cmd-hist-empty');
+  const hist = getCmdHist();
+  const q = (document.getElementById('cmd-lib-search').value || '').toLowerCase();
+  const filtered = q ? hist.filter(h => h.cmd.toLowerCase().includes(q)) : hist;
+
+  list.innerHTML = '';
+  if (!filtered.length) {
+    list.innerHTML = '<div id="cmd-hist-empty">No commands run yet</div>';
+    return;
+  }
+
+  filtered.forEach((h, i) => {
+    const realIdx = q ? hist.indexOf(h) : i;
+    const item = document.createElement('div');
+    item.className = 'cmd-hist-item';
+
+    const cmdSpan = document.createElement('span');
+    cmdSpan.className = 'cmd-hist-cmd';
+    cmdSpan.textContent = h.cmd;
+    cmdSpan.title = h.cmd;
+    item.appendChild(cmdSpan);
+
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'cmd-hist-time';
+    const ago = Date.now() - h.time;
+    timeSpan.textContent = ago < 60000 ? 'just now' : ago < 3600000 ? Math.floor(ago / 60000) + 'm ago' : ago < 86400000 ? Math.floor(ago / 3600000) + 'h ago' : new Date(h.time).toLocaleDateString();
+    if (h.count > 1) timeSpan.textContent = '×' + h.count + ' ' + timeSpan.textContent;
+    item.appendChild(timeSpan);
+
+    const runBtn = document.createElement('button');
+    runBtn.className = 'cmd-hist-run';
+    runBtn.title = 'Run in terminal';
+    runBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6,3 20,12 6,21"/></svg>';
+    runBtn.addEventListener('click', e => { e.stopPropagation(); runCmdLib(h.cmd); });
+    item.appendChild(runBtn);
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'cmd-hist-del';
+    delBtn.title = 'Remove';
+    delBtn.textContent = '×';
+    delBtn.addEventListener('click', e => { e.stopPropagation(); removeCmdHistItem(realIdx); });
+    item.appendChild(delBtn);
+
+    item.addEventListener('click', () => runCmdLib(h.cmd));
+    list.appendChild(item);
+  });
 }
 
 // ═══════════════════════════════════════════════════════
