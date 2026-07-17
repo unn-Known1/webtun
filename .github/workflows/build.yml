@@ -44,6 +44,8 @@ jobs:
           key: electron-builder-win-${{ hashFiles('package-lock.json') }}
           restore-keys: electron-builder-win-
 
+      - run: npm ci
+
       - name: Build Windows
         shell: pwsh
         run: |
