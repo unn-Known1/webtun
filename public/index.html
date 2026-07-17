@@ -2268,6 +2268,10 @@ function sendKey(key) {
       altLatch = false;
     }
     updateModifierButtons();
+  } else {
+    shiftLatch = false;
+    altLatch = false;
+    updateModifierButtons();
   }
   const tab = getActiveTab();
   if (tab?.ws?.readyState === WebSocket.OPEN) {

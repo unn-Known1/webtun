@@ -90,10 +90,14 @@ install_node
 
 # ── python3-build-tools for node-pty ─────────────────────────
 if [[ "$OS" == "Linux" ]] && command -v apt-get &>/dev/null; then
-  dpkg -s python3-dev make g++ &>/dev/null 2>&1 || {
+  NEED_BUILD=false
+  for pkg in python3-dev make g++; do
+    dpkg -s "$pkg" &>/dev/null 2>&1 || { NEED_BUILD=true; break; }
+  done
+  if [ "$NEED_BUILD" = true ]; then
     info "Installing build tools for node-pty..."
     sudo apt-get install -y python3-dev make g++ &>/dev/null || true
-  }
+  fi
 fi
 
 # ── npm dependencies ─────────────────────────────────────────
@@ -107,9 +111,19 @@ PORT=3000
 
 if [ -f "$ENV_FILE" ]; then
   warn ".env already exists. Edit it to change settings."
-  # shellcheck source=/dev/null
-  source "$ENV_FILE" 2>/dev/null || true
-  PORT=${PORT:-3000}
+  # Parse .env without executing it (avoids shell injection)
+  while IFS='=' read -r key val; do
+    key="$(echo "$key" | xargs)"
+    [ -z "$key" ] || [[ "$key" == \#* ]] && continue
+    val="$(echo "$val" | xargs)"
+    # Strip surrounding quotes
+    val="${val#\"}"; val="${val%\"}"
+    val="${val#\'}"; val="${val%\'}"
+    case "$key" in
+      PORT) PORT="${val:-3000}" ;;
+    esac
+  done < "$ENV_FILE"
+  PORT="${PORT:-3000}"
 else
   echo ""
   echo "  ${BOLD}Configuration${RESET}"
@@ -222,7 +236,7 @@ EOF
 echo ""
 echo "  ${BOLD}${GREEN}Setup complete!${RESET}"
 echo ""
-  echo "  Starting WebTun server..."
+echo "  Starting WebTun server..."
 
 # Kill old instance if running
 if [ -f "$SCRIPT_DIR/webtun.pid" ]; then
@@ -273,7 +287,11 @@ echo "  ┌───────────────────────
 echo "  │  ${GREEN}${BOLD}WebTun is running!${RESET}                        │"
 echo "  │                                         │"
 echo "  │  Local:  ${CYAN}http://localhost:$PORT${RESET}           │"
-echo "  │  Network: ${CYAN}http://$(hostname -I 2>/dev/null | awk '{print $1}' || echo "YOUR_IP"):$PORT${RESET}          │"
+LOCAL_IP="$(hostname -I 2>/dev/null | awk '{print $1}' \
+  || ipconfig getifaddr en0 2>/dev/null \
+  || ifconfig 2>/dev/null | awk '/inet / && !/127\.0\.0\.1/{print $2; exit}' \
+  || echo "YOUR_IP")"
+echo "  │  Network: ${CYAN}http://${LOCAL_IP}:$PORT${RESET}          │"
 echo "  │                                         │"
 echo "  │  Log:    $LOG_FILE"
 echo "  │  PID:    $SERVER_PID                               │"

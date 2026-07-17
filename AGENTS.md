@@ -30,7 +30,11 @@ No test, lint, or typecheck commands exist. Verify changes via `npm start`.
 ## Config
 `.env` controls: `PORT` (default 3000), `HOST`, `PIN`, `SHELL`, `WORKSPACE_ROOT` (defaults to `os.homedir()`).
 
-PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means no auth.
+Optional env vars:
+- `TRUST_PROXY=true` — trust `X-Forwarded-For` from first proxy (default: loopback only)
+- `WEBTUN_SHELL` — override shell on Windows (default: PowerShell; set to `/usr/bin/bash` for Git Bash)
+
+PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means no auth. Quoted values in `.env` are stripped (e.g., `PIN="secret"` works).
 
 ## Key Details
 - **`postinstall.js`** auto-downloads `cloudflared` to `/usr/local/bin/cloudflared` if missing.
@@ -38,20 +42,20 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
 - **Build output**: `dist/` (AppImage, deb, dmg, exe, zip), `release/`. Git-ignored.
 - **CI**: GitHub Actions builds Electron packages on `v*` tag push (Linux, macOS, Windows). All artifacts are uploaded to the release.
 - **Systemd**: `setup.sh` optionally creates `/etc/systemd/system/webtun.service`.
-- **CSP** in `server.js:33` allows CDN scripts from `cdn.jsdelivr.net`.
+- **CSP** in `server.js:136` allows CDN scripts from `cdn.jsdelivr.net`.
 - **File API** workspace root: `WORKSPACE_ROOT` env var, falls back to `os.homedir()`.
 - `public/sw.js` enables PWA installability.
 - **`cloakbrowser`** and **`playwright-core`** in `dependencies` are unused in the codebase.
 
 ## Architecture Notables
 
-- **WebSocket binary protocol** (`server.js:574-582`): terminal I/O uses a custom binary protocol, not JSON.
+- **WebSocket binary protocol** (`server.js:1254-1265`): terminal I/O uses a custom binary protocol, not JSON.
   - Server→Client: `0x00` data, `0x01` exit (1B code), `0x02` error
   - Client→Server: `0x00` input (max 64KB), `0x01` resize (4B: cols/rows uint16LE), `0x02` ping
-- **Session persistence via tmux** (`server.js:636-657`): when WS `session` query param is set, terminal attaches to a `wt-{id}` tmux session. Sessions survive page reload. Cleaned on server exit and startup (`cleanupOrphanTmuxSessions`).
-- **Tunnel persistence** (`server.js:996-1029`): `.tunnels.json` persists cloudflared tunnel info across restarts. On startup, loads file and validates PIDs are still cloudflared processes.
-- **Rate limiting** (`server.js:480-526`): in-memory, per-IP. Auth: 5 req/10s (stricter). `/api/exec`: 10 req/10s. `/api/search`: 20 req/10s.
-- **File API routes** (`server.js:120-471`): all under `checkPin` middleware.
+- **Session persistence via tmux** (`server.js:1315-1335`): when WS `session` query param is set, terminal attaches to a `wt-{id}` tmux session. Sessions survive page reload. Cleaned on server exit and startup (`cleanupOrphanTmuxSessions`).
+- **Tunnel persistence** (`server.js:1554-1600`): `.tunnels.json` persists cloudflared tunnel info across restarts. On startup, loads file and validates PIDs are still cloudflared processes.
+- **Rate limiting** (`server.js:88-109`): in-memory, per-IP. Auth: 5 req/10s (stricter). `/api/search`: 20 req/10s.
+- **File API routes** (`server.js:417-1050`): all under `checkPin` middleware.
   - `GET /api/files?path=` — list directory
   - `GET /api/files/read?path=` — read file content
   - `POST /api/files/write` — write file
@@ -66,4 +70,5 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
   - `GET /api/search?q=&path=` — async file search (max depth 4, max 50 results)
 - **Auth endpoint**: `POST /api/auth` and `GET /api/auth/required` — rate-limited separately.
 - **REST command execution**: `POST /api/exec` (with timeout, max 10MB output, 300s max timeout) and `GET /api/exec/stream` (SSE streaming).
-- **Startup cleanup** (`server.js:1122-1123`): loads persisted tunnels, kills orphan `wt-*` tmux sessions.
+- **Startup cleanup** (`server.js:1813-1814`): loads persisted tunnels, kills orphan `wt-*` tmux sessions.
+- **Cross-platform**: All file operations, process management, and system commands have Windows (PowerShell), macOS (BSD tools), and Linux (GNU tools) code paths.

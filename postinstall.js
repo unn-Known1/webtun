@@ -135,7 +135,7 @@ async function main() {
     if (!downloadWithCurlOrWget()) {
       console.log('  cloudflared install failed (download error) — skipping');
       cleanup();
-      process.exit(0);
+      return;
     }
   }
 
@@ -149,12 +149,12 @@ async function main() {
     if (/^<!doctype\s+html/i.test(head) || /^<html/i.test(head)) {
       console.log('  cloudflared install failed (downloaded file is not a binary) — skipping');
       cleanup();
-      process.exit(0);
+      return;
     }
   } catch (e) {
     console.log('  cloudflared install failed (cannot validate download): ' + e.message);
     cleanup();
-    process.exit(0);
+    return;
   }
 
   function installBin(src, dest) {

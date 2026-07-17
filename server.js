@@ -8,7 +8,10 @@ try {
     const idx = trimmed.indexOf('=');
     if (idx === -1) return;
     const key = trimmed.slice(0, idx).trim();
-    const val = trimmed.slice(idx + 1).trim();
+    let val = trimmed.slice(idx + 1).trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
     if (!(key in process.env)) process.env[key] = val;
   });
 } catch {}
@@ -114,7 +117,10 @@ const wss = new WebSocket.Server({ server, path: '/ws' });
 
 const PORT = process.env.PORT || 3000;
 const PIN = process.env.PIN || '';
-const SHELL = process.env.SHELL || (os.platform() === 'win32' ? 'powershell.exe' : (fs.existsSync('/bin/bash') ? '/bin/bash' : 'sh'));
+// On Windows, ignore SHELL env from Git Bash/MSYS2/WSL — prefer PowerShell
+const SHELL = (os.platform() === 'win32' && !process.env.WEBTUN_SHELL)
+  ? 'powershell.exe'
+  : (process.env.SHELL || (os.platform() === 'win32' ? 'powershell.exe' : (fs.existsSync('/bin/bash') ? '/bin/bash' : 'sh')));
 const HOST = process.env.HOST || '0.0.0.0';
 const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT ? path.resolve(process.env.WORKSPACE_ROOT) : os.homedir();
 
@@ -132,7 +138,9 @@ app.use((req, res, next) => {
 });
 
 // Trust proxy for proper IP detection behind reverse proxy
-app.set('trust proxy', 1);
+// 'loopback' only trusts 127.0.0.1/::1 — safe default for direct connections
+// Set TRUST_PROXY=true in .env if behind a reverse proxy
+app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : 'loopback');
 
 function constantTimeEqual(a, b) {
   if (typeof a !== 'string' || typeof b !== 'string') return false;
@@ -161,7 +169,7 @@ app.post('/api/auth', authRateLimiter, (req, res) => {
   if (!PIN || (pin && constantTimeEqual(pin, PIN))) {
     res.json({ success: true, token: PIN || 'open' });
   } else {
-    res.status(401).json({ error: 'Invalid PIN' });
+    res.status(401).json({ error: 'Unauthorized' });
   }
 });
 
@@ -332,7 +340,13 @@ function killPid(pid, signal = 'SIGTERM') {
   if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0) return;
   try {
     if (os.platform() === 'win32') {
-      execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' });
+      try { execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' }); } catch {}
+      // Fallback: also kill any remaining child processes via WMIC
+      try {
+        const out = execSync(`wmic process where "ParentProcessId=${pid}" get ProcessId /format:list`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+        const childPids = out.split('\n').filter(l => l.startsWith('ProcessId=')).map(l => parseInt(l.split('=')[1])).filter(Boolean);
+        for (const cp of childPids) { try { execSync(`taskkill /PID ${cp} /F`, { stdio: 'ignore' }); } catch {} }
+      } catch {}
     } else {
       process.kill(pid, signal);
     }
@@ -344,7 +358,7 @@ function buildSessionEnv() {
     const env = { ...process.env };
     env.TERM = env.TERM || 'xterm-256color';
     env.COLORTERM = env.COLORTERM || 'truecolor';
-    if (!env.HOME && env.USERPROFILE) env.HOME = env.USERPROFILE;
+    if (!env.HOME && env.USERPROFILE) env.HOME = env.USERPROFILE.replace(/\\/g, '/');
     if (!env.USER && env.USERNAME) env.USER = env.USERNAME;
     env.SHELL = SHELL;
     // Prefer Path (Windows) over PATH if both set
@@ -747,7 +761,7 @@ app.post('/api/files/upload', checkPin, (req, res) => {
         cb(err);
       }
     },
-    filename: (_, file, cb) => cb(null, path.basename(file.originalname).replace(/[^a-zA-Z0-9_.\-]/g, '_'))
+    filename: (_, file, cb) => cb(null, path.basename(file.originalname).replace(/[^\w\u00C0-\u024F\u0400-\u04FF\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF_.\-]/g, '_'))
   });
   const upload = multer({ storage, limits: { fileSize: 500 * 1024 * 1024, files: 100 } }).array('files');
   upload(req, res, err => {
@@ -779,10 +793,22 @@ app.get('/api/files/stat', checkPin, async (req, res) => {
       isSocket: st.isSocket(), isFIFO: st.isFIFO(),
     };
     try {
-      stat.owner = execFileSync('id', ['-nu', String(st.uid)], { encoding: 'utf8', stdio: 'pipe' }).trim();
+      if (os.platform() === 'win32') {
+        stat.owner = String(st.uid);
+      } else {
+        stat.owner = execFileSync('id', ['-nu', String(st.uid)], { encoding: 'utf8', stdio: 'pipe' }).trim();
+      }
     } catch { stat.owner = String(st.uid); }
     try {
-      stat.group = execFileSync('getent', ['group', String(st.gid)], { encoding: 'utf8', stdio: 'pipe' }).split(':')[0];
+      if (os.platform() === 'win32') {
+        stat.group = String(st.gid);
+      } else if (os.platform() === 'darwin') {
+        const dscl = execSync(`dscl . -read /Groups/${st.gid} RecordName 2>/dev/null`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+        const m = dscl.match(/RecordName:\s*(.+)/);
+        stat.group = m ? m[1].trim() : String(st.gid);
+      } else {
+        stat.group = execFileSync('getent', ['group', String(st.gid)], { encoding: 'utf8', stdio: 'pipe' }).split(':')[0];
+      }
     } catch { stat.group = String(st.gid); }
     try {
       const symlink = lst && lst.isSymbolicLink() ? await fsPromises.readlink(p) : null;
@@ -873,7 +899,8 @@ app.post('/api/files/chmod', checkPin, async (req, res) => {
     if (!/^[0-7]{3,4}$/.test(req.body.mode)) return res.status(400).json({ error: 'mode must be a 3-4 digit octal number (e.g. 755, 644, 1777)' });
     const mode = parseInt(req.body.mode, 8);
     await fsPromises.chmod(p, mode);
-    res.json({ success: true, mode: req.body.mode });
+    const warning = os.platform() === 'win32' ? 'chmod has no effect on Windows' : undefined;
+    res.json({ success: true, mode: req.body.mode, ...(warning && { warning }) });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -1071,10 +1098,21 @@ app.get('/api/system/network', checkPin, async (req, res) => {
         gateway = route.split('\n')[0].trim() || null;
         const dnsOut = execFileSync('powershell.exe', ['-Command', '(Get-DnsClientServerAddress -AddressFamily IPv4).ServerAddresses'], { encoding: 'utf8', stdio: 'pipe' }).trim();
         dns = dnsOut.split('\n').filter(Boolean);
+      } else if (os.platform() === 'darwin') {
+        const route = execFileSync('sh', ['-c', "route -n get default 2>/dev/null | awk '/gateway:/{print $2}'"], { encoding: 'utf8', stdio: 'pipe' }).trim();
+        gateway = route || null;
+        const resolv = execFileSync('sh', ['-c', "scutil --dns 2>/dev/null | awk '/nameserver\[0\]/{print $3}' | head -3"], { encoding: 'utf8', stdio: 'pipe' }).trim();
+        dns = resolv.split('\n').filter(Boolean);
       } else {
         const route = execFileSync('sh', ['-c', "ip route | grep default | head -1 | awk '{print $3}'"], { encoding: 'utf8', stdio: 'pipe' }).trim();
         gateway = route || null;
-        const resolv = execFileSync('sh', ['-c', "grep nameserver /etc/resolv.conf | awk '{print $2}'"], { encoding: 'utf8', stdio: 'pipe' }).trim();
+        let resolv = '';
+        try {
+          resolv = execFileSync('sh', ['-c', "grep nameserver /etc/resolv.conf | awk '{print $2}'"], { encoding: 'utf8', stdio: 'pipe' }).trim();
+        } catch {}
+        if (!resolv) {
+          try { resolv = execFileSync('sh', ['-c', "resolvectl status 2>/dev/null | awk '/DNS Servers/{found=1; next} /^$/{found=0} found{print $1}' | head -3"], { encoding: 'utf8', stdio: 'pipe' }).trim(); } catch {}
+        }
         dns = resolv.split('\n').filter(Boolean);
       }
     } catch {}
@@ -1084,6 +1122,15 @@ app.get('/api/system/network', checkPin, async (req, res) => {
         listenPorts = out.split('\n').filter(Boolean).map(l => {
           const m = l.match(/:(\d+)\s+/);
           return m ? { port: parseInt(m[1]), process: l.split(/\s+/).pop() } : null;
+        }).filter(Boolean);
+      } else if (os.platform() === 'darwin') {
+        const out = execFileSync('lsof', ['-i', '-P', '-n', '-sTCP:LISTEN'], { encoding: 'utf8', stdio: 'pipe' }).trim();
+        const lines = out.split('\n').slice(1).filter(Boolean);
+        listenPorts = lines.map(l => {
+          const parts = l.split(/\s+/);
+          const addr = parts[8] || '';
+          const m = addr.match(/:(\d+)$/);
+          return m ? { port: parseInt(m[1]), address: addr, process: parts[0] || '' } : null;
         }).filter(Boolean);
       } else {
         const out = execFileSync('sh', ['-c', "ss -tlnp 2>/dev/null | tail -n+2"], { encoding: 'utf8', stdio: 'pipe' }).trim();
@@ -1470,6 +1517,15 @@ app.get('/api/system', checkPin, async (req, res) => {
         mem: p.mem || '',
         cmd: p.cmd || ''
       }));
+    } else if (os.platform() === 'darwin') {
+      const psOut = await spawnRead('ps', ['-axo', 'pid,user,%cpu,%mem,command', '-r']);
+      const lines = psOut.trim().split('\n').slice(1, 16);
+      for (const line of lines) {
+        const m = line.match(/^\s*(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(.*)/);
+        if (m) {
+          processes.push({ user: m[2], pid: m[1], cpu: m[3], mem: m[4], cmd: m[5] });
+        }
+      }
     } else {
       const psOut = await spawnRead('ps', ['-eo', 'pid,user,%cpu,%mem,cmd', '--no-headers', '--sort=-%cpu']);
       const lines = psOut.trim().split('\n').slice(0, 15);
@@ -1504,9 +1560,12 @@ function isCloudflaredProcess(pid) {
     if (os.platform() === 'win32') {
       const stdout = execSync(`tasklist /FI "PID eq ${pid}" /FO CSV /NH`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
       return stdout.toLowerCase().includes('cloudflared');
-    } else {
+    } else if (os.platform() === 'linux') {
       const cmdline = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8');
       return cmdline.toLowerCase().includes('cloudflared');
+    } else {
+      const stdout = execSync(`ps -p ${pid} -o command=`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+      return stdout.toLowerCase().includes('cloudflared');
     }
   } catch {
     return false;

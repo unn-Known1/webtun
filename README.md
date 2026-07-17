@@ -6,7 +6,7 @@
 ![Desktop](https://img.shields.io/badge/Desktop-Electron-47848F?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
-**Access your Linux server from any browser — no VPN, no SSH client, no installing anything.**
+**Access your server from any browser — no VPN, no SSH client, no installing anything.**
 
 [![Quick Start](https://img.shields.io/badge/Quick_Start-One_Command-2D5B8E?style=for-the-badge&logo=gnu-bash)](install.sh)
 [![Download](https://img.shields.io/github/v/release/unn-known1/webtun?style=for-the-badge&logo=github)](https://github.com/unn-known1/webtun/releases/latest)
@@ -96,6 +96,17 @@ webtun
 | `--tunnel, -t` | Start Cloudflare Tunnel |
 | `--help` | Show help |
 | `--version` | Show version |
+
+**Environment Variables:**
+| Variable | Description |
+|----------|-------------|
+| `PORT` | Server port (default: 3000) |
+| `HOST` | Bind address (default: 0.0.0.0) |
+| `PIN` | Authentication PIN (empty = no auth) |
+| `SHELL` | Shell to use (default: PowerShell on Windows, bash/sh elsewhere) |
+| `WORKSPACE_ROOT` | Root directory for file operations (default: ~) |
+| `TRUST_PROXY` | Set to `true` if behind a reverse proxy (default: loopback only) |
+| `WEBTUN_SHELL` | Override shell on Windows (e.g., `/usr/bin/bash` for Git Bash) |
 
 **Examples:**
 ```bash
@@ -231,6 +242,9 @@ kill $(pgrep -f 'cloudflared tunnel')
 | Permission denied on shell | Ensure user has shell access: `chsh -s /bin/bash` |
 | File upload fails | Check `public/uploads/` permissions: `chmod 755 public/uploads/` |
 | Port 3000 in use | Change port: `PORT=3001 npm start` |
+| Windows terminal opens PowerShell instead of Git Bash | Set `WEBTUN_SHELL=/usr/bin/bash` in `.env` |
+| Behind reverse proxy, wrong client IP | Set `TRUST_PROXY=true` in `.env` |
+| Tunnel persists after server restart | Tunnels are auto-managed; manual cleanup: `kill $(pgrep -f 'cloudflared tunnel')` |
 
 ---
 
