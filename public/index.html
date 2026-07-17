@@ -1896,12 +1896,24 @@ function connectWebSocket(tab, isReconnect = false) {
     if (ws.readyState !== WebSocket.OPEN) return;
     // Track input buffer for command history
     if (!tab._histBuf) tab._histBuf = '';
+    if (!tab._histEscaping) tab._histEscaping = false;
     for (let i = 0; i < data.length; i++) {
       const ch = data.charCodeAt(i);
+      if (ch === 27) { // ESC — start of escape sequence, skip it
+        tab._histEscaping = true;
+        continue;
+      }
+      if (tab._histEscaping) {
+        // Skip until we hit a letter (终结 sequence) or tilde
+        if ((ch >= 65 && ch <= 90) || (ch >= 97 && ch <= 122) || ch === 126) {
+          tab._histEscaping = false;
+        }
+        continue;
+      }
       if (ch === 13 || ch === 10) { // Enter
         const cmd = tab._histBuf.trim();
         if (cmd) {
-          try { addToCmdHist(cmd); } catch(e) { console.error('[hist] error:', e); }
+          try { addToCmdHist(cmd); } catch(e) {}
         }
         tab._histBuf = '';
       } else if (ch === 127 || ch === 8) { // Backspace
@@ -5269,12 +5281,7 @@ function getCmdHist() {
   try { return JSON.parse(localStorage.getItem('wt-cmdhist')) || []; } catch(e) { return []; }
 }
 function saveCmdHist(hist) {
-  try {
-    localStorage.setItem('wt-cmdhist', JSON.stringify(hist));
-    console.log('[hist] saved to localStorage, count:', hist.length);
-  } catch(e) {
-    console.error('[hist] localStorage error:', e);
-  }
+  localStorage.setItem('wt-cmdhist', JSON.stringify(hist));
 }
 function loadHistMax() {
   try { cmdHistMax = Math.max(10, Math.min(500, JSON.parse(localStorage.getItem('wt-cmdhist-max')) || 50)); } catch(e) { cmdHistMax = 50; }
@@ -5286,17 +5293,19 @@ function saveHistMax() {
 }
 function addToCmdHist(cmd) {
   if (!cmd || !cmd.trim()) return;
+  // Strip any remaining ANSI escape sequences
+  const clean = cmd.replace(/\x1b\[[0-9;]*[a-zA-Z~]/g, '').replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '').trim();
+  if (!clean) return;
   const hist = getCmdHist();
   // dedupe consecutive identical commands
-  if (hist.length && hist[0].cmd === cmd) {
+  if (hist.length && hist[0].cmd === clean) {
     hist[0].time = Date.now();
     hist[0].count = (hist[0].count || 1) + 1;
   } else {
-    hist.unshift({ cmd: cmd.trim(), time: Date.now(), count: 1 });
+    hist.unshift({ cmd: clean, time: Date.now(), count: 1 });
   }
   if (hist.length > cmdHistMax) hist.length = cmdHistMax;
   saveCmdHist(hist);
-  console.log('[hist] recorded:', cmd.trim(), 'total:', hist.length);
 }
 function removeCmdHistItem(idx) {
   const hist = getCmdHist();
@@ -5355,7 +5364,6 @@ function renderCmdHist() {
   const list = document.getElementById('cmd-hist-list');
   const empty = document.getElementById('cmd-hist-empty');
   const hist = getCmdHist();
-  console.log('[hist] renderCmdHist, items:', hist.length);
   const q = (document.getElementById('cmd-lib-search').value || '').toLowerCase();
   const filtered = q ? hist.filter(h => h.cmd.toLowerCase().includes(q)) : hist;
 
