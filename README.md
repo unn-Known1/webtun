@@ -48,14 +48,22 @@
 - **Terminal scroll** — reliable mouse wheel scroll in all apps, including TUI apps with mouse tracking
 
 ### File Explorer
-- **Multi-select** — select all / deselect all, batch delete and download files
+- **Multi-select** — select all / deselect all, batch delete, download, zip, cut, and copy files
+- **Context menu on selection** — right-click actions (zip, download, delete, cut, copy) operate on all selected files
 - **Zip / Extract** — right-click any file or folder to zip; right-click `.zip` files to extract (archiver v8)
+- **Folder download** — folders download as `.zip` archives automatically
 - **Image viewer** — click images (.png, .jpg, .gif, .svg, .webp, .bmp, .ico) to preview inline
-- **Cut, Copy, Paste** — with conflict resolution dialog (replace, merge folders, keep both, skip, cancel)
+- **Cut, Copy, Paste** — multi-file support with conflict resolution dialog (replace, merge folders, keep both, skip, cancel)
 - **Upload with progress** — per-file progress bar via XHR
 - **Breadcrumb navigation** — tappable directory segments for quick navigation
 - **Long-press context menu** — rename, delete, download, copy on touch devices
 - **Text selection** — long-press file names to select and copy text on touch devices
+
+### System Stats
+- **CPU, Memory, Disk, Uptime** — real-time usage with progress bars
+- **GPU detection** — cross-platform (Linux: nvidia-smi/lspci, macOS: system_profiler, Windows: WMI)
+- **Multi-GPU support** — detects and displays all GPUs with VRAM, utilization, and temperature
+- **Top processes** — sorted by CPU usage
 
 ### Desktop App (Electron)
 - Cross-platform app for Linux & Windows
@@ -237,6 +245,17 @@ kill $(pgrep -f 'cloudflared tunnel')
 | Protocol | WebSocket (ws) |
 | Tunnel | Cloudflare Tunnel (cloudflared) |
 | Desktop | Electron + electron-builder |
+| Archives | archiver v8 + yauzl |
+
+---
+
+## Security
+
+- **npm audit clean** — 0 known vulnerabilities
+- **PIN authentication** — optional, protects all API endpoints
+- **CSP headers** — restricts script sources to CDN
+- **WebSocket origin check** — prevents cross-site WebSocket hijacking
+- **Rate limiting** — per-IP rate limits on auth and search endpoints
 
 ---
 
