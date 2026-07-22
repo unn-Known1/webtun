@@ -32,6 +32,8 @@
 - **Multi-tab terminal** — drag tabs to reorder, side-by-side sessions like your desktop
 - **File explorer** — browse, upload, download, rename, delete, cut/copy/paste with conflict resolution (replace, merge, keep both, skip)
 - **WebSocket + xterm.js** — responsive, low-latency typing
+- **Bracketed paste** — Ctrl+V works correctly in TUI apps (vim, nano, htop, mc)
+- **Command history** — automatic capture with smart dedup, works with pasted commands
 
 ### Mobile-First UX
 - **Touch gestures** — swipe to close tabs, swipe from edge to open sidebar, pull-to-refresh file list
@@ -41,9 +43,13 @@
 - **Selection mode** — toggle between terminal interaction and text selection
 - **Responsive** — optimized for phones (480px), tablets (1024px), and landscape orientation
 
+### Settings
+- **Right-click menu toggle** — enable/disable custom terminal context menu (Settings > Terminal)
+- **Terminal scroll** — reliable mouse wheel scroll in all apps, including TUI apps with mouse tracking
+
 ### File Explorer
 - **Multi-select** — select all / deselect all, batch delete and download files
-- **Zip / Extract** — right-click any file or folder to zip; right-click `.zip` files to extract
+- **Zip / Extract** — right-click any file or folder to zip; right-click `.zip` files to extract (archiver v8)
 - **Image viewer** — click images (.png, .jpg, .gif, .svg, .webp, .bmp, .ico) to preview inline
 - **Cut, Copy, Paste** — with conflict resolution dialog (replace, merge folders, keep both, skip, cancel)
 - **Upload with progress** — per-file progress bar via XHR
