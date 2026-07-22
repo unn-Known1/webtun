@@ -3012,12 +3012,20 @@ document.addEventListener('click', () => {
 
 document.getElementById('ctx-open').onclick = () => { if (!ctxTarget) return; if (isImageFile(ctxTarget.path)) openImageViewer(ctxTarget.path); else loadFiles(ctxTarget.path); };
 document.getElementById('ctx-edit').onclick = () => ctxTarget && openFileEditor(ctxTarget.path);
-document.getElementById('ctx-download').onclick = () => ctxTarget && downloadFile(ctxTarget.path);
+document.getElementById('ctx-download').onclick = () => {
+  if (selectedFiles.length > 0) { downloadSelected(); return; }
+  if (ctxTarget) downloadFile(ctxTarget.path);
+};
 document.getElementById('ctx-zip').onclick = async () => {
-  if (!ctxTarget) return;
+  const files = selectedFiles.length > 0 ? selectedFiles : (ctxTarget ? [ctxTarget.path] : []);
+  if (!files.length) return;
   const t = toast('Zipping…', 'info');
-  await zipFile(ctxTarget.path, ctxTarget.name);
+  for (const p of files) {
+    const name = p.split(/[\\/]/).pop();
+    await zipFile(p, name);
+  }
   t.remove();
+  clearSelection();
 };
 document.getElementById('ctx-extract').onclick = async () => {
   if (!ctxTarget) return;
@@ -3042,10 +3050,29 @@ document.getElementById('ctx-folder-size').onclick = async () => {
 };
 document.getElementById('ctx-rename').onclick = () => ctxTarget && startRename(ctxTarget.path, ctxTarget.name);
 document.getElementById('ctx-copy-path').onclick = () => { if (!ctxTarget) return; navigator.clipboard.writeText(ctxTarget.path).then(() => toast('Path copied')).catch(() => toast('Copy failed', 'error')); };
-document.getElementById('ctx-delete').onclick = () => ctxTarget && deleteFile(ctxTarget);
+document.getElementById('ctx-delete').onclick = () => {
+  if (selectedFiles.length > 0) { deleteSelected(); return; }
+  if (ctxTarget) deleteFile(ctxTarget);
+};
 document.getElementById('ctx-open-term').onclick = () => { if (!ctxTarget) return; newTab(`Term @ ${ctxTarget.name}`, null, ctxTarget.path); };
-document.getElementById('ctx-copy').onclick = () => { if (!ctxTarget) return; fsClipboard = { action: 'copy', path: ctxTarget.path, name: ctxTarget.name }; updatePasteUI(); toast('Copied: ' + ctxTarget.name, 'success'); };
-document.getElementById('ctx-cut').onclick = () => { if (!ctxTarget) return; fsClipboard = { action: 'cut', path: ctxTarget.path, name: ctxTarget.name }; updatePasteUI(); toast('Cut: ' + ctxTarget.name, 'success'); };
+document.getElementById('ctx-copy').onclick = () => {
+  const files = selectedFiles.length > 0
+    ? selectedFiles.map(p => ({ path: p, name: p.split(/[\\/]/).pop() }))
+    : (ctxTarget ? [{ path: ctxTarget.path, name: ctxTarget.name }] : []);
+  if (!files.length) return;
+  fsClipboard = { action: 'copy', files };
+  updatePasteUI();
+  toast(`Copied ${files.length} item(s)`, 'success');
+};
+document.getElementById('ctx-cut').onclick = () => {
+  const files = selectedFiles.length > 0
+    ? selectedFiles.map(p => ({ path: p, name: p.split(/[\\/]/).pop() }))
+    : (ctxTarget ? [{ path: ctxTarget.path, name: ctxTarget.name }] : []);
+  if (!files.length) return;
+  fsClipboard = { action: 'cut', files };
+  updatePasteUI();
+  toast(`Cut ${files.length} item(s)`, 'success');
+};
 document.getElementById('ctx-paste').onclick = () => { if (fsClipboard) pasteFile(currentPath); };
 
 function updatePasteUI() {
@@ -3060,37 +3087,41 @@ let _pasteBusy = false;
 async function pasteFile(destDir, conflictMode) {
   if (!fsClipboard || _pasteBusy) return;
   _pasteBusy = true;
+  // Support both old single-file and new multi-file format
+  const files = fsClipboard.files || [{ path: fsClipboard.path, name: fsClipboard.name }];
   const label = fsClipboard.action === 'copy' ? 'Copying' : 'Moving';
   const toastEl = toast(label + '…', 'info');
-  const dest = joinPath(destDir, fsClipboard.name);
   const ep = fsClipboard.action === 'copy' ? '/api/files/copy' : '/api/files/move';
-  const body = { source: fsClipboard.path, destination: dest };
-  if (conflictMode) body.conflict = conflictMode;
-  const r = await api(ep, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  if (r.conflict) {
-    toastEl.remove();
-    _conflictResolve = { destDir, conflictMode: null };
-    document.getElementById('conflict-name').textContent = r.name;
-    document.getElementById('conflict-dir-hint').style.display = r.isDir ? '' : 'none';
-    document.getElementById('conflict-merge').style.display = r.isDir ? '' : 'none';
-    openOverlay('conflict-overlay');
-    return;
+  let succeeded = 0, failed = 0;
+  for (const file of files) {
+    const dest = joinPath(destDir, file.name);
+    const body = { source: file.path, destination: dest };
+    if (conflictMode) body.conflict = conflictMode;
+    const r = await api(ep, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (r.conflict) {
+      toastEl.remove();
+      _conflictResolve = { destDir, conflictMode: null };
+      document.getElementById('conflict-name').textContent = r.name;
+      document.getElementById('conflict-dir-hint').style.display = r.isDir ? '' : 'none';
+      document.getElementById('conflict-merge').style.display = r.isDir ? '' : 'none';
+      openOverlay('conflict-overlay');
+      _pasteBusy = false;
+      return;
+    }
+    if (r.success) succeeded++;
+    else failed++;
   }
-  if (r.success) {
-    toastEl.remove();
-    const label = fsClipboard.action === 'copy' ? 'Pasted' : 'Moved';
-    if (r.skipped) toast(label + ' (skipped existing)', 'info');
-    else toast(label, 'success');
-    if (fsClipboard.action === 'cut') { fsClipboard = null; updatePasteUI(); }
-    refreshFiles();
-  } else {
-    toastEl.remove();
-    toast(r.error || 'Operation failed', 'error');
-  }
+  toastEl.remove();
+  const opLabel = fsClipboard.action === 'copy' ? 'Pasted' : 'Moved';
+  if (failed === 0) toast(opLabel + ` (${succeeded} item(s))`, 'success');
+  else if (succeeded === 0) toast(opLabel + ' failed', 'error');
+  else toast(`${opLabel} ${succeeded}, ${failed} failed`, 'warning');
+  if (fsClipboard.action === 'cut') { fsClipboard = null; updatePasteUI(); }
+  refreshFiles();
   _pasteBusy = false;
 }
 
