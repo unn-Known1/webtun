@@ -3180,18 +3180,24 @@ async function deleteFile(file) {
   else toast(r.error, 'error');
 }
 
-async function downloadFile(path) {
+async function downloadFile(filePath) {
   try {
-    const r = await fetch(`/api/files/download?path=${encodeURIComponent(path)}`, {
+    const r = await fetch(`/api/files/download?path=${encodeURIComponent(filePath)}`, {
       headers: { 'x-pin-token': authToken }
     });
     if (!r.ok) { toast('Download failed', 'error'); return; }
+    const ct = r.headers.get('content-type') || '';
     const blob = await r.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = path.split(/[\\/]/).pop() || 'download';
+    let name = filePath.split(/[\\/]/).pop() || 'download';
+    // Server returns application/zip for directories — append .zip if missing
+    if (ct.includes('zip') && !name.endsWith('.zip')) name += '.zip';
+    a.download = name;
+    document.body.appendChild(a);
     a.click();
+    a.remove();
     URL.revokeObjectURL(url);
   } catch(e) { console.warn('Download failed:', e); toast('Download failed', 'error'); }
 }
@@ -3297,10 +3303,14 @@ async function deleteSelected() {
 }
 
 async function downloadSelected() {
-  for (const p of [...selectedFiles]) {
-    await downloadFile(p);
+  const files = [...selectedFiles];
+  if (!files.length) return;
+  toast(`Downloading ${files.length} item(s)…`, 'info');
+  for (let i = 0; i < files.length; i++) {
+    await downloadFile(files[i]);
+    // Small delay between downloads to avoid browser popup blocking
+    if (i < files.length - 1) await new Promise(r => setTimeout(r, 300));
   }
-  toast('Downloads started', 'success');
   clearSelection();
 }
 
