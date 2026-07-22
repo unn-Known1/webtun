@@ -1605,12 +1605,63 @@ app.get('/api/system', checkPin, async (req, res) => {
     }
   } catch {}
 
+  let gpu = null;
+  try {
+    if (os.platform() === 'linux') {
+      // Try nvidia-smi first (NVIDIA GPUs)
+      try {
+        const nvOut = await spawnRead('nvidia-smi', ['--query-gpu=name,memory.total,memory.used,memory.free,utilization.gpu,temperature.gpu', '--format=csv,noheader,nounits']);
+        if (nvOut && nvOut.trim()) {
+          const parts = nvOut.trim().split(',').map(s => s.trim());
+          if (parts.length >= 6) {
+            gpu = { name: parts[0], memTotal: +parts[1] || 0, memUsed: +parts[2] || 0, memFree: +parts[3] || 0, utilization: +parts[4] || 0, temp: +parts[5] || 0, driver: 'nvidia' };
+          }
+        }
+      } catch {}
+      // Fallback: lspci for any GPU (Intel, AMD, etc.)
+      if (!gpu) {
+        try {
+          const lspciOut = await spawnRead('lspci', []);
+          if (lspciOut && lspciOut.trim()) {
+            const lines = lspciOut.split('\n').filter(l => /VGA|3D|Display/i.test(l));
+            if (lines.length > 0) {
+              const name = lines[0].replace(/^[\da-f]+:[\da-f]+\.[\da-f]+\s+/, '').trim();
+              if (name) gpu = { name, driver: 'lspci' };
+            }
+          }
+        } catch {}
+      }
+    } else if (os.platform() === 'darwin') {
+      const spOut = await spawnRead('system_profiler', ['SPDisplaysDataType']);
+      if (spOut) {
+        const chipMatch = spOut.match(/Chipset Model:\s*(.+)/);
+        const vramMatch = spOut.match(/VRAM.*?:\s*(\d+)\s*MB/);
+        if (chipMatch) {
+          gpu = { name: chipMatch[1].trim(), memTotal: vramMatch ? +vramMatch[1] : 0, driver: 'macos' };
+        }
+      }
+    } else if (os.platform() === 'win32') {
+      const psGpu = await spawnRead('powershell.exe', ['-Command', "Get-CimInstance -ClassName Win32_VideoController | Select-Object Name,AdapterRAM,DriverVersion | ConvertTo-Json"]);
+      if (psGpu) {
+        const data = JSON.parse(psGpu);
+        const list = Array.isArray(data) ? data : [data];
+        // Pick the first non-generic GPU (prefer discrete over Microsoft Basic)
+        const d = list.find(g => g.Name && !/Microsoft Basic|Hyper-V|Parsec/i.test(g.Name)) || list[0];
+        if (d && d.Name) {
+          const vramBytes = d.AdapterRAM || 0;
+          gpu = { name: d.Name, memTotal: Math.round(vramBytes / (1024 * 1024)), driver: d.DriverVersion || '' };
+        }
+      }
+    }
+  } catch {}
+
   res.json({
     hostname: os.hostname(),
     platform: os.platform(),
     uptime: os.uptime(),
     cpu: { model: cpuModel, count: cpuCount, usage: cpuUsage, loadAvg },
     memory: { total: totalMem, free: freeMem, used: usedMem, percent: memPercent },
+    gpu,
     disk,
     processes
   });

@@ -1347,6 +1347,12 @@ svg { display: block; }
           <div class="sys-val" id="sys-uptime-val">—</div>
           <div class="sys-sub" id="sys-uptime-sub"></div>
         </div>
+        <div class="sys-card" id="sys-gpu-card" style="display:none">
+          <h3>GPU</h3>
+          <div class="sys-val" id="sys-gpu-val">—</div>
+          <div class="sys-sub" id="sys-gpu-sub"></div>
+          <div class="sys-bar" id="sys-gpu-bar-wrap" style="display:none"><div class="sys-bar-fill" id="sys-gpu-bar" style="width:0%"></div></div>
+        </div>
       </div>
       <div class="settings-section">
         <h3>Top Processes by CPU</h3>
@@ -5539,6 +5545,29 @@ async function refreshSystemStats(showLoading) {
 
   document.getElementById('sys-uptime-val').textContent = fmtUptime(data.uptime);
   document.getElementById('sys-uptime-sub').textContent = data.hostname + ' · ' + data.platform;
+
+  const gpuCard = document.getElementById('sys-gpu-card');
+  if (data.gpu && data.gpu.name) {
+    gpuCard.style.display = '';
+    document.getElementById('sys-gpu-val').textContent = data.gpu.name;
+    let gpuSub = '';
+    if (data.gpu.memTotal > 0) gpuSub += formatSize(data.gpu.memTotal * 1024 * 1024) + ' VRAM';
+    else if (data.gpu.memTotal === 0 && data.gpu.driver !== 'lspci') gpuSub += 'Shared memory';
+    if (data.gpu.utilization != null) gpuSub += (gpuSub ? ' · ' : '') + data.gpu.utilization + '% util';
+    if (data.gpu.temp) gpuSub += (gpuSub ? ' · ' : '') + data.gpu.temp + '°C';
+    if (data.gpu.driver && data.gpu.driver !== 'nvidia' && data.gpu.driver !== 'macos' && data.gpu.driver !== 'lspci') gpuSub += (gpuSub ? ' · ' : '') + 'Driver: ' + data.gpu.driver;
+    document.getElementById('sys-gpu-sub').textContent = gpuSub || 'No details available';
+    if (data.gpu.memTotal > 0 && data.gpu.memUsed) {
+      const gpuPct = Math.round((data.gpu.memUsed / data.gpu.memTotal) * 100);
+      document.getElementById('sys-gpu-bar-wrap').style.display = '';
+      document.getElementById('sys-gpu-bar').style.width = Math.min(gpuPct, 100) + '%';
+      document.getElementById('sys-gpu-bar').className = 'sys-bar-fill' + (gpuPct > 80 ? ' danger' : gpuPct > 50 ? ' warn' : '');
+    } else {
+      document.getElementById('sys-gpu-bar-wrap').style.display = 'none';
+    }
+  } else {
+    gpuCard.style.display = 'none';
+  }
 
   const tbody = document.getElementById('sys-proc-body');
   tbody.innerHTML = '';
