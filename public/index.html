@@ -1906,22 +1906,44 @@ function connectWebSocket(tab, isReconnect = false) {
 
   const sendInput = data => {
     if (ws.readyState !== WebSocket.OPEN) return;
-    // On Enter, read command from terminal screen buffer (avoids echo-back pollution)
+    // On Enter, capture the command for history
     for (let i = 0; i < data.length; i++) {
       const ch = data.charCodeAt(i);
       if (ch === 13 || ch === 10) { // Enter
         try {
-          const buf = tab.term.buffer.active;
-          const line = buf.getLine(buf.baseY + buf.cursorY);
-          if (line) {
-            let text = line.translateToString(true).trim();
-            // Strip prompt prefix: find last $ # or % and take text after it
-            const promptEnd = Math.max(text.lastIndexOf('$'), text.lastIndexOf('#'), text.lastIndexOf('%'));
-            if (promptEnd >= 0 && promptEnd < text.length - 1) {
-              text = text.substring(promptEnd + 1).trim();
+          // Prefer stored paste text (avoids single-row truncation from getLine)
+          let text = tab._lastPasteText;
+          tab._lastPasteText = null;
+          if (text) {
+            // For multi-line pastes, take only the last line (the command)
+            const lines = text.split('\n');
+            text = lines[lines.length - 1] || lines[lines.length - 2] || text;
+            text = text.trim();
+          } else {
+            // Read from terminal buffer — collect all rows from prompt to cursor
+            const buf = tab.term.buffer.active;
+            const cursorRow = buf.baseY + buf.cursorY;
+            let collected = '';
+            // Scan upward to find the prompt line (contains $, #, or %)
+            for (let r = cursorRow; r >= Math.max(0, cursorRow - 20); r--) {
+              const row = buf.getLine(r);
+              if (!row) break;
+              const rowText = row.translateToString(false);
+              // Prompt detection: line ends with $, #, or % followed by space
+              if (/\s*[#$%]\s*$/.test(rowText)) {
+                const promptEnd = rowText.search(/[#$%]\s*$/);
+                if (promptEnd >= 0) {
+                  collected = rowText.substring(promptEnd + 1) + collected;
+                }
+                break;
+              }
+              collected = rowText + collected;
             }
-            if (text) addToCmdHist(text);
+            text = collected.trim();
+            // Strip any trailing prompt artifacts from multi-row
+            text = text.replace(/\s*[#$%]\s*$/, '').trim();
           }
+          if (text) addToCmdHist(text);
         } catch {}
       }
     }
@@ -2169,6 +2191,7 @@ function initTerminal(tab) {
       e.preventDefault();
       const text = (e.clipboardData || window.clipboardData)?.getData('text');
       if (!text || !tab.ws || tab.ws.readyState !== WebSocket.OPEN) return;
+      tab._lastPasteText = text;
       const bracketed = '\x1b[200~' + text + '\x1b[201~';
       const enc = new TextEncoder().encode(bracketed);
       const buf = new Uint8Array(1 + enc.length);
