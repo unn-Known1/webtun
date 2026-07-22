@@ -3087,42 +3087,44 @@ let _pasteBusy = false;
 async function pasteFile(destDir, conflictMode) {
   if (!fsClipboard || _pasteBusy) return;
   _pasteBusy = true;
-  // Support both old single-file and new multi-file format
-  const files = fsClipboard.files || [{ path: fsClipboard.path, name: fsClipboard.name }];
-  const label = fsClipboard.action === 'copy' ? 'Copying' : 'Moving';
-  const toastEl = toast(label + '…', 'info');
-  const ep = fsClipboard.action === 'copy' ? '/api/files/copy' : '/api/files/move';
-  let succeeded = 0, failed = 0;
-  for (const file of files) {
-    const dest = joinPath(destDir, file.name);
-    const body = { source: file.path, destination: dest };
-    if (conflictMode) body.conflict = conflictMode;
-    const r = await api(ep, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-    if (r.conflict) {
-      toastEl.remove();
-      _conflictResolve = { destDir, conflictMode: null };
-      document.getElementById('conflict-name').textContent = r.name;
-      document.getElementById('conflict-dir-hint').style.display = r.isDir ? '' : 'none';
-      document.getElementById('conflict-merge').style.display = r.isDir ? '' : 'none';
-      openOverlay('conflict-overlay');
-      _pasteBusy = false;
-      return;
+  try {
+    // Support both old single-file and new multi-file format
+    const files = fsClipboard.files || [{ path: fsClipboard.path, name: fsClipboard.name }];
+    const label = fsClipboard.action === 'copy' ? 'Copying' : 'Moving';
+    const toastEl = toast(label + '…', 'info');
+    const ep = fsClipboard.action === 'copy' ? '/api/files/copy' : '/api/files/move';
+    let succeeded = 0, failed = 0;
+    for (const file of files) {
+      const dest = joinPath(destDir, file.name);
+      const body = { source: file.path, destination: dest };
+      if (conflictMode) body.conflict = conflictMode;
+      const r = await api(ep, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (r.conflict) {
+        toastEl.remove();
+        _conflictResolve = { destDir, conflictMode: null };
+        document.getElementById('conflict-name').textContent = r.name;
+        document.getElementById('conflict-dir-hint').style.display = r.isDir ? '' : 'none';
+        document.getElementById('conflict-merge').style.display = r.isDir ? '' : 'none';
+        openOverlay('conflict-overlay');
+        return;
+      }
+      if (r.success) succeeded++;
+      else failed++;
     }
-    if (r.success) succeeded++;
-    else failed++;
+    toastEl.remove();
+    const opLabel = fsClipboard.action === 'copy' ? 'Pasted' : 'Moved';
+    if (failed === 0) toast(opLabel + ` (${succeeded} item(s))`, 'success');
+    else if (succeeded === 0) toast(opLabel + ' failed', 'error');
+    else toast(`${opLabel} ${succeeded}, ${failed} failed`, 'warning');
+    if (fsClipboard.action === 'cut') { fsClipboard = null; updatePasteUI(); }
+    refreshFiles();
+  } finally {
+    _pasteBusy = false;
   }
-  toastEl.remove();
-  const opLabel = fsClipboard.action === 'copy' ? 'Pasted' : 'Moved';
-  if (failed === 0) toast(opLabel + ` (${succeeded} item(s))`, 'success');
-  else if (succeeded === 0) toast(opLabel + ' failed', 'error');
-  else toast(`${opLabel} ${succeeded}, ${failed} failed`, 'warning');
-  if (fsClipboard.action === 'cut') { fsClipboard = null; updatePasteUI(); }
-  refreshFiles();
-  _pasteBusy = false;
 }
 
 function resolveConflict(mode) {
