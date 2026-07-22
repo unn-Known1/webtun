@@ -48,7 +48,7 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { execSync, execFileSync, spawn } = require('child_process');
-const archiver = require('archiver');
+const { ZipArchive } = require('archiver');
 const yauzl = require('yauzl');
 const https = require('https');
 const http = require('http');
@@ -251,7 +251,7 @@ async function dirSize(dir) {
 function createZipArchive(entries, zipPath) {
   return new Promise((resolve, reject) => {
     const output = fs.createWriteStream(zipPath);
-    const archive = archiver('zip', { zlib: { level: 6 } });
+    const archive = new ZipArchive({ zlib: { level: 6 } });
     output.on('close', () => resolve());
     output.on('error', reject);
     archive.on('error', reject);
@@ -270,7 +270,7 @@ function createZipArchive(entries, zipPath) {
 }
 
 function streamZipDirectory(dirPath, res) {
-  const archive = archiver('zip', { zlib: { level: 6 } });
+  const archive = new ZipArchive({ zlib: { level: 6 } });
   archive.on('error', err => {
     if (!res.headersSent) res.status(500).json({ error: err.message });
     else res.end();
