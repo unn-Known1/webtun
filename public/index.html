@@ -1347,12 +1347,7 @@ svg { display: block; }
           <div class="sys-val" id="sys-uptime-val">—</div>
           <div class="sys-sub" id="sys-uptime-sub"></div>
         </div>
-        <div class="sys-card" id="sys-gpu-card" style="display:none">
-          <h3>GPU</h3>
-          <div class="sys-val" id="sys-gpu-val">—</div>
-          <div class="sys-sub" id="sys-gpu-sub"></div>
-          <div class="sys-bar" id="sys-gpu-bar-wrap" style="display:none"><div class="sys-bar-fill" id="sys-gpu-bar" style="width:0%"></div></div>
-        </div>
+        <div id="sys-gpu-container"></div>
       </div>
       <div class="settings-section">
         <h3>Top Processes by CPU</h3>
@@ -5546,27 +5541,29 @@ async function refreshSystemStats(showLoading) {
   document.getElementById('sys-uptime-val').textContent = fmtUptime(data.uptime);
   document.getElementById('sys-uptime-sub').textContent = data.hostname + ' · ' + data.platform;
 
-  const gpuCard = document.getElementById('sys-gpu-card');
-  if (data.gpu && data.gpu.name) {
-    gpuCard.style.display = '';
-    document.getElementById('sys-gpu-val').textContent = data.gpu.name;
-    let gpuSub = '';
-    if (data.gpu.memTotal > 0) gpuSub += formatSize(data.gpu.memTotal * 1024 * 1024) + ' VRAM';
-    else if (data.gpu.memTotal === 0 && data.gpu.driver !== 'lspci') gpuSub += 'Shared memory';
-    if (data.gpu.utilization != null) gpuSub += (gpuSub ? ' · ' : '') + data.gpu.utilization + '% util';
-    if (data.gpu.temp) gpuSub += (gpuSub ? ' · ' : '') + data.gpu.temp + '°C';
-    if (data.gpu.driver && data.gpu.driver !== 'nvidia' && data.gpu.driver !== 'macos' && data.gpu.driver !== 'lspci') gpuSub += (gpuSub ? ' · ' : '') + 'Driver: ' + data.gpu.driver;
-    document.getElementById('sys-gpu-sub').textContent = gpuSub || 'No details available';
-    if (data.gpu.memTotal > 0 && data.gpu.memUsed) {
-      const gpuPct = Math.round((data.gpu.memUsed / data.gpu.memTotal) * 100);
-      document.getElementById('sys-gpu-bar-wrap').style.display = '';
-      document.getElementById('sys-gpu-bar').style.width = Math.min(gpuPct, 100) + '%';
-      document.getElementById('sys-gpu-bar').className = 'sys-bar-fill' + (gpuPct > 80 ? ' danger' : gpuPct > 50 ? ' warn' : '');
-    } else {
-      document.getElementById('sys-gpu-bar-wrap').style.display = 'none';
-    }
-  } else {
-    gpuCard.style.display = 'none';
+  const gpuContainer = document.getElementById('sys-gpu-container');
+  gpuContainer.innerHTML = '';
+  const gpuList = data.gpus || (data.gpu ? [data.gpu] : []);
+  if (gpuList.length) {
+    gpuList.forEach((g, i) => {
+      const card = document.createElement('div');
+      card.className = 'sys-card';
+      const label = gpuList.length > 1 ? `GPU ${i + 1}` : 'GPU';
+      let sub = '';
+      if (g.memTotal > 0) sub += formatSize(g.memTotal * 1024 * 1024) + ' VRAM';
+      else if (g.memTotal === 0 && g.driver !== 'lspci') sub += 'Shared memory';
+      if (g.utilization != null) sub += (sub ? ' · ' : '') + g.utilization + '% util';
+      if (g.temp) sub += (sub ? ' · ' : '') + g.temp + '°C';
+      if (g.driver && g.driver !== 'nvidia' && g.driver !== 'macos' && g.driver !== 'lspci') sub += (sub ? ' · ' : '') + 'Driver: ' + g.driver;
+      let barHtml = '';
+      if (g.memTotal > 0 && g.memUsed) {
+        const pct = Math.round((g.memUsed / g.memTotal) * 100);
+        const cls = pct > 80 ? ' danger' : pct > 50 ? ' warn' : '';
+        barHtml = `<div class="sys-bar"><div class="sys-bar-fill${cls}" style="width:${Math.min(pct, 100)}%"></div></div>`;
+      }
+      card.innerHTML = `<h3>${label}</h3><div class="sys-val">${g.name}</div><div class="sys-sub">${sub || 'No details available'}</div>${barHtml}`;
+      gpuContainer.appendChild(card);
+    });
   }
 
   const tbody = document.getElementById('sys-proc-body');
