@@ -2319,18 +2319,22 @@ function initTerminal(tab) {
     if (!tab.closed) connectWebSocket(tab, false);
   });
 
-  // Scroll terminal on wheel; yield to TUI apps when mouse tracking is active
+  // Scroll terminal on wheel
   tab.wrapper.addEventListener('wheel', e => {
     if (e.ctrlKey || e.metaKey) return;
-    // When a TUI app (vim, htop, tmux…) has mouse tracking on, let the app handle scroll
+    e.preventDefault();
+    // TUI apps with mouse tracking handle scroll themselves — forward the event to xterm.js
     try {
       const core = term._core;
-      if (core && core.coreMouseService && core.coreMouseService.isMouseTrackingActive()) return;
+      if (core && core.coreMouseService && core.coreMouseService.isMouseTrackingActive()) {
+        const vp = tab.wrapper.querySelector('.xterm-viewport');
+        if (vp) vp.dispatchEvent(new WheelEvent('wheel', e));
+        return;
+      }
     } catch (_) {}
     const atTop = term.buffer.active.baseY === 0;
     const atBottom = term.buffer.active.baseY + term.rows >= term.buffer.active.length;
     if (tilesMode && ((e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom))) return;
-    e.preventDefault();
     let delta = e.deltaY;
     if (e.deltaMode === 1) delta *= 16;
     else if (e.deltaMode === 2) delta *= 16 * term.rows;
