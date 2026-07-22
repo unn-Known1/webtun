@@ -1191,6 +1191,10 @@ svg { display: block; }
             <label>Bell Sound</label>
             <div class="toggle" id="s-bell" role="switch" tabindex="0" aria-checked="false" onclick="toggleSetting('bell')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('bell')}"></div>
           </div>
+          <div class="setting-row">
+            <label>Right-Click Menu</label>
+            <div class="toggle on" id="s-termRightClick" role="switch" tabindex="0" aria-checked="true" onclick="toggleSetting('termRightClick')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('termRightClick')}"></div>
+          </div>
         </div>
         <div class="settings-section">
           <h3>Interface</h3>
@@ -1471,7 +1475,7 @@ let hasTmux = false;
 let settings = {
   theme: 'light', fontSize: 14, font: "'SF Mono', 'Fira Code', Consolas, monospace",
   cursor: 'block', blink: true, scrollback: 5000, bell: false,
-  mobilekeys: false, confirmclose: true, datasaver: false, autostart: false, keepAwake: false
+  mobilekeys: false, confirmclose: true, datasaver: false, autostart: false, keepAwake: false, termRightClick: true
 };
 let serverPlatform = '';
 
@@ -2210,6 +2214,7 @@ function initTerminal(tab) {
 
   // Terminal right-click context menu
   term.element.addEventListener('contextmenu', e => {
+    if (!settings.termRightClick) return;
     e.preventDefault();
     const menu = document.getElementById('term-ctx-menu');
     const sel = term.getSelection();
@@ -3863,7 +3868,7 @@ function loadSettings() {
   document.getElementById('s-scrollback').value = settings.scrollback;
   document.getElementById('s-font').value = settings.font;
   document.getElementById('s-cursor').value = settings.cursor;
-  syncToggle('blink'); syncToggle('bell'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver');
+  syncToggle('blink'); syncToggle('bell'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver'); syncToggle('termRightClick');
   syncKeepAwakeUI();
   if (settings.keepAwake && hasWakeLock) { requestWakeLock(); }
   if (isElectron) {
