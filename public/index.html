@@ -2163,6 +2163,20 @@ function initTerminal(tab) {
   tab.closed = false;
   tab.textarea = term.textarea || term.element?.querySelector('.xterm-textarea, textarea');
 
+  // Intercept paste events to use bracketed paste mode (required for TUI apps like vim, nano, mc)
+  if (tab.textarea) {
+    tab.textarea.addEventListener('paste', e => {
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData)?.getData('text');
+      if (!text || !tab.ws || tab.ws.readyState !== WebSocket.OPEN) return;
+      const bracketed = '\x1b[200~' + text + '\x1b[201~';
+      const enc = new TextEncoder().encode(bracketed);
+      const buf = new Uint8Array(1 + enc.length);
+      buf[0] = 0x00; buf.set(enc, 1);
+      tab.ws.send(buf.buffer);
+    }, true);
+  }
+
   // term.onFocus() was removed from xterm.js — use native DOM event instead
   term.element.addEventListener('focusin', () => {
     if (activeTabId !== tab.id) {
