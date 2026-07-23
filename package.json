@@ -1,6 +1,6 @@
 {
   "name": "webtun",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Self-hosted web terminal with Cloudflare Tunnel, file explorer, and PWA support",
   "author": {
     "name": "Gaurang Patel",

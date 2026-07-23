@@ -9,6 +9,7 @@ shell commands, and other important information, read the current plan
 
 ## Entrypoints
 - **Server**: `node server.js` (Express + WebSocket + node-pty)
+- **CLI**: `bin/webtun.js` — parses flags (`--port`, `--host`, `--pin`, `--tunnel`, `--help`, `--version`), loads `.env`, spawns `server.js`
 - **Electron**: `electron/main.js` (forks `server.js` as child process, `HOST=127.0.0.1`)
 - **Frontend**: `public/index.html` — vanilla HTML/CSS/JS, no bundler. xterm.js + CodeMirror loaded from CDN.
 
@@ -42,20 +43,38 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
 - **Build output**: `dist/` (AppImage, deb, dmg, exe, zip), `release/`. Git-ignored.
 - **CI**: GitHub Actions builds Electron packages on `v*` tag push (Linux, macOS, Windows). All artifacts are uploaded to the release.
 - **Systemd**: `setup.sh` optionally creates `/etc/systemd/system/webtun.service`.
-- **CSP** in `server.js:136` allows CDN scripts from `cdn.jsdelivr.net`.
+- **CSP** in `server.js` allows CDN scripts from `cdn.jsdelivr.net`.
 - **File API** workspace root: `WORKSPACE_ROOT` env var, falls back to `os.homedir()`.
 - `public/sw.js` enables PWA installability.
 - **`cloakbrowser`** and **`playwright-core`** in `dependencies` are unused in the codebase.
+- **Favicon/Icons**: `public/favicon.png` (32px), `public/icon-192.png` (192px), `public/icon-512.png` (512px), `public/icon.svg` — all generated from the same terminal SVG logo.
+- **Safe localStorage** (`public/index.html:864`): `safeStorage` wrapper catches errors when Edge Tracking Prevention blocks storage on Cloudflare tunnel domains. All `localStorage` calls go through this wrapper.
+
+## Frontend Architecture
+
+### Terminal
+- **xterm.js** with addons: fit, search, web-links, unicode11, webgl (canvas fallback)
+- **CodeMirror** with modes: javascript, python, htmlmixed, xml, css, clike, shell, markdown, yaml, sql, go, rust, properties. Requires `simple.min.js` addon for rust mode.
+- **WebSocket binary protocol** (not JSON):
+  - Server→Client: `0x00` data, `0x01` exit (1B code), `0x02` error
+  - Client→Server: `0x00` input (max 64KB), `0x01` resize (4B: cols/rows uint16LE), `0x02` ping
+- **xterm textarea**: Each terminal gets a unique `id="xterm-helper-{tabId}"` for accessibility.
+- **Editor preview iframe**: `sandbox="allow-same-origin allow-scripts"` — scripts required for CodeMirror rendering.
+
+### Command History
+- **Keystroke tracking** (client-side): `sendInput()` maintains `tab._currentInput` buffer tracking typed characters.
+- **Escape sequence filtering**: ESC sequences (CSI, SS3, OSC, DCS) are skipped entirely. Control characters (0x00–0x1F, 0x7F) are dropped.
+- **VT parameter cleanup**: Patterns like `>0;276;0` (Device Attributes responses) are stripped before saving.
+- **Server-side storage**: `POST /api/history` saves to `cmdHistory` array (max configurable). `GET /api/history` returns list.
+
+### Session Persistence
+- **tmux sessions**: When WS `session` query param is set, terminal attaches to a `wt-{id}` tmux session. Sessions survive page reload. Cleaned on server exit and startup (`cleanupOrphanTmuxSessions`).
 
 ## Architecture Notables
 
-- **WebSocket binary protocol** (`server.js:1254-1265`): terminal I/O uses a custom binary protocol, not JSON.
-  - Server→Client: `0x00` data, `0x01` exit (1B code), `0x02` error
-  - Client→Server: `0x00` input (max 64KB), `0x01` resize (4B: cols/rows uint16LE), `0x02` ping
-- **Session persistence via tmux** (`server.js:1315-1335`): when WS `session` query param is set, terminal attaches to a `wt-{id}` tmux session. Sessions survive page reload. Cleaned on server exit and startup (`cleanupOrphanTmuxSessions`).
-- **Tunnel persistence** (`server.js:1554-1600`): `.tunnels.json` persists cloudflared tunnel info across restarts. On startup, loads file and validates PIDs are still cloudflared processes.
-- **Rate limiting** (`server.js:88-109`): in-memory, per-IP. Auth: 5 req/10s (stricter). `/api/search`: 20 req/10s.
-- **File API routes** (`server.js:417-1050`): all under `checkPin` middleware.
+- **Tunnel persistence** (`server.js`): `.tunnels.json` persists cloudflared tunnel info across restarts. On startup, loads file and validates PIDs are still cloudflared processes.
+- **Rate limiting** (`server.js`): in-memory, per-IP. Auth: 5 req/10s (stricter). `/api/search`: 20 req/10s.
+- **File API routes** (`server.js`): all under `checkPin` middleware.
   - `GET /api/files?path=` — list directory
   - `GET /api/files/read?path=` — read file content
   - `POST /api/files/write` — write file
@@ -69,6 +88,7 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
   - `POST /api/files/zip` / `unzip` — create or extract zip archives
   - `GET /api/search?q=&path=` — async file search (max depth 4, max 50 results)
 - **Auth endpoint**: `POST /api/auth` and `GET /api/auth/required` — rate-limited separately.
+- **History endpoint**: `GET /api/history`, `POST /api/history`, `DELETE /api/history`, `DELETE /api/history/:index` — all under `checkPin`.
 - **REST command execution**: `POST /api/exec` (with timeout, max 10MB output, 300s max timeout) and `GET /api/exec/stream` (SSE streaming).
-- **Startup cleanup** (`server.js:1813-1814`): loads persisted tunnels, kills orphan `wt-*` tmux sessions.
+- **Startup cleanup**: loads persisted tunnels, kills orphan `wt-*` tmux sessions.
 - **Cross-platform**: All file operations, process management, and system commands have Windows (PowerShell), macOS (BSD tools), and Linux (GNU tools) code paths.

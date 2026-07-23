@@ -4,9 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#1a1b26">
 <title>WebTun</title>
+<link rel="icon" href="/favicon.png" type="image/png">
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/icon-192.png">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css">
@@ -32,6 +34,7 @@
 <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/yaml/yaml.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/sql/sql.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/go/go.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/addon/mode/simple.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/rust/rust.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/properties/properties.min.js"></script>
 <style>
@@ -857,9 +860,15 @@ svg { display: block; }
 </head>
 <body data-theme="light">
 <script>
+  // Safe localStorage wrapper — degrades gracefully when Tracking Prevention blocks storage
+  const safeStorage = {
+    getItem(k) { try { return localStorage.getItem(k); } catch(e) { return null; } },
+    setItem(k, v) { try { localStorage.setItem(k, v); } catch(e) {} },
+    removeItem(k) { try { localStorage.removeItem(k); } catch(e) {} }
+  };
   (function() {
     try {
-      const settings = JSON.parse(localStorage.getItem('wt-settings')) || {};
+      const settings = JSON.parse(safeStorage.getItem('wt-settings')) || {};
       let theme = settings.theme || 'light';
       if (theme === 'system') {
         theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dracula' : 'light';
@@ -1061,7 +1070,7 @@ svg { display: block; }
           </div>
           <div id="editor-area">
             <textarea id="editor-textarea" spellcheck="false"></textarea>
-            <div id="editor-preview"><iframe id="editor-preview-iframe" sandbox="allow-same-origin"></iframe></div>
+            <div id="editor-preview"><iframe id="editor-preview-iframe" sandbox="allow-same-origin allow-scripts"></iframe></div>
           </div>
         </div>
       </div>
@@ -1143,7 +1152,7 @@ svg { display: block; }
         <div class="settings-section">
           <h3>Appearance</h3>
           <div class="setting-row">
-            <label>Theme</label>
+            <label for="s-theme">Theme</label>
             <select id="s-theme" onchange="applyTheme(this.value)">
               <option value="system">System</option>
               <option value="light">Light</option>
@@ -1155,11 +1164,11 @@ svg { display: block; }
             </select>
           </div>
           <div class="setting-row">
-            <label>Font Size</label>
+            <label for="s-fontsize">Font Size</label>
             <input type="number" id="s-fontsize" min="8" max="32" value="14" onchange="applyFontSize(+this.value)">
           </div>
           <div class="setting-row">
-            <label>Font Family</label>
+            <label for="s-font">Font Family</label>
             <select id="s-font" onchange="applyFont(this.value)">
               <option value="'SF Mono', 'Fira Code', Consolas, monospace">System Mono</option>
               <option value="'Fira Code', monospace">Fira Code</option>
@@ -1169,7 +1178,7 @@ svg { display: block; }
             </select>
           </div>
           <div class="setting-row">
-            <label>Cursor Style</label>
+            <label for="s-cursor">Cursor Style</label>
             <select id="s-cursor" onchange="applyCursor(this.value)">
               <option value="block">Block</option>
               <option value="underline">Underline</option>
@@ -1177,48 +1186,48 @@ svg { display: block; }
             </select>
           </div>
           <div class="setting-row">
-            <label>Cursor Blink</label>
-            <div class="toggle" id="s-blink" role="switch" tabindex="0" aria-checked="true" onclick="toggleSetting('blink')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('blink')}"></div>
+            <label for="s-blink-cb">Cursor Blink</label>
+            <div class="toggle" id="s-blink" role="switch" tabindex="0" aria-checked="true" onclick="toggleSetting('blink')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('blink')}"><input type="checkbox" id="s-blink-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
           </div>
         </div>
         <div class="settings-section">
           <h3>Terminal</h3>
           <div class="setting-row">
-            <label>Scrollback Lines</label>
+            <label for="s-scrollback">Scrollback Lines</label>
             <input type="number" id="s-scrollback" min="100" max="100000" value="5000" onchange="applyScrollback(+this.value)">
           </div>
           <div class="setting-row">
-            <label>Bell Sound</label>
-            <div class="toggle" id="s-bell" role="switch" tabindex="0" aria-checked="false" onclick="toggleSetting('bell')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('bell')}"></div>
+            <label for="s-bell-cb">Bell Sound</label>
+            <div class="toggle" id="s-bell" role="switch" tabindex="0" aria-checked="false" onclick="toggleSetting('bell')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('bell')}"><input type="checkbox" id="s-bell-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
           </div>
           <div class="setting-row">
-            <label>Right-Click Menu</label>
-            <div class="toggle on" id="s-termRightClick" role="switch" tabindex="0" aria-checked="true" onclick="toggleSetting('termRightClick')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('termRightClick')}"></div>
+            <label for="s-termRightClick-cb">Right-Click Menu</label>
+            <div class="toggle on" id="s-termRightClick" role="switch" tabindex="0" aria-checked="true" onclick="toggleSetting('termRightClick')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('termRightClick')}"><input type="checkbox" id="s-termRightClick-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
           </div>
         </div>
         <div class="settings-section">
           <h3>Interface</h3>
           <div class="setting-row">
-            <label>Show Mobile Keys</label>
-            <div class="toggle" id="s-mobilekeys" role="switch" tabindex="0" aria-checked="false" onclick="toggleSetting('mobilekeys')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('mobilekeys')}"></div>
+            <label for="s-mobilekeys-cb">Show Mobile Keys</label>
+            <div class="toggle" id="s-mobilekeys" role="switch" tabindex="0" aria-checked="false" onclick="toggleSetting('mobilekeys')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('mobilekeys')}"><input type="checkbox" id="s-mobilekeys-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
           </div>
           <div class="setting-row">
-            <label>Confirm on Close</label>
-            <div class="toggle on" id="s-confirmclose" role="switch" tabindex="0" aria-checked="true" onclick="toggleSetting('confirmclose')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('confirmclose')}"></div>
+            <label for="s-confirmclose-cb">Confirm on Close</label>
+            <div class="toggle on" id="s-confirmclose" role="switch" tabindex="0" aria-checked="true" onclick="toggleSetting('confirmclose')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('confirmclose')}"><input type="checkbox" id="s-confirmclose-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
           </div>
           <div class="setting-row">
-            <label>Data Saver</label>
-            <div class="toggle" id="s-datasaver" role="switch" tabindex="0" aria-checked="false" onclick="toggleSetting('datasaver')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('datasaver')}"></div>
+            <label for="s-datasaver-cb">Data Saver</label>
+            <div class="toggle" id="s-datasaver" role="switch" tabindex="0" aria-checked="false" onclick="toggleSetting('datasaver')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('datasaver')}"><input type="checkbox" id="s-datasaver-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
           </div>
           <div class="setting-row electron-only" style="display:none">
-            <label>Start on Login</label>
-            <div class="toggle" id="s-autostart" role="switch" tabindex="0" aria-checked="false" onclick="toggleSetting('autostart')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('autostart')}"></div>
+            <label for="s-autostart-cb">Start on Login</label>
+            <div class="toggle" id="s-autostart" role="switch" tabindex="0" aria-checked="false" onclick="toggleSetting('autostart')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('autostart')}"><input type="checkbox" id="s-autostart-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
           </div>
         </div>
         <div class="settings-section">
           <h3>Tunnel</h3>
           <div class="setting-row" style="flex-wrap:wrap;gap:6px">
-            <label style="flex:0 0 auto">Local URL</label>
+            <label for="tunnel-url" style="flex:0 0 auto">Local URL</label>
             <div style="display:flex;flex:1;gap:6px;min-width:0">
               <input type="text" id="tunnel-url" value="http://localhost:3000" placeholder="http://localhost:PORT" style="flex:1;min-width:0">
               <button class="btn btn-primary" style="height:28px;padding:0 12px;font-size:12px;flex-shrink:0" onclick="createTunnel()">Create</button>
@@ -1510,12 +1519,12 @@ function preventDoubleTap(el, fn, delay = 1000) {
 
 function saveTabState() {
   const state = tabs.map(t => ({ id: t.id, sessionId: t.sessionId, title: t.title }));
-  try { localStorage.setItem('wt-tabs', JSON.stringify(state)); } catch(e) { console.warn('Failed to save tabs:', e); }
+  try { safeStorage.setItem('wt-tabs', JSON.stringify(state)); } catch(e) { console.warn('Failed to save tabs:', e); }
 }
 
 function loadTabState() {
   try {
-    const val = JSON.parse(localStorage.getItem('wt-tabs'));
+    const val = JSON.parse(safeStorage.getItem('wt-tabs'));
     return Array.isArray(val) ? val : [];
   } catch(e) { console.warn('loadTabState error:', e); return []; }
 }
@@ -1738,6 +1747,8 @@ function setupTabDragDrop(tabEl, id) {
 function setupTabInlineRename(tabTitleSpan, tab) {
   const startRename = (span) => {
     const input = document.createElement('input');
+    input.id = 'tab-rename-input';
+    input.name = 'tab-rename';
     input.type = 'text';
     input.value = tab.title;
     input.style.cssText = `width:${Math.max(60, tab.title.length * 9)}px;height:22px;font-size:12px;padding:0 6px`;
@@ -1912,7 +1923,7 @@ function connectWebSocket(tab, isReconnect = false) {
       const ch = data.charCodeAt(i);
       if (ch === 13 || ch === 10) { // Enter
         try {
-          // Prefer stored paste text (avoids single-row truncation from getLine)
+          // Prefer stored paste text
           let text = tab._lastPasteText;
           tab._lastPasteText = null;
           if (text) {
@@ -1921,30 +1932,13 @@ function connectWebSocket(tab, isReconnect = false) {
             text = lines[lines.length - 1] || lines[lines.length - 2] || text;
             text = text.trim();
           } else {
-            // Read from terminal buffer — collect all rows from prompt to cursor
-            const buf = tab.term.buffer.active;
-            const cursorRow = buf.baseY + buf.cursorY;
-            let collected = '';
-            // Scan upward to find the prompt line (contains $, #, or %)
-            for (let r = cursorRow; r >= Math.max(0, cursorRow - 20); r--) {
-              const row = buf.getLine(r);
-              if (!row) break;
-              const rowText = row.translateToString(false);
-              // Prompt detection: line ends with $, #, or % followed by space
-              if (/\s*[#$%]\s*$/.test(rowText)) {
-                const promptEnd = rowText.search(/[#$%]\s*$/);
-                if (promptEnd >= 0) {
-                  collected = rowText.substring(promptEnd + 1) + collected;
-                }
-                break;
-              }
-              collected = rowText + collected;
-            }
-            text = collected.trim();
-            // Strip any trailing prompt artifacts from multi-row
-            text = text.replace(/\s*[#$%]\s*$/, '').trim();
+            // Use the tracked input buffer (more reliable than buffer scanning)
+            text = (tab._currentInput || '').trim();
+            // Strip any leaked VT/ANSI parameter junk that bypassed the escape parser
+            text = text.replace(/^[>;\d\s]+(?=[a-zA-Z/\\~\-.])/, '').replace(/^[>;\d\s]+$/, '').trim();
           }
           if (text) addToCmdHist(text);
+          tab._currentInput = ''; // Clear after history save
         } catch {}
       }
     }
@@ -1952,6 +1946,27 @@ function connectWebSocket(tab, isReconnect = false) {
     const buf = new Uint8Array(1 + enc.length);
     buf[0] = 0x00; buf.set(enc, 1);
     ws.send(buf.buffer);
+
+    // Update the keystroke buffer — skip all escape sequences and control characters
+    for (let i = 0; i < data.length; i++) {
+      const ch = data.charCodeAt(i);
+      if (ch === 13 || ch === 10) { // Enter (handled above)
+        continue;
+      } else if (ch === 127 || ch === 8) { // Backspace / Delete
+        if (tab._currentInput) tab._currentInput = tab._currentInput.slice(0, -1);
+      } else if (ch === 27) { // ESC — skip entire escape sequence (CSI, SS3, OSC, DCS, etc.)
+        i++; // skip first char after ESC (usually '[', 'O', ']', 'P')
+        // Skip until we find a final char or run out of data
+        while (i < data.length) {
+          const c = data.charCodeAt(i);
+          if (c >= 0x40 && c <= 0x7E) { i++; break; } // final char — sequence done
+          i++;
+        }
+      } else if (ch >= 32 && ch < 0x7F) { // Printable ASCII only
+        tab._currentInput = (tab._currentInput || '') + data[i];
+      }
+      // All other control chars (0x00-0x1F except 0x0D/0x0A) are silently dropped
+    }
   };
   const sendResize = (cols, rows) => {
     if (ws.readyState !== WebSocket.OPEN) return;
@@ -2185,6 +2200,10 @@ function initTerminal(tab) {
   tab.searchAddon = searchAddon;
   tab.closed = false;
   tab.textarea = term.textarea || term.element?.querySelector('.xterm-textarea, textarea');
+  if (tab.textarea && !tab.textarea.id) {
+    tab.textarea.id = 'xterm-helper-' + tab.id;
+    tab.textarea.name = 'terminal-input';
+  }
 
   // Intercept paste events to use bracketed paste mode (required for TUI apps like vim, nano, mc)
   if (tab.textarea) {
@@ -2370,9 +2389,9 @@ function initTerminal(tab) {
         if (tab.fitAddon) tab.fitAddon.fit();
         if (!window._pinchSaveTimer) {
           window._pinchSaveTimer = setTimeout(() => {
-            const persisted = JSON.parse(localStorage.getItem('wt-settings') || '{}');
+            const persisted = JSON.parse(safeStorage.getItem('wt-settings') || '{}');
             persisted.fontSize = tab.term.options.fontSize;
-            localStorage.setItem('wt-settings', JSON.stringify(persisted));
+            safeStorage.setItem('wt-settings', JSON.stringify(persisted));
             window._pinchSaveTimer = null;
           }, 500);
         }
@@ -3576,7 +3595,7 @@ async function openFileEditor(path) {
     const splitArea = document.getElementById('editor-split-area');
     const orientToggle = document.getElementById('editor-split-toggle');
     try {
-      const orient = localStorage.getItem('wt-editor-split-orientation');
+      const orient = safeStorage.getItem('wt-editor-split-orientation');
       const isHoriz = orient === 'horizontal';
       if (splitArea) splitArea.classList.toggle('horizontal', isHoriz);
       if (orientToggle) {
@@ -3600,7 +3619,7 @@ async function openFileEditor(path) {
     try {
       const isHoriz = splitArea && splitArea.classList.contains('horizontal');
       const key = isHoriz ? 'wt-editor-width' : 'wt-editor-height';
-      const saved = localStorage.getItem(key);
+      const saved = safeStorage.getItem(key);
       if (saved) {
         document.documentElement.style.setProperty('--editor-size', saved + 'px');
       }
@@ -3933,7 +3952,7 @@ function searchKeydown(e) {
 // ═══════════════════════════════════════════════════════
 function loadSettings() {
   try {
-    const s = JSON.parse(localStorage.getItem('wt-settings'));
+    const s = JSON.parse(safeStorage.getItem('wt-settings'));
     if (s && typeof s === 'object' && !Array.isArray(s)) {
       if (typeof s.theme === 'string' && ['system','tokyonight','light','solarized','gruvbox','dracula','monokai'].includes(s.theme)) settings.theme = s.theme;
       if (typeof s.fontSize === 'number' && s.fontSize >= 8 && s.fontSize <= 32) settings.fontSize = s.fontSize;
@@ -3965,7 +3984,7 @@ function loadSettings() {
   }
 }
 
-function saveSettings() { localStorage.setItem('wt-settings', JSON.stringify(settings)); }
+function saveSettings() { safeStorage.setItem('wt-settings', JSON.stringify(settings)); }
 
 function saveSetting(k, v) { settings[k] = v; saveSettings(); }
 
@@ -4265,7 +4284,7 @@ function setupSidebarResize() {
     document.removeEventListener('mouseup', stopResize);
     document.removeEventListener('touchmove', doResize);
     document.removeEventListener('touchend', stopResize);
-    try { localStorage.setItem('wt-sidebar-width', String(sidebar.offsetWidth)); } catch(e) { console.warn(e); }
+    try { safeStorage.setItem('wt-sidebar-width', String(sidebar.offsetWidth)); } catch(e) { console.warn(e); }
   }
   handle.addEventListener('mousedown', startResize);
   handle.addEventListener('touchstart', startResize, { passive: false });
@@ -4274,7 +4293,7 @@ function setupSidebarResize() {
 function restoreSidebarWidth() {
   if (window.innerWidth <= 768) return;
   try {
-    const savedW = localStorage.getItem('wt-sidebar-width');
+    const savedW = safeStorage.getItem('wt-sidebar-width');
     if (savedW) {
       const w = Math.max(150, Math.min(600, parseInt(savedW)));
       if (w) {
@@ -4352,7 +4371,7 @@ function setupEditorResize() {
       const v = document.documentElement.style.getPropertyValue('--editor-size');
       if (v) {
         const key = isHorizontal() ? 'wt-editor-width' : 'wt-editor-height';
-        localStorage.setItem(key, v.replace('px', ''));
+        safeStorage.setItem(key, v.replace('px', ''));
       }
     } catch(e) { console.warn(e); }
   }
@@ -4391,7 +4410,7 @@ function toggleEditorSplit() {
   // Restore saved size for this orientation
   try {
     const key = isHoriz ? 'wt-editor-width' : 'wt-editor-height';
-    const saved = localStorage.getItem(key);
+    const saved = safeStorage.getItem(key);
     if (saved) {
       document.documentElement.style.setProperty('--editor-size', saved + 'px');
     }
@@ -4403,7 +4422,7 @@ function toggleEditorSplit() {
   });
 
   // Persist orientation
-  try { localStorage.setItem('wt-editor-split-orientation', isHoriz ? 'horizontal' : 'vertical'); } catch(e) { console.warn(e); }
+  try { safeStorage.setItem('wt-editor-split-orientation', isHoriz ? 'horizontal' : 'vertical'); } catch(e) { console.warn(e); }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -4679,6 +4698,8 @@ function pasteToTerminal() {
 function fallbackPaste(callback) {
   if (!_pasteInput) {
     _pasteInput = document.createElement('textarea');
+    _pasteInput.id = 'fallback-paste-area';
+    _pasteInput.name = 'paste-input';
     _pasteInput.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;z-index:-1';
     document.body.appendChild(_pasteInput);
     _pasteInput.addEventListener('paste', () => {
@@ -4912,7 +4933,7 @@ function closeOverlay(id) {
   overlay.classList.remove('open');
   removeFocusTrap();
   if (lastFocusedElement) {
-    setTimeout(() => lastFocusedElement.focus(), 50);
+    setTimeout(() => lastFocusedElement?.focus(), 50);
     lastFocusedElement = null;
   }
 }
@@ -5092,9 +5113,9 @@ function showPinScreen() {
 // BOOKMARKS
 // ═══════════════════════════════════════════════════════
 function getBookmarks() {
-  try { return JSON.parse(localStorage.getItem('wt-bookmarks')) || []; } catch(e) { console.warn('Failed to parse bookmarks:', e); return []; }
+  try { return JSON.parse(safeStorage.getItem('wt-bookmarks')) || []; } catch(e) { console.warn('Failed to parse bookmarks:', e); return []; }
 }
-function saveBookmarks(bm) { localStorage.setItem('wt-bookmarks', JSON.stringify(bm)); renderBookmarks(); }
+function saveBookmarks(bm) { safeStorage.setItem('wt-bookmarks', JSON.stringify(bm)); renderBookmarks(); }
 
 function renderBookmarks() {
   const list = document.getElementById('bookmarks-list');
@@ -5143,11 +5164,11 @@ function bookmarkCurrentDir() {
   toast('Bookmarked', 'success');
 }
 
-let bookmarksOpen = (() => { try { const v = localStorage.getItem('wt-bm-open'); return v !== null ? v === 'true' : true; } catch(e) { console.warn('Failed to read bookmarksOpen:', e); return true; } })();
+let bookmarksOpen = (() => { try { const v = safeStorage.getItem('wt-bm-open'); return v !== null ? v === 'true' : true; } catch(e) { console.warn('Failed to read bookmarksOpen:', e); return true; } })();
 function toggleBookmarks() {
   bookmarksOpen = !bookmarksOpen;
   document.getElementById('bookmarks-list').classList.toggle('open', bookmarksOpen);
-  try { localStorage.setItem('wt-bm-open', bookmarksOpen); } catch(e) { console.warn(e); }
+  try { safeStorage.setItem('wt-bm-open', bookmarksOpen); } catch(e) { console.warn(e); }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -5220,10 +5241,10 @@ function finderKeydown(e) {
 const DEFAULT_CMDS = window.DEFAULT_CMDS || [];
 
 function getCmdLib() {
-  try { return JSON.parse(localStorage.getItem('wt-cmdlib')) || []; } catch(e) { return []; }
+  try { return JSON.parse(safeStorage.getItem('wt-cmdlib')) || []; } catch(e) { return []; }
 }
 function saveCmdLib(cmds) {
-  localStorage.setItem('wt-cmdlib', JSON.stringify(cmds));
+  safeStorage.setItem('wt-cmdlib', JSON.stringify(cmds));
 }
 
 function toggleCmdLib() {
@@ -5383,10 +5404,10 @@ let cmdHistMax = 50;
 let _cmdHistCache = [];
 
 function histHeaders() {
-  return { 'Content-Type': 'application/json', 'x-pin-token': localStorage.getItem('wt-pin') || '' };
+  return { 'Content-Type': 'application/json', 'x-pin-token': authToken || '' };
 }
 function histHeadersDelete() {
-  return { 'x-pin-token': localStorage.getItem('wt-pin') || '' };
+  return { 'x-pin-token': authToken || '' };
 }
 async function getCmdHist() {
   try {
@@ -5406,10 +5427,15 @@ function loadHistMax() {
 }
 async function addToCmdHist(cmd) {
   if (!cmd || !cmd.trim()) return;
-  // Strip ANSI escapes and control characters, keep only printable + space + tab
-  const clean = cmd.replace(/\x1b\[[0-9;]*[a-zA-Z~]/g, '')
-    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
-    .replace(/[\x00-\x08\x0e-\x1f]/g, '')
+  // Strip all ANSI/VT escape sequences and control characters
+  const clean = cmd
+    .replace(/\x1b[^a-zA-Z0-9]*[a-zA-Z0-9~]/g, '')       // CSI: ESC [ ... final
+    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')    // OSC: ESC ] ... BEL/ST
+    .replace(/\x1b[OPP][^\x40-\x7e]*[\x40-\x7e]/g, '')    // SS3/DCS: ESC O/P ... final
+    .replace(/\x1b./g, '')                                   // Any other ESC sequence
+    .replace(/[\x00-\x1f\x7f]/g, '')                        // All remaining control chars
+    .replace(/^[>;\d\s]+(?=[a-zA-Z/\\~\-.])/, '')          // VT params before a real command char
+    .replace(/^[>;\d\s]+$/, '')                              // Pure VT params, no command at all
     .trim();
   if (!clean) return;
   try {
@@ -5627,7 +5653,7 @@ async function refreshSystemStats(showLoading) {
 // ═══════════════════════════════════════════════════════
 let deferredPrompt = null;
 let installBannerDismissed = false;
-try { installBannerDismissed = localStorage.getItem('wt-install-dismissed') === 'true'; } catch(e) { console.warn(e); }
+try { installBannerDismissed = safeStorage.getItem('wt-install-dismissed') === 'true'; } catch(e) { console.warn(e); }
 
 window.addEventListener('beforeinstallprompt', e => {
   e.preventDefault();
@@ -5666,7 +5692,7 @@ function installPWA() {
 function dismissInstall() {
   document.getElementById('install-banner').style.display = 'none';
   document.getElementById('toast-container').classList.remove('banner-visible');
-  try { localStorage.setItem('wt-install-dismissed', 'true'); } catch(e) { console.warn(e); }
+  try { safeStorage.setItem('wt-install-dismissed', 'true'); } catch(e) { console.warn(e); }
   installBannerDismissed = true;
 }
 

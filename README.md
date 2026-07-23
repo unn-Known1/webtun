@@ -1,237 +1,139 @@
-# WebTun — Self-Hosted Web Terminal
+<p align="center">
+  <img src="public/icon.svg" width="80" height="80" alt="WebTun">
+</p>
 
-![Terminal](https://img.shields.io/badge/Terminal-Web--Native-2D5B8E?style=for-the-badge)
-![PWA](https://img.shields.io/badge/PWA-Installable-6BA428?style=for-the-badge)
-![Cloudflare](https://img.shields.io/badge/Tunnel-Cloudflare-F38020?style=for-the-badge)
-![Desktop](https://img.shields.io/badge/Desktop-Electron-47848F?style=for-the-badge)
-![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
+<h1 align="center">WebTun</h1>
 
-**Access your server from any browser — no VPN, no SSH client, no installing anything.**
+<p align="center">
+  <strong>Self-hosted web terminal with file explorer, Cloudflare Tunnel, and PWA support</strong><br>
+  Access your server from any browser — no VPN, no SSH client, no installing anything.
+</p>
 
-[![Quick Start](https://img.shields.io/badge/Quick_Start-One_Command-2D5B8E?style=for-the-badge&logo=gnu-bash)](install.sh)
-[![Download](https://img.shields.io/github/v/release/unn-known1/webtun?style=for-the-badge&logo=github)](https://github.com/unn-known1/webtun/releases/latest)
-
----
-
-## Why WebTun?
-
-| Traditional SSH | WebTun |
-|----------------|--------|
-| Need SSH client installed | Open any browser |
-| Configure VPN or port forwarding | Cloudflare Tunnel auto-configured |
-| Can't access from phone easily | PWA works on iOS/Android |
-| Share access requires key exchange | Web-based sharing in 1 click |
-| Corporate firewall blocks port 22 | Runs over HTTPS (port 443) |
-
----
-
-## Features
-
-### Core
-- **Real shell sessions** — node-pty backed, full bash/zsh support
-- **Multi-tab terminal** — drag tabs to reorder, side-by-side sessions like your desktop
-- **File explorer** — browse, upload, download, rename, delete, cut/copy/paste with conflict resolution (replace, merge, keep both, skip)
-- **WebSocket + xterm.js** — responsive, low-latency typing
-- **Bracketed paste** — Ctrl+V works correctly in TUI apps (vim, nano, htop, mc)
-- **Command history** — automatic capture with smart dedup, works with pasted commands
-
-### Mobile-First UX
-- **Touch gestures** — swipe to close tabs, swipe from edge to open sidebar, pull-to-refresh file list
-- **Mobile keyboard bar** — ESC, Tab, arrow keys, Ctrl combos (Ctrl+C, Ctrl+D, etc.)
-- **Virtual keyboard aware** — terminal resizes when keyboard opens, no overlap
-- **Pinch-to-zoom** — adjust terminal font size (10–28px) with two fingers
-- **Selection mode** — toggle between terminal interaction and text selection
-- **Responsive** — optimized for phones (480px), tablets (1024px), and landscape orientation
-
-### Settings
-- **Right-click menu toggle** — enable/disable custom terminal context menu (Settings > Terminal)
-- **Terminal scroll** — reliable mouse wheel scroll in all apps, including TUI apps with mouse tracking
-
-### File Explorer
-- **Multi-select** — select all / deselect all, batch delete, download, zip, cut, and copy files
-- **Context menu on selection** — right-click actions (zip, download, delete, cut, copy) operate on all selected files
-- **Zip / Extract** — right-click any file or folder to zip; right-click `.zip` files to extract (archiver v8)
-- **Folder download** — folders download as `.zip` archives automatically
-- **Image viewer** — click images (.png, .jpg, .gif, .svg, .webp, .bmp, .ico) to preview inline
-- **Cut, Copy, Paste** — multi-file support with conflict resolution dialog (replace, merge folders, keep both, skip, cancel)
-- **Upload with progress** — per-file progress bar via XHR
-- **Breadcrumb navigation** — tappable directory segments for quick navigation
-- **Long-press context menu** — rename, delete, download, copy on touch devices
-- **Text selection** — long-press file names to select and copy text on touch devices
-
-### System Stats
-- **CPU, Memory, Disk, Uptime** — real-time usage with progress bars
-- **GPU detection** — cross-platform (Linux: nvidia-smi/lspci, macOS: system_profiler, Windows: WMI)
-- **Multi-GPU support** — detects and displays all GPUs with VRAM, utilization, and temperature
-- **Top processes** — sorted by CPU usage
-
-### Desktop App (Electron)
-- Cross-platform app for Linux & Windows
-- Runs the server as a child process — no terminal needed
-- Native window with system tray, copy/paste, and file dialogs
-- Download the latest release from [GitHub Releases](https://github.com/unn-known1/webtun/releases/latest)
-- Or build from source: `npm run dist:linux` / `npm run dist:win`
-
-### PWA (Install as App)
-- Add to iOS/Android home screen — looks and feels like native app
-- Install banner prompts on first visit (Chrome) with iOS instructions fallback
-- Works offline (shows last session state)
-- Push notifications for tunnel status
-
-### Cloudflare Tunnel (Zero-Config)
-- Create tunnel from UI — no CLI commands
-- Built-in health check warns if local server is unreachable before creating tunnel
-- Live/orphan status + target responsiveness indicator in tunnel list
-- Get public HTTPS URL instantly
-- Tunnels survive server restarts
-- Stop/kill tunnels from settings panel
+<p align="center">
+  <a href="https://github.com/unn-known1/webtun/releases/latest"><img src="https://img.shields.io/github/v/release/unn-known1/webtun?style=flat-square&logo=github" alt="Release"></a>
+  <img src="https://img.shields.io/badge/Terminal-xterm.js-2D5B8E?style=flat-square" alt="Terminal">
+  <img src="https://img.shields.io/badge/PWA-Installable-6BA428?style=flat-square" alt="PWA">
+  <img src="https://img.shields.io/badge/Tunnel-Cloudflare-F38020?style=flat-square" alt="Tunnel">
+  <img src="https://img.shields.io/badge/Desktop-Electron-47848F?style=flat-square" alt="Electron">
+  <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License">
+</p>
 
 ---
 
 ## Quick Start
 
-### npm (Recommended)
 ```bash
 npx webtun
 ```
 
-Install globally:
+That's it. Open `http://localhost:3000` in your browser.
+
+```bash
+npx webtun --pin secret123        # With PIN protection
+npx webtun --tunnel               # With Cloudflare Tunnel (public URL)
+npx webtun -p 8080 -t             # Custom port + tunnel
+npx webtun --help                 # Show all options
+npx webtun --version              # Show version
+```
+
+### Install globally
+
 ```bash
 npm install -g webtun
 webtun
 ```
 
-**Options:**
-| Flag | Description |
-|------|-------------|
-| `--port, -p` | Port (default: 3000) |
-| `--host, -h` | Host (default: 0.0.0.0) |
-| `--pin` | Authentication PIN |
-| `--tunnel, -t` | Start Cloudflare Tunnel |
-| `--help` | Show help |
-| `--version` | Show version |
+> **npm 12+ note:** Install scripts are blocked by default. Allow them for `node-pty`:
+> ```bash
+> npm install -g --allow-scripts=webtun,node-pty webtun
+> ```
+> Build tools required for native modules: `sudo apt-get install -y python3 make g++` (Debian/Ubuntu) or `xcode-select --install` (macOS).
 
-**Environment Variables:**
-| Variable | Description |
-|----------|-------------|
-| `PORT` | Server port (default: 3000) |
-| `HOST` | Bind address (default: 0.0.0.0) |
-| `PIN` | Authentication PIN (empty = no auth) |
-| `SHELL` | Shell to use (default: PowerShell on Windows, bash/sh elsewhere) |
-| `WORKSPACE_ROOT` | Root directory for file operations (default: ~) |
-| `TRUST_PROXY` | Set to `true` if behind a reverse proxy (default: loopback only) |
-| `WEBTUN_SHELL` | Override shell on Windows (e.g., `/usr/bin/bash` for Git Bash) |
+### Other install methods
 
-**Examples:**
 ```bash
-npx webtun                        # Start on port 3000
-npx webtun --port 8080            # Custom port
-npx webtun --pin secret123        # With PIN protection
-npx webtun --tunnel               # With Cloudflare Tunnel
-npx webtun -p 4000 -t             # Port 4000 + tunnel
-```
-
-**Note:** npm 12+ blocks install scripts by default. Allow them for `node-pty` (native module):
-```bash
-# Allow scripts once during install
-npm install -g --allow-scripts=webtun,node-pty webtun
-
-# Or allow globally (one-time setup)
-npm config set allow-scripts=webtun,node-pty --location=user
-npm install -g webtun
-```
-
-Build tools are also required (for compiling native modules):
-```bash
-# Debian/Ubuntu
-sudo apt-get install -y python3 make g++
-
-# macOS
-xcode-select --install
-```
-
-### One-Command Install
-```bash
+# One-command install
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/unn-Known1/webtun/main/install.sh)"
-```
 
-### Manual Setup
-```bash
-git clone https://github.com/unn-Known1/webtun.git
-cd webtun
-chmod +x setup.sh && ./setup.sh
-npm start
-```
-
-### Google Colab (Instant Terminal)
-```python
-!rm -rf webtun && git clone https://github.com/unn-Known1/webtun.git && cd webtun && npm install --loglevel=error && node server.js > /tmp/webtun.log 2>&1 & sleep 4 && for i in 1 2 3; do curl -sf http://localhost:3000/api/auth/required >/dev/null && break; sleep 2; done && curl -s -X POST http://localhost:3000/api/tunnel -H 'Content-Type: application/json' -d '{"url":"http://localhost:3000"}' --max-time 20 | python3 -c "import sys,json; d=json.load(sys.stdin); print('🌐 WebTun ready at:', d.get('url','Error: '+d.get('error','')))"
+# Manual setup
+git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh && npm start
 ```
 
 ---
 
-## Architecture
+## Features
 
-```
-┌────────────────────────────────────────────────────────────────┐
-│                        Your Browser                            │
-│  ┌──────────┐  ┌───────────┐  ┌─────────────┐  ┌───────────┐   │
-│  │ Terminal │  │   File    │  │   Tunnel    │  │  Settings │   │
-│  │  (xterm) │  │ Explorer  │  │   Manager   │  │   Panel   │   │
-│  └─────┬────┘  └─────┬─────┘  └──────┬──────┘  └─────┬─────┘   │
-│        │             │               │               │         │
-└────────┼─────────────┼───────────────┼───────────────┼─────────┘
-         │  WebSocket  │  REST API     │               │
-         ▼             ▼               ▼               │
-┌────────────────────────────────────────────────────────────────┐
-│                       Node.js Server                           │
-│  ┌─────────────┐  ┌──────────────┐  ┌───────────────────────┐  │
-│  │  WebSocket  │  │   File API   │  │  Cloudflare Tunnel    │  │
-│  │   Handler   │  │ (read/write) │  │      Manager          │  │
-│  └──────┬──────┘  └──────┬───────┘  └───────────┬───────────┘  │
-│         │                │                      │              │
-│         ▼                ▼                      ▼              │
-│  ┌──────────┐  ┌──────────────────┐  ┌──────────────────────┐  │
-│  │ node-pty │  │ Local Filesystem │  │ cloudflared daemon   │  │
-│  │  (shell) │  │ (your server)    │  │ (exposes to internet)│  │
-│  └──────────┘  └──────────────────┘  └──────────────────────┘  │
-└────────────────────────────────────────────────────────────────┘
-                               │
-                               ▼
-                      ┌─────────────────┐
-                      │  Internet Users │
-                      │  (HTTPS URL)    │
-                      └─────────────────┘
-```
+### Terminal
+- **Real shell sessions** — node-pty backed, full bash/zsh/PowerShell support
+- **Multi-tab** — drag to reorder, side-by-side sessions
+- **Bracketed paste** — Ctrl+V works in TUI apps (vim, nano, htop)
+- **Command history** — keystroke-based capture, strips ANSI/control sequences
+- **tmux sessions** — persistent sessions survive page reload
+
+### File Explorer
+- Browse, upload, download, rename, delete files
+- **Multi-select** — batch delete, download, zip, cut, copy
+- **Zip/Extract** — right-click any file or folder
+- **Image viewer** — preview inline (png, jpg, gif, svg, webp)
+- **Conflict resolution** — replace, merge, keep both, skip
+- **Breadcrumb navigation** — tappable directory segments
+
+### Mobile
+- **Touch gestures** — swipe to close tabs, pull-to-refresh
+- **Mobile keyboard bar** — ESC, Tab, arrows, Ctrl combos
+- **Pinch-to-zoom** — adjust font size with two fingers
+- **Virtual keyboard aware** — no overlap when keyboard opens
+- **Selection mode** — toggle between interaction and text selection
+
+### Cloudflare Tunnel
+- Create tunnels from the UI — zero CLI commands
+- Built-in health check before tunnel creation
+- Live status indicators, tunnels survive restarts
+- Stop/kill tunnels from settings panel
+
+### System Stats
+- CPU, Memory, Disk, Uptime — real-time with progress bars
+- GPU detection (nvidia-smi, system_profiler, WMI)
+- Multi-GPU support with VRAM, utilization, temperature
+- Top processes sorted by CPU
+
+### Desktop (Electron)
+- Cross-platform app for Linux, Windows, macOS
+- Native window with system tray and file dialogs
+- Build: `npm run dist:linux` / `npm run dist:win` / `npm run dist:mac`
+- [Download latest release](https://github.com/unn-known1/webtun/releases/latest)
+
+### PWA
+- Install to iOS/Android home screen
+- Works offline with last session state
+- Install banner with iOS instructions fallback
 
 ---
 
-## Use Cases
+## Configuration
 
-| Scenario | Why WebTun |
-|----------|------------|
-| **Home server access** | Access from anywhere without opening ports |
-| **Emergency debugging** | Phone/laptop without SSH client |
-| **Share terminal with friend** | No key exchange, just send URL |
-| **Colab power-up** | Persistent terminal alongside Python notebooks |
-| **Demo environment** | Spin up temp shell for presentations |
-| **Corporate restrictions** | HTTPS works where SSH is blocked |
+### CLI Flags
 
----
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--port, -p` | Server port | `3000` |
+| `--host, -h` | Bind address | `0.0.0.0` |
+| `--pin` | Authentication PIN | none |
+| `--tunnel, -t` | Start Cloudflare Tunnel | off |
+| `--help` | Show help | — |
+| `--version` | Show version | — |
 
-## Tunnel Manager
+### Environment Variables
 
-1. Open **Settings** (gear icon)
-2. Go to **Tunnel** section
-3. Enter URL (default: `http://localhost:3000`)
-4. Click **Create** — a health check pings the target first, warns if unreachable
-5. Copy the public URL — share it with anyone
-6. View all tunnels with live status indicators (green/orange)
-
-**Note:** Tunnels created before a server restart need manual cleanup:
-```bash
-kill $(pgrep -f 'cloudflared tunnel')
-```
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PORT` | Server port | `3000` |
+| `HOST` | Bind address | `0.0.0.0` |
+| `PIN` | Auth PIN (empty = no auth) | none |
+| `SHELL` | Shell to use | platform default |
+| `WORKSPACE_ROOT` | File explorer root | `~` |
+| `TRUST_PROXY` | Trust `X-Forwarded-For` from first proxy | `false` |
+| `WEBTUN_SHELL` | Override shell on Windows | PowerShell |
 
 ---
 
@@ -239,10 +141,8 @@ kill $(pgrep -f 'cloudflared tunnel')
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | HTML + Vanilla JS (PWA, prefers-color-scheme, visualViewport, Drag & Drop) |
-| Backend | Node.js + node-pty + Express |
-| Terminal | xterm.js + fit addon |
-| Protocol | WebSocket (ws) |
+| Frontend | Vanilla JS, xterm.js, CodeMirror, PWA |
+| Backend | Node.js, Express, node-pty |
 | Tunnel | Cloudflare Tunnel (cloudflared) |
 | Desktop | Electron + electron-builder |
 | Archives | archiver v8 + yauzl |
@@ -251,11 +151,11 @@ kill $(pgrep -f 'cloudflared tunnel')
 
 ## Security
 
-- **npm audit clean** — 0 known vulnerabilities
-- **PIN authentication** — optional, protects all API endpoints
-- **CSP headers** — restricts script sources to CDN
-- **WebSocket origin check** — prevents cross-site WebSocket hijacking
-- **Rate limiting** — per-IP rate limits on auth and search endpoints
+- PIN authentication on all API endpoints (`x-pin-token` header or `?token=` query)
+- CSP headers restrict script sources to CDN
+- WebSocket origin check prevents cross-site hijacking
+- Per-IP rate limiting on auth and search endpoints
+- npm audit clean — 0 known vulnerabilities
 
 ---
 
@@ -263,31 +163,31 @@ kill $(pgrep -f 'cloudflared tunnel')
 
 | Problem | Solution |
 |---------|----------|
-| Tunnel URL not loading | Check Cloudflare account quota at [dash.cloudflare.com](https://dash.cloudflare.com) |
-| Permission denied on shell | Ensure user has shell access: `chsh -s /bin/bash` |
-| File upload fails | Check `public/uploads/` permissions: `chmod 755 public/uploads/` |
-| Port 3000 in use | Change port: `PORT=3001 npm start` |
-| Windows terminal opens PowerShell instead of Git Bash | Set `WEBTUN_SHELL=/usr/bin/bash` in `.env` |
-| Behind reverse proxy, wrong client IP | Set `TRUST_PROXY=true` in `.env` |
-| Tunnel persists after server restart | Tunnels are auto-managed; manual cleanup: `kill $(pgrep -f 'cloudflared tunnel')` |
+| Tunnel not loading | Check quota at [dash.cloudflare.com](https://dash.cloudflare.com) |
+| Port 3000 in use | `PORT=3001 npm start` |
+| Shell permission denied | `chsh -s /bin/bash` |
+| Behind reverse proxy | Set `TRUST_PROXY=true` in `.env` |
+| Windows shell wrong | Set `WEBTUN_SHELL=/usr/bin/bash` in `.env` |
+| Tunnel persists after restart | `kill $(pgrep -f 'cloudflared tunnel')` |
 
 ---
 
-## Contributing
+## Changelog
 
-1. Fork → Branch → Commit → PR
-2. Follow existing code style (ES6+, no frameworks)
-3. Test locally with `npm start`
-4. Update this README if adding features
+### v1.5.1
+- Fixed command history saving terminal garbage instead of actual commands
+- Fixed history 401 errors on Cloudflare tunnel URLs
+- Fixed VT/ANSI parameter sequences leaking into history
+- Fixed CodeMirror `defineSimpleMode` error
+- Fixed console accessibility warnings (labels, form fields)
+- Added safe `localStorage` wrapper for Tracking Prevention compatibility
+- New terminal icon matching in-app logo
 
----
-
-## License
-
-MIT — do whatever you want with it.
+### v1.5.0
+- Initial release
 
 ---
 
 <p align="center">
-  <sub>Made with ❤️ by <a href="https://github.com/unn-known1">Gaurang Patel</a></sub>
+  <sub>Built by <a href="https://github.com/unn-known1">Gaurang Patel</a> · MIT License</sub>
 </p>
