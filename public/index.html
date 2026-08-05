@@ -11,13 +11,16 @@
 <link rel="icon" href="/favicon.png" type="image/png">
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css">
 <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-search@0.15.0/lib/addon-search.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0.11.0/lib/addon-web-links.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-unicode11@0.7.0/lib/addon-unicode11.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-webgl@0.18.1/lib/addon-webgl.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-webgl@0.18.0/lib/addon-webgl.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/lib/codemirror.min.css">
@@ -49,6 +52,7 @@
   --border: #3b3f52;
   --fg: #c0caf5;
   --fg2: #787c99;
+  --fg3: #565f89;
   --accent: #7aa2f7;
   --accent2: #bb9af7;
   --green: #9ece6a;
@@ -74,43 +78,51 @@
   --btn-sm: 26px;
   --btn-md: 32px;
   --btn-lg: 36px;
+  --z-header: 10;
+  --z-drawer: 15;
+  --z-popover: 25;
+  --z-sidebar: 30;
+  --z-drop: 50;
+  --z-overlay: 400;
+  --z-toast: 450;
+  --z-menu: 500;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --transition-fast: 0.15s;
   --transition-normal: 0.2s;
   --transition-slow: 0.3s;
-  --font: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+  --font: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
 }
 [data-theme="light"] {
   --bg: #f9f9fb; --bg2: #eeeef2; --bg3: #e2e2e8; --bg4: #d5d5de;
-  --border: #c8c8d4; --fg: #2a2a3a;   --fg2: #3a3a5a;
+  --border: #c8c8d4; --fg: #1f1f30;   --fg2: #2b2b45; --fg3: #7a7a95;
   --accent: #4060d0; --accent2: #8050c0; --green: #3a8a2a;
   --red: #c03050; --yellow: #a07010; --cyan: #2080a0;
   --shadow-color: rgba(0,0,0,0.12);
 }
 [data-theme="solarized"] {
   --bg: #002b36; --bg2: #073642; --bg3: #083f4d; --bg4: #0a4a5a;
-  --border: #1a5a6a; --fg: #93a1a1; --fg2: #586e75;
+  --border: #1a5a6a; --fg: #93a1a1; --fg2: #586e75; --fg3: #486168;
   --accent: #268bd2; --accent2: #6c71c4; --green: #859900;
   --red: #dc322f; --yellow: #b58900; --cyan: #2aa198;
   --shadow-color: rgba(0,0,0,0.6);
 }
 [data-theme="gruvbox"] {
   --bg: #282828; --bg2: #1d2021; --bg3: #32302f; --bg4: #3c3836;
-  --border: #504945; --fg: #ebdbb2; --fg2: #928374;
+  --border: #504945; --fg: #ebdbb2; --fg2: #928374; --fg3: #7c6f64;
   --accent: #83a598; --accent2: #d3869b; --green: #b8bb26;
   --red: #fb4934; --yellow: #fabd2f; --cyan: #8ec07c;
   --shadow-color: rgba(0,0,0,0.6);
 }
 [data-theme="dracula"] {
   --bg: #282a36; --bg2: #1e1f29; --bg3: #2f3240; --bg4: #373a50;
-  --border: #44475a; --fg: #f8f8f2; --fg2: #6272a4;
+  --border: #44475a; --fg: #f8f8f2; --fg2: #6272a4; --fg3: #4f5b84;
   --accent: #bd93f9; --accent2: #ff79c6; --green: #50fa7b;
   --red: #ff5555; --yellow: #f1fa8c; --cyan: #8be9fd;
   --shadow-color: rgba(0,0,0,0.6);
 }
 [data-theme="monokai"] {
   --bg: #272822; --bg2: #1e1f1c; --bg3: #31322b; --bg4: #3a3c32;
-  --border: #49483e; --fg: #f8f8f2; --fg2: #75715e;
+  --border: #49483e; --fg: #f8f8f2; --fg2: #75715e; --fg3: #5d5a4e;
   --accent: #a6e22e; --accent2: #ae81ff; --green: #a6e22e;
   --red: #f92672; --yellow: #e6db74; --cyan: #66d9e8;
   --shadow-color: rgba(0,0,0,0.6);
@@ -120,7 +132,7 @@
    RESET & BASE
    ═══════════════════════════════════════════════════════ */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 13px; padding-bottom: env(safe-area-inset-bottom); scroll-behavior: smooth; touch-action: manipulation; -webkit-overflow-scrolling: touch; }
+html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 13px; padding-bottom: env(safe-area-inset-bottom); touch-action: manipulation; -webkit-overflow-scrolling: touch; -webkit-tap-highlight-color: transparent; }
 
 button { background: none; border: none; cursor: pointer; color: inherit; font-family: inherit; }
 input, select, textarea { font-family: var(--font); background: var(--bg3); border: 1px solid var(--border); color: var(--fg); border-radius: var(--radius); padding: 6px 10px; outline: none; font-size: 16px; }
@@ -148,10 +160,10 @@ svg { display: block; }
    LAYOUT
    ═══════════════════════════════════════════════════════ */
 #app { display: flex; flex-direction: column; height: 100dvh; }
-#header { display: flex; align-items: center; height: var(--header-h); background: var(--bg2); border-bottom: 1px solid var(--border); padding: 0 8px; padding-top: env(safe-area-inset-top, 0px); gap: 6px; flex-shrink: 0; z-index: 10; position: relative; }
+#header { display: flex; align-items: center; height: var(--header-h); background: var(--bg2); border-bottom: 1px solid var(--border); padding: 0 8px; padding-top: env(safe-area-inset-top, 0px); gap: 6px; flex-shrink: 0; z-index: var(--z-header); position: relative; }
 
 /* Upload progress bar in header */
-#upload-progress { position: absolute; bottom: 0; left: 0; right: 0; height: 0; background: var(--bg3); z-index: 20; overflow: visible; transition: height var(--transition-normal) ease; }
+#upload-progress { position: absolute; bottom: 0; left: 0; right: 0; height: 0; background: var(--bg3); z-index: calc(var(--z-header) + 1); overflow: visible; transition: height var(--transition-normal) ease; }
 #upload-progress.active { height: 3px; }
 #upload-progress-bar { height: 100%; width: 0%; background: var(--accent); transition: width var(--transition-slow) ease; border-radius: 0 2px 2px 0; }
 #upload-progress.success #upload-progress-bar { background: var(--green); }
@@ -163,9 +175,10 @@ svg { display: block; }
 #sidebar.dragging { transition: none; }
 #sidebar.hidden { width: 0 !important; }
 #content { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; min-height: 0; position: relative; }
-#tab-bar { display: flex; align-items: center; height: var(--tab-h); background: var(--bg2); border-bottom: 1px solid var(--border); overflow-x: auto; overflow-y: hidden; flex-shrink: 0; gap: 2px; padding: 0 4px; mask-image: linear-gradient(to right, black calc(100% - 20px), transparent); -webkit-mask-image: linear-gradient(to right, black calc(100% - 20px), transparent); }
+#tab-bar { display: flex; align-items: center; height: var(--tab-h); background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0; gap: 2px; padding: 0 4px; }
+#tab-scroll { display: flex; align-items: center; gap: 2px; height: 100%; flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; mask-image: linear-gradient(to right, black calc(100% - 20px), transparent); -webkit-mask-image: linear-gradient(to right, black calc(100% - 20px), transparent); scrollbar-width: none; }
+#tab-scroll::-webkit-scrollbar { height: 3px; }
 #tab-bar.drag-over, #new-tab-btn.drag-over { background: var(--accent, #00c853); opacity: 0.15; }
-#tab-bar::-webkit-scrollbar { height: 3px; }
 #terminals { flex: 1; position: relative; overflow: hidden; }
 .term-wrapper { position: absolute; inset: 0; padding: 4px; display: none; touch-action: pan-y; -webkit-overflow-scrolling: touch; overscroll-behavior: none; }
 .term-wrapper.active { display: flex; }
@@ -255,7 +268,7 @@ svg { display: block; }
   cursor: row-resize;
   flex-shrink: 0;
   position: relative;
-  z-index: 10;
+  z-index: var(--z-header);
   background: transparent;
   transition: background var(--transition-fast);
 }
@@ -275,7 +288,7 @@ svg { display: block; }
   display: flex; flex-direction: column;
   transform: translateX(100%);
   transition: var(--transition-normal);
-  z-index: 15;
+  z-index: var(--z-drawer);
 }
 #settings-panel.open {
   transform: translateX(0);
@@ -308,17 +321,27 @@ svg { display: block; }
 .keep-awake input { display: none; }
 .keep-awake-box { width: 18px; height: 18px; border: 1.5px solid var(--border); border-radius: 4px; position: relative; transition: var(--transition-normal) ease; background: var(--bg2); }
 .keep-awake:hover .keep-awake-box { border-color: var(--fg2); }
-.keep-awake-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--fg); position: absolute; top: 4px; left: 3px; transition: var(--transition-normal) ease; }
+.keep-awake-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--fg); position: absolute; top: 4px; left: 3px; transition: left var(--transition-normal) ease; }
 .keep-awake input:checked + .keep-awake-box { border-color: var(--accent); background: var(--accent); }
-.keep-awake input:checked + .keep-awake-box .keep-awake-dot { background: var(--bg); left: calc(100% - 11px); animation: keepawake-bounce 0.8s ease-in-out infinite; }
-
-@keyframes keepawake-bounce {
-  0%, 100% { left: 3px; }
-  50% { left: calc(100% - 11px); }
-}
+.keep-awake input:checked + .keep-awake-box .keep-awake-dot { background: var(--bg); left: calc(100% - 11px); }
 
 #hostname-badge { font-size: 11px; color: var(--fg2); padding: 2px 8px; background: var(--bg3); border-radius: 999px; }
+#more-btn { display: none; }
+#more-menu { position: absolute; top: calc(100% + 4px); right: env(safe-area-inset-right, 0px); background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 8px 32px var(--shadow-color); padding: 4px; min-width: 190px; display: none; flex-direction: column; gap: 2px; z-index: var(--z-popover); }
+#more-menu.open { display: flex; }
+.mm-item { display: flex; align-items: center; gap: 9px; padding: 9px 10px; font-size: 12px; font-family: var(--font); border-radius: var(--radius-sm); color: var(--fg); text-align: left; width: 100%; }
+.mm-item:hover, .mm-item:focus-visible { background: var(--bg4); color: var(--fg); outline: none; }
+.tunnel-row { padding: 6px 0; border-bottom: 1px solid var(--border); }
+.tunnel-label { font-size: 10px; color: var(--fg2); margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tunnel-inner { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.tunnel-url { font-size: 11px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tunnel-status, .tunnel-target { font-size: 9px; padding: 1px 5px; border-radius: 4px; flex-shrink: 0; display: inline-flex; align-items: center; gap: 2px; }
+.tunnel-btn { width: 22px; height: 22px; flex-shrink: 0; }
+.tunnel-btn.stop { color: var(--red); }
 #conn-status { transition: background var(--transition-slow); }
+.reconnect-spinner { display: inline-flex; vertical-align: -1px; margin-right: 4px; }
+.reconnect-spinner svg { animation: reconnectSpin 1s linear infinite; }
+@keyframes reconnectSpin { to { transform: rotate(360deg); } }
 
 /* ═══════════════════════════════════════════════════════
    TABS
@@ -341,11 +364,22 @@ svg { display: block; }
    ═══════════════════════════════════════════════════════ */
 #sidebar-header { display: flex; align-items: center; padding: 6px 8px; gap: 4px; border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap; min-height: 40px; height: auto; }
 #sidebar-header input { flex: 1 1 60px; min-width: 40px; height: 26px; font-size: 12px; }
-#file-list-wrap { flex: 1; overflow-y: auto; min-height: 0; touch-action: pan-y; -webkit-overflow-scrolling: touch; }
+#file-list-wrap { flex: 1; overflow-y: auto; min-height: 0; touch-action: pan-y; -webkit-overflow-scrolling: touch; position: relative; }
+#ptr-indicator { position: absolute; top: -40px; left: 0; right: 0; height: 36px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 11px; color: var(--fg2); opacity: 0; pointer-events: none; }
+#ptr-indicator .ptr-arrow { display: inline-flex; }
+#ptr-indicator .ptr-arrow svg { transition: transform 0.2s ease; }
+#ptr-indicator.release .ptr-arrow svg { transform: rotate(180deg); }
+#ptr-indicator.release .ptr-text { color: var(--accent); }
+/* Loading state: dim content + indeterminate progress bar */
+#file-list-wrap.loading #file-list { opacity: 0.45; transition: opacity var(--transition-fast); }
+#file-list-wrap.loading::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--bg3); z-index: 5; }
+#file-list-wrap.loading::after { content: ''; position: absolute; top: 0; left: -30%; width: 30%; height: 2px; background: var(--accent); border-radius: 0 2px 2px 0; z-index: 6; animation: fileListProgress 0.9s ease-in-out infinite; }
+@keyframes fileListProgress { from { left: -30%; } to { left: 100%; } }
 .file-list-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 20px; color: var(--fg2); font-size: 13px; text-align: center; gap: 8px; }
 .file-list-empty svg { opacity: 0.4; }
-#file-breadcrumb { padding: 8px 10px; font-size: 12px; color: var(--fg2); border-bottom: 1px solid var(--border); word-break: break-all; line-height: 1.8; flex-shrink: 0; }
-#file-breadcrumb a { transition: background var(--transition-fast); border-radius: var(--radius-sm); padding: 4px 6px !important; }
+#file-breadcrumb { padding: 8px 10px; font-size: 12px; color: var(--fg2); border-bottom: 1px solid var(--border); white-space: nowrap; overflow-x: auto; line-height: 1.8; flex-shrink: 0; scrollbar-width: none; }
+#file-breadcrumb::-webkit-scrollbar { display: none; }
+#file-breadcrumb a { transition: background var(--transition-fast); border-radius: var(--radius-sm); padding: 4px 6px !important; display: inline-block; }
 #file-breadcrumb a:hover { background: var(--bg3); }
 @media (pointer: coarse) {
   #file-breadcrumb { padding: 10px 12px; font-size: 13px; }
@@ -354,6 +388,9 @@ svg { display: block; }
 .file-item { display: flex; align-items: center; gap: 8px; padding: 5px 10px; cursor: pointer; border-bottom: 1px solid transparent; font-size: 12px; position: relative; user-select: none; }
 .file-item:hover { background: var(--bg3); }
 .file-item.selected { background: var(--bg4); }
+.file-item.focused { background: var(--bg3); outline: 1px solid var(--accent); outline-offset: -1px; }
+.file-item .file-ellipsis { display: flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: var(--radius-sm); color: var(--fg2); opacity: 0.45; flex-shrink: 0; }
+.file-item:hover .file-ellipsis { opacity: 1; }
 .file-icon { font-size: 14px; width: 16px; text-align: center; flex-shrink: 0; }
 .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; -webkit-user-select: text; }
 .file-size { font-size: 10px; color: var(--fg2); flex-shrink: 0; user-select: text; -webkit-user-select: text; }
@@ -378,7 +415,7 @@ svg { display: block; }
 /* Sidebar resize handle */
 .sidebar-resize-handle {
   position: absolute; right: 0; top: 0; bottom: 0;
-  width: 5px; cursor: col-resize; z-index: 10;
+  width: 5px; cursor: col-resize; z-index: var(--z-header);
   background: transparent; transition: background var(--transition-fast); flex-shrink: 0;
 }
 .sidebar-resize-handle:hover,
@@ -432,9 +469,10 @@ svg { display: block; }
 /* ═══════════════════════════════════════════════════════
    SEARCH BAR
    ═══════════════════════════════════════════════════════ */
-#search-bar { position: absolute; top: 8px; right: 12px; z-index: 20; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 8px; display: none; align-items: center; gap: 6px; box-shadow: 0 4px 16px var(--shadow-color); }
+#search-bar { position: absolute; top: 8px; right: 12px; z-index: var(--z-popover); background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 8px; display: none; align-items: center; gap: 6px; box-shadow: 0 4px 16px var(--shadow-color); }
 #search-bar.open { display: flex; }
 #search-input { width: 200px; height: 26px; }
+@media (max-width: 480px) { #search-bar { left: 8px; right: 8px; } #search-input { flex: 1; width: auto; min-width: 0; } }
 .search-btn { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 4px; color: var(--fg2); }
 .search-btn:hover { background: var(--bg4); color: var(--fg); }
 .search-btn#search-case-btn { font-size: 11px; font-weight: bold; width: 22px; height: 22px; line-height: 22px; }
@@ -444,7 +482,7 @@ svg { display: block; }
 /* ═══════════════════════════════════════════════════════
    OVERLAY
    ═══════════════════════════════════════════════════════ */
-.overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 400; justify-content: center; align-items: center; backdrop-filter: blur(4px); will-change: backdrop-filter; }
+.overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: var(--z-overlay); justify-content: center; align-items: center; backdrop-filter: blur(4px); will-change: backdrop-filter; }
 @media (prefers-reduced-transparency: reduce) { .overlay { backdrop-filter: none; } }
 .overlay.open { display: flex; }
 .modal { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; min-width: 320px; max-width: 90vw; max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 40px var(--shadow-color); }
@@ -553,7 +591,7 @@ svg { display: block; }
 /* ═══════════════════════════════════════════════════════
     CONTEXT MENU
    ═══════════════════════════════════════════════════════ */
-#ctx-menu { position: fixed; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 4px 20px var(--shadow-color); z-index: 500; display: none; min-width: 160px; overflow: hidden; max-height: calc(100vh - 16px); overflow-y: auto; }
+#ctx-menu { position: fixed; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 4px 20px var(--shadow-color); z-index: var(--z-menu); display: none; min-width: 160px; overflow: hidden; max-height: calc(100vh - 16px); overflow-y: auto; }
 @media (max-width: 360px) { #ctx-menu { min-width: 140px; max-width: calc(100vw - 16px); font-size: 11px; } }
 #ctx-menu.open { display: block; }
 .ctx-item { padding: 8px 14px; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
@@ -569,7 +607,7 @@ svg { display: block; }
 /* ═══════════════════════════════════════════════════════
    TOAST
    ═══════════════════════════════════════════════════════ */
-#toast-container { position: fixed; bottom: calc(var(--mobilekey-h) + 12px + env(safe-area-inset-bottom, 0px)); right: 16px; left: 16px; z-index: 450; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; transition: bottom var(--transition-normal); }
+#toast-container { position: fixed; bottom: calc(var(--mobilekey-h) + 12px + env(safe-area-inset-bottom, 0px)); right: 16px; left: 16px; z-index: var(--z-toast); display: flex; flex-direction: column; gap: 8px; align-items: flex-end; transition: bottom var(--transition-normal); }
 #toast-container.keys-hidden { bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
 #toast-container.banner-visible { bottom: calc(var(--mobilekey-h) + 60px + env(safe-area-inset-bottom, 0px)); }
 #toast-container.keys-hidden.banner-visible { bottom: 60px; }
@@ -583,7 +621,7 @@ svg { display: block; }
 /* ═══════════════════════════════════════════════════════
    DRAG & DROP
    ═══════════════════════════════════════════════════════ */
-#drop-overlay { position: fixed; inset: 0; background: color-mix(in srgb, var(--accent) 15%, transparent); border: 3px dashed var(--accent); z-index: 50; display: none; align-items: center; justify-content: center; font-size: 24px; color: var(--accent); }
+#drop-overlay { position: fixed; inset: 0; background: color-mix(in srgb, var(--accent) 15%, transparent); border: 3px dashed var(--accent); z-index: var(--z-drop); display: none; align-items: center; justify-content: center; font-size: 24px; color: var(--accent); }
 #drop-overlay.active { display: flex; }
 @media (hover: none) and (pointer: coarse) { #drop-overlay { display: none !important; } }
 
@@ -649,7 +687,7 @@ svg { display: block; }
    COMMAND LIBRARY BUBBLE
    ═══════════════════════════════════════════════════════ */
 #cmd-lib-panel {
-  position: absolute; top: 42px; right: 12px; z-index: 25;
+  position: absolute; top: 42px; right: 12px; z-index: var(--z-popover);
   width: 380px; max-height: 480px;
   background: var(--bg2); border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -821,12 +859,14 @@ svg { display: block; }
 @media (max-width: 768px) {
   #mobile-keys { display: flex; }
   .sidebar-resize-handle { display: none; }
-  #sidebar { position: absolute; left: env(safe-area-inset-left, 0px); top: var(--header-h); bottom: 0; z-index: 30; width: var(--sidebar-w); transform: translateX(-100%); transition: var(--transition-normal); }
+  #sidebar { position: absolute; left: env(safe-area-inset-left, 0px); top: var(--header-h); bottom: 0; z-index: var(--z-sidebar); width: var(--sidebar-w); transform: translateX(-100%); transition: var(--transition-normal); }
   #sidebar.mobile-open { transform: translateX(0); }
   #sidebar.hidden { transform: translateX(-100%); width: var(--sidebar-w); }
-  #settings-panel { position: fixed; right: env(safe-area-inset-right, 0px); top: var(--header-h); bottom: 0; z-index: 30; width: var(--settings-w); border-left: 1px solid var(--border); transform: translateX(100%); transition: var(--transition-normal); }
+  #settings-panel { position: fixed; right: env(safe-area-inset-right, 0px); top: var(--header-h); bottom: 0; z-index: var(--z-sidebar); width: var(--settings-w); border-left: 1px solid var(--border); transform: translateX(100%); transition: var(--transition-normal); }
   #settings-panel.open { transform: translateX(0); }
-  #hostname-badge { display: none; }
+  #hostname-badge { display: inline-flex; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #more-btn { display: flex; }
+  #cmd-lib-toggle, #system-stats-btn, #tilesBtn { display: none; }
   #search-input { width: 200px; }
   .modal { min-width: unset; width: 95vw; }
   .sys-grid { grid-template-columns: 1fr; }
@@ -895,7 +935,7 @@ svg { display: block; }
 <div id="app" style="display:none">
   <!-- Header -->
   <div id="header">
-    <span id="conn-status" style="width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0" title="Connected"></span>
+    <span id="conn-status" role="status" aria-label="Connected" style="width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0" title="Connected"></span>
     <span id="logo" style="display:flex;align-items:center;gap:4px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="10" y2="8"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="12" y1="8" x2="18" y2="8"/><line x1="12" y1="12" x2="18" y2="12"/></svg>WebTun</span>
     <span id="hostname-badge">—</span>
     <div class="header-spacer"></div>
@@ -920,12 +960,21 @@ svg { display: block; }
     <button class="icon-btn" id="tilesBtn" aria-label="Tiles Mode" title="Tiles Mode" onclick="toggleTiles()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
     </button>
+    <button class="icon-btn" id="more-btn" aria-label="More options" title="More options" onclick="toggleMoreMenu()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
+    </button>
     <button class="icon-btn" aria-label="Settings" title="Settings" onclick="openSettings()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     </button>
+    <div id="more-menu" role="menu">
+      <button class="mm-item" role="menuitem" onclick="closeMoreMenu();openSystemStats()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="4" rx="1"/><rect x="2" y="10" width="20" height="4" rx="1"/><rect x="2" y="18" width="20" height="4" rx="1"/><circle cx="6" cy="4" r="1" fill="currentColor"/><circle cx="6" cy="12" r="1" fill="currentColor"/><circle cx="6" cy="20" r="1" fill="currentColor"/></svg> System Stats</button>
+      <button class="mm-item" role="menuitem" onclick="closeMoreMenu();toggleTiles()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> Tiles Mode</button>
+      <button class="mm-item" role="menuitem" onclick="closeMoreMenu();toggleCmdLib()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> Command Library</button>
+      <button class="mm-item" role="menuitem" onclick="closeMoreMenu();toggleSearch()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg> Search</button>
+    </div>
     <div id="upload-progress"><div id="upload-progress-bar"></div><span id="upload-progress-text"></span></div>
   </div>
-  <div id="reconnect-banner" style="display:none;padding:4px 12px;font-size:11px;background:var(--accent);color:#fff;text-align:center;flex-shrink:0">⚠️ Reconnecting…</div>
+  <div id="reconnect-banner" style="display:none;padding:4px 12px;font-size:11px;background:var(--accent);color:#fff;text-align:center;flex-shrink:0"><span class="reconnect-spinner"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></span> Reconnecting…</div>
 
   <!-- Main -->
   <div id="main">
@@ -954,6 +1003,10 @@ svg { display: block; }
       </div>
       <div id="file-breadcrumb">/</div>
       <div id="file-list-wrap">
+        <div id="ptr-indicator" aria-hidden="true">
+          <span class="ptr-arrow"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></span>
+          <span class="ptr-text">Pull to refresh</span>
+        </div>
         <div id="file-list"></div>
       </div>
       <div id="select-actions" style="display:none;padding:8px 10px;border-top:1px solid var(--border);background:var(--bg2);gap:4px;flex-wrap:wrap">
@@ -993,7 +1046,8 @@ svg { display: block; }
     <!-- Content -->
     <div id="content">
       <div id="tab-bar">
-        <button id="new-tab-btn" onclick="newTab()" title="New terminal">
+        <div id="tab-scroll"></div>
+        <button id="new-tab-btn" onclick="newTab()" title="New terminal" aria-label="New terminal">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
       </div>
@@ -1077,16 +1131,16 @@ svg { display: block; }
 
       <!-- Mobile key bar -->
       <div id="mobile-keys">
-        <button class="mkey sel-toggle" onclick="toggleTermSelect()" title="Toggle selection mode" id="sel-toggle-btn">⎚</button>
+        <button class="mkey sel-toggle" onclick="toggleTermSelect()" title="Toggle selection mode" id="sel-toggle-btn" aria-label="Toggle selection mode"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="5" width="14" height="14" rx="2"/><line x1="5" y1="12" x2="19" y2="12"/><line x1="12" y1="5" x2="12" y2="19"/></svg></button>
         <span class="mkey-sep"></span>
         <button class="mkey" onclick="sendKey('\x1b')" title="Escape">ESC</button>
         <span class="mkey-sep"></span>
         <button class="mkey" onclick="sendKey('\t')" title="Tab">TAB</button>
         <span class="mkey-sep"></span>
-        <button class="mkey" onclick="sendKey('\x1b[A')" title="Arrow Up">▲</button>
-        <button class="mkey" onclick="sendKey('\x1b[B')" title="Arrow Down">▼</button>
-        <button class="mkey" onclick="sendKey('\x1b[D')" title="Arrow Left">◀</button>
-        <button class="mkey" onclick="sendKey('\x1b[C')" title="Arrow Right">▶</button>
+        <button class="mkey" onclick="sendKey('\x1b[A')" title="Arrow Up"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg></button>
+        <button class="mkey" onclick="sendKey('\x1b[B')" title="Arrow Down"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></button>
+        <button class="mkey" onclick="sendKey('\x1b[D')" title="Arrow Left"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg></button>
+        <button class="mkey" onclick="sendKey('\x1b[C')" title="Arrow Right"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></button>
         <span class="mkey-sep"></span>
         <button class="mkey" onclick="sendKey('\x01')" title="Ctrl+A (Home)">^A</button>
         <button class="mkey" onclick="sendKey('\x03')" title="Ctrl+C (Interrupt)">^C</button>
@@ -1095,7 +1149,7 @@ svg { display: block; }
         <button class="mkey" onclick="sendKey('\x0c')" title="Ctrl+L (Clear)">^L</button>
         <span class="mkey-sep"></span>
         <button class="mkey wide" onclick="sendKey('\x1b[3~')" title="Delete">DEL</button>
-        <button class="mkey" onclick="sendKey('\x7f')" title="Backspace">⌫</button>
+        <button class="mkey" onclick="sendKey('\x7f')" title="Backspace"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 5H9l-7 7 7 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1Z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg></button>
         <span class="mkey-sep"></span>
         <button class="mkey" onclick="sendKey('\x1b[H')" title="Home">Home</button>
         <button class="mkey" onclick="sendKey('\x1b[F')" title="End">End</button>
@@ -1105,7 +1159,7 @@ svg { display: block; }
         <button class="mkey" onclick="sendKey('\x1bOQ')" title="F2">F2</button>
         <button class="mkey" onclick="sendKey('\x1b[15~')" title="F5">F5</button>
         <span class="mkey-sep"></span>
-        <button class="mkey" onclick="toggleShift()" title="Toggle Shift (latches for next key)" id="shift-toggle-btn">⇧</button>
+        <button class="mkey" onclick="toggleShift()" title="Toggle Shift (latches for next key)" id="shift-toggle-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6h6"/><path d="M12 18V9"/><path d="m6 12 6-6 6 6"/></svg></button>
         <button class="mkey" onclick="toggleAlt()" title="Toggle Alt (latches for next key)" id="alt-toggle-btn">Alt</button>
         <span class="mkey-sep"></span>
         <button class="mkey" onclick="toggleCtrlRow()" title="Toggle Ctrl keys" id="ctrl-toggle-btn">Ctrl</button>
@@ -1132,8 +1186,8 @@ svg { display: block; }
         <button class="mkey" onclick="selectAllTerm()" title="Select all terminal content">Select All</button>
         <button class="mkey" onclick="selectTermLine()" title="Select current visible line">Line</button>
         <span class="mkey-sep"></span>
-        <button class="mkey" onclick="termScrollUp()" title="Scroll up">▲</button>
-        <button class="mkey" onclick="termScrollDn()" title="Scroll down">▼</button>
+        <button class="mkey" onclick="termScrollUp()" title="Scroll up"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg></button>
+        <button class="mkey" onclick="termScrollDn()" title="Scroll down"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></button>
         <button class="mkey" id="sel-scroll-btn" onclick="toggleScrollMode()" title="Toggle scroll mode">Scroll</button>
         <span class="mkey-sep"></span>
         <button class="mkey sel-done" onclick="toggleTermSelect()" title="Exit selection mode">Done</button>
@@ -1170,10 +1224,10 @@ svg { display: block; }
           <div class="setting-row">
             <label for="s-font">Font Family</label>
             <select id="s-font" onchange="applyFont(this.value)">
+              <option value="'JetBrains Mono', 'SF Mono', 'Fira Code', Consolas, monospace">JetBrains Mono</option>
               <option value="'SF Mono', 'Fira Code', Consolas, monospace">System Mono</option>
               <option value="'Fira Code', monospace">Fira Code</option>
               <option value="'Cascadia Code', monospace">Cascadia Code</option>
-              <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
               <option value="monospace">Monospace</option>
             </select>
           </div>
@@ -1284,7 +1338,7 @@ svg { display: block; }
 </div>
 
 <!-- Terminal context menu -->
-<div id="term-ctx-menu" role="menu" style="position:fixed;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 4px 20px var(--shadow-color);z-index:500;display:none;min-width:180px;overflow:hidden">
+<div id="term-ctx-menu" role="menu" style="position:fixed;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 4px 20px var(--shadow-color);z-index:var(--z-menu);display:none;min-width:180px;overflow:hidden">
   <!-- Clipboard -->
   <div class="ctx-item" id="term-ctx-copy" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</div>
   <div class="ctx-item" id="term-ctx-paste" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="14" y="2" width="8" height="8" rx="2"/><path d="M16 14H8M8 18h8"/><path d="M5 4h4"/><rect x="2" y="6" width="16" height="16" rx="2"/></svg> Paste</div>
@@ -1300,7 +1354,7 @@ svg { display: block; }
   <!-- More Options -->
   <div class="ctx-sep"></div>
   <div class="ctx-submenu-wrap">
-    <div class="ctx-item" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg> More Options<span class="ctx-submenu-arrow">▸</span></div>
+    <div class="ctx-item" role="menuitem" aria-haspopup="menu" aria-expanded="false"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg> More Options<span class="ctx-submenu-arrow"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></span></div>
     <div class="ctx-submenu-items">
       <div class="ctx-item" id="term-ctx-find" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Find in Terminal</div>
       <div class="ctx-item" id="term-ctx-zoom-in" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg> Zoom In</div>
@@ -1436,6 +1490,18 @@ svg { display: block; }
   </div>
 </div>
 
+<!-- Confirm Dialog -->
+<div class="overlay" id="confirm-overlay">
+  <div class="modal modal-sm">
+    <h2 id="confirm-title">Confirm</h2>
+    <p id="confirm-msg" style="font-size:13px;color:var(--fg2);line-height:1.6;white-space:pre-wrap;word-break:break-word"></p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="confirm-cancel-btn">Cancel</button>
+      <button class="btn btn-primary" id="confirm-ok-btn">OK</button>
+    </div>
+  </div>
+</div>
+
 <!-- Image Viewer -->
 <div class="overlay" id="image-viewer">
   <div class="modal">
@@ -1457,7 +1523,7 @@ svg { display: block; }
 <input type="file" id="upload-input" multiple style="display:none" onchange="handleUploadInput()">
 
 <!-- PWA Install Banner -->
-<div id="install-banner" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:500;background:var(--bg3);border-top:1px solid var(--border);padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom));align-items:center;gap:10px;box-shadow:0 -4px 16px rgba(0,0,0,0.3)">
+<div id="install-banner" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:var(--z-menu);background:var(--bg3);border-top:1px solid var(--border);padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom));align-items:center;gap:10px;box-shadow:0 -4px 16px rgba(0,0,0,0.3)">
   <span class="install-msg" style="flex:1;font-size:13px">Install WebTun for the best experience</span>
   <button class="btn btn-ghost" style="height:32px;padding:0 12px;font-size:12px" onclick="dismissInstall()">Not now</button>
   <button class="btn btn-primary" style="height:32px;padding:0 12px;font-size:12px" onclick="installPWA()">Install</button>
@@ -1482,8 +1548,8 @@ let renamePath = '';
 let editorPath = '';
 let editorOriginalContent = '';
 let hasTmux = false;
-let settings = {
-  theme: 'light', fontSize: 14, font: "'SF Mono', 'Fira Code', Consolas, monospace",
+  let settings = {
+  theme: 'light', fontSize: 14, font: "'JetBrains Mono', 'SF Mono', 'Fira Code', Consolas, monospace",
   cursor: 'block', blink: true, scrollback: 5000, bell: false,
   mobilekeys: false, confirmclose: true, datasaver: false, autostart: false, keepAwake: false, termRightClick: true
 };
@@ -1619,12 +1685,14 @@ async function unlockApp() {
   restoreTunnels();
   setupSwipeGestures();
   setupFileListTouch();
+  setupFileListKeyboard();
+  setupCtxMenuKeyboard();
   restoreSidebarWidth();
   setupSidebarResize();
   setupEditorResize();
   window.addEventListener('resize', updateSidebarNarrowClass);
   window._cleanups.push(() => window.removeEventListener('resize', updateSidebarNarrowClass));
-  document.getElementById('tab-bar').setAttribute('role', 'tablist');
+  document.getElementById('tab-scroll').setAttribute('role', 'tablist');
   document.getElementById('file-list-wrap').setAttribute('role', 'listbox');
 
   // Listen for system theme changes
@@ -1726,7 +1794,7 @@ function setupTabDragDrop(tabEl, id) {
     const [moved] = tabs.splice(fromIdx, 1);
     const targetIdx = tabs.findIndex(t => t.id === id);
     tabs.splice(targetIdx, 0, moved);
-    const bar = document.getElementById('tab-bar');
+    const bar = document.getElementById('tab-scroll');
     if (moved.el && moved.el.parentNode === bar) bar.insertBefore(moved.el, tabEl);
     saveTabState();
   };
@@ -1852,7 +1920,7 @@ function createTabButton(tab) {
   setupTabInlineRename(titleSpan, tab);
   setupTabSwipeGesture(tabEl, id);
 
-  document.getElementById('tab-bar').insertBefore(tabEl, document.getElementById('new-tab-btn'));
+  document.getElementById('tab-scroll').appendChild(tabEl);
   tab.el = tabEl;
 }
 
@@ -1981,7 +2049,7 @@ function connectWebSocket(tab, isReconnect = false) {
     updateConnStatus(true);
     const banner = document.getElementById('reconnect-banner');
     if (banner) {
-      banner.innerHTML = '⚠️ Reconnecting…';
+      banner.innerHTML = '<span class="reconnect-spinner"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></span> Reconnecting…';
       banner.style.display = 'none';
     }
     if (isReconnect) {
@@ -2078,7 +2146,7 @@ function connectWebSocket(tab, isReconnect = false) {
     if (tab.reconnectAttempts >= 3) {
       const banner = document.getElementById('reconnect-banner');
       if (banner) {
-        banner.innerHTML = '⚠️ Connection lost. <button class="btn btn-primary" data-action="manual-reconnect" style="height:26px;padding:0 12px;font-size:11px;margin-left:8px">Reconnect</button>';
+        banner.innerHTML = 'Connection lost. <button class="btn btn-primary" data-action="manual-reconnect" style="height:26px;padding:0 12px;font-size:11px;margin-left:8px">Reconnect</button>';
         banner.style.display = 'block';
       }
     } else {
@@ -2102,7 +2170,7 @@ function connectWebSocket(tab, isReconnect = false) {
 function manualReconnect() {
   const banner = document.getElementById('reconnect-banner');
   if (banner) {
-    banner.innerHTML = '⚠️ Reconnecting…';
+    banner.innerHTML = '<span class="reconnect-spinner"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></span> Reconnecting…';
     banner.style.display = 'block';
   }
   tabs.forEach(tab => {
@@ -2115,15 +2183,19 @@ function manualReconnect() {
   });
 }
 
-function closeTab(e, id) {
+async function closeTab(e, id) {
   e.stopPropagation();
-  if (settings.confirmclose) { if (!confirm(tabs.length === 1 ? 'Close last terminal?' : 'Close terminal?')) return; }
+  if (settings.confirmclose) {
+    const ok = await confirmDialog({ title: 'Close terminal', message: tabs.length === 1 ? 'Close last terminal?' : 'Close terminal?', okText: 'Close', cancelText: 'Cancel' });
+    if (!ok) return;
+  }
 
   // Check for unsaved editor changes
   const editorOpen = document.getElementById('editor-view').classList.contains('open');
   const currentContent = editor ? editor.getValue() : '';
   if (editorOpen && currentContent !== editorOriginalContent) {
-    if (!confirm('You have unsaved changes. Close anyway?')) return;
+    const ok = await confirmDialog({ title: 'Unsaved changes', message: 'You have unsaved changes. Close anyway?', okText: 'Close', cancelText: 'Cancel', danger: true });
+    if (!ok) return;
   }
 
   const tab = tabs.find(t => t.id === id);
@@ -2164,11 +2236,7 @@ function initTerminal(tab) {
     convertEol: false,
     bellStyle: settings.bell ? 'sound' : 'none',
     smoothScrollDuration: 80,
-    selectionTheme: {
-      extension: true,
-      foreground: '#1a1b26',
-      background: '#7aa2f744'
-    }
+    selectionTheme: getXtermSelectionTheme()
   };
 
   const term = new Terminal(cfg);
@@ -2293,6 +2361,7 @@ function initTerminal(tab) {
     top = Math.max(0, Math.min(top, vh - mh));
     menu.style.left = left + 'px';
     menu.style.top = top + 'px';
+    menu.querySelector('.ctx-item')?.focus();
   });
 
   // Touch-to-mouse translation for TUI apps (mobile)
@@ -2557,10 +2626,32 @@ function getXtermTheme() {
   };
 }
 
+function getXtermSelectionTheme() {
+  const s = getComputedStyle(document.documentElement);
+  const g = v => s.getPropertyValue(v).trim();
+  return {
+    extension: true,
+    foreground: g('--bg'),
+    background: g('--accent') + '44'
+  };
+}
+
 // ═══════════════════════════════════════════════════════
 // FILE EXPLORER
 // ═══════════════════════════════════════════════════════
 let loadFilesAbortController = null;
+let fileListLoadingTimer = null;
+function setFileListLoading(on) {
+  const wrap = document.getElementById('file-list-wrap');
+  if (!wrap) return;
+  clearTimeout(fileListLoadingTimer);
+  if (on) {
+    fileListLoadingTimer = setTimeout(() => wrap.classList.add('loading'), 150);
+  } else {
+    fileListLoadingTimer = null;
+    wrap.classList.remove('loading');
+  }
+}
 
 async function loadFiles(dir) {
   if (loadFilesAbortController) loadFilesAbortController.abort();
@@ -2582,11 +2673,13 @@ async function loadFiles(dir) {
 
   const list = document.getElementById('file-list');
 
+  setFileListLoading(true);
   let data;
   try {
     data = await api(`/api/files?path=${encodeURIComponent(dir)}`, { signal: loadFilesAbortController.signal });
   } catch (e) {
-    if (e.name === 'AbortError') return;
+    if (e.name === 'AbortError') { setFileListLoading(false); return; }
+    setFileListLoading(false);
     const errorDiv = document.createElement('div');
     errorDiv.style.cssText = 'padding:16px;text-align:center;';
     errorDiv.innerHTML = '<div style="color:var(--red);margin-bottom:8px">Failed to load directory</div>' +
@@ -2598,6 +2691,7 @@ async function loadFiles(dir) {
   }
 
   if (!data.files) {
+    setFileListLoading(false);
     if (dir !== homeDir) loadFiles(homeDir);
     return;
   }
@@ -2687,11 +2781,15 @@ async function loadFiles(dir) {
   }
 
   updateBackBtn();
+  setFileListLoading(false);
 }
+
+let fileItemCounter = 0;
 
 function makeFileItem(name, isDir, fullPath, size, icon) {
   const div = document.createElement('div');
   div.className = 'file-item';
+  div.id = 'file-item-' + (++fileItemCounter);
   div.setAttribute('role', 'option');
   div.setAttribute('aria-selected', 'false');
   div.dataset.path = fullPath;
@@ -2701,11 +2799,19 @@ function makeFileItem(name, isDir, fullPath, size, icon) {
     <span class="file-icon">${icon}</span>
     <span class="file-name ${isDir ? 'file-dir' : ''}" title="${escHtml(fullPath)}">${escHtml(name)}</span>
     ${size ? `<span class="file-size">${escHtml(size)}</span>` : ''}
+    <span class="file-ellipsis" role="button" tabindex="0" aria-label="More actions for ${escHtml(name)}" title="More actions"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></span>
   `;
   div.addEventListener('click', e => {
     if (e.target.closest('.file-select-check')) {
       toggleFileSelection(fullPath, div);
       if (selectedFiles.length > 0) document.getElementById('select-actions').style.display = 'flex';
+      return;
+    }
+    if (e.target.closest('.file-ellipsis')) {
+      e.stopPropagation();
+      const rect = div.querySelector('.file-ellipsis').getBoundingClientRect();
+      const m = fullPath.match(/\.([^.]+)$/);
+      showCtxMenu({ clientX: rect.left + rect.width / 2, clientY: rect.bottom + 4, preventDefault() {}, stopPropagation() {} }, { path: fullPath, name, isDir, ext: m ? '.' + m[1].toLowerCase() : '' });
       return;
     }
     if (selectMode) {
@@ -2716,7 +2822,56 @@ function makeFileItem(name, isDir, fullPath, size, icon) {
     else if (isImageFile(fullPath)) openImageViewer(fullPath);
     else openFileEditor(fullPath);
   });
+  const ell = div.querySelector('.file-ellipsis');
+  if (ell) {
+    ell.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        e.stopPropagation();
+        const rect = ell.getBoundingClientRect();
+        const m = fullPath.match(/\.([^.]+)$/);
+        showCtxMenu({ clientX: rect.left + rect.width / 2, clientY: rect.bottom + 4, preventDefault() {}, stopPropagation() {} }, { path: fullPath, name, isDir, ext: m ? '.' + m[1].toLowerCase() : '' });
+      }
+    });
+  }
   return div;
+}
+
+function setupFileListKeyboard() {
+  const list = document.getElementById('file-list');
+  if (!list || list.dataset._kbSetup) return;
+  list.dataset._kbSetup = '1';
+  list.setAttribute('tabindex', '0');
+  list.addEventListener('keydown', e => {
+    const items = [...list.querySelectorAll('.file-item')];
+    if (!items.length) return;
+    let idx = items.findIndex(el => el.classList.contains('focused'));
+    const focusIdx = i => {
+      if (i < 0 || i >= items.length) return;
+      items.forEach(el => el.classList.remove('focused'));
+      items[i].classList.add('focused');
+      if (items[i].id) list.setAttribute('aria-activedescendant', items[i].id);
+      items[i].scrollIntoView({ block: 'nearest' });
+    };
+    if (e.key === 'ArrowDown') { e.preventDefault(); focusIdx(idx < 0 ? 0 : Math.min(idx + 1, items.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); focusIdx(idx < 0 ? items.length - 1 : Math.max(0, idx - 1)); }
+    else if (e.key === 'Home') { e.preventDefault(); focusIdx(0); }
+    else if (e.key === 'End') { e.preventDefault(); focusIdx(items.length - 1); }
+    else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (idx >= 0) items[idx].click(); }
+    else if (e.key === 'Backspace' || e.key === 'ArrowLeft') { e.preventDefault(); navigateUp(); }
+    else if ((e.key === 'a' || e.key === 'A') && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (selectMode) selectAllFiles(); }
+    else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const prefix = (list._typeAhead || '') + e.key.toLowerCase();
+      list._typeAhead = prefix;
+      clearTimeout(list._typeAheadTimer);
+      list._typeAheadTimer = setTimeout(() => { list._typeAhead = ''; }, 500);
+      const found = items.findIndex(el => {
+        const nm = el.querySelector('.file-name');
+        return nm && nm.textContent.toLowerCase().startsWith(prefix);
+      });
+      if (found >= 0) focusIdx(found);
+    }
+  });
 }
 
 function refreshFiles() {
@@ -2992,7 +3147,76 @@ document.querySelector('#term-ctx-menu .ctx-submenu-wrap > .ctx-item').addEventL
   e.stopPropagation();
   const wrap = e.currentTarget.closest('.ctx-submenu-wrap');
   wrap.classList.toggle('open');
+  e.currentTarget.setAttribute('aria-expanded', wrap.classList.contains('open'));
 });
+
+// ═══════════════════════════════════════════════════════
+// CONTEXT MENU KEYBOARD NAVIGATION
+// ═══════════════════════════════════════════════════════
+function setupCtxMenuKeyboard() {
+  ['ctx-menu', 'term-ctx-menu'].forEach(id => {
+    const menu = document.getElementById(id);
+    if (!menu) return;
+    menu.querySelectorAll('.ctx-item').forEach(el => {
+      if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+    });
+    const openSubmenu = wrap => {
+      wrap.classList.add('open');
+      const toggle = wrap.querySelector(':scope > .ctx-item');
+      if (toggle) toggle.setAttribute('aria-expanded', 'true');
+      const first = wrap.querySelector('.ctx-submenu-items .ctx-item');
+      if (first) first.focus();
+    };
+    const closeSubmenu = wrap => {
+      wrap.classList.remove('open');
+      const toggle = wrap.querySelector(':scope > .ctx-item');
+      if (toggle) toggle.setAttribute('aria-expanded', 'false');
+      if (toggle) toggle.focus();
+    };
+    const visibleItems = () => [...menu.querySelectorAll('.ctx-item')].filter(el => {
+      const subWrap = el.closest('.ctx-submenu-items');
+      if (subWrap && !subWrap.parentElement.classList.contains('open')) return false;
+      return el.offsetParent !== null;
+    });
+    menu.addEventListener('keydown', e => {
+      const items = visibleItems();
+      if (!items.length) return;
+      let idx = items.indexOf(document.activeElement);
+      const activeItem = document.activeElement;
+      switch (e.key) {
+        case 'Escape': {
+          const wrap = activeItem && activeItem.closest('.ctx-submenu-wrap');
+          if (wrap && wrap.classList.contains('open')) { closeSubmenu(wrap); e.preventDefault(); return; }
+          if (id === 'ctx-menu') document.getElementById('ctx-menu').classList.remove('open');
+          else hideTermCtxMenu();
+          e.preventDefault();
+          return;
+        }
+        case 'ArrowDown': idx = (idx + 1) % items.length; break;
+        case 'ArrowUp': idx = (idx - 1 + items.length) % items.length; break;
+        case 'Home': idx = 0; break;
+        case 'End': idx = items.length - 1; break;
+        case 'ArrowRight': {
+          const wrap = activeItem && activeItem.closest('.ctx-submenu-wrap');
+          if (wrap && !wrap.classList.contains('open')) { e.preventDefault(); openSubmenu(wrap); }
+          return;
+        }
+        case 'ArrowLeft': {
+          const itemsWrap = activeItem && activeItem.closest('.ctx-submenu-items');
+          if (itemsWrap && itemsWrap.parentElement) { e.preventDefault(); closeSubmenu(itemsWrap.parentElement); }
+          return;
+        }
+        case 'Enter':
+        case ' ':
+          if (activeItem && activeItem.classList.contains('ctx-item')) { e.preventDefault(); activeItem.click(); }
+          return;
+        default: return;
+      }
+      e.preventDefault();
+      if (idx >= 0 && items[idx]) items[idx].focus();
+    });
+  });
+}
 
 function showCtxMenu(e, file) {
   e.preventDefault();
@@ -3021,6 +3245,8 @@ function showCtxMenu(e, file) {
   menu.style.top = top + 'px';
   menu.classList.add('open');
   menu.style.display = '';
+  const firstItem = menu.querySelector('.ctx-item');
+  if (firstItem) firstItem.focus();
 }
 
 document.addEventListener('click', () => {
@@ -3195,7 +3421,8 @@ async function confirmRename() {
 }
 
 async function deleteFile(file) {
-  if (!confirm(`Delete "${file.name}"?${file.isDir ? '\n\nThis will delete the entire directory.' : ''}`)) return;
+  const ok = await confirmDialog({ title: 'Delete', message: `Delete "${file.name}"?${file.isDir ? '\n\nThis will delete the entire directory.' : ''}`, okText: 'Delete', danger: true });
+  if (!ok) return;
   const r = await api(`/api/files?path=${encodeURIComponent(file.path)}`, { method: 'DELETE' });
   if (r.success) { toast('Deleted', 'success'); refreshFiles(); }
   else toast(r.error, 'error');
@@ -3302,7 +3529,8 @@ function clearSelection() {
 async function deleteSelected() {
   if (!selectedFiles.length) return;
   const msg = `Delete ${selectedFiles.length} item${selectedFiles.length > 1 ? 's' : ''}?`;
-  if (!confirm(msg)) return;
+  const ok = await confirmDialog({ title: 'Delete', message: msg, okText: 'Delete', danger: true });
+  if (!ok) return;
   const results = await Promise.allSettled(
     [...selectedFiles].map(p =>
       api(`/api/files?path=${encodeURIComponent(p)}`, { method: 'DELETE' })
@@ -3473,11 +3701,11 @@ async function uploadFileList(items) {
   
   // Final result
   if (failedItems.length === 0) {
-    setUploadProgress(100, 'success', `✓ ${completed}/${total} uploaded`);
+    setUploadProgress(100, 'success', `${completed}/${total} uploaded`);
   } else if (completed > 0) {
-    setUploadProgress(100, 'error', `⚠ ${completed} ok, ${failedItems.length} failed`);
+    setUploadProgress(100, 'error', `${completed} ok, ${failedItems.length} failed`);
   } else {
-    setUploadProgress(100, 'error', `✗ All ${total} failed`);
+    setUploadProgress(100, 'error', `All ${total} failed`);
   }
   
   clearUploadProgress(2000);
@@ -3555,7 +3783,8 @@ async function openFileEditor(path) {
   const r = await api(`/api/files/read?path=${encodeURIComponent(path)}`);
   if (r.error) { toast(r.error, 'error'); return; }
   if (r.length > MAX_EDITOR_SIZE) {
-    if (!confirm(`File is ${(r.length / 1024 / 1024).toFixed(1)}MB. Open anyway?`)) return;
+    const ok = await confirmDialog({ title: 'Large file', message: `File is ${(r.length / 1024 / 1024).toFixed(1)}MB. Open anyway?`, okText: 'Open', danger: true });
+    if (!ok) return;
   }
   editorPath = path;
   editorOriginalContent = r.content;
@@ -3644,17 +3873,18 @@ async function saveFile() {
   });
   if (r.success) {
     editorOriginalContent = content;
-    document.getElementById('editor-status').textContent = '✓ Saved';
+    document.getElementById('editor-status').textContent = 'Saved';
     toast('Saved', 'success');
     if (mdPreviewActive) refreshPreview();
     setTimeout(() => document.getElementById('editor-status').textContent = '', 2000);
   } else toast(r.error, 'error');
 }
 
-function closeEditor() {
+async function closeEditor() {
   const currentContent = editor ? editor.getValue() : document.getElementById('editor-textarea').value;
   if (currentContent !== editorOriginalContent) {
-    if (!confirm('You have unsaved changes. Close anyway?')) return;
+    const ok = await confirmDialog({ title: 'Unsaved changes', message: 'You have unsaved changes. Close anyway?', okText: 'Close', cancelText: 'Cancel', danger: true });
+    if (!ok) return;
   }
   clearPreviewLiveReload();
   document.getElementById('editor-view').classList.remove('open');
@@ -4071,50 +4301,57 @@ function renderTunnels() {
   list.style.display = 'block';
   tunnelList.forEach(t => {
     const row = document.createElement('div');
-    row.style.cssText = 'padding:6px 0;border-bottom:1px solid var(--border)';
+    row.className = 'tunnel-row';
     const label = document.createElement('div');
-    label.style.cssText = 'font-size:10px;color:var(--fg2);margin-bottom:3px';
+    label.className = 'tunnel-label';
     label.textContent = t.localUrl;
     row.appendChild(label);
     const inner = document.createElement('div');
-    inner.style.cssText = 'display:flex;align-items:center;gap:5px;min-width:0';
+    inner.className = 'tunnel-inner';
     const urlSpan = document.createElement('span');
-    urlSpan.style.cssText = 'font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+    urlSpan.className = 'tunnel-url';
     urlSpan.textContent = t.tunnelUrl;
     urlSpan.title = t.tunnelUrl;
     inner.appendChild(urlSpan);
     const status = document.createElement('span');
-    status.style.cssText = `font-size:9px;padding:1px 5px;border-radius:4px;flex-shrink:0;background:${t.alive ? 'var(--green)' : 'var(--yellow)'};color:var(--bg)`;
+    status.className = 'tunnel-status';
+    status.style.background = t.alive ? 'var(--green)' : 'var(--yellow)';
+    status.style.color = 'var(--bg)';
     status.textContent = t.alive ? 'Live' : 'Orphan';
     status.title = t.alive ? 'cloudflared is running' : 'cloudflared process not found';
     inner.appendChild(status);
     if (t.alive && t.targetAlive !== undefined) {
       const targetStatus = document.createElement('span');
       const ok = t.targetAlive;
-      targetStatus.style.cssText = `font-size:9px;padding:1px 5px;border-radius:4px;flex-shrink:0;background:${ok ? 'var(--green)' : 'var(--red)'};color:var(--bg);opacity:0.8`;
-      targetStatus.textContent = ok ? '✓' : '✗';
+      targetStatus.className = 'tunnel-target';
+      targetStatus.style.background = ok ? 'var(--green)' : 'var(--red)';
+      targetStatus.style.color = 'var(--bg)';
+      targetStatus.style.opacity = '0.8';
+      targetStatus.appendChild(mkSvg('9','9','0 0 24 24', ok
+        ? '<polyline points="20 6 9 17 4 12"/>'
+        : '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>'));
       targetStatus.title = ok ? `Target ${t.localUrl} is responding` : `Target ${t.localUrl} is not responding`;
       inner.appendChild(targetStatus);
     }
     const copyBtn = document.createElement('button');
-    copyBtn.className = 'icon-btn';
-    copyBtn.style.cssText = 'width:22px;height:22px;flex-shrink:0';
+    copyBtn.className = 'icon-btn tunnel-btn';
     copyBtn.title = 'Copy';
-    copyBtn.appendChild(mkSvg('10','10','0 0 24 24','<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>'));
+    copyBtn.setAttribute('aria-label', 'Copy tunnel URL');
+    copyBtn.appendChild(mkSvg('12','12','0 0 24 24','<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>'));
     copyBtn.addEventListener('click', () => copyText(t.tunnelUrl));
     inner.appendChild(copyBtn);
     const openBtn = document.createElement('button');
-    openBtn.className = 'icon-btn';
-    openBtn.style.cssText = 'width:22px;height:22px;flex-shrink:0';
+    openBtn.className = 'icon-btn tunnel-btn';
     openBtn.title = 'Open in new tab';
-    openBtn.appendChild(mkSvg('10','10','0 0 24 24','<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>'));
+    openBtn.setAttribute('aria-label', 'Open tunnel in new tab');
+    openBtn.appendChild(mkSvg('12','12','0 0 24 24','<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>'));
     openBtn.addEventListener('click', () => window.open(t.tunnelUrl, '_blank'));
     inner.appendChild(openBtn);
     const stopBtn = document.createElement('button');
-    stopBtn.className = 'icon-btn';
-    stopBtn.style.cssText = 'width:22px;height:22px;flex-shrink:0;color:var(--red)';
+    stopBtn.className = 'icon-btn tunnel-btn stop';
     stopBtn.title = 'Stop';
-    stopBtn.appendChild(mkSvg('10','10','0 0 24 24','<rect x="6" y="6" width="12" height="12" rx="1"/>'));
+    stopBtn.setAttribute('aria-label', 'Stop tunnel');
+    stopBtn.appendChild(mkSvg('12','12','0 0 24 24','<rect x="6" y="6" width="12" height="12" rx="1"/>'));
     stopBtn.addEventListener('click', () => stopTunnelById(t.id));
     inner.appendChild(stopBtn);
     row.appendChild(inner);
@@ -4138,7 +4375,7 @@ async function createTunnel() {
     tunnelList.push({ id: r.id, tunnelUrl: r.url, localUrl: url, alive: true, createdAt: Date.now() });
     renderTunnels();
     if (r.warning) {
-      document.getElementById('tunnel-status').textContent = '⚠️ ' + r.warning;
+      document.getElementById('tunnel-status').textContent = r.warning;
       toast(r.warning, 'warning');
     } else {
       document.getElementById('tunnel-status').textContent = '';
@@ -4186,7 +4423,7 @@ function applyTheme(theme, save = true) {
   document.documentElement.dataset.theme = resolved;
   settings.theme = theme;
   document.getElementById('s-theme').value = theme;
-  tabs.forEach(t => { if (t.term) { t.term.options.theme = getXtermTheme(); } });
+  tabs.forEach(t => { if (t.term) { t.term.options.theme = getXtermTheme(); t.term.options.selectionTheme = getXtermSelectionTheme(); } });
   const themeColor = getComputedStyle(document.body).getPropertyValue('--bg2').trim();
   document.querySelector('meta[name="theme-color"]').content = themeColor;
   if (save) saveSettings();
@@ -4239,6 +4476,32 @@ function toggleSidebar() {
     sb.classList.remove('mobile-open');
     setTimeout(() => { const t = getActiveTab(); try { fitTerm(t); } catch(e) { console.warn(e); } }, 220);
   }
+}
+
+let moreMenuOpen = false;
+function closeMoreMenu() {
+  const menu = document.getElementById('more-menu');
+  const btn = document.getElementById('more-btn');
+  if (menu) menu.classList.remove('open');
+  if (btn) btn.classList.remove('active');
+  document.removeEventListener('click', closeMoreMenuOnClickOutside, true);
+  moreMenuOpen = false;
+}
+function closeMoreMenuOnClickOutside(e) {
+  const menu = document.getElementById('more-menu');
+  const btn = document.getElementById('more-btn');
+  if (menu && menu.contains(e.target)) return;
+  if (btn && btn.contains(e.target)) return;
+  closeMoreMenu();
+}
+function toggleMoreMenu() {
+  if (moreMenuOpen) { closeMoreMenu(); return; }
+  moreMenuOpen = true;
+  const menu = document.getElementById('more-menu');
+  const btn = document.getElementById('more-btn');
+  if (menu) menu.classList.add('open');
+  if (btn) btn.classList.add('active');
+  setTimeout(() => document.addEventListener('click', closeMoreMenuOnClickOutside, true), 0);
 }
 
 function updateSidebarNarrowClass() {
@@ -4474,9 +4737,8 @@ function moveTabToEnd(fromId) {
   if (fromIdx === -1) return;
   const [moved] = tabs.splice(fromIdx, 1);
   tabs.push(moved);
-  const bar = document.getElementById('tab-bar');
-  const newTabBtn = document.getElementById('new-tab-btn');
-  if (moved.el && moved.el.parentNode === bar) bar.insertBefore(moved.el, newTabBtn);
+  const bar = document.getElementById('tab-scroll');
+  if (moved.el && moved.el.parentNode === bar) bar.appendChild(moved.el);
   saveTabState();
 }
 
@@ -4521,7 +4783,7 @@ function setupKeyboardShortcuts() {
     if (e.key === 'Escape') {
       const termMenu = document.getElementById('term-ctx-menu');
       if (termMenu && termMenu.style.display !== 'none') {
-        termMenu.style.display = 'none';
+        hideTermCtxMenu();
         return;
       }
       if (document.getElementById('ctx-menu').classList.contains('open')) {
@@ -4960,11 +5222,51 @@ function removeFocusTrap() {
   }
 }
 
+let _confirmState = null;
+function confirmDialog({ title = 'Confirm', message = '', okText = 'OK', cancelText = 'Cancel', danger = false } = {}) {
+  return new Promise(resolve => {
+    const ov = document.getElementById('confirm-overlay');
+    if (!ov || !ov.parentNode) { resolve(false); return; }
+    const okBtn = document.getElementById('confirm-ok-btn');
+    const cancelBtn = document.getElementById('confirm-cancel-btn');
+    const titleEl = document.getElementById('confirm-title');
+    const msgEl = document.getElementById('confirm-msg');
+    titleEl.textContent = title;
+    msgEl.textContent = message;
+    okBtn.textContent = okText;
+    cancelBtn.textContent = cancelText;
+    okBtn.classList.toggle('btn-danger', !!danger);
+    let settled = false;
+    const cleanup = () => {
+      if (settled) return;
+      settled = true;
+      _confirmState = null;
+      ov.classList.remove('open');
+      removeFocusTrap();
+      if (lastFocusedElement) { setTimeout(() => lastFocusedElement?.focus(), 50); lastFocusedElement = null; }
+    };
+    const finish = val => { const cb = _confirmState && _confirmState.resolve; cleanup(); if (cb) cb(val); };
+    const onKey = e => {
+      if (e.key === 'Escape') { e.stopPropagation(); finish(false); }
+      else if (e.key === 'Enter' && !(e.target instanceof HTMLButtonElement)) { e.preventDefault(); finish(true); }
+    };
+    _confirmState = { resolve, cleanup };
+    lastFocusedElement = document.activeElement;
+    okBtn.onclick = () => finish(true);
+    cancelBtn.onclick = () => finish(false);
+    ov.addEventListener('keydown', onKey);
+    ov.classList.add('open');
+    installFocusTrap(ov);
+    setTimeout(() => okBtn.focus(), 50);
+  });
+}
+
 document.querySelectorAll('.overlay').forEach(o => {
   o.addEventListener('click', e => {
     if (e.target !== o) return;
     if (o.id === 'sys-overlay') { closeSystemStats(); return; }
     if (o.id === 'finder-overlay') { clearTimeout(finderTimer); }
+    if (o.id === 'confirm-overlay') return; // dismiss handled by confirmDialog only
     closeOverlay(o.id);
   });
 });
@@ -4987,6 +5289,7 @@ function updateConnStatus(connected) {
   if (dot) {
     dot.style.background = connected ? 'var(--green)' : 'var(--red)';
     dot.title = connected ? 'Connected' : 'Disconnected';
+    dot.setAttribute('aria-label', connected ? 'Connected' : 'Disconnected');
   }
 }
 
@@ -5028,11 +5331,14 @@ function setupSwipeGestures() {
   let pullStartY = 0;
   let pullOffset = 0;
   const fileListWrap = document.getElementById('file-list-wrap');
-  if (fileListWrap) {
+  const ptr = document.getElementById('ptr-indicator');
+  if (fileListWrap && ptr) {
     fileListWrap.addEventListener('touchstart', e => {
       if (fileListWrap.scrollTop <= 0) {
         pullStartY = e.touches[0].clientY;
         pullOffset = 0;
+        ptr.style.opacity = '0';
+        ptr.classList.remove('release');
       }
     }, { passive: true });
     fileListWrap.addEventListener('touchmove', e => {
@@ -5040,16 +5346,21 @@ function setupSwipeGestures() {
       const dy = e.touches[0].clientY - pullStartY;
       if (dy > 0 && fileListWrap.scrollTop <= 0) {
         pullOffset = dy;
-        fileListWrap.style.transform = `translateY(${Math.min(dy * 0.4, 60)}px)`;
+        const t = Math.min(dy * 0.4, 60);
+        fileListWrap.style.transform = `translateY(${t}px)`;
         fileListWrap.style.transition = 'none';
+        ptr.style.opacity = Math.min(1, dy / 40).toFixed(2);
+        ptr.classList.toggle('release', pullOffset > 60);
       }
     }, { passive: true });
     fileListWrap.addEventListener('touchend', () => {
       if (pullOffset > 60) {
+        ptr.classList.remove('release');
         refreshFiles();
       }
       fileListWrap.style.transition = 'transform 0.3s ease';
       fileListWrap.style.transform = '';
+      ptr.style.opacity = '0';
       pullStartY = 0;
       pullOffset = 0;
       setTimeout(() => { fileListWrap.style.transition = ''; }, 300);
@@ -5141,7 +5452,9 @@ function renderBookmarks() {
     div.appendChild(bmPath);
     const rmBtn = document.createElement('span');
     rmBtn.className = 'bm-remove';
-    rmBtn.textContent = '×';
+    rmBtn.setAttribute('role', 'button');
+    rmBtn.setAttribute('aria-label', 'Remove bookmark');
+    rmBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
     rmBtn.title = 'Remove';
     rmBtn.addEventListener('click', e => {
       e.stopPropagation();
@@ -5314,7 +5627,9 @@ function renderCmdLib(filter) {
       cmd.textContent = c.cmd;
       const runBtn = document.createElement('button');
       runBtn.className = 'cmd-lib-run';
-      runBtn.title = 'Run in terminal';
+    runBtn.title = 'Run in terminal';
+    runBtn.setAttribute('aria-label', 'Run in terminal');
+      runBtn.setAttribute('aria-label', 'Run in terminal');
       runBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6,3 20,12 6,21"/></svg>';
       runBtn.addEventListener('click', e => {
         e.stopPropagation();
@@ -5328,7 +5643,8 @@ function renderCmdLib(filter) {
         const delBtn = document.createElement('button');
         delBtn.className = 'cmd-lib-del';
         delBtn.title = 'Delete';
-        delBtn.textContent = '×';
+        delBtn.setAttribute('aria-label', 'Delete command');
+        delBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
         delBtn.addEventListener('click', e => {
           e.stopPropagation();
           deleteCustomCmd(c.name, c.cmd);
@@ -5340,7 +5656,7 @@ function renderCmdLib(filter) {
         const tab = getActiveTab();
         if (!tab?.term) return;
         tab.term.focus();
-        document.execCommand('insertText', false, c.cmd);
+        tab.term.paste(c.cmd);
         toggleCmdLib();
       });
       section.appendChild(item);
@@ -5536,7 +5852,8 @@ async function renderCmdHist() {
     const delBtn = document.createElement('button');
     delBtn.className = 'cmd-hist-del';
     delBtn.title = 'Remove';
-    delBtn.textContent = '×';
+    delBtn.setAttribute('aria-label', 'Remove from history');
+    delBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
     delBtn.addEventListener('click', e => { e.stopPropagation(); removeCmdHistItem(realIdx); });
     item.appendChild(delBtn);
 
@@ -5544,7 +5861,7 @@ async function renderCmdHist() {
       const tab = getActiveTab();
       if (!tab?.term) return;
       tab.term.focus();
-      document.execCommand('insertText', false, h.cmd);
+      tab.term.paste(h.cmd);
       toggleCmdLib();
     });
     list.appendChild(item);
