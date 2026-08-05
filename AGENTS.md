@@ -48,9 +48,24 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
 - `public/sw.js` enables PWA installability.
 - **`cloakbrowser`** and **`playwright-core`** in `dependencies` are unused in the codebase.
 - **Favicon/Icons**: `public/favicon.png` (32px), `public/icon-192.png` (192px), `public/icon-512.png` (512px), `public/icon.svg` — all generated from the same terminal SVG logo.
-- **Safe localStorage** (`public/index.html:864`): `safeStorage` wrapper catches errors when Edge Tracking Prevention blocks storage on Cloudflare tunnel domains. All `localStorage` calls go through this wrapper.
+- **Safe localStorage** (`public/index.html:979`): `safeStorage` wrapper catches errors when Edge Tracking Prevention blocks storage on Cloudflare tunnel domains. All `localStorage` calls go through this wrapper.
 
 ## Frontend Architecture
+
+### UI Conventions
+- **Fonts**: `--font-ui` = IBM Plex Sans (chrome: buttons, inputs, labels, panels), `--font` = JetBrains Mono (code/path surfaces: `.file-name`, `#path-input`, `#file-breadcrumb`, `#editor-filename`, `.tunnel-url`, `.cmd-lib-cmd`, `.cmd-hist-cmd`).
+- **CDN scripts are deferred** (`<script defer>`). Don't rely on them at parse time; lazy-init (CodeMirror via `initCodeMirror()`, `marked` guarded by `typeof marked !== 'undefined'`). Terminal init happens after async unlock, so xterm is available.
+- **Themes**: all 6 themes define explicit `color-scheme`. `:root`/`data-theme="tokyonight"` share the same palette. Keep every theme's `--fg1/2/3` WCAG-AA readable.
+- **Shared UI helpers** (all in `public/index.html`):
+  - `setBtnBusy(btn, busy)` + `.btn.loading` — spinner state for async buttons
+  - `showFieldError(id, msg)` / `clearFieldError(id)` + `.field-error` — inline field errors
+  - `updateEditorDirty()` + `.editor-dirty` dot on `#editor-filename-wrap`
+  - `openShortcuts()` — Keyboard Shortcuts dialog (`#shortcuts-overlay`)
+  - `resetSettings()` — restores `DEFAULT_SETTINGS`
+  - `hideTermLoading(tab)` / `tab.loadingEl` — terminal "Connecting…" overlay
+  - `setupMoreMenuKeyboard()` — arrow/Home/End/Escape nav in overflow menu
+- **Dialogs**: `openOverlay(id)` sets `role="dialog"`, `aria-modal="true"`, `aria-labelledby` from the modal `h2`. Overlays without an `h2` need `aria-label`.
+- **Toasts**: `toast(msg, type)` supports `info|success|warning|error` with icons; stack capped at 4.
 
 ### Terminal
 - **xterm.js** with addons: fit, search, web-links, unicode11, webgl (canvas fallback)

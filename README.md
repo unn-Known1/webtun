@@ -69,6 +69,7 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh &&
 - **Bracketed paste** — Ctrl+V works in TUI apps (vim, nano, htop)
 - **Command history** — keystroke-based capture, strips ANSI/control sequences
 - **tmux sessions** — persistent sessions survive page reload
+- **Keyboard Shortcuts** — reference dialog in the overflow menu (Ctrl+P/T/W/B/F, etc.)
 
 ### File Explorer
 - Browse, upload, download, rename, delete files
@@ -173,6 +174,29 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh &&
 ---
 
 ## Changelog
+
+### v1.5.2
+- UI/UX audit fixes: theme-aware xterm selection color, `--fg3` across all 6 themes
+- Replaced native `confirm()` with a theme-aware, focus-trapped dialog
+- File explorer keyboard navigation (arrows, type-ahead, select-all) + loading state
+- Mobile header overflow (more) menu; compact hostname restored on mobile
+- Context menu keyboard navigation and `aria-expanded` on submenus
+- SVG-ified remaining text glyphs; aria-labels on JS-generated icon buttons
+- Single-line scrollable breadcrumb; tab-bar mask no longer clips new-tab
+- Removed infinite keep-awake bounce; light-theme contrast bump
+- `term.paste()` replaces deprecated `execCommand('insertText')`
+- Pull-to-refresh indicator; tunnel rows use CSS classes
+- JetBrains Mono web font + CSP `font-src`; PWA screenshots
+- Fixed addon-webgl 404 (0.18.1 → 0.18.0); removed MiMo CLI default command
+- Explicit Tokyo Night theme block + `color-scheme` for all 6 themes
+- IBM Plex Sans UI font paired with JetBrains Mono (chrome vs code surfaces)
+- Keyboard Shortcuts dialog in overflow menu; dialog `role`/`aria-modal` semantics
+- Busy-spinner buttons + inline field errors (rename/new file/new folder/tunnel/save)
+- Toast type icons and max 4 visible; editor unsaved-changes dot + Discard dialog
+- Deferred CDN scripts for faster first paint; icon stroke-width normalized to 2
+- Empty-directory quick actions; Reset settings button; skip-link + landmark roles
+- Terminal connecting spinner; install banner clears mobile key bar
+- Search button touch targets on coarse pointers; subtle hover on plain buttons
 
 ### v1.5.1
 - Fixed command history saving terminal garbage instead of actual commands
