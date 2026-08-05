@@ -2,16 +2,11 @@
 
 **Repo**: `github.com/unn-Known1/webtun` — maintained by [Gaurang Patel](https://github.com/unn-Known1) (unn-Known1) — ptelgm.yt@gmail.com
 
-<!-- SPECKIT START -->
-For additional context about technologies to be used, project structure,
-shell commands, and other important information, read the current plan
-<!-- SPECKIT END -->
-
 ## Entrypoints
 - **Server**: `node server.js` (Express + WebSocket + node-pty)
 - **CLI**: `bin/webtun.js` — parses flags (`--port`, `--host`, `--pin`, `--tunnel`, `--help`, `--version`), loads `.env`, spawns `server.js`
 - **Electron**: `electron/main.js` (forks `server.js` as child process, `HOST=127.0.0.1`)
-- **Frontend**: `public/index.html` — vanilla HTML/CSS/JS, no bundler. xterm.js + CodeMirror loaded from CDN.
+- **Frontend**: `public/index.html` — vanilla HTML/CSS/JS, no bundler. xterm.js + CodeMirror loaded from CDN (all `<script defer>`).
 
 ## Commands
 | Action | Command |
