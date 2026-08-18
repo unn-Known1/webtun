@@ -1272,8 +1272,11 @@ app.delete('/api/history/:index', checkPin, (req, res) => {
   res.json({ success: true, history: cmdHistory });
 });
 
-// ── Session persistence via tmux ──────────────────────────────────────
+// ── Session persistence ──────────────────────────────────────────────
 const TMUX = (() => { try { return execSync('command -v tmux', { stdio: ['ignore','pipe','ignore'] }).toString().trim(); } catch { return null; } })();
+
+// In-memory PTY session store — enables persistence without tmux (Windows + Linux)
+const ptySessions = new Map(); // sessionId -> { proc, drainCheck, createdAt }
 
 function isValidPID(pid) {
   return typeof pid === 'number' && Number.isInteger(pid) && pid > 0;
@@ -1301,22 +1304,38 @@ function tmuxSessionExists(name) {
 }
 
 app.get('/api/sessions', checkPin, (req, res) => {
-  if (!TMUX) return res.json({ tmux: false, sessions: [] });
-  try {
-    const out = execFileSync(TMUX, ['list-sessions', '-F', '#{session_name}'], { encoding: 'utf8' }).trim();
-    const sessions = out.split('\n')
-      .filter(s => s.startsWith('wt-'))
-      .map(s => ({ id: s.replace(/^wt-/, ''), name: s }));
-    res.json({ tmux: true, sessions });
-  } catch {
-    res.json({ tmux: true, sessions: [] });
+  if (TMUX) {
+    try {
+      const out = execFileSync(TMUX, ['list-sessions', '-F', '#{session_name}'], { encoding: 'utf8' }).trim();
+      const sessions = out.split('\n')
+        .filter(s => s.startsWith('wt-'))
+        .map(s => ({ id: s.replace(/^wt-/, ''), name: s }));
+      return res.json({ tmux: true, sessions });
+    } catch {
+      return res.json({ tmux: true, sessions: [] });
+    }
   }
+  // In-memory sessions (no tmux)
+  const sessions = [];
+  for (const [id] of ptySessions) {
+    sessions.push({ id, name: 'wt-' + id });
+  }
+  res.json({ tmux: false, sessions });
 });
 
 app.delete('/api/sessions/:id', checkPin, (req, res) => {
-  if (!TMUX) return res.json({ success: false });
-  const name = 'wt-' + req.params.id.replace(/[^a-zA-Z0-9_-]/g, '');
-  try { execFileSync(TMUX, ['kill-session', '-t', name], { stdio: 'ignore' }); } catch {}
+  const id = req.params.id.replace(/[^a-zA-Z0-9_-]/g, '');
+  if (TMUX) {
+    const name = 'wt-' + id;
+    try { execFileSync(TMUX, ['kill-session', '-t', name], { stdio: 'ignore' }); } catch {}
+    return res.json({ success: true });
+  }
+  // In-memory session
+  const entry = ptySessions.get(id);
+  if (entry) {
+    try { entry.proc.kill(); } catch {}
+    ptySessions.delete(id);
+  }
   res.json({ success: true });
 });
 
@@ -1378,8 +1397,28 @@ wss.on('connection', (ws, req) => {
   };
 
   let proc;
+  let reattached = false;
   try {
-    if (TMUX && sessionId) {
+    if (sessionId && !TMUX) {
+      // ── In-memory PTY persistence (no tmux needed) ──
+      const existing = ptySessions.get(sessionId);
+      if (existing && existing.proc && !existing.exited) {
+        // Reattach: remove old listeners, reuse the running PTY
+        proc = existing.proc;
+        proc.removeAllListeners('data');
+        proc.removeAllListeners('exit');
+        proc.resize(cols, rows);
+        reattached = true;
+      } else {
+        // New in-memory session
+        if (existing) ptySessions.delete(sessionId);
+        const shellArgs = os.platform() === 'win32' ? ['-NoLogo'] : ['-l'];
+        proc = pty.spawn(SHELL, shellArgs, {
+          name: 'xterm-256color', cols, rows, cwd,
+          env: sessionEnv
+        });
+      }
+    } else if (TMUX && sessionId) {
       const tmuxName = 'wt-' + sessionId;
       const exists   = tmuxSessionExists(tmuxName);
 
@@ -1413,6 +1452,12 @@ wss.on('connection', (ws, req) => {
   const HIGH_WATER = 4 * 1024 * 1024; // 4MB — pause PTY above this
   const LOW_WATER  = 1 * 1024 * 1024; // 1MB — resume PTY below this
 
+  const drainCheck = setInterval(() => {
+    if (paused && ws.bufferedAmount < LOW_WATER) {
+      try { proc.resume(); paused = false; } catch (_) {}
+    }
+  }, 50);
+
   proc.onData(data => {
     if (ws.readyState !== WebSocket.OPEN) return;
     send(0x00, data);
@@ -1422,18 +1467,28 @@ wss.on('connection', (ws, req) => {
     }
   });
 
-  // Drain check: resume PTY when buffer drops
-  const drainCheck = setInterval(() => {
-    if (paused && ws.bufferedAmount < LOW_WATER) {
-      try { proc.resume(); paused = false; } catch (_) {}
-    }
-  }, 50);
+  const useInMemory = sessionId && !TMUX;
+  const useTmux = TMUX && sessionId;
 
   proc.onExit(() => {
     clearInterval(drainCheck);
-    if (!TMUX || !sessionId) send(0x01, Buffer.from([0]));
+    if (useInMemory) ptySessions.delete(sessionId);
+    if (!useTmux) send(0x01, Buffer.from([0]));
     ws.close();
   });
+
+  // If this is a new in-memory session, register it now (after onExit is wired)
+  if (useInMemory && !rehattached) {
+    ptySessions.set(sessionId, { proc, exited: false, createdAt: Date.now() });
+    // Track exit so stale sessions are detected on reconnect
+    proc.onExit(() => {
+      const entry = ptySessions.get(sessionId);
+      if (entry) entry.exited = true;
+    });
+  } else if (useInMemory && reattached) {
+    const entry = ptySessions.get(sessionId);
+    if (entry) { entry.proc = proc; entry.exited = false; }
+  }
 
   ws.isAlive = true;
   const pingInterval = setInterval(() => {
@@ -1467,6 +1522,11 @@ wss.on('connection', (ws, req) => {
   const cleanup = () => {
     clearInterval(pingInterval);
     clearInterval(drainCheck);
+    if (useInMemory && sessionId) {
+      // Keep the PTY alive for reattachment — just detach listeners
+      try { proc.removeAllListeners('data'); } catch {}
+      return;
+    }
     try { proc.kill(); } catch {}
   };
   ws.on('close', cleanup);
@@ -1928,6 +1988,11 @@ function cleanup() {
       }
     } catch {}
   }
+  // Kill all in-memory PTY sessions
+  for (const [id, entry] of ptySessions) {
+    try { entry.proc.kill(); } catch {}
+  }
+  ptySessions.clear();
 }
 
 function startServer(opts = {}) {
