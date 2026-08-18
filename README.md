@@ -68,7 +68,7 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh &&
 - **Multi-tab** — drag to reorder, side-by-side sessions
 - **Bracketed paste** — Ctrl+V works in TUI apps (vim, nano, htop)
 - **Command history** — keystroke-based capture, strips ANSI/control sequences
-- **tmux sessions** — persistent sessions survive page reload
+- **Session persistence** — tmux or in-memory PTY; tabs survive page reload (all platforms)
 - **Keyboard Shortcuts** — reference dialog in the overflow menu (Ctrl+P/T/W/B/F, etc.)
 
 ### File Explorer
@@ -174,6 +174,10 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh &&
 ---
 
 ## Changelog
+
+### v1.5.3
+- Terminal session persistence without tmux (in-memory PTY on Windows + Linux)
+- Session IDs always generated; tabs now survive page reload on all platforms
 
 ### v1.5.2
 - UI/UX audit fixes: theme-aware xterm selection color, `--fg3` across all 6 themes

@@ -78,7 +78,8 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
 - **Server-side storage**: `POST /api/history` saves to `cmdHistory` array (max configurable). `GET /api/history` returns list.
 
 ### Session Persistence
-- **tmux sessions**: When WS `session` query param is set, terminal attaches to a `wt-{id}` tmux session. Sessions survive page reload. Cleaned on server exit and startup (`cleanupOrphanTmuxSessions`).
+- **tmux sessions**: When tmux is available, WS `session` query param attaches to a `wt-{id}` tmux session. Cleaned on server exit and startup (`cleanupOrphanTmuxSessions`).
+- **In-memory PTY persistence**: When tmux is unavailable (e.g. Windows), the server keeps PTY processes alive in a `ptySessions` Map across WebSocket disconnects and reattaches on reconnect. Same lifecycle as tmux: sessions are lost on server restart.
 
 ## Architecture Notables
 

@@ -2348,7 +2348,7 @@ async function closeTab(e, id) {
   tab.term?.dispose();
   tab.el?.remove();
   tab.wrapper?.remove();
-  // Kill the backing tmux session so it doesn't pile up
+  // Kill the backing session (tmux or in-memory) so it doesn't pile up
   if (tab.sessionId) api(`/api/sessions/${tab.sessionId}`, { method: 'DELETE' });
   tabs = tabs.filter(t => t.id !== id);
   saveTabState();
