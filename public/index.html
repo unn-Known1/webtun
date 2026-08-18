@@ -5387,6 +5387,9 @@ function setupDragDrop() {
                 const traversed = await traverseDirectoryEntry(entry);
                 filesToUpload.push(...traversed);
               } catch(e) { console.warn(e); }
+            } else {
+              const file = item.getAsFile();
+              if (file) filesToUpload.push({ file, path: file.name });
             }
           }
         }
