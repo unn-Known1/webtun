@@ -267,6 +267,10 @@ svg { display: block; }
 }
 #editor-view { display: none; flex-direction: column; background: var(--bg); overflow: hidden; }
 #editor-view.open { display: flex; }
+#editor-view.fullscreen { position: fixed; inset: 0; z-index: var(--z-overlay); width: 100vw; height: 100vh; max-height: 100vh; background: var(--bg); border: none; }
+#editor-view.fullscreen #editor-header { border-bottom: 1px solid var(--border); background: var(--bg2); }
+#editor-view.fullscreen #editor-area { flex: 1; min-height: 0; }
+#editor-view.fullscreen #editor-area .CodeMirror { height: 100vh; }
 
 /* Desktop: split layout */
 @media (min-width: 769px) {
@@ -1209,6 +1213,9 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
             </button>
             <button class="icon-btn active" id="editor-split-toggle" aria-label="Toggle split orientation" onclick="toggleEditorSplit()" title="Switch to horizontal split">
               <svg id="split-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/></svg>
+            </button>
+            <button class="icon-btn" id="editor-fullscreen-toggle" aria-label="Fullscreen" title="Fullscreen (F11)" onclick="toggleEditorFullscreen()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
             </button>
             <button class="btn btn-primary" id="editor-save-btn" style="height:26px;padding:0 12px;font-size:12px" onclick="saveFile()">Save</button>
           </div>
@@ -4171,7 +4178,13 @@ async function closeEditor() {
     if (!ok) return;
   }
   clearPreviewLiveReload();
-  document.getElementById('editor-view').classList.remove('open');
+  const ev = document.getElementById('editor-view');
+  ev.classList.remove('open');
+  ev.classList.remove('fullscreen');
+  document.removeEventListener('keydown', _fsEscHandler);
+  try { if (document.fullscreenElement) document.exitFullscreen(); } catch {}
+  const fsBtn = document.getElementById('editor-fullscreen-toggle');
+  if (fsBtn) { fsBtn.setAttribute('aria-label','Fullscreen'); fsBtn.title='Fullscreen (F11)'; fsBtn.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>'; }
   document.getElementById('content').classList.remove('editor-open');
   document.getElementById('editor-preview').classList.remove('active');
   document.getElementById('md-preview-toggle').style.display = 'none';
@@ -5055,8 +5068,34 @@ function toggleEditorSplit() {
   try { safeStorage.setItem('wt-editor-split-orientation', isHoriz ? 'horizontal' : 'vertical'); } catch(e) { console.warn(e); }
 }
 
-// ═══════════════════════════════════════════════════════
-let wakeLock = null;
+function toggleEditorFullscreen() {
+  const view = document.getElementById('editor-view');
+  if (!view || !view.classList.contains('open')) return;
+  const isFS = view.classList.toggle('fullscreen');
+  const btn = document.getElementById('editor-fullscreen-toggle');
+  if (btn) {
+    btn.setAttribute('aria-label', isFS ? 'Exit fullscreen' : 'Fullscreen');
+    btn.title = isFS ? 'Exit fullscreen (Esc/F11)' : 'Fullscreen (F11)';
+    btn.innerHTML = isFS
+      ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 14 10 14 10 4"/><polyline points="20 10 14 10 14 20"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="10" y1="14" x2="3" y2="21"/></svg>'
+      : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
+  }
+  if (isFS) {
+    document.addEventListener('keydown', _fsEscHandler);
+    try { view.requestFullscreen?.(); } catch {}
+  } else {
+    document.removeEventListener('keydown', _fsEscHandler);
+    try { if (document.fullscreenElement) document.exitFullscreen(); } catch {}
+    requestAnimationFrame(() => { tabs.forEach(t=>{try{fitTerm(t);}catch(e){console.warn(e);}}); if(editor) editor.refresh(); });
+  }
+  if (editor) setTimeout(()=>editor.refresh(), 80);
+}
+function _fsEscHandler(e) {
+  if (e.key === 'Escape' || e.key === 'F11') {
+    const v = document.getElementById('editor-view');
+    if (v && v.classList.contains('fullscreen')) { e.preventDefault(); toggleEditorFullscreen(); }
+  }
+}
 const hasWakeLock = 'wakeLock' in navigator;
 
 async function requestWakeLock() {
@@ -5151,6 +5190,7 @@ function setupKeyboardShortcuts() {
     if (ctrl && e.shiftKey && e.key === 'ArrowRight') { e.preventDefault(); cycleTab(1); }
     if (ctrl && e.shiftKey && e.key === 'ArrowLeft') { e.preventDefault(); cycleTab(-1); }
     if (ctrl && e.shiftKey && e.key === 'r') { e.preventDefault(); refreshPreview(); }
+    if (e.key === 'F11' && document.getElementById('editor-view').classList.contains('open')) { e.preventDefault(); toggleEditorFullscreen(); }
     if (e.key === 'Escape') {
       const termMenu = document.getElementById('term-ctx-menu');
       if (termMenu && termMenu.style.display !== 'none') {
