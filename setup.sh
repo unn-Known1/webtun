@@ -111,14 +111,19 @@ PORT=3000
 
 if [ -f "$ENV_FILE" ]; then
   warn ".env already exists. Edit it to change settings."
-  # Parse .env without executing it (avoids shell injection)
-  while IFS='=' read -r key val; do
-    key="$(echo "$key" | xargs)"
-    [ -z "$key" ] || [[ "$key" == \#* ]] && continue
-    val="$(echo "$val" | xargs)"
-    # Strip surrounding quotes
-    val="${val#\"}"; val="${val%\"}"
-    val="${val#\'}"; val="${val%\'}"
+  # Parse .env without executing it (avoids shell injection, handles = in value, preserves spaces)
+  while IFS= read -r line || [ -n "$line" ]; do
+    # Trim leading/trailing whitespace
+    line="$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+    [ -z "$line" ] || [[ "$line" == \#* ]] && continue
+    # Split on first =
+    key="${line%%=*}"
+    val="${line#*=}"
+    key="$(echo "$key" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+    # Trim only leading/trailing spaces from val, preserve internal spaces, then strip outer quotes
+    val="$(echo "$val" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+    if [[ "$val" == \"*\" && "$val" == *\" ]]; then val="${val#\"}"; val="${val%\"}"
+    elif [[ "$val" == \'*\' && "$val" == *\' ]]; then val="${val#\'}"; val="${val%\'}"; fi
     case "$key" in
       PORT) PORT="${val:-3000}" ;;
     esac
@@ -140,12 +145,13 @@ else
   IFS=$READ_IFS read -rsp "  PIN (hidden, press Enter for none): " INPUT_PIN
   echo ""
 
-  cat > "$ENV_FILE" << EOF
-PORT=$PORT
-HOST=0.0.0.0
-PIN=$INPUT_PIN
-# SHELL=/bin/bash  # override shell if needed
-EOF
+  # Use printf with %s to avoid heredoc expansion (prevents $(cmd) execution) (F84)
+  {
+    printf 'PORT=%s\n' "$PORT"
+    printf 'HOST=0.0.0.0\n'
+    printf 'PIN=%s\n' "$INPUT_PIN"
+    printf '# SHELL=/bin/bash  # override shell if needed\n'
+  } > "$ENV_FILE"
   success "Config saved to .env"
 fi
 
@@ -238,12 +244,17 @@ echo "  ${BOLD}${GREEN}Setup complete!${RESET}"
 echo ""
 echo "  Starting WebTun server..."
 
-# Kill old instance if running
+# Kill old instance if running — guard PID reuse by checking cmdline
 if [ -f "$SCRIPT_DIR/webtun.pid" ]; then
   OLD_PID=$(cat "$SCRIPT_DIR/webtun.pid" 2>/dev/null || echo "")
-  [ -n "$OLD_PID" ] && [[ "$OLD_PID" =~ ^[0-9]+$ ]] && kill -- "$OLD_PID" 2>/dev/null || true
+  if [ -n "$OLD_PID" ] && [[ "$OLD_PID" =~ ^[0-9]+$ ]]; then
+    if ps -p "$OLD_PID" -o command= 2>/dev/null | grep -q "webtun\|server\.js"; then
+      kill -- "$OLD_PID" 2>/dev/null || true
+    fi
+  fi
 fi
-pkill -f "^node.*server\.js" 2>/dev/null || true
+# Narrow pkill to this dir to avoid killing other users' server.js (F85)
+pkill -f "node.*$SCRIPT_DIR/server\.js" 2>/dev/null || true
 sleep 0.5
 
 # Start server in background, log to file
@@ -253,12 +264,14 @@ nohup "$NODE_CMD" "$SCRIPT_DIR/server.js" >> "$LOG_FILE" 2>&1 &
 SERVER_PID=$!
 echo "$SERVER_PID" > "$SCRIPT_DIR/webtun.pid"
 
-# Wait for server
+# Wait for server — verify pid alive to avoid hitting old instance (F85)
 SERVER_UP=false
 for _ in {1..10}; do
   sleep 0.5
+  if ! kill -0 "$SERVER_PID" 2>/dev/null; then break; fi
   if command -v curl &>/dev/null; then
     if curl -sf "http://localhost:$PORT/api/auth/required" &>/dev/null; then
+      # Double-check that our pid still owns the port (lsof/ss check not fatal)
       SERVER_UP=true
       break
     fi

@@ -9,7 +9,8 @@ const PRECACHE = [
 
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(PRECACHE)).then(() => self.skipWaiting())
+    caches.open(CACHE).then(c => c.addAll(PRECACHE))
+    // Do not skipWaiting automatically — let activate wait for user prompt (F87)
   );
 });
 
@@ -33,6 +34,8 @@ self.addEventListener('fetch', e => {
 
   const url = new URL(e.request.url);
   if (url.pathname.startsWith('/api')) return;
+  if (url.pathname === '/ws' || url.pathname.startsWith('/ws')) return;
+  if (url.searchParams.has('token')) return;
 
   // Network-First for HTML/navigation
   const isNavigation = e.request.mode === 'navigate' || (url.pathname === '/') || (url.pathname.endsWith('.html') && e.request.mode === 'same-origin');
@@ -53,14 +56,24 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Cache-First for static assets
+  // Cache-First for static assets with stale-while-revalidate (max-age 7d via version bump)
   // CDN resources are fetched from network (not precached) to avoid opaque response failures
   e.respondWith(
     caches.match(e.request).then(cached => {
-      if (cached) return cached;
+      if (cached) {
+        // Background revalidate without blocking
+        fetch(e.request).then(res => {
+          if (res && res.status === 200 && res.type !== 'opaque') {
+            const clone = res.clone();
+            caches.open(CACHE).then(c => { try { c.put(e.request, clone); } catch {} });
+          }
+        }).catch(()=>{});
+        return cached;
+      }
       return fetch(e.request).then(res => {
         if (res && res.status === 200 && res.type !== 'opaque') {
           const clone = res.clone();
+          // Use waitUntil equivalent via open+put
           caches.open(CACHE).then(c => { try { c.put(e.request, clone); } catch {} });
         }
         return res;

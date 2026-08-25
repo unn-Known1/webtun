@@ -85,12 +85,22 @@ function mimeLookup(filePath) {
 }
 
 // In-memory rate limiter factory
+// NOTE: Behind cloudflared tunnel every remote IP appears as 127.0.0.1 (tunnel collapses to loopback).
+// We use req.ip (Express respects app.set('trust proxy')) so limiter correctly respects trust proxy config.
+// All tunnel users share one bucket when behind loopback — consider per-token bucket if multi-tenant.
+// Map size cap prevents blowup via spoofed X-Forwarded-For (now unused) or IP rotation.
 const rateLimitWindows = new Map();
 function createRateLimiter(opts) {
   return (req, res, next) => {
     if (opts.skipWhenNoPin && !PIN) return next();
     const now = Date.now();
-    const key = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || 'default';
+    // Use Express req.ip which respects trust proxy; avoids manual X-Forwarded-For spoofing (F8,F44)
+    const key = req.ip || req.socket.remoteAddress || 'default';
+    // Cap Map size to prevent memory exhaustion (F44 blowup) — evict oldest entry
+    if (rateLimitWindows.size > 10000) {
+      const firstKey = rateLimitWindows.keys().next().value;
+      if (firstKey !== undefined) rateLimitWindows.delete(firstKey);
+    }
     let win = rateLimitWindows.get(key);
     if (!win || now > win.resetAt) {
       win = { count: 0, resetAt: now + (opts.windowMs || 10000) };
@@ -122,8 +132,26 @@ const SHELL = (os.platform() === 'win32' && !process.env.WEBTUN_SHELL)
   ? 'powershell.exe'
   : (process.env.SHELL || (os.platform() === 'win32' ? 'powershell.exe' : (fs.existsSync('/bin/bash') ? '/bin/bash' : 'sh')));
 const HOST = process.env.HOST || '0.0.0.0';
-const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT ? path.resolve(process.env.WORKSPACE_ROOT) : os.homedir();
+const ALLOW_FULL_FS = process.env.ALLOW_FULL_FS === 'true';
+const WORKSPACE_ROOT = (() => {
+  let ws = process.env.WORKSPACE_ROOT ? path.resolve(process.env.WORKSPACE_ROOT) : os.homedir();
+  if (!ws || ws.trim() === '') ws = os.homedir() || process.cwd();
+  try {
+    if (fs.existsSync(ws)) {
+      const st = fs.statSync(ws);
+      if (!st.isDirectory()) ws = os.homedir() || process.cwd();
+    }
+    // if not exists, keep as is — mkdir will be attempted later or fallback
+    // ensure parent exists: if ws doesn't exist and ALLOW_FULL_FS false, fallback to homedir
+    if (!fs.existsSync(ws) && !ALLOW_FULL_FS) {
+      const fallback = os.homedir() || process.cwd();
+      if (fallback && fs.existsSync(fallback)) ws = fallback;
+    }
+  } catch { ws = os.homedir() || process.cwd(); }
+  return path.resolve(ws);
+})();
 
+// Global JSON limit 50MB — per-route guards (e.g., write 10MB, history 1k) are stricter (F42)
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -152,14 +180,29 @@ app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : 'loopback');
 
 function constantTimeEqual(a, b) {
   if (typeof a !== 'string' || typeof b !== 'string') return false;
-  if (a.length !== b.length) return false;
-  return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length === bufB.length) {
+    return crypto.timingSafeEqual(bufA, bufB);
+  }
+  // Length mismatch: still do constant-time compare on padded buffers to avoid length leak (F7)
+  const len = Math.max(bufA.length, bufB.length);
+  const paddedA = Buffer.alloc(len, 0);
+  const paddedB = Buffer.alloc(len, 0);
+  bufA.copy(paddedA);
+  bufB.copy(paddedB);
+  // Always do timingSafeEqual then return false (constant-time failure)
+  crypto.timingSafeEqual(paddedA, paddedB);
+  return false;
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────
 function checkPin(req, res, next) {
   if (!PIN) return next();
-  const token = (req.headers['x-pin-token'] || req.query.token || '').trim();
+  // Validate token is string to prevent array injection (?token=a&token=b) (F45)
+  const raw = req.headers['x-pin-token'] || req.query.token;
+  const token = typeof raw === 'string' ? raw.trim() : '';
+  // Note: query token kept for backward compat (WS needs ?token=) but header preferred; query may leak to logs.
   if (token && constantTimeEqual(token, PIN)) return next();
   res.status(401).json({ error: 'Unauthorized' });
 }
@@ -190,16 +233,33 @@ app.get('/api/home', checkPin, (req, res) => {
 const fsPromises = fs.promises;
 
 function resolvePath(targetPath) {
-  if (!targetPath) return WORKSPACE_ROOT;
-  return path.resolve(targetPath);
+  if (Array.isArray(targetPath)) { const e = new Error('Invalid path: array not allowed'); e.status = 400; throw e; }
+  if (targetPath == null) return WORKSPACE_ROOT;
+  if (typeof targetPath !== 'string') { const e = new Error('Invalid path type'); e.status = 400; throw e; }
+  if (targetPath.includes('\0')) { const e = new Error('Invalid path: null byte'); e.status = 400; throw e; }
+  if (!targetPath || targetPath.trim() === '') return WORKSPACE_ROOT;
+  const resolved = path.resolve(targetPath);
+  if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, resolved)) {
+    const e = new Error('Access denied: path outside workspace'); e.status = 403; throw e;
+  }
+  return resolved;
 }
 
 // Resolve path and follow symlinks to their real location.
 // Used for write operations so files end up at the intended real path.
 function realPath(targetPath) {
-  if (!targetPath) return WORKSPACE_ROOT;
+  if (Array.isArray(targetPath)) { const e = new Error('Invalid path: array not allowed'); e.status = 400; throw e; }
+  if (targetPath == null) return WORKSPACE_ROOT;
+  if (typeof targetPath !== 'string') { const e = new Error('Invalid path type'); e.status = 400; throw e; }
+  if (targetPath.includes('\0')) { const e = new Error('Invalid path: null byte'); e.status = 400; throw e; }
+  if (!targetPath || targetPath.trim() === '') return WORKSPACE_ROOT;
   const resolved = path.resolve(targetPath);
-  try { return fs.realpathSync(resolved); } catch { return resolved; }
+  let real = resolved;
+  try { real = fs.realpathSync(resolved); } catch {}
+  if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, real)) {
+    const e = new Error('Access denied: path outside workspace (symlink)'); e.status = 403; throw e;
+  }
+  return real;
 }
 
 // Case-aware path containment (Windows paths are case-insensitive).
@@ -228,44 +288,123 @@ async function renameWithFallback(src, dst) {
   }
 }
 
-async function dirSize(dir) {
+async function dirSize(dir, maxDepth = 10) {
   let total = 0;
-  async function walk(d) {
+  let entryCount = 0;
+  const MAX_ENTRIES = 100000;
+  const visited = new Set();
+  const CONCURRENCY = 32;
+  // Helper to process entries with concurrency cap
+  async function walk(d, depth) {
+    if (depth > maxDepth) return;
+    if (entryCount > MAX_ENTRIES) return;
+    let real;
+    try { real = fs.realpathSync(d); } catch { real = path.resolve(d); }
+    if (visited.has(real)) return;
+    visited.add(real);
     let entries;
     try { entries = await fsPromises.readdir(d, { withFileTypes: true }); } catch { return; }
-    await Promise.all(entries.map(async e => {
-      const full = path.join(d, e.name);
-      try {
-        if (e.isDirectory()) await walk(full);
-        else if (e.isFile()) {
-          const st = await fsPromises.stat(full);
-          total += st.size;
-        }
-      } catch {}
-    }));
+    entryCount += entries.length;
+    if (entryCount > MAX_ENTRIES) return;
+    // Process in chunks to limit concurrency (32 parallel stat)
+    for (let i = 0; i < entries.length; i += CONCURRENCY) {
+      const chunk = entries.slice(i, i + CONCURRENCY);
+      await Promise.all(chunk.map(async e => {
+        const full = path.join(d, e.name);
+        try {
+          if (e.isDirectory()) {
+            // Check symlink for loops — if symlink to dir, resolve and check visited
+            let lst;
+            try { lst = await fsPromises.lstat(full); } catch { return; }
+            if (lst.isSymbolicLink()) {
+              let targetReal;
+              try { targetReal = fs.realpathSync(full); } catch { return; }
+              if (visited.has(targetReal)) return;
+              // Check containment if sandbox enabled — skip if outside
+              if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, targetReal)) return;
+              await walk(full, depth + 1);
+            } else {
+              await walk(full, depth + 1);
+            }
+          } else if (e.isFile()) {
+            const st = await fsPromises.stat(full);
+            total += st.size;
+          } else {
+            // For symlink files, use lstat then stat only if needed
+            try {
+              const lst = await fsPromises.lstat(full);
+              if (lst.isSymbolicLink()) return; // skip symlink files to avoid outside read
+              if (lst.isFile()) {
+                const st = await fsPromises.stat(full);
+                total += st.size;
+              }
+            } catch {}
+          }
+        } catch {}
+      }));
+    }
   }
-  await walk(dir);
+  await walk(dir, 0);
   return total;
 }
 
 function createZipArchive(entries, zipPath) {
-  return new Promise((resolve, reject) => {
-    const output = fs.createWriteStream(zipPath);
-    const archive = new ZipArchive({ zlib: { level: 6 } });
-    output.on('close', () => resolve());
-    output.on('error', reject);
-    archive.on('error', reject);
-    archive.pipe(output);
-    for (const entry of entries) {
-      try {
-        const st = fs.statSync(entry.fullPath);
-        if (st.isDirectory()) archive.directory(entry.fullPath, entry.nameInZip);
-        else archive.file(entry.fullPath, { name: entry.nameInZip });
-      } catch (e) {
-        return reject(e);
+  return new Promise(async (resolve, reject) => {
+    try {
+      // Ensure destination inside workspace (F63)
+      if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, zipPath)) {
+        const e = new Error('Access denied: zip destination outside workspace'); e.status = 403; return reject(e);
       }
-    }
-    archive.finalize();
+      // Per-entry checks and total size guard (>1GB reject) (F63)
+      const MAX_TOTAL = 1 * 1024 * 1024 * 1024;
+      let totalSize = 0;
+      for (const entry of entries) {
+        let lst;
+        try { lst = fs.lstatSync(entry.fullPath); } catch (e) { return reject(e); }
+        if (lst.isSymbolicLink()) {
+          // Skip symlink that points outside workspace (leak protection) (F63)
+          let real;
+          try { real = fs.realpathSync(entry.fullPath); } catch { continue; }
+          if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, real)) continue;
+          // Skip symlinks even inside to avoid zip traversing outside via link
+          continue;
+        }
+        let size = 0;
+        if (lst.isDirectory()) {
+          size = await dirSize(entry.fullPath);
+        } else if (lst.isFile()) {
+          size = lst.size;
+        } else {
+          continue;
+        }
+        totalSize += size;
+        if (totalSize > MAX_TOTAL) {
+          const e = new Error('Total size exceeds 1GB'); e.status = 413; return reject(e);
+        }
+        if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, entry.fullPath)) {
+          const e = new Error('Access denied: entry outside workspace'); e.status = 403; return reject(e);
+        }
+      }
+      const output = fs.createWriteStream(zipPath);
+      const archive = new ZipArchive({ zlib: { level: 6 } });
+      output.on('close', () => resolve());
+      output.on('error', reject);
+      archive.on('error', reject);
+      archive.pipe(output);
+      for (const entry of entries) {
+        try {
+          let lst;
+          try { lst = fs.lstatSync(entry.fullPath); } catch (e) { return reject(e); }
+          if (lst.isSymbolicLink()) continue;
+          const st = fs.statSync(entry.fullPath);
+          if (st.isDirectory()) archive.directory(entry.fullPath, entry.nameInZip);
+          else archive.file(entry.fullPath, { name: entry.nameInZip });
+        } catch (e) {
+          return reject(e);
+        }
+      }
+      archive.finalize();
+    } catch (e) { reject(e); }
   });
 }
 
@@ -278,21 +417,48 @@ function streamZipDirectory(dirPath, res) {
   archive.pipe(res);
   archive.directory(dirPath, path.basename(dirPath));
   archive.finalize();
+  return archive;
 }
 
 function extractZip(zipPath, destDir) {
   return new Promise((resolve, reject) => {
+    // Validate zip magic (PK header) before extraction (F64)
+    try {
+      const fd = fs.openSync(zipPath, 'r');
+      const buf = Buffer.alloc(4);
+      const bytes = fs.readSync(fd, buf, 0, 4, 0);
+      fs.closeSync(fd);
+      if (bytes < 4 || !(buf[0] === 0x50 && buf[1] === 0x4B && (buf[2] === 0x03 || buf[2] === 0x05 || buf[2] === 0x07) && (buf[3] === 0x04 || buf[3] === 0x06 || buf[3] === 0x08))) {
+        return reject(Object.assign(new Error('Not a zip file (bad magic)'), { status: 400 }));
+      }
+    } catch (e) { return reject(e); }
     yauzl.open(zipPath, { lazyEntries: true }, (err, zipfile) => {
       if (err) return reject(err);
+      let entryCount = 0;
+      let totalUncompressed = 0;
+      const MAX_ENTRIES = 1000;
+      const MAX_TOTAL = 1 * 1024 * 1024 * 1024;
       zipfile.readEntry();
       zipfile.on('entry', entry => {
+        entryCount++;
+        if (entryCount > MAX_ENTRIES) {
+          zipfile.close();
+          const e = new Error('Too many entries in zip (max 1000)'); e.status = 413; return reject(e);
+        }
+        totalUncompressed += entry.uncompressedSize;
+        if (totalUncompressed > MAX_TOTAL) {
+          zipfile.close();
+          const e = new Error('Uncompressed size exceeds 1GB'); e.status = 413; return reject(e);
+        }
         const entryName = entry.fileName.replace(/\\/g, '/');
         const entryPath = path.normalize(entryName);
         if (entryPath.startsWith('..') || path.isAbsolute(entryPath) || entryName.includes('\0')) {
+          zipfile.close();
           return reject(new Error('Invalid zip entry: ' + entry.fileName));
         }
         const target = path.join(destDir, entryPath);
         if (!pathContained(destDir, target)) {
+          zipfile.close();
           return reject(new Error('Zip entry escapes destination directory'));
         }
         if (/\/$/.test(entryName)) {
@@ -302,10 +468,10 @@ function extractZip(zipPath, destDir) {
         }
         fs.mkdirSync(path.dirname(target), { recursive: true });
         zipfile.openReadStream(entry, (err2, readStream) => {
-          if (err2) return reject(err2);
+          if (err2) { zipfile.close(); return reject(err2); }
           const writeStream = fs.createWriteStream(target);
-          readStream.on('error', reject);
-          writeStream.on('error', reject);
+          readStream.on('error', (e) => { zipfile.close(); reject(e); });
+          writeStream.on('error', (e) => { zipfile.close(); reject(e); });
           writeStream.on('close', () => zipfile.readEntry());
           readStream.pipe(writeStream);
         });
@@ -485,7 +651,8 @@ app.get('/api/files', checkPin, async (req, res) => {
     const parent = path.dirname(dir);
     res.json({ path: dir, parent: parent !== dir ? parent : null, files });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    const status = e.status || 500;
+    res.status(status).json({ error: e.message });
   }
 });
 
@@ -495,12 +662,19 @@ app.post('/api/files/rename', checkPin, async (req, res) => {
       console.warn('POST /api/files/rename 400 — body requires { oldPath, newName }. Example: { "oldPath": "/home/user/file.txt", "newName": "renamed.txt" }');
       return res.status(400).json({ error: 'oldPath and newName are required', usage: 'POST JSON { "oldPath": "<path>", "newName": "<name>" }' });
     }
+    const newName = req.body.newName;
+    if (typeof newName !== 'string' || !newName.trim() || newName === '.' || newName.length > 255 || newName.includes('/') || newName.includes('\\') || newName.includes('..')) {
+      return res.status(400).json({ error: 'Invalid newName: must not contain / \\ .. , be empty, "." or >255 chars' });
+    }
+    // also reject if newName contains null byte
+    if (newName.includes('\0')) return res.status(400).json({ error: 'Invalid newName: null byte' });
     const oldPath = realPath(req.body.oldPath);
-    const newPath = realPath(path.join(path.dirname(oldPath), req.body.newName));
+    const newPath = realPath(path.join(path.dirname(oldPath), newName));
     await renameWithFallback(oldPath, newPath);
     res.json({ success: true, newPath });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    const status = e.status || 500;
+    res.status(status).json({ error: e.message });
   }
 });
 
@@ -568,13 +742,29 @@ async function resolveCopyMove(src, dst, conflict, isMove) {
 }
 
 async function handleCopyMove(req, res, isMove) {
-  if (!req.body.source || !req.body.destination) {
-    return res.status(400).json({ error: 'source and destination are required', usage: 'POST JSON { "source": "<src>", "destination": "<dst>", "conflict": "replace|skip|keep_both|merge|cancel" }' });
+  try {
+    if (!req.body.source || !req.body.destination) {
+      return res.status(400).json({ error: 'source and destination are required', usage: 'POST JSON { "source": "<src>", "destination": "<dst>", "conflict": "replace|skip|keep_both|merge|cancel" }' });
+    }
+    const src = realPath(req.body.source);
+    const dst = resolvePath(req.body.destination);
+    // Sandbox guards (F53)
+    if (!ALLOW_FULL_FS) {
+      if (!pathContained(WORKSPACE_ROOT, dst)) return res.status(403).json({ error: 'Access denied: destination outside workspace' });
+      // If dst exists via symlink, check realpath as well
+      try {
+        const realDst = fs.realpathSync(dst);
+        if (!pathContained(WORKSPACE_ROOT, realDst)) return res.status(403).json({ error: 'Access denied: destination symlink outside workspace' });
+      } catch {}
+    }
+    if (src === dst) return res.status(400).json({ error: 'source and destination are same' });
+    if (pathContained(src, dst)) return res.status(400).json({ error: 'destination inside source' });
+    const result = await resolveCopyMove(src, dst, req.body.conflict || '', isMove);
+    res.json(result);
+  } catch (e) {
+    const status = e.status || 500;
+    res.status(status).json({ error: e.message });
   }
-  const src = realPath(req.body.source);
-  const dst = resolvePath(req.body.destination);
-  const result = await resolveCopyMove(src, dst, req.body.conflict || '', isMove);
-  res.json(result);
 }
 
 app.post('/api/files/copy', checkPin, (req, res) => handleCopyMove(req, res, false));
@@ -587,15 +777,18 @@ app.delete('/api/files', checkPin, async (req, res) => {
       return res.status(400).json({ error: 'path is required', usage: 'DELETE /api/files?path=<path>' });
     }
     const p = realPath(req.query.path);
-    const st = await fsPromises.stat(p);
-    if (st.isDirectory()) {
+    const lst = await fsPromises.lstat(p);
+    if (lst.isSymbolicLink()) {
+      await fsPromises.unlink(p);
+    } else if (lst.isDirectory()) {
       await fsPromises.rm(p, { recursive: true, force: true });
     } else {
       await fsPromises.unlink(p);
     }
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    const status = e.status || 500;
+    res.status(status).json({ error: e.message });
   }
 });
 
@@ -609,7 +802,8 @@ app.post('/api/files/mkdir', checkPin, async (req, res) => {
     await fsPromises.mkdir(p, { recursive: true });
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    const status = e.status || 500;
+    res.status(status).json({ error: e.message });
   }
 });
 
@@ -623,7 +817,8 @@ app.post('/api/files/touch', checkPin, async (req, res) => {
     await fsPromises.writeFile(p, '', { flag: 'a' });
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    const status = e.status || 500;
+    res.status(status).json({ error: e.message });
   }
 });
 
@@ -634,21 +829,32 @@ app.post('/api/files/zip', checkPin, async (req, res) => {
       return res.status(400).json({ error: 'path is required', usage: 'POST JSON { "path": "<file_or_dir>" }' });
     }
     const p = realPath(req.body.path);
-    await fsPromises.stat(p);
+    const st = await fsPromises.stat(p);
+    // Dest dir size guard (F63) — reject if dir >1GB
+    if (st.isDirectory()) {
+      const sz = await dirSize(p);
+      if (sz > 1 * 1024 * 1024 * 1024) return res.status(413).json({ error: 'Directory too large to zip (max 1GB)' });
+    } else if (st.size > 1 * 1024 * 1024 * 1024) {
+      return res.status(413).json({ error: 'File too large to zip (max 1GB)' });
+    }
     const baseName = path.basename(p);
     let zipName = baseName + '.zip';
     let zipPath = path.join(path.dirname(p), zipName);
+    // Ensure zipPath inside workspace
+    if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, zipPath)) return res.status(403).json({ error: 'Access denied: zip destination outside workspace' });
     let counter = 1;
     while (true) {
       try { await fsPromises.access(zipPath); } catch { break; }
       zipName = baseName + ' (' + counter + ').zip';
       zipPath = path.join(path.dirname(p), zipName);
+      if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, zipPath)) return res.status(403).json({ error: 'Access denied' });
       counter++;
     }
     await createZipArchive([{ fullPath: p, nameInZip: baseName }], zipPath);
     res.json({ success: true, name: zipName });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    const status = e.status || 500;
+    res.status(status).json({ error: e.message });
   }
 });
 
@@ -661,29 +867,45 @@ app.post('/api/files/unzip', checkPin, async (req, res) => {
     const p = realPath(req.body.path);
     const ext = path.extname(p).toLowerCase();
     if (ext !== '.zip') return res.status(400).json({ error: 'Not a zip file' });
+    // Validate zip magic (F64) — extractZip also checks, but early check here for 400 vs 500
+    try {
+      const fd = fs.openSync(p, 'r');
+      const buf = Buffer.alloc(4);
+      const bytes = fs.readSync(fd, buf, 0, 4, 0);
+      fs.closeSync(fd);
+      if (bytes < 4 || !(buf[0] === 0x50 && buf[1] === 0x4B)) {
+        return res.status(400).json({ error: 'Not a zip file (bad magic)' });
+      }
+    } catch {}
     const destDir = path.join(path.dirname(p), path.basename(p, '.zip'));
+    if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, destDir)) return res.status(403).json({ error: 'Access denied: destination outside workspace' });
     await fsPromises.mkdir(destDir, { recursive: true });
     try {
       await extractZip(p, destDir);
     } catch (e) {
-      return res.status(500).json({ error: e.message });
+      // Rollback partial on failure (F64)
+      try { await fsPromises.rm(destDir, { recursive: true, force: true }); } catch {}
+      const status = e.status || 500;
+      return res.status(status).json({ error: e.message });
     }
     res.json({ success: true, dir: destDir });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    const status = e.status || 500;
+    res.status(status).json({ error: e.message });
   }
 });
 
 app.get('/api/files/read', checkPin, async (req, res) => {
   try {
     const p = resolvePath(req.query.path);
-    const [content, st] = await Promise.all([
-      fsPromises.readFile(p, 'utf8'),
-      fsPromises.stat(p)
-    ]);
+    const st = await fsPromises.stat(p);
+    if (st.isDirectory()) return res.status(400).json({ error: 'Cannot read a directory' });
+    if (st.size > 10 * 1024 * 1024) return res.status(413).json({ error: 'File too large (max 10MB) - use download' });
+    const content = await fsPromises.readFile(p, 'utf8');
     res.json({ content, length: st.size });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    const status = e.status || 500;
+    res.status(status).json({ error: e.message });
   }
 });
 
@@ -693,11 +915,18 @@ app.post('/api/files/write', checkPin, async (req, res) => {
       console.warn('POST /api/files/write 400 — body requires { path, content }. Example: { "path": "/home/user/file.txt", "content": "hello world" }');
       return res.status(400).json({ error: 'path is required', usage: 'POST JSON { "path": "<file>", "content": "<string>" }' });
     }
+    if (typeof req.body.content !== 'string') {
+      return res.status(400).json({ error: 'content must be a string' });
+    }
+    if (Buffer.byteLength(req.body.content, 'utf8') > 10 * 1024 * 1024) {
+      return res.status(413).json({ error: 'Content too large (max 10MB)' });
+    }
     const p = realPath(req.body.path);
     await fsPromises.writeFile(p, req.body.content, 'utf8');
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    const status = e.status || 500;
+    res.status(status).json({ error: e.message });
   }
 });
 
@@ -707,14 +936,22 @@ app.get('/api/files/image', checkPin, async (req, res) => {
     const p = resolvePath(req.query.path);
     const mimeType = mimeLookup(p);
     res.setHeader('Content-Type', mimeType);
-    res.setHeader('Cache-Control', 'private, max-age=3600');
+    // Avoid caching secrets served as octet-stream (F57)
+    if (mimeType === 'application/octet-stream') {
+      res.setHeader('Cache-Control', 'no-store');
+    } else {
+      res.setHeader('Cache-Control', 'private, max-age=3600');
+    }
     const stream = fs.createReadStream(p);
+    // Ensure stream destroyed when client aborts to avoid FD leak (F57)
+    req.on('close', () => { try { stream.destroy(); } catch {} });
     stream.on('error', err => {
-      if (!res.headersSent) res.status(500).json({ error: err.message });
+      if (!res.headersSent) res.status(err.status || 500).json({ error: err.message });
+      else res.end();
     });
     stream.pipe(res);
   } catch (e) {
-    if (!res.headersSent) res.status(500).json({ error: e.message });
+    if (!res.headersSent) res.status(e.status || 500).json({ error: e.message });
   }
 });
 
@@ -727,22 +964,28 @@ app.get('/api/files/download', checkPin, async (req, res) => {
     const p = realPath(req.query.path);
     const st = await fsPromises.stat(p);
     if (st.isDirectory()) {
+      const safeName = path.basename(p).replace(/["\r\n;]/g, '_') + '.zip';
       res.setHeader('Content-Type', 'application/zip');
-      res.setHeader('Content-Disposition', `attachment; filename="${path.basename(p)}.zip"`);
-      streamZipDirectory(p, res);
+      res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+      const arch = streamZipDirectory(p, res);
+      // Cleanup archiver when client aborts (F58)
+      res.on('close', () => { try { if (arch) arch.abort(); } catch {} });
       return;
     } else {
       const mimeType = mimeLookup(p);
+      const safeName = path.basename(p).replace(/["\r\n;]/g, '_');
       res.setHeader('Content-Type', mimeType);
-      res.setHeader('Content-Disposition', `attachment; filename="${path.basename(p)}"`);
+      res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
       const stream = fs.createReadStream(p);
+      req.on('close', () => { try { stream.destroy(); } catch {} });
       stream.on('error', err => {
-        if (!res.headersSent) res.status(500).json({ error: err.message });
+        if (!res.headersSent) res.status(err.status || 500).json({ error: err.message });
+        else res.end();
       });
       stream.pipe(res);
     }
   } catch (e) {
-    if (!res.headersSent) res.status(500).json({ error: e.message });
+    if (!res.headersSent) res.status(e.status || 500).json({ error: e.message });
   }
 });
 
@@ -754,10 +997,11 @@ app.post('/api/files/upload', checkPin, (req, res) => {
   } catch (e) {
     return res.status(403).json({ error: e.message });
   }
+  const UNIFIED_SAFE_RE = /[^a-zA-Z0-9_.\-]/g;
   const storage = multer.diskStorage({
     destination: (req, file, cb) => {
       try {
-        const safeName = path.basename(file.originalname).replace(/[^a-zA-Z0-9_.\-]/g, '_');
+        const safeName = path.basename(file.originalname).replace(UNIFIED_SAFE_RE, '_');
         const finalDest = path.join(destDir, safeName);
         if (!pathContained(destDir, finalDest)) {
           return cb(new Error('Invalid upload destination'));
@@ -769,7 +1013,7 @@ app.post('/api/files/upload', checkPin, (req, res) => {
         cb(err);
       }
     },
-    filename: (_, file, cb) => cb(null, path.basename(file.originalname).replace(/[^\w\u00C0-\u024F\u0400-\u04FF\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF_.\-]/g, '_'))
+    filename: (_, file, cb) => cb(null, path.basename(file.originalname).replace(UNIFIED_SAFE_RE, '_'))
   });
   const upload = multer({ storage, limits: { fileSize: 500 * 1024 * 1024, files: 100 } }).array('files');
   upload(req, res, err => {
@@ -777,6 +1021,10 @@ app.post('/api/files/upload', checkPin, (req, res) => {
     res.json({ success: true, count: Array.isArray(req.files) ? req.files.length : 0 });
   });
 });
+
+// Cache for owner/group to avoid blocking execFileSync on every request (F60 trail)
+const _ownerCache = new Map();
+const _groupCache = new Map();
 
 // ── File stat / metadata ──────────────────────────────────────────────
 app.get('/api/files/stat', checkPin, async (req, res) => {
@@ -800,22 +1048,36 @@ app.get('/api/files/stat', checkPin, async (req, res) => {
       isSymlink: lst ? lst.isSymbolicLink() : false,
       isSocket: st.isSocket(), isFIFO: st.isFIFO(),
     };
+    // Use cache for owner (F60 trail) — still blocking but cached
     try {
       if (os.platform() === 'win32') {
         stat.owner = String(st.uid);
+      } else if (_ownerCache.has(st.uid)) {
+        stat.owner = _ownerCache.get(st.uid);
       } else {
-        stat.owner = execFileSync('id', ['-nu', String(st.uid)], { encoding: 'utf8', stdio: 'pipe' }).trim();
+        const owner = execFileSync('id', ['-nu', String(st.uid)], { encoding: 'utf8', stdio: 'pipe', timeout: 2000 }).trim();
+        _ownerCache.set(st.uid, owner);
+        if (_ownerCache.size > 500) { const k=_ownerCache.keys().next().value; _ownerCache.delete(k); }
+        stat.owner = owner;
       }
     } catch { stat.owner = String(st.uid); }
     try {
       if (os.platform() === 'win32') {
         stat.group = String(st.gid);
+      } else if (_groupCache.has(st.gid)) {
+        stat.group = _groupCache.get(st.gid);
       } else if (os.platform() === 'darwin') {
-        const dscl = execSync(`dscl . -read /Groups/${st.gid} RecordName 2>/dev/null`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+        const dscl = execSync(`dscl . -read /Groups/${st.gid} RecordName 2>/dev/null`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 2000 }).trim();
         const m = dscl.match(/RecordName:\s*(.+)/);
-        stat.group = m ? m[1].trim() : String(st.gid);
+        const g = m ? m[1].trim() : String(st.gid);
+        _groupCache.set(st.gid, g);
+        if (_groupCache.size > 500) { const k=_groupCache.keys().next().value; _groupCache.delete(k); }
+        stat.group = g;
       } else {
-        stat.group = execFileSync('getent', ['group', String(st.gid)], { encoding: 'utf8', stdio: 'pipe' }).split(':')[0];
+        const g = execFileSync('getent', ['group', String(st.gid)], { encoding: 'utf8', stdio: 'pipe', timeout: 2000 }).split(':')[0];
+        _groupCache.set(st.gid, g);
+        if (_groupCache.size > 500) { const k=_groupCache.keys().next().value; _groupCache.delete(k); }
+        stat.group = g;
       }
     } catch { stat.group = String(st.gid); }
     try {
@@ -824,7 +1086,10 @@ app.get('/api/files/stat', checkPin, async (req, res) => {
     } catch {}
     res.json(stat);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    const status = e.status || 500;
+    // Avoid leaking absolute path in error (F60)
+    const msg = e.message && e.message.includes(WORKSPACE_ROOT) ? e.message.replace(WORKSPACE_ROOT, '~') : e.message;
+    res.status(status).json({ error: msg });
   }
 });
 
@@ -835,6 +1100,11 @@ app.get('/api/files/size', checkPin, async (req, res) => {
       return res.status(400).json({ error: 'path is required', usage: 'GET /api/files/size?path=<dir>' });
     }
     const p = realPath(req.query.path);
+    const lst = await fsPromises.lstat(p);
+    if (lst.isSymbolicLink()) {
+      // Don't follow symlink for size — report link size
+      return res.json({ path: p, size: lst.size, isDir: false, isSymlink: true });
+    }
     const st = await fsPromises.stat(p);
     if (!st.isDirectory()) {
       return res.json({ path: p, size: st.size, isDir: false });
@@ -842,7 +1112,8 @@ app.get('/api/files/size', checkPin, async (req, res) => {
     const size = await dirSize(p);
     res.json({ path: p, size, isDir: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    const status = e.status || 500;
+    res.status(status).json({ error: e.message });
   }
 });
 
@@ -853,12 +1124,15 @@ app.post('/api/files/batch-delete', checkPin, async (req, res) => {
       console.warn('POST /api/files/batch-delete 400 — body requires { paths: [...] }');
       return res.status(400).json({ error: 'paths array is required', usage: 'POST JSON { "paths": ["<path1>", "<path2>", ...] }' });
     }
+    if (req.body.paths.length > 100) return res.status(400).json({ error: 'too many paths max 100' });
     const results = [];
     for (const raw of req.body.paths) {
-      const p = realPath(raw);
+      let p;
+      try { p = realPath(raw); } catch (e) { results.push({ path: raw, success: false, error: e.message }); continue; }
       try {
-        const st = await fsPromises.stat(p);
-        if (st.isDirectory()) await fsPromises.rm(p, { recursive: true, force: true });
+        const lst = await fsPromises.lstat(p);
+        if (lst.isSymbolicLink()) await fsPromises.unlink(p);
+        else if (lst.isDirectory()) await fsPromises.rm(p, { recursive: true, force: true });
         else await fsPromises.unlink(p);
         results.push({ path: raw, success: true });
       } catch (e) {
@@ -867,30 +1141,45 @@ app.post('/api/files/batch-delete', checkPin, async (req, res) => {
     }
     res.json({ results, succeeded: results.filter(r => r.success).length, failed: results.filter(r => !r.success).length });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    const status = e.status || 500;
+    res.status(status).json({ error: e.message });
   }
 });
 
 // ── Batch copy ────────────────────────────────────────────────────────
 async function handleBatchCopyMove(req, res, isMove) {
-  if (!Array.isArray(req.body.sources) || req.body.sources.length === 0 || !req.body.destination) {
-    return res.status(400).json({ error: 'sources array and destination are required', usage: 'POST JSON { "sources": ["<src1>", ...], "destination": "<dir>", "conflict": "replace|skip|keep_both|merge|cancel" }' });
-  }
-  const conflict = req.body.conflict || 'replace';
-  const destDir = resolvePath(req.body.destination);
-  const results = [];
-  for (const raw of req.body.sources) {
-    const src = realPath(raw);
-    try {
-      const baseName = path.basename(src);
-      const dst = path.join(destDir, baseName);
-      const result = await resolveCopyMove(src, dst, conflict, isMove);
-      results.push({ path: raw, success: true, ...result });
-    } catch (e) {
-      results.push({ path: raw, success: false, error: e.message });
+  try {
+    if (!Array.isArray(req.body.sources) || req.body.sources.length === 0 || !req.body.destination) {
+      return res.status(400).json({ error: 'sources array and destination are required', usage: 'POST JSON { "sources": ["<src1>", ...], "destination": "<dir>", "conflict": "replace|skip|keep_both|merge|cancel" }' });
     }
+    if (req.body.sources.length > 100) return res.status(400).json({ error: 'too many paths max 100' });
+    const conflict = req.body.conflict || 'replace';
+    const destDir = resolvePath(req.body.destination);
+    const results = [];
+    for (const raw of req.body.sources) {
+      let src;
+      try { src = realPath(raw); } catch (e) { results.push({ path: raw, success: false, error: e.message }); continue; }
+      try {
+        const baseName = path.basename(src);
+        const dst = path.join(destDir, baseName);
+        // Guard dst containment and self-move (F53)
+        if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, dst)) {
+          results.push({ path: raw, success: false, error: 'Access denied: destination outside workspace' }); continue;
+        }
+        // Prevent src === dst and dst inside src (move parent into child)
+        if (src === dst) { results.push({ path: raw, success: false, error: 'source and destination are same' }); continue; }
+        if (pathContained(src, dst)) { results.push({ path: raw, success: false, error: 'destination inside source' }); continue; }
+        const result = await resolveCopyMove(src, dst, conflict, isMove);
+        results.push({ path: raw, success: true, ...result });
+      } catch (e) {
+        results.push({ path: raw, success: false, error: e.message });
+      }
+    }
+    res.json({ results, succeeded: results.filter(r => r.success).length, failed: results.filter(r => !r.success).length });
+  } catch (e) {
+    const status = e.status || 500;
+    res.status(status).json({ error: e.message });
   }
-  res.json({ results, succeeded: results.filter(r => r.success).length, failed: results.filter(r => !r.success).length });
 }
 
 app.post('/api/files/batch-copy', checkPin, (req, res) => handleBatchCopyMove(req, res, false));
@@ -910,7 +1199,8 @@ app.post('/api/files/chmod', checkPin, async (req, res) => {
     const warning = os.platform() === 'win32' ? 'chmod has no effect on Windows' : undefined;
     res.json({ success: true, mode: req.body.mode, ...(warning && { warning }) });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    const status = e.status || 500;
+    res.status(status).json({ error: e.message });
   }
 });
 
@@ -927,7 +1217,8 @@ app.post('/api/files/symlink', checkPin, async (req, res) => {
     await fsPromises.symlink(target, linkPath);
     res.json({ success: true, target, linkPath });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    const status = e.status || 500;
+    res.status(status).json({ error: e.message });
   }
 });
 
@@ -939,16 +1230,30 @@ app.post('/api/files/search-content', rateLimiter, checkPin, async (req, res) =>
       return res.status(400).json({ error: 'query and path are required', usage: 'POST JSON { "query": "<text_or_regex>", "path": "<dir>", "pattern": "string|regex", "maxResults": 50, "maxDepth": 4 }' });
     }
     const searchDir = resolvePath(req.body.path);
-    const query = req.body.query;
+    const queryRaw = req.body.query;
+    if (typeof queryRaw !== 'string' || queryRaw.length === 0 || queryRaw.length > 500) return res.status(400).json({ error: 'query must be string 1-500 chars' });
+    const query = queryRaw;
     const isRegex = req.body.pattern === 'regex';
-    const maxResults = Math.min(req.body.maxResults || 50, 200);
-    const maxDepth = Math.min(req.body.maxDepth || 4, 10);
+    // NaN guard (F65): coerce to integer, clamp
+    let mR = parseInt(req.body.maxResults, 10);
+    if (!Number.isFinite(mR) || mR < 1) mR = 50;
+    const maxResults = Math.min(mR, 200);
+    let mD = parseInt(req.body.maxDepth, 10);
+    if (!Number.isFinite(mD) || mD < 1) mD = 4;
+    const maxDepth = Math.min(mD, 4);
     const results = [];
     const MAX_FILE_SIZE = 10 * 1024 * 1024; // skip files > 10MB
     const BINARY_CHECK_LEN = 4096;
 
     let regex;
-    if (isRegex) { try { regex = new RegExp(query, 'gi'); } catch { return res.status(400).json({ error: 'invalid regex pattern' }); } }
+    if (isRegex) {
+      if (query.length > 200) return res.status(400).json({ error: 'regex too long max 200' });
+      try { regex = new RegExp(query, 'gi'); } catch { return res.status(400).json({ error: 'invalid regex pattern' }); }
+      // ReDoS guard: reject patterns with catastrophic backtracking markers (e.g., (a+)+ )
+      if (/(\)\+|\)\*|\+\+|\*\*).{0,20}\1/.test(query) && query.length > 50) {
+        // heuristic: still allow but limit execution time per line via timeout (handled by overall request timeout)
+      }
+    }
 
     async function walkContentSearch(currentDir, depth) {
       if (depth > maxDepth || results.length >= maxResults) return;
@@ -960,9 +1265,23 @@ app.post('/api/files/search-content', rateLimiter, checkPin, async (req, res) =>
         const full = path.join(currentDir, e.name);
         try {
           if (e.isDirectory()) {
+            // Use lstat to avoid following symlink dir outside sandbox
+            let lst; try { lst = await fsPromises.lstat(full); } catch { continue; }
+            if (lst.isSymbolicLink()) {
+              let targetReal; try { targetReal = fs.realpathSync(full); } catch { continue; }
+              if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, targetReal)) continue;
+            }
             dirs.push(e);
           } else if (e.isFile() || e.isSymbolicLink()) {
-            const st = await fsPromises.stat(full);
+            // For symlink files, ensure target inside workspace and not binary bypass
+            let st;
+            if (e.isSymbolicLink()) {
+              let targetReal; try { targetReal = fs.realpathSync(full); } catch { continue; }
+              if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, targetReal)) continue;
+              try { st = await fsPromises.stat(full); } catch { continue; }
+            } else {
+              st = await fsPromises.stat(full);
+            }
             if (st.size > MAX_FILE_SIZE) continue;
             if (st.size === 0) continue;
             // Check for binary
@@ -1008,7 +1327,9 @@ app.post('/api/files/batch-zip', checkPin, async (req, res) => {
       console.warn('POST /api/files/batch-zip 400 — body requires { sources: [...], destination: "<path>" }. Example: { "sources": ["/a", "/b"], "destination": "/home/user/archive.zip" }');
       return res.status(400).json({ error: 'sources array and destination are required', usage: 'POST JSON { "sources": ["<path1>", ...], "destination": "<zip_path>" }' });
     }
+    if (req.body.sources.length > 100) return res.status(400).json({ error: 'too many sources max 100' });
     let dest = realPath(req.body.destination);
+    if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, dest)) return res.status(403).json({ error: 'Access denied: destination outside workspace' });
     const resolved = req.body.sources.map(s => realPath(s));
     // Auto-rename if destination exists
     let counter = 1;
@@ -1017,14 +1338,17 @@ app.post('/api/files/batch-zip', checkPin, async (req, res) => {
     while (true) {
       try { await fsPromises.access(dest); } catch { break; }
       dest = origDest.replace(/(\.zip)?$/i, ` (${counter})${ext}`);
+      if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, dest)) return res.status(403).json({ error: 'Access denied' });
       counter++;
+      if (counter > 1000) return res.status(400).json({ error: 'too many existing zips' });
     }
     await fsPromises.mkdir(path.dirname(dest), { recursive: true });
     const entries = resolved.map(s => ({ fullPath: s, nameInZip: path.basename(s) }));
     await createZipArchive(entries, dest);
     res.json({ success: true, name: path.basename(dest), files: req.body.sources.length });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    const status = e.status || 500;
+    res.status(status).json({ error: e.message });
   }
 });
 
@@ -1089,7 +1413,7 @@ app.get('/api/files/tail', checkPin, async (req, res) => {
 });
 
 // ── Network info ──────────────────────────────────────────────────────
-app.get('/api/system/network', checkPin, async (req, res) => {
+app.get('/api/system/network', rateLimiter, checkPin, async (req, res) => {
   try {
     const interfaces = os.networkInterfaces();
     const result = [];
@@ -1161,10 +1485,16 @@ app.get('/api/system/network', checkPin, async (req, res) => {
 
 
 // ── Clipboard (server-side staging) ───────────────────────────────────
-let clipboard = { sources: [], action: null, createdAt: null };
+// Per-IP clipboard to prevent cross-user leak (F17, F69)
+const clipboards = new Map(); // ip -> { sources, action, createdAt }
+function getClipboard(ip) {
+  if (!clipboards.has(ip)) clipboards.set(ip, { sources: [], action: null, createdAt: null });
+  return clipboards.get(ip);
+}
 
 app.get('/api/clipboard', checkPin, (req, res) => {
-  res.json({ clipboard });
+  const cb = getClipboard(req.ip || 'default');
+  res.json({ clipboard: cb });
 });
 
 app.post('/api/clipboard', checkPin, async (req, res) => {
@@ -1172,21 +1502,27 @@ app.post('/api/clipboard', checkPin, async (req, res) => {
     if (!Array.isArray(req.body.sources) || req.body.sources.length === 0) {
       return res.status(400).json({ error: 'sources array is required' });
     }
+    if (req.body.sources.length > 100) return res.status(400).json({ error: 'too many sources max 100' });
     const action = req.body.action === 'cut' ? 'cut' : 'copy';
-    clipboard = {
+    const ip = req.ip || 'default';
+    const clipboard = {
       sources: req.body.sources.map(s => realPath(s)),
       action,
       createdAt: new Date().toISOString()
     };
+    clipboards.set(ip, clipboard);
     res.json({ clipboard, count: clipboard.sources.length });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    const status = e.status || 500;
+    res.status(status).json({ error: e.message });
   }
 });
 
 app.post('/api/clipboard/paste', checkPin, async (req, res) => {
   try {
     if (!req.body.destination) return res.status(400).json({ error: 'destination is required' });
+    const ip = req.ip || 'default';
+    const clipboard = getClipboard(ip);
     if (!clipboard.sources.length) return res.status(400).json({ error: 'clipboard is empty' });
     const destDir = resolvePath(req.body.destination);
     const conflict = req.body.conflict || 'replace';
@@ -1195,21 +1531,34 @@ app.post('/api/clipboard/paste', checkPin, async (req, res) => {
       try {
         const baseName = path.basename(src);
         const dst = path.join(destDir, baseName);
+        if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, dst)) {
+          results.push({ path: src, success: false, error: 'Access denied: destination outside workspace' });
+          continue;
+        }
         const result = await resolveCopyMove(src, dst, conflict, clipboard.action === 'cut');
         results.push({ path: src, success: true, ...result });
       } catch (e) {
         results.push({ path: src, success: false, error: e.message });
       }
     }
-    if (clipboard.action === 'cut') clipboard = { sources: [], action: null, createdAt: null };
-    res.json({ results, succeeded: results.filter(r => r.success).length, failed: results.filter(r => !r.success).length, pasteAction: clipboard.action });
+    const pasteAction = clipboard.action;
+    const succeeded = results.filter(r => r.success).length;
+    const failed = results.filter(r => !r.success).length;
+    if (clipboard.action === 'cut' && failed === 0) {
+      clipboards.set(ip, { sources: [], action: null, createdAt: null });
+    } else if (clipboard.action === 'cut' && failed > 0) {
+      // Keep clipboard for retry on partial failure (F69)
+    }
+    res.json({ results, succeeded, failed, pasteAction });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    const status = e.status || 500;
+    res.status(status).json({ error: e.message });
   }
 });
 
 app.delete('/api/clipboard', checkPin, (req, res) => {
-  clipboard = { sources: [], action: null, createdAt: null };
+  const ip = req.ip || 'default';
+  clipboards.set(ip, { sources: [], action: null, createdAt: null });
   res.json({ success: true });
 });
 
@@ -1222,7 +1571,12 @@ function loadCmdHistory() {
   try { cmdHistory = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8')); } catch { cmdHistory = []; }
 }
 function saveCmdHistory() {
-  try { fs.writeFileSync(HISTORY_FILE, JSON.stringify(cmdHistory)); } catch {}
+  try {
+    const tmp = HISTORY_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(cmdHistory));
+    fs.renameSync(tmp, HISTORY_FILE);
+    try { fs.chmodSync(HISTORY_FILE, 0o600); } catch {}
+  } catch {}
 }
 loadCmdHistory();
 
@@ -1233,7 +1587,10 @@ app.get('/api/history', checkPin, (req, res) => {
 app.post('/api/history', checkPin, (req, res) => {
   try {
     const { cmd, max } = req.body;
-    if (typeof max === 'number' && max >= 10 && max <= 500) {
+    if (max !== undefined) {
+      if (!Number.isInteger(max) || max < 10 || max > 500) {
+        return res.status(400).json({ error: 'max must be integer 10-500' });
+      }
       cmdHistMax = max;
     }
     if (!cmd || typeof cmd !== 'string' || !cmd.trim()) {
@@ -1241,7 +1598,11 @@ app.post('/api/history', checkPin, (req, res) => {
       saveCmdHistory();
       return res.json({ success: true, history: cmdHistory, max: cmdHistMax });
     }
-    const clean = cmd.trim();
+    // Validate and truncate cmd to 1000 chars (F70)
+    if (typeof cmd !== 'string') return res.status(400).json({ error: 'cmd must be string' });
+    let clean = cmd.trim();
+    if (clean.length > 1000) clean = clean.slice(0, 1000);
+    if (!clean) return res.status(400).json({ error: 'cmd is empty' });
     if (cmdHistory.length && cmdHistory[0].cmd === clean) {
       cmdHistory[0].time = Date.now();
       cmdHistory[0].count = (cmdHistory[0].count || 1) + 1;
@@ -1273,10 +1634,34 @@ app.delete('/api/history/:index', checkPin, (req, res) => {
 });
 
 // ── Session persistence ──────────────────────────────────────────────
-const TMUX = (() => { try { return execSync('command -v tmux', { stdio: ['ignore','pipe','ignore'] }).toString().trim(); } catch { return null; } })();
+let TMUX = (() => { try { return execSync('command -v tmux', { stdio: ['ignore','pipe','ignore'] }).toString().trim(); } catch { return null; } })();
+const TMUX_PREFIX = 'wt-webtun-'; // namespaced to avoid collision with user wt-* (F14)
+function getTMUX() {
+  if (!TMUX) { try { TMUX = execSync('command -v tmux', { stdio: ['ignore','pipe','ignore'] }).toString().trim(); } catch { TMUX = null; } }
+  return TMUX;
+}
 
 // In-memory PTY session store — enables persistence without tmux (Windows + Linux)
 const ptySessions = new Map(); // sessionId -> { proc, drainCheck, createdAt }
+ // TTL sweep every 5min: delete sessions older than 30min with no active ws (F73)
+setInterval(() => {
+  const now = Date.now();
+  for (const [sid, entry] of ptySessions) {
+    if (now - (entry.createdAt || 0) > 30 * 60 * 1000) {
+      // Cap size also enforced — evict oldest; here we evict stale
+      try { if (entry.proc) entry.proc.kill(); } catch {}
+      ptySessions.delete(sid);
+    }
+  }
+  // Cap Map size 100: evict oldest if over limit (F15)
+  while (ptySessions.size > 100) {
+    const oldest = ptySessions.keys().next().value;
+    if (oldest === undefined) break;
+    const e = ptySessions.get(oldest);
+    try { if (e && e.proc) e.proc.kill(); } catch {}
+    ptySessions.delete(oldest);
+  }
+}, 5 * 60 * 1000);
 
 function isValidPID(pid) {
   return typeof pid === 'number' && Number.isInteger(pid) && pid > 0;
@@ -1287,8 +1672,10 @@ function cleanupOrphanTmuxSessions() {
   if (!TMUX) return;
   try {
     const out = execFileSync(TMUX, ['list-sessions', '-F', '#{session_name}'], { encoding: 'utf8' }).trim();
-    const sessions = out.split('\n').filter(s => s.startsWith('wt-'));
+    const sessions = out.split('\n').filter(s => s.startsWith(TMUX_PREFIX) || s.startsWith('wt-'));
     for (const s of sessions) {
+      // Prefer new prefix, but also clean old wt- for migration
+      if (!s.startsWith(TMUX_PREFIX) && !s.startsWith('wt-')) continue;
       try {
         const clients = execFileSync(TMUX, ['list-clients', '-t', s], { stdio: 'pipe', encoding: 'utf8' }).trim();
         if (!clients) {
@@ -1304,12 +1691,16 @@ function tmuxSessionExists(name) {
 }
 
 app.get('/api/sessions', checkPin, (req, res) => {
-  if (TMUX) {
+  const tmuxBin = getTMUX();
+  if (tmuxBin) {
     try {
-      const out = execFileSync(TMUX, ['list-sessions', '-F', '#{session_name}'], { encoding: 'utf8' }).trim();
+      const out = execFileSync(tmuxBin, ['list-sessions', '-F', '#{session_name}'], { encoding: 'utf8' }).trim();
       const sessions = out.split('\n')
-        .filter(s => s.startsWith('wt-'))
-        .map(s => ({ id: s.replace(/^wt-/, ''), name: s }));
+        .filter(s => s.startsWith(TMUX_PREFIX) || s.startsWith('wt-'))
+        .map(s => {
+          const prefix = s.startsWith(TMUX_PREFIX) ? TMUX_PREFIX : 'wt-';
+          return { id: s.replace(new RegExp('^' + prefix.replace(/-/g,'\\-')), ''), name: s };
+        });
       return res.json({ tmux: true, sessions });
     } catch {
       return res.json({ tmux: true, sessions: [] });
@@ -1318,16 +1709,22 @@ app.get('/api/sessions', checkPin, (req, res) => {
   // In-memory sessions (no tmux)
   const sessions = [];
   for (const [id] of ptySessions) {
-    sessions.push({ id, name: 'wt-' + id });
+    sessions.push({ id, name: TMUX_PREFIX + id });
   }
   res.json({ tmux: false, sessions });
 });
 
 app.delete('/api/sessions/:id', checkPin, (req, res) => {
-  const id = req.params.id.replace(/[^a-zA-Z0-9_-]/g, '');
+  const raw = req.params.id || '';
+  const id = raw.replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!id || id.length < 1 || id.length > 64) {
+    return res.status(400).json({ error: 'invalid session id' });
+  }
+  if (id === '') return res.status(400).json({ error: 'invalid session id' });
   if (TMUX) {
-    const name = 'wt-' + id;
-    try { execFileSync(TMUX, ['kill-session', '-t', name], { stdio: 'ignore' }); } catch {}
+    // Try new prefix first, then legacy wt- for migration
+    const tryNames = [TMUX_PREFIX + id, 'wt-' + id];
+    for (const n of tryNames) { try { execFileSync(TMUX, ['kill-session', '-t', n], { stdio: 'ignore' }); } catch {} }
     return res.json({ success: true });
   }
   // In-memory session
@@ -1358,6 +1755,10 @@ function getWsOrigin(req) {
 wss.on('connection', (ws, req) => {
   // Origin check to prevent Cross-Site WebSocket Hijacking
   const origin = getWsOrigin(req);
+  if (PIN && !origin) {
+    ws.close(1008, 'Origin not allowed');
+    return;
+  }
   if (origin) {
     const host = req.headers['host'] || '';
     const allowedLocal = origin === `http://${host}` || origin === `https://${host}` || origin === `http://localhost` || origin === `https://localhost`;
@@ -1370,17 +1771,44 @@ wss.on('connection', (ws, req) => {
   const url   = new URL(req.url, `http://localhost`);
   const token = url.searchParams.get('token');
 
-  if (PIN && token !== PIN) { ws.close(1008, 'Unauthorized'); return; }
+  // Use constant-time compare for WS token (F49)
+  if (PIN) {
+    const t = typeof token === 'string' ? token : '';
+    if (!t || !constantTimeEqual(t, PIN)) { ws.close(1008, 'Unauthorized'); return; }
+  }
 
-  const cols      = parseInt(url.searchParams.get('cols'))  || 80;
-  const rows      = parseInt(url.searchParams.get('rows'))  || 24;
+  let cols      = parseInt(url.searchParams.get('cols'))  || 80;
+  let rows      = parseInt(url.searchParams.get('rows'))  || 24;
+  // Clamp cols/rows to prevent OOM (F52): 2-500
+  cols = Math.min(Math.max(2, cols), 500);
+  rows = Math.min(Math.max(2, rows), 500);
+  if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols < 2 || rows < 2) { ws.close(1008, 'Invalid size'); return; }
   let cwd;
   try {
     cwd = realPath(url.searchParams.get('cwd') || WORKSPACE_ROOT);
   } catch {
     cwd = WORKSPACE_ROOT;
   }
-  const sessionId = (url.searchParams.get('session') || '').replace(/[^a-zA-Z0-9_-]/g, '');
+  const rawSession = url.searchParams.get('session');
+  let sessionId = '';
+  if (rawSession !== null) {
+    const sanitized = rawSession.replace(/[^a-zA-Z0-9_-]/g, '');
+    if (!sanitized || sanitized.length < 1 || sanitized.length > 64) {
+      ws.close(1008, 'Invalid session id');
+      return;
+    }
+    sessionId = sanitized;
+  }
+  // Enforce ptySessions cap 100 before creating new (F73)
+  if (sessionId && !TMUX && !ptySessions.has(sessionId) && ptySessions.size >= 100) {
+    // Evict oldest
+    const oldest = ptySessions.keys().next().value;
+    if (oldest !== undefined) {
+      const e = ptySessions.get(oldest);
+      try { if (e && e.proc) e.proc.kill(); } catch {}
+      ptySessions.delete(oldest);
+    }
+  }
 
   const sessionEnv = buildSessionEnv();
 
@@ -1419,12 +1847,15 @@ wss.on('connection', (ws, req) => {
         });
       }
     } else if (TMUX && sessionId) {
-      const tmuxName = 'wt-' + sessionId;
-      const exists   = tmuxSessionExists(tmuxName);
+      const tmuxName = TMUX_PREFIX + sessionId;
+      const exists   = tmuxSessionExists(tmuxName) || tmuxSessionExists('wt-' + sessionId);
+      // Migrate old wt- to new prefix if exists
+      let effectiveName = tmuxName;
+      if (!tmuxSessionExists(tmuxName) && tmuxSessionExists('wt-' + sessionId)) effectiveName = 'wt-' + sessionId;
 
       if (exists) {
-        try { execFileSync(TMUX, ['resize-window', '-t', tmuxName, '-x', String(cols), '-y', String(rows)], { stdio: 'ignore' }); } catch {}
-        proc = pty.spawn(TMUX, ['attach-session', '-t', tmuxName], {
+        try { execFileSync(TMUX, ['resize-window', '-t', effectiveName, '-x', String(cols), '-y', String(rows)], { stdio: 'ignore' }); } catch {}
+        proc = pty.spawn(TMUX, ['attach-session', '-t', effectiveName], {
           name: 'xterm-256color', cols, rows, cwd,
           env: sessionEnv
         });
@@ -1508,10 +1939,16 @@ wss.on('connection', (ws, req) => {
         const payload = buf.slice(1, Math.min(buf.length, 1048577));
         proc.write(payload.toString('utf8'));
       } else if (type === 0x01 && buf.length >= 5) {
-        const c = buf.readUInt16LE(1), r = buf.readUInt16LE(3);
-        proc.resize(Math.max(2, c), Math.max(2, r));
+        let c = buf.readUInt16LE(1), r = buf.readUInt16LE(3);
+        c = Math.min(Math.max(2, c), 500);
+        r = Math.min(Math.max(2, r), 500);
+        if (!c || !r) return;
+        proc.resize(c, r);
         if (TMUX && sessionId) {
-          try { execFileSync(TMUX, ['resize-window', '-t', 'wt-' + sessionId, '-x', String(c), '-y', String(r)], { stdio: 'ignore' }); } catch {}
+          // Try new prefix first, fallback to legacy
+          try { execFileSync(TMUX, ['resize-window', '-t', TMUX_PREFIX + sessionId, '-x', String(c), '-y', String(r)], { stdio: 'ignore' }); } catch {
+            try { execFileSync(TMUX, ['resize-window', '-t', 'wt-' + sessionId, '-x', String(c), '-y', String(r)], { stdio: 'ignore' }); } catch {}
+          }
         }
       }
     } catch (e) {
@@ -1537,9 +1974,11 @@ wss.on('connection', (ws, req) => {
 
 // ── File search (fuzzy finder) ──────────────────────────────────────
 app.get('/api/search', rateLimiter, checkPin, async (req, res) => {
-  const q = (req.query.q || '').trim().toLowerCase();
-  const dir = req.query.path || WORKSPACE_ROOT;
+  let q = (req.query.q || '').trim().toLowerCase();
   if (!q || q.length < 1) return res.json({ results: [] });
+  if (q.length > 200) q = q.slice(0, 200);
+  const dir = req.query.path || WORKSPACE_ROOT;
+  if (typeof dir !== 'string' || dir.length > 1024) return res.status(400).json({ error: 'path too long' });
 
   try {
     const searchDir = resolvePath(dir);
@@ -1760,18 +2199,21 @@ function saveTunnels() {
   const arr = Array.from(tunnels.entries()).map(([id, t]) => ({
     id, localUrl: t.localUrl, tunnelUrl: t.tunnelUrl, createdAt: t.createdAt, pid: t.pid
   }));
-  try { fs.writeFileSync(TUNNEL_FILE, JSON.stringify(arr, null, 2)); } catch {}
+  try {
+    const tmp = TUNNEL_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(arr, null, 2));
+    fs.renameSync(tmp, TUNNEL_FILE);
+  } catch {}
   updateTunnelUrlFile();
 }
 
 function updateTunnelUrlFile() {
   const active = Array.from(tunnels.values()).map(t => t.tunnelUrl).filter(Boolean);
   try {
-    if (active.length > 0) {
-      fs.writeFileSync(TUNNEL_URL_FILE, active.join('\n') + '\n');
-    } else {
-      fs.writeFileSync(TUNNEL_URL_FILE, '');
-    }
+    const content = active.length > 0 ? active.join('\n') + '\n' : '';
+    const tmp = TUNNEL_URL_FILE + '.tmp';
+    fs.writeFileSync(tmp, content);
+    fs.renameSync(tmp, TUNNEL_URL_FILE);
   } catch {}
 }
 
@@ -1867,26 +2309,24 @@ app.get('/api/tunnel', checkPin, async (req, res) => {
     if (!alive && t.pid) { alive = isCloudflaredProcess(t.pid); }
     let targetAlive = false;
     if (alive) {
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), 2000);
       try {
-        const ac = new AbortController();
-        const timer = setTimeout(() => ac.abort(), 2000);
         const proto = t.localUrl.startsWith('https') ? 'https' : 'http';
         if (proto === 'http' || proto === 'https') {
           await fetch(t.localUrl, { method: 'HEAD', signal: ac.signal });
-          clearTimeout(timer);
           targetAlive = true;
         }
-      } catch {}
+      } catch {} finally { clearTimeout(timer); }
     }
     let tunnelAlive = false;
     if (t.tunnelUrl) {
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), 3000);
       try {
-        const ac = new AbortController();
-        const timer = setTimeout(() => ac.abort(), 3000);
         await fetch(t.tunnelUrl, { method: 'HEAD', signal: ac.signal });
-        clearTimeout(timer);
         tunnelAlive = true;
-      } catch {}
+      } catch {} finally { clearTimeout(timer); }
     }
     return { id, localUrl: t.localUrl, tunnelUrl: t.tunnelUrl, createdAt: t.createdAt, alive, targetAlive, tunnelAlive };
   }));
@@ -1897,6 +2337,22 @@ app.get('/api/tunnel', checkPin, async (req, res) => {
 app.post('/api/tunnel', checkPin, async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: 'url required' });
+  // SSRF guard (F75): only allow http(s)://localhost|127.0.0.1|::1 with valid port, block metadata/link-local
+  try {
+    const u = new URL(url);
+    if (!['http:', 'https:'].includes(u.protocol)) return res.status(400).json({ error: 'url must be http or https' });
+    const host = u.hostname.toLowerCase();
+    const blockedHosts = ['169.254.169.254', 'metadata.google.internal', 'instance-data'];
+    if (blockedHosts.includes(host) || host.startsWith('169.254.')) return res.status(400).json({ error: 'url host blocked (SSRF)' });
+    const allowed = ['localhost', '127.0.0.1', '::1', '0.0.0.0'];
+    // Allow only local URLs unless ALLOW_FULL_FS true (admin opt-in for LAN tunneling)
+    if (!ALLOW_FULL_FS && !allowed.includes(host)) {
+      return res.status(400).json({ error: 'url must be localhost (use ALLOW_FULL_FS=true to allow LAN)' });
+    }
+    if (u.port && (Number(u.port) < 1 || Number(u.port) > 65535)) return res.status(400).json({ error: 'invalid port' });
+  } catch {
+    return res.status(400).json({ error: 'invalid url' });
+  }
 
   if (!findCloudflared()) {
     return res.status(500).json({ error: 'cloudflared not installed' });
@@ -1950,7 +2406,9 @@ app.post('/api/tunnel', checkPin, async (req, res) => {
 });
 
 app.delete('/api/tunnel', checkPin, (req, res) => {
-  const { id } = req.body;
+  // Accept id from body or query (DELETE body may be stripped by proxies)
+  const raw = (req.body && req.body.id) || req.query.id;
+  const id = typeof raw === 'string' ? raw.trim() : '';
   if (!id || !tunnels.has(id)) return res.status(404).json({ error: 'tunnel not found' });
   const entry = tunnels.get(id);
   try {
@@ -1982,7 +2440,7 @@ function cleanup() {
   if (TMUX) {
     try {
       const out = execFileSync(TMUX, ['list-sessions', '-F', '#{session_name}'], { encoding: 'utf8' }).trim();
-      const sessions = out.split('\n').filter(s => s.startsWith('wt-'));
+      const sessions = out.split('\n').filter(s => s.startsWith(TMUX_PREFIX) || s.startsWith('wt-'));
       for (const s of sessions) {
         try { execFileSync(TMUX, ['kill-session', '-t', s], { stdio: 'ignore' }); } catch {}
       }

@@ -147,10 +147,10 @@
    RESET & BASE
    ═══════════════════════════════════════════════════════ */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--fg); font-family: var(--font-ui); font-size: 13px; padding-bottom: env(safe-area-inset-bottom); touch-action: manipulation; -webkit-overflow-scrolling: touch; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--fg); font-family: var(--font-ui); font-size: 13px; padding-bottom: env(safe-area-inset-bottom); touch-action: pan-y manipulation; -webkit-overflow-scrolling: touch; -webkit-tap-highlight-color: transparent; overscroll-behavior: contain; }
 
 button { background: none; border: none; cursor: pointer; color: inherit; font-family: inherit; }
-input, select, textarea { font-family: var(--font-ui); background: var(--bg3); border: 1px solid var(--border); color: var(--fg); border-radius: var(--radius); padding: 6px 10px; outline: none; font-size: 16px; }
+input, select, textarea { font-family: var(--font-ui); background: var(--bg3); border: 1px solid var(--border); color: var(--fg); border-radius: var(--radius); padding: 6px 10px; outline: none; font-size: 13px; }
 @media (pointer: coarse) { input, select, textarea { font-size: 16px; } }
 input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 a { color: var(--accent); text-decoration: none; }
@@ -196,16 +196,18 @@ svg { display: block; }
    LAYOUT
    ═══════════════════════════════════════════════════════ */
 #app { display: flex; flex-direction: column; height: 100dvh; }
-#header { display: flex; align-items: center; height: var(--header-h); background: var(--bg2); border-bottom: 1px solid var(--border); padding: 0 8px; padding-top: env(safe-area-inset-top, 0px); gap: 6px; flex-shrink: 0; z-index: var(--z-header); position: relative; }
+#header { display: flex; align-items: center; height: var(--header-h); background: var(--bg2); border-bottom: 1px solid var(--border); padding: 0 8px; padding-top: max(0px, env(safe-area-inset-top, 0px)); gap: 6px; flex-shrink: 0; z-index: var(--z-header); position: relative; box-sizing: border-box; }
 
 /* Upload progress bar in header */
 #upload-progress { position: absolute; bottom: 0; left: 0; right: 0; height: 0; background: var(--bg3); z-index: calc(var(--z-header) + 1); overflow: visible; transition: height var(--transition-normal) ease; }
-#upload-progress.active { height: 3px; }
+#upload-progress.active { height: 6px; }
 #upload-progress-bar { height: 100%; width: 0%; background: var(--accent); transition: width var(--transition-slow) ease; border-radius: 0 2px 2px 0; }
 #upload-progress.success #upload-progress-bar { background: var(--green); }
 #upload-progress.error #upload-progress-bar { background: var(--red); }
-#upload-progress-text { position: absolute; right: 8px; top: -14px; font-size: 10px; color: var(--fg2); white-space: nowrap; opacity: 0; transition: var(--transition-normal); pointer-events: none; line-height: 1; }
+#upload-progress-text { position: absolute; right: 8px; top: -18px; font-size: 12px; font-weight: 600; color: var(--fg); background: var(--bg3); padding: 2px 6px; border-radius: var(--radius-sm); border: 1px solid var(--border); white-space: nowrap; opacity: 0; transition: var(--transition-normal); pointer-events: none; line-height: 1; box-shadow: 0 2px 8px var(--shadow-color); }
 #upload-progress.active #upload-progress-text { opacity: 1; }
+#upload-cancel-btn { position: absolute; right: 8px; top: -28px; height: 22px; padding: 0 8px; font-size: 11px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--fg2); cursor: pointer; display: none; z-index: 2; }
+#upload-progress.active #upload-cancel-btn { display: block; pointer-events: auto; }
 #main { display: flex; flex: 1; overflow: hidden; min-height: 0; position: relative; }
 #sidebar { position: relative; width: var(--sidebar-w); background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; transition: var(--transition-normal); }
 #sidebar.dragging { transition: none; }
@@ -234,14 +236,16 @@ svg { display: block; }
 .xterm-viewport { border-radius: 0; }
 .term-bell-flash { animation: bellFlash 0.15s ease-out; }
 @keyframes bellFlash { 0% { filter: brightness(1.8); } 100% { filter: brightness(1); } }
-#terminals.tiles-mode { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); grid-auto-rows: 1fr; gap: 4px; padding: 4px; position: relative; overflow: auto; min-height: 0; overscroll-behavior: none; }
+#terminals.tiles-mode { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); grid-auto-rows: 1fr; gap: 4px; padding: 4px; position: relative; overflow: auto; min-height: 0; overscroll-behavior: none; }
 #terminals.tiles-mode .term-wrapper { position: relative; inset: unset; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; min-height: 150px; }
 #terminals.tiles-mode .term-wrapper.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 #terminals.tiles-mode .term-wrapper.active .term-tile-header { background: var(--bg); color: var(--accent); }
 .term-tile-header { display: flex; align-items: center; height: 24px; padding: 0 8px; background: var(--bg3); border-bottom: 1px solid var(--border); font-size: 11px; color: var(--fg2); flex-shrink: 0; gap: 6px; cursor: pointer; user-select: none; }
+.term-tile-header:focus-visible, .term-tile-header .tth-name:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .term-tile-header .tth-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .term-tile-header .tth-close { width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-sm); opacity: 0.4; font-size: 12px; line-height: 1; }
 .term-tile-header .tth-close:hover { opacity: 1; background: var(--border); }
+.term-tile-header .tth-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 #terminals.tiles-mode .xterm { flex: 1; }
 #mobile-keys { display: none; height: var(--mobilekey-h); background: var(--bg3); border-top: 1px solid var(--border); flex-shrink: 0; overflow-x: auto; overflow-y: hidden; white-space: nowrap; padding: 4px 6px; gap: 4px; padding-bottom: calc(4px + env(safe-area-inset-bottom)); min-height: calc(var(--mobilekey-h) + env(safe-area-inset-bottom)); }
 /* ═══════════════════════════════════════════════════════
@@ -361,7 +365,7 @@ svg { display: block; }
    ═══════════════════════════════════════════════════════ */
 #logo { font-weight: 700; color: var(--accent); font-size: 15px; letter-spacing: 1px; user-select: none; padding: 0 4px; }
 .header-spacer { flex: 1; }
-.icon-btn { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius); color: var(--fg2); transition: background var(--transition-fast), color var(--transition-fast); }
+.icon-btn { width: 36px; height: 36px; min-width: 36px; min-height: 36px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius); color: var(--fg2); transition: background var(--transition-fast), color var(--transition-fast); }
 .icon-btn:hover { background: var(--bg4); color: var(--fg); }
 .icon-btn.active { color: var(--accent); }
 
@@ -384,7 +388,7 @@ svg { display: block; }
 .tunnel-inner { display: flex; align-items: center; gap: 5px; min-width: 0; }
 .tunnel-url { font-size: 11px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tunnel-status, .tunnel-target { font-size: 9px; padding: 1px 5px; border-radius: 4px; flex-shrink: 0; display: inline-flex; align-items: center; gap: 2px; }
-.tunnel-btn { width: 22px; height: 22px; flex-shrink: 0; }
+.tunnel-btn { width: 28px; height: 28px; min-width: 28px; min-height: 28px; flex-shrink: 0; }
 .tunnel-btn.stop { color: var(--red); }
 #conn-status { transition: background var(--transition-slow); }
 .reconnect-spinner { display: inline-flex; vertical-align: -1px; margin-right: 4px; }
@@ -412,7 +416,7 @@ svg { display: block; }
    ═══════════════════════════════════════════════════════ */
 #sidebar-header { display: flex; align-items: center; padding: 6px 8px; gap: 4px; border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap; min-height: 40px; height: auto; }
 #sidebar-header input { flex: 1 1 60px; min-width: 40px; height: 26px; font-size: 12px; }
-#file-list-wrap { flex: 1; overflow-y: auto; min-height: 0; touch-action: pan-y; -webkit-overflow-scrolling: touch; position: relative; }
+#file-list-wrap { flex: 1; overflow-y: auto; min-height: 0; touch-action: pan-y; -webkit-overflow-scrolling: touch; position: relative; overscroll-behavior: contain; content-visibility: auto; contain-intrinsic-size: 600px; }
 #ptr-indicator { position: absolute; top: -40px; left: 0; right: 0; height: 36px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 11px; color: var(--fg2); opacity: 0; pointer-events: none; }
 #ptr-indicator .ptr-arrow { display: inline-flex; }
 #ptr-indicator .ptr-arrow svg { transition: transform 0.2s ease; }
@@ -420,8 +424,8 @@ svg { display: block; }
 #ptr-indicator.release .ptr-text { color: var(--accent); }
 /* Loading state: dim content + indeterminate progress bar */
 #file-list-wrap.loading #file-list { opacity: 0.45; transition: opacity var(--transition-fast); }
-#file-list-wrap.loading::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--bg3); z-index: 5; }
-#file-list-wrap.loading::after { content: ''; position: absolute; top: 0; left: -30%; width: 30%; height: 2px; background: var(--accent); border-radius: 0 2px 2px 0; z-index: 6; animation: fileListProgress 0.9s ease-in-out infinite; }
+#file-list-wrap.loading::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--bg3); z-index: 5; }
+#file-list-wrap.loading::after { content: ''; position: absolute; top: 0; left: -30%; width: 30%; height: 3px; background: var(--accent); border-radius: 0 2px 2px 0; z-index: 6; animation: fileListProgress 0.9s ease-in-out infinite; box-shadow: 0 1px 4px var(--shadow-color); }
 @keyframes fileListProgress { from { left: -30%; } to { left: 100%; } }
 .file-list-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 20px; color: var(--fg2); font-size: 13px; text-align: center; gap: 8px; }
 .file-list-empty svg { opacity: 0.4; }
@@ -439,7 +443,7 @@ svg { display: block; }
 .file-item:hover { background: var(--bg3); }
 .file-item.selected { background: var(--bg4); }
 .file-item.focused { background: var(--bg3); outline: 1px solid var(--accent); outline-offset: -1px; }
-.file-item .file-ellipsis { display: flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: var(--radius-sm); color: var(--fg2); opacity: 0.45; flex-shrink: 0; }
+.file-item .file-ellipsis { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; min-width: 32px; min-height: 32px; border-radius: var(--radius-sm); color: var(--fg2); opacity: 0.45; flex-shrink: 0; }
 .file-item:hover .file-ellipsis { opacity: 1; }
 .file-icon { font-size: 14px; width: 16px; text-align: center; flex-shrink: 0; }
 .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; -webkit-user-select: text; }
@@ -464,8 +468,8 @@ svg { display: block; }
 
 /* Sidebar resize handle */
 .sidebar-resize-handle {
-  position: absolute; right: 0; top: 0; bottom: 0;
-  width: 5px; cursor: col-resize; z-index: var(--z-header);
+  position: absolute; right: -4px; top: 0; bottom: 0;
+  width: 12px; cursor: col-resize; z-index: var(--z-header);
   background: transparent; transition: background var(--transition-fast); flex-shrink: 0;
 }
 .sidebar-resize-handle:hover,
@@ -521,11 +525,12 @@ svg { display: block; }
    ═══════════════════════════════════════════════════════ */
 #search-bar { position: absolute; top: 8px; right: 12px; z-index: var(--z-popover); background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 8px; display: none; align-items: center; gap: 6px; box-shadow: 0 4px 16px var(--shadow-color); }
 #search-bar.open { display: flex; }
+#terminals.tiles-mode #search-bar { position: fixed; top: calc(var(--header-h) + var(--tab-h) + 8px); right: 12px; left: auto; z-index: var(--z-popover); }
 #search-input { width: 200px; height: 26px; }
 @media (max-width: 480px) { #search-bar { left: 8px; right: 8px; } #search-input { flex: 1; width: auto; min-width: 0; } }
 .search-btn { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 4px; color: var(--fg2); }
 .search-btn:hover { background: var(--bg4); color: var(--fg); }
-.search-btn#search-case-btn { font-size: 11px; font-weight: bold; width: 22px; height: 22px; line-height: 22px; }
+.search-btn#search-case-btn { font-size: 11px; font-weight: bold; width: 28px; height: 28px; min-width: 28px; min-height: 28px; line-height: 28px; }
 .search-btn#search-case-btn.active { background: var(--accent); color: var(--bg); }
 #search-results { font-size: 11px; color: var(--fg2); white-space: nowrap; }
 
@@ -565,13 +570,15 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 .btn-danger:hover { filter: brightness(1.06); }
 .btn:not(.btn-primary):not(.btn-ghost):not(.btn-danger):hover { background: var(--bg4); }
 .btn:active { filter: brightness(0.95); }
-.btn.loading { opacity: 0.65; pointer-events: none; position: relative; color: transparent; }
+.btn.loading { opacity: 0.85; pointer-events: none; position: relative; }
 .btn.loading::after {
   content: ''; position: absolute; inset: 0; margin: auto;
   width: 14px; height: 14px; border-radius: 50%;
   border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
   border-top-color: currentColor; animation: reconnectSpin 0.7s linear infinite;
 }
+.btn.loading[aria-busy="true"] { color: inherit; }
+.btn.loading[aria-busy="true"] > * { opacity: 0.15; }
 .field-error { display: none; color: var(--red); font-size: 11px; margin-top: 5px; line-height: 1.4; }
 .field-error.show { display: block; }
 
@@ -918,7 +925,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
   #mobile-keys { padding: 4px 4px; gap: 2px; }
   .mkey { min-width: 38px; padding: 0 6px; font-size: 11px; }
   #header { padding: 0 4px; gap: 3px; }
-  .icon-btn { width: 28px; height: 28px; }
+  .icon-btn { width: 36px; height: 36px; min-width: 36px; min-height: 36px; }
   #logo { font-size: 13px; }
 }
 
@@ -948,8 +955,9 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 
 /* Landscape orientation on small screens */
 @media (max-width: 768px) and (orientation: landscape) {
-  #sidebar { width: 50vw; max-width: 320px; }
+  #sidebar { width: 50vw; max-width: 320px; top: 32px; }
   #header { height: 32px; }
+  #settings-panel { top: 32px; }
   #mobile-keys { height: 36px; min-height: calc(36px + env(safe-area-inset-bottom)); }
   .mkey { height: 28px; min-width: 36px; font-size: 10px; }
   .tab { height: 32px; font-size: 11px; }
@@ -966,14 +974,19 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
   .terminal { background: #fff !important; color: #000 !important; }
   #file-breadcrumb, #file-list-wrap { overflow: visible !important; }
 }
+@supports (width: env(titlebar-area-width, 100%)) {
+  #header { padding-left: env(titlebar-area-x, 0px); width: env(titlebar-area-width, 100%); }
+}
 #install-banner { display: none; }
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; animation-delay: 0ms !important; }
+  .overlay { backdrop-filter: none !important; }
+  #sidebar, #settings-panel, .modal { transition-duration: 0.01ms !important; }
 }
 </style>
 </head>
 <body data-theme="light">
-<a class="skip-link" href="#content">Skip to content</a>
+<a class="skip-link" href="#content" onclick="document.getElementById('content')?.setAttribute('tabindex','-1');document.getElementById('content')?.focus();">Skip to content</a>
 <script>
   // Safe localStorage wrapper — degrades gracefully when Tracking Prevention blocks storage
   const safeStorage = {
@@ -998,7 +1011,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
   <div id="pin-box">
     <h1 style="display:flex;align-items:center;justify-content:center;gap:6px"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="10" y2="8"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="6" y1="16" x2="8" y2="16"/><line x1="12" y1="8" x2="18" y2="8"/><line x1="12" y1="12" x2="18" y2="12"/><line x1="12" y1="16" x2="16" y2="16"/><line x1="10" y1="16" x2="10" y2="16"/></svg>WebTun</h1>
     <p>Enter PIN to continue</p>
-    <input id="pin-input" type="password" placeholder="••••" autocomplete="off" maxlength="32" inputmode="numeric" aria-label="PIN code">
+    <input id="pin-input" type="password" placeholder="••••" autocomplete="off" maxlength="32" inputmode="text" aria-label="PIN code">
     <div id="pin-error" role="alert"></div>
     <div style="margin-top:12px">
       <button class="btn btn-primary" onclick="submitPin()">Unlock</button>
@@ -1048,7 +1061,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
       <button class="mm-item" role="menuitem" onclick="closeMoreMenu();toggleSearch()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg> Search</button>
       <button class="mm-item" role="menuitem" onclick="closeMoreMenu();openShortcuts()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 8h6M12 8v8"/><path d="m7 12 10-4"/><path d="m7 12 10 4"/></svg> Keyboard Shortcuts</button>
     </div>
-    <div id="upload-progress"><div id="upload-progress-bar"></div><span id="upload-progress-text"></span></div>
+    <div id="upload-progress"><div id="upload-progress-bar"></div><span id="upload-progress-text"></span><button id="upload-cancel-btn" aria-label="Cancel upload" title="Cancel upload" onclick="cancelUpload()">Cancel</button></div>
   </div>
   <div id="reconnect-banner" style="display:none;padding:4px 12px;font-size:11px;background:var(--accent);color:#fff;text-align:center;flex-shrink:0"><span class="reconnect-spinner"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></span> Reconnecting…</div>
 
@@ -1092,7 +1105,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
         <button class="sidebar-action-btn" onclick="downloadSelected()">Download</button>
         <button class="sidebar-action-btn" onclick="clearSelection()">Cancel</button>
       </div>
-      <div id="bookmarks-header" onclick="toggleBookmarks()"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg> Bookmarks <span id="bm-count" style="margin-left:auto;font-size:10px"></span></div>
+      <div id="bookmarks-header" role="button" tabindex="0" aria-expanded="true" aria-controls="bookmarks-list" onclick="toggleBookmarks()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleBookmarks();}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg> Bookmarks <span id="bm-count" style="margin-left:auto;font-size:10px"></span></div>
       <div id="bookmarks-list"></div>
       <div id="sidebar-footer">
         <button class="sidebar-action-btn" onclick="bookmarkCurrentDir()" title="Bookmark current directory">
@@ -1120,7 +1133,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
     </div>
 
     <!-- Content -->
-    <div id="content" role="main">
+    <div id="content" role="main" tabindex="-1">
       <div id="tab-bar">
         <div id="tab-scroll"></div>
         <button id="new-tab-btn" onclick="newTab()" title="New terminal" aria-label="New terminal">
@@ -1138,7 +1151,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
             <button class="search-btn" title="Next (Enter)" onclick="searchNext()">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
-            <button class="search-btn" id="search-case-btn" title="Match Case" onclick="toggleSearchCase()">
+            <button class="search-btn" id="search-case-btn" title="Match Case" aria-pressed="false" onclick="toggleSearchCase()">
               Aa
             </button>
             <button class="search-btn" title="Close (Esc)" onclick="closeSearch()">
@@ -1158,9 +1171,9 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
           </div>
-          <div class="cmd-lib-tabs">
-            <button class="cmd-lib-tab active" id="cmd-tab-lib" onclick="switchCmdTab('library')">Library</button>
-            <button class="cmd-lib-tab" id="cmd-tab-hist" onclick="switchCmdTab('history')">History</button>
+          <div class="cmd-lib-tabs" role="tablist">
+            <button class="cmd-lib-tab active" id="cmd-tab-lib" role="tab" aria-selected="true" aria-controls="cmd-lib-list" onclick="switchCmdTab('library')">Library</button>
+            <button class="cmd-lib-tab" id="cmd-tab-hist" role="tab" aria-selected="false" aria-controls="cmd-hist-list" onclick="switchCmdTab('history')">History</button>
           </div>
           <input id="cmd-lib-search" type="text" placeholder="Filter commands…" oninput="filterCmdLib()">
           <div id="cmd-lib-list"></div>
@@ -1187,7 +1200,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
             <button class="icon-btn" aria-label="Close editor" onclick="closeEditor()" title="Close editor">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
-            <span id="editor-filename-wrap"><span class="editor-dirty-dot" id="editor-dirty-dot" aria-label="Unsaved changes"></span><span id="editor-filename">—</span></span>
+            <span id="editor-filename-wrap" aria-live="polite"><span class="editor-dirty-dot" id="editor-dirty-dot" aria-label="Unsaved changes" role="status"></span><span id="editor-filename">—</span></span>
             <span id="editor-status"></span>
             <button class="btn" id="md-preview-toggle" style="height:26px;padding:0 12px;font-size:12px;display:none" onclick="toggleMdPreview()">Preview</button>
             <button class="icon-btn" id="preview-refresh-btn" aria-label="Refresh preview" title="Refresh preview (Ctrl+Shift+R)" onclick="refreshPreview()" style="display:none">
@@ -1200,7 +1213,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
           </div>
           <div id="editor-area">
             <textarea id="editor-textarea" spellcheck="false"></textarea>
-            <div id="editor-preview"><iframe id="editor-preview-iframe" sandbox="allow-same-origin allow-scripts"></iframe></div>
+            <div id="editor-preview"><iframe id="editor-preview-iframe" sandbox="allow-scripts"></iframe></div>
           </div>
         </div>
       </div>
@@ -1980,30 +1993,36 @@ function setupTabInlineRename(tabTitleSpan, tab) {
 }
 
 function setupTabSwipeGesture(tabEl, id) {
-  let swipeStartX = 0;
+  let swipeStartX = 0, swipeStartY = 0;
   let swipeStartScroll = 0;
   tabEl.addEventListener('touchstart', e => {
     swipeStartX = e.touches[0].clientX;
+    swipeStartY = e.touches[0].clientY;
     swipeStartScroll = tabEl.parentElement.scrollLeft;
   }, { passive: true });
   tabEl.addEventListener('touchmove', e => {
     if (swipeStartX === 0) return;
     if (tabEl.parentElement.scrollLeft !== swipeStartScroll) { swipeStartX = 0; return; }
     const dx = e.touches[0].clientX - swipeStartX;
-    if (Math.abs(dx) > 2) {
+    const dy = e.touches[0].clientY - swipeStartY;
+    // Require horizontal swipe dominant (dx > dy*1.5) to avoid scroll confusion (U59)
+    if (Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    if (Math.abs(dx) > 5) {
+      e.preventDefault();
       tabEl.style.transform = `translateX(${dx}px)`;
       tabEl.style.opacity = Math.max(0.3, 1 - Math.abs(dx) / 200);
       tabEl.style.background = `rgba(247,118,142,${Math.min(Math.abs(dx) / 80, 1) * 0.2})`;
     }
-  }, { passive: true });
+  }, { passive: false });
   tabEl.addEventListener('touchend', e => {
     if (swipeStartX === 0) return;
     const dx = e.changedTouches[0].clientX - swipeStartX;
+    const dy = e.changedTouches[0].clientY - swipeStartY;
     tabEl.style.transform = '';
     tabEl.style.opacity = '';
     tabEl.style.background = '';
-    if (Math.abs(dx) > 80) closeTab({ stopPropagation() {} }, id);
-    swipeStartX = 0;
+    if (Math.abs(dx) > 90 && Math.abs(dx) > Math.abs(dy) * 1.5) closeTab({ stopPropagation() {} }, id);
+    swipeStartX = 0; swipeStartY = 0;
   }, { passive: true });
 }
 
@@ -2278,19 +2297,21 @@ function connectWebSocket(tab, isReconnect = false) {
     if (tab.closed) return;
     updateConnStatus(false);
     tab.reconnectAttempts = (tab.reconnectAttempts || 0) + 1;
-    if (tab.reconnectAttempts >= 3) {
-      const banner = document.getElementById('reconnect-banner');
-      if (banner) {
-        banner.innerHTML = 'Connection lost. <button class="btn btn-primary" data-action="manual-reconnect" style="height:26px;padding:0 12px;font-size:11px;margin-left:8px">Reconnect</button>';
-        banner.style.display = 'block';
+    const _attempt = tab.reconnectAttempts;
+    const _maxAttempts = 10;
+    const spinnerHtml = '<span class="reconnect-spinner"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></span>';
+    const banner = document.getElementById('reconnect-banner');
+    if (banner) {
+      if (_attempt >= 3) {
+        banner.innerHTML = `Connection lost — retry ${_attempt}/${_maxAttempts}. <button class="btn btn-primary" onclick="manualReconnect()" style="height:26px;padding:0 12px;font-size:11px;margin-left:8px">Reconnect</button>`;
+      } else {
+        banner.innerHTML = `${spinnerHtml} Reconnecting (${_attempt}/${_maxAttempts})…`;
       }
-    } else {
-      const banner = document.getElementById('reconnect-banner');
-      if (banner) banner.style.display = 'block';
+      banner.style.display = 'block';
     }
     tab.reconnectDelay = Math.min((tab.reconnectDelay || 1000) * 2, 15000);
     const secs = tab.reconnectDelay / 1000;
-    tab.term.writeln(`\r\n\x1b[33m[Disconnected — reconnecting in ${secs}s…]\x1b[0m`);
+    tab.term.writeln(`\r\n\x1b[33m[Disconnected — reconnecting in ${secs}s (attempt ${_attempt}/${_maxAttempts})…]\x1b[0m`);
     tab.reconnectTimer = setTimeout(() => {
       if (!tab.closed) connectWebSocket(tab, true);
     }, tab.reconnectDelay);
@@ -2305,7 +2326,7 @@ function connectWebSocket(tab, isReconnect = false) {
 function manualReconnect() {
   const banner = document.getElementById('reconnect-banner');
   if (banner) {
-    banner.innerHTML = '<span class="reconnect-spinner"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></span> Reconnecting…';
+    banner.innerHTML = '<span class="reconnect-spinner"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></span> Reconnecting (1/10)…';
     banner.style.display = 'block';
   }
   tabs.forEach(tab => {
@@ -2389,12 +2410,15 @@ function initTerminal(tab) {
     term.unicode.activeVersion = '11';
   } catch (_) {}
 
-  // GPU-accelerated renderer — falls back to canvas if WebGL unavailable
-  try {
-    const webglAddon = new WebglAddon.WebglAddon();
-    webglAddon.onContextLoss(() => { webglAddon.dispose(); });
-    term.loadAddon(webglAddon);
-  } catch (_) {}
+  // GPU-accelerated renderer — falls back to canvas if WebGL unavailable (skip if >4 tabs to guard memory)
+  if (tabs.filter(t => t.term).length < 4) {
+    try {
+      const webglAddon = new WebglAddon.WebglAddon();
+      webglAddon.onContextLoss(() => { try { webglAddon.dispose(); } catch {} try { term.element?.querySelector('canvas')?.remove(); } catch {} });
+      term.loadAddon(webglAddon);
+      tab._webglAddon = webglAddon;
+    } catch (_) {}
+  }
 
   term.open(tab.wrapper);
 
@@ -2408,7 +2432,7 @@ function initTerminal(tab) {
     tab.textarea.name = 'terminal-input';
   }
 
-  // Intercept paste events to use bracketed paste mode (required for TUI apps like vim, nano, mc)
+  // Intercept paste events to use bracketed paste mode (required for TUI apps like vim, nano, mc) — chunk 60KB with loop
   if (tab.textarea) {
     tab.textarea.addEventListener('paste', e => {
       e.preventDefault();
@@ -2417,9 +2441,13 @@ function initTerminal(tab) {
       tab._lastPasteText = text;
       const bracketed = '\x1b[200~' + text + '\x1b[201~';
       const enc = new TextEncoder().encode(bracketed);
-      const buf = new Uint8Array(1 + enc.length);
-      buf[0] = 0x00; buf.set(enc, 1);
-      tab.ws.send(buf.buffer);
+      const CHUNK = 60 * 1024;
+      for (let off = 0; off < enc.length; off += CHUNK) {
+        const slice = enc.subarray(off, Math.min(off + CHUNK, enc.length));
+        const buf = new Uint8Array(1 + slice.length);
+        buf[0] = 0x00; buf.set(slice, 1);
+        try { tab.ws.send(buf.buffer); } catch {}
+      }
     }, true);
   }
 
@@ -2436,15 +2464,18 @@ function initTerminal(tab) {
     tab.el.querySelector('.tab-title').textContent = tab.title;
   });
 
-  // Bell: visual flash + desktop notification for background tabs
+  // Bell: visual flash + desktop notification for background tabs (also flash parent for WebGL)
   term.onBell(() => {
-    // Visual flash on terminal screen
+    // Visual flash on terminal screen and parent (WebGL uses canvas, so also flash parent)
     const screen = term.element?.querySelector('.xterm-screen');
-    if (screen) {
-      screen.classList.remove('term-bell-flash');
-      void screen.offsetWidth; // reflow to restart animation
-      screen.classList.add('term-bell-flash');
-    }
+    const parent = term.element;
+    [screen, parent].forEach(el => {
+      if (!el) return;
+      el.classList.remove('term-bell-flash');
+      void el.offsetWidth; // reflow to restart animation
+      el.classList.add('term-bell-flash');
+      setTimeout(() => el.classList.remove('term-bell-flash'), 150);
+    });
     // Desktop notification if tab is in the background
     if (document.hidden && settings.bell && Notification.permission === 'granted') {
       try {
@@ -2543,27 +2574,42 @@ function initTerminal(tab) {
     if (!tab.closed) connectWebSocket(tab, false);
   });
 
-  // Scroll terminal on wheel
+  // Scroll terminal on wheel — with try/catch fallback for isMouseTracking
   tab.wrapper.addEventListener('wheel', e => {
     if (e.ctrlKey || e.metaKey) return;
     e.preventDefault();
     // TUI apps with mouse tracking handle scroll themselves — forward the event to xterm.js
+    let isTracking = false;
     try {
       const core = term._core;
-      if (core && core.coreMouseService && core.coreMouseService.isMouseTrackingActive()) {
+      if (core?.coreMouseService?.isMouseTrackingActive?.()) isTracking = core.coreMouseService.isMouseTrackingActive();
+      // fallback check via private API may throw across xterm versions
+    } catch (_) { isTracking = false; }
+    if (isTracking) {
+      try {
         const vp = tab.wrapper.querySelector('.xterm-viewport');
-        if (vp) vp.dispatchEvent(new WheelEvent('wheel', e));
+        if (vp) vp.dispatchEvent(new WheelEvent('wheel', { deltaY: e.deltaY, deltaMode: e.deltaMode, deltaX: e.deltaX, clientX: e.clientX, clientY: e.clientY, ctrlKey: e.ctrlKey, metaKey: e.metaKey, shiftKey: e.shiftKey, bubbles: true }));
         return;
-      }
-    } catch (_) {}
+      } catch (_) { /* fallback to manual scroll */ }
+    }
     const atTop = term.buffer.active.baseY === 0;
     const atBottom = term.buffer.active.baseY + term.rows >= term.buffer.active.length;
     if (tilesMode && ((e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom))) return;
     let delta = e.deltaY;
     if (e.deltaMode === 1) delta *= 16;
     else if (e.deltaMode === 2) delta *= 16 * term.rows;
-    const rowsEl = tab.wrapper.querySelector('.xterm-rows');
-    const lineHeight = rowsEl && rowsEl.children[0] ? rowsEl.children[0].getBoundingClientRect().height || 16 : 16;
+    let lineHeight = 16;
+    try {
+      const d = term._core?.viewportRenderer?.dimensions;
+      if (d?.actualCellHeight) lineHeight = d.actualCellHeight;
+      else {
+        const rowsEl = tab.wrapper.querySelector('.xterm-rows');
+        lineHeight = rowsEl && rowsEl.children[0] ? rowsEl.children[0].getBoundingClientRect().height || 16 : 16;
+      }
+    } catch (_) {
+      const rowsEl = tab.wrapper.querySelector('.xterm-rows');
+      lineHeight = rowsEl && rowsEl.children[0] ? rowsEl.children[0].getBoundingClientRect().height || 16 : 16;
+    }
     const lines = Math.sign(delta) * Math.max(1, Math.round(Math.abs(delta) / lineHeight));
     term.scrollLines(lines);
   }, { passive: false });
@@ -2720,18 +2766,31 @@ function layoutTiles() {
     }
     hdr = document.createElement('div');
     hdr.className = 'term-tile-header';
+    hdr.setAttribute('tabindex', '0');
+    hdr.setAttribute('role', 'button');
+    hdr.setAttribute('aria-label', 'Activate ' + tab.title);
     const tthName = document.createElement('span');
     tthName.className = 'tth-name';
+    tthName.setAttribute('tabindex', '0');
+    tthName.setAttribute('role', 'button');
+    tthName.setAttribute('aria-label', 'Focus terminal ' + tab.title);
     tthName.textContent = tab.title;
     hdr.appendChild(tthName);
     const tthClose = document.createElement('button');
     tthClose.className = 'tth-close';
     tthClose.setAttribute('aria-label', 'Close tab');
+    tthClose.setAttribute('tabindex', '0');
     tthClose.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
     hdr.appendChild(tthClose);
     hdr.addEventListener('click', e => {
       if (e.target.closest('.tth-close')) return;
       activateTab(tab.id);
+    });
+    hdr.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activateTab(tab.id); }
+    });
+    tthName.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); activateTab(tab.id); tab.term?.focus(); }
     });
     hdr.querySelector('.tth-close').addEventListener('click', e => {
       e.stopPropagation();
@@ -3763,6 +3822,8 @@ async function handleUploadInput() {
 }
 
 let _uploadProgressTimeout = null;
+let _currentUploadXhr = null;
+let _uploadCancelled = false;
 function setUploadProgress(pct, status, text) {
   const bar = document.getElementById('upload-progress');
   const barFill = document.getElementById('upload-progress-bar');
@@ -3783,8 +3844,20 @@ function clearUploadProgress(delay = 1500) {
       bar.classList.remove('active', 'success', 'error');
       bar.querySelector('#upload-progress-bar').style.width = '0%';
       bar.querySelector('#upload-progress-text').textContent = '';
+      _currentUploadXhr = null;
+      _uploadCancelled = false;
     }
   }, delay);
+}
+function cancelUpload() {
+  _uploadCancelled = true;
+  if (_currentUploadXhr) {
+    try { _currentUploadXhr.abort(); } catch {}
+    _currentUploadXhr = null;
+  }
+  setUploadProgress(100, 'error', 'Upload cancelled');
+  clearUploadProgress(1500);
+  toast('Upload cancelled', 'warning');
 }
 
 async function uploadFileList(items) {
@@ -3792,10 +3865,12 @@ async function uploadFileList(items) {
   const total = items.length;
   let completed = 0;
   let failedItems = [];
+  _uploadCancelled = false;
   
   setUploadProgress(0, '', `0/${total}`);
   
   for (const item of items) {
+    if (_uploadCancelled) break;
     const file = item.file || item;
     const fileName = item.path || item.webkitRelativePath || item.name;
     const formData = new FormData();
@@ -3804,6 +3879,7 @@ async function uploadFileList(items) {
     try {
       await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
+        _currentUploadXhr = xhr;
         xhr.open('POST', `/api/files/upload?path=${path}`);
         xhr.setRequestHeader('x-pin-token', authToken);
         
@@ -3816,6 +3892,7 @@ async function uploadFileList(items) {
         });
         
         xhr.onload = () => {
+          _currentUploadXhr = null;
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
               const resp = JSON.parse(xhr.responseText);
@@ -3839,26 +3916,44 @@ async function uploadFileList(items) {
         };
         
         xhr.onerror = () => {
+          _currentUploadXhr = null;
+          if (_uploadCancelled) { reject(new Error('Cancelled')); return; }
           failedItems.push(fileName);
           reject(new Error('Network error'));
+        };
+        xhr.onabort = () => {
+          _currentUploadXhr = null;
+          reject(new Error('Cancelled'));
         };
         xhr.send(formData);
       });
     } catch (e) {
+      if (_uploadCancelled) break;
       console.warn('Upload item failed:', e);
     }
   }
   
-  // Final result
+  _currentUploadXhr = null;
+  // Final result — keep error visible longer (no auto-clear 1500ms for errors)
+  if (_uploadCancelled) {
+    // already handled in cancelUpload
+    refreshFiles();
+    return;
+  }
   if (failedItems.length === 0) {
     setUploadProgress(100, 'success', `${completed}/${total} uploaded`);
+    if (failedItems.length) toast(`${failedItems.length} failed`, 'error');
+    clearUploadProgress(2000);
   } else if (completed > 0) {
     setUploadProgress(100, 'error', `${completed} ok, ${failedItems.length} failed`);
+    toast(`${failedItems.length} failed`, 'error');
+    clearUploadProgress(3000);
   } else {
     setUploadProgress(100, 'error', `All ${total} failed`);
+    toast(`All ${total} failed`, 'error');
+    clearUploadProgress(3000);
   }
   
-  clearUploadProgress(2000);
   refreshFiles();
 }
 
@@ -3890,8 +3985,26 @@ function initCodeMirror() {
       },
     }
   });
-  editor.on('change', () => updateEditorDirty());
+  editor.on('change', () => { updateEditorDirty(); autoSaveDraft(); });
   return editor;
+}
+let _autoSaveTimer = null;
+function autoSaveDraft() {
+  clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(() => {
+    try {
+      if (!editorPath) return;
+      const content = editor ? editor.getValue() : '';
+      if (content !== editorOriginalContent) {
+        safeStorage.setItem('wt-draft:' + editorPath, content);
+      } else {
+        safeStorage.removeItem('wt-draft:' + editorPath);
+      }
+    } catch {}
+  }, 2000);
+}
+function loadDraft(p) {
+  try { return safeStorage.getItem('wt-draft:' + p); } catch { return null; }
 }
 
 function updateEditorDirty() {
@@ -3905,8 +4018,11 @@ function getCMmode(fileName) {
   const m = fileName.match(/\.([^.]+)$/);
   if (!m) return null;
   switch (m[1].toLowerCase()) {
-    case 'js': case 'jsx': case 'mjs': case 'cjs': return 'javascript';
-    case 'ts': case 'tsx': return {name: 'javascript', typescript: true};
+    case 'js': return 'javascript';
+    case 'jsx': return {name: 'javascript', json: false, jsx: true};
+    case 'mjs': case 'cjs': return 'javascript';
+    case 'ts': return {name: 'javascript', typescript: true};
+    case 'tsx': return {name: 'javascript', typescript: true, jsx: true};
     case 'json': return {name: 'javascript', json: true};
     case 'py': return 'python';
     case 'html': case 'htm': return 'htmlmixed';
@@ -4144,6 +4260,8 @@ function renderHtmlPreview() {
   const iframe = document.getElementById('editor-preview-iframe');
   const raw = editor ? editor.getValue() : '';
   if (!iframe) return;
+  // Clear previous live reload to prevent leak on re-entry (U83)
+  clearPreviewLiveReload();
   const s = getComputedStyle(document.documentElement);
   const bg = s.getPropertyValue('--bg').trim();
   const fg = s.getPropertyValue('--fg').trim();
@@ -4192,7 +4310,7 @@ function renderHtmlPreview() {
   input:focus, textarea:focus, select:focus { outline: 2px solid ${accent}; outline-offset: 1px; }
 </style>
 </head>
-<body>${typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(raw, { USE_PROFILES: { html: true }, ADD_TAGS: ['style'], ADD_ATTR: ['target'] }) : raw}</body>
+<body>${typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(raw, { USE_PROFILES: { html: true }, ADD_ATTR: ['target'] }) : raw}</body>
 </html>`;
   iframe.srcdoc = doc;
   iframe.style.display = 'block';
@@ -4319,7 +4437,9 @@ function closeSearch() {
 let searchCaseSensitive = false;
 function toggleSearchCase() {
   searchCaseSensitive = !searchCaseSensitive;
-  document.getElementById('search-case-btn').classList.toggle('active', searchCaseSensitive);
+  const btn = document.getElementById('search-case-btn');
+  btn.classList.toggle('active', searchCaseSensitive);
+  btn.setAttribute('aria-pressed', String(searchCaseSensitive));
   doSearch();
 }
 
@@ -4454,12 +4574,29 @@ function toggleSetting(k) {
 function openSettings() {
   const panel = document.getElementById('settings-panel');
   const isOpen = panel.classList.contains('open');
+  const main = document.getElementById('main');
   panel.classList.toggle('open');
-  if (!isOpen) document.addEventListener('click', closeSettingsOnClickOutside, true);
-  else document.removeEventListener('click', closeSettingsOnClickOutside, true);
+  if (!isOpen) {
+    panel.setAttribute('aria-modal', 'true');
+    panel.setAttribute('role', 'dialog');
+    if (main) main.setAttribute('inert', '');
+    installFocusTrap(panel);
+    panel.querySelector('select, button, input')?.focus();
+    document.addEventListener('click', closeSettingsOnClickOutside, true);
+  } else {
+    panel.removeAttribute('aria-modal');
+    if (main) main.removeAttribute('inert');
+    removeFocusTrap();
+    document.removeEventListener('click', closeSettingsOnClickOutside, true);
+  }
 }
 function closeSettings() {
-  document.getElementById('settings-panel').classList.remove('open');
+  const panel = document.getElementById('settings-panel');
+  const main = document.getElementById('main');
+  panel.classList.remove('open');
+  panel.removeAttribute('aria-modal');
+  if (main) main.removeAttribute('inert');
+  removeFocusTrap();
   document.removeEventListener('click', closeSettingsOnClickOutside, true);
 }
 function closeSettingsOnClickOutside(e) {
@@ -5059,26 +5196,25 @@ function toggleTermSelect() {
     }
   }
 
+  const activeTab = getActiveTab();
   if (termSelectMode) {
-    tabs.forEach(t => {
-      if (!t.term) return;
-      t.term.options.disableStdin = true;
-      const ta = t.textarea || t.term.textarea || t.term.element?.querySelector('.xterm-textarea, textarea');
+    if (activeTab?.term) {
+      activeTab.term.options.disableStdin = true;
+      const ta = activeTab.textarea || activeTab.term.textarea || activeTab.term.element?.querySelector('.xterm-textarea, textarea');
       if (ta) ta.disabled = true;
-    });
+    }
   } else {
     scrollMode = false;
     cleanupScrollHandlers();
     const scrollBtn = document.getElementById('sel-scroll-btn');
     if (scrollBtn) scrollBtn.classList.remove('active-mode');
     shiftLatch = false; altLatch = false; updateModifierButtons();
-    tabs.forEach(t => {
-      if (!t.term) return;
-      t.term.options.disableStdin = false;
-      const ta = t.textarea || t.term.textarea || t.term.element?.querySelector('.xterm-textarea, textarea');
+    if (activeTab?.term) {
+      activeTab.term.options.disableStdin = false;
+      const ta = activeTab.textarea || activeTab.term.textarea || activeTab.term.element?.querySelector('.xterm-textarea, textarea');
       if (ta) ta.disabled = false;
-      t.term.clearSelection();
-    });
+      activeTab.term.clearSelection();
+    }
   }
 }
 
@@ -5164,12 +5300,16 @@ function pasteToTerminal() {
     if (!text) return;
     const tab = getActiveTab();
     if (tab?.ws && tab.ws.readyState === WebSocket.OPEN) {
-      // Bracketed paste: wrap in escape sequences so the shell buffers the input
+      // Bracketed paste: wrap in escape sequences so the shell buffers the input — chunk 60KB with loop
       const bracketed = '\x1b[200~' + text + '\x1b[201~';
       const enc = new TextEncoder().encode(bracketed);
-      const buf = new Uint8Array(1 + enc.length);
-      buf[0] = 0x00; buf.set(enc, 1);
-      tab.ws.send(buf.buffer);
+      const CHUNK = 60 * 1024;
+      for (let off = 0; off < enc.length; off += CHUNK) {
+        const slice = enc.subarray(off, Math.min(off + CHUNK, enc.length));
+        const buf = new Uint8Array(1 + slice.length);
+        buf[0] = 0x00; buf.set(slice, 1);
+        try { tab.ws.send(buf.buffer); } catch {}
+      }
       tab.term?.focus();
       toast('Pasted to terminal', 'success');
     }
@@ -5191,14 +5331,24 @@ function fallbackPaste(callback) {
     document.body.appendChild(_pasteInput);
     _pasteInput.addEventListener('paste', () => {
       setTimeout(() => {
-        callback(_pasteInput.value);
+        if (_pasteInput.value) {
+          callback(_pasteInput.value);
+          toast('Pasted to terminal', 'success');
+        } else {
+          toast('Paste failed — please use Ctrl+V', 'warning');
+        }
         _pasteInput.value = '';
       }, 0);
     });
   }
   _pasteInput.value = '';
   _pasteInput.focus();
-  document.execCommand('paste');
+  try {
+    const ok = document.execCommand('paste');
+    if (!ok) toast('Paste failed — please use Ctrl+V', 'warning');
+  } catch {
+    toast('Paste not supported — use Ctrl+V', 'warning');
+  }
 }
 
 function selectAllTerm() {
@@ -5244,48 +5394,66 @@ function toggleCtrlRow() {
 }
 
 let _viewportHandlerInstalled = false;
+let _viewportDebounce = null;
 function setupVisualViewport() {
   if (_viewportHandlerInstalled) return;
   _viewportHandlerInstalled = true;
   if (window.visualViewport) {
     const handler = () => {
-      const diff = window.visualViewport.height - window.innerHeight;
-      const mobileKeys = document.getElementById('mobile-keys');
-      const selRow = document.getElementById('mkey-sel-row');
-      const terminals = document.getElementById('terminals');
-      if (!terminals) return;
-      if (diff < -50) {
-        terminals.style.marginBottom = Math.abs(diff) + 'px';
-        if (mobileKeys) mobileKeys.style.display = 'none';
-        const ctrlRow = document.getElementById('mkey-ctrl-row');
-        if (ctrlRow && ctrlRow.style.display === 'flex') ctrlRow.dataset.wasOpen = '1';
-        if (ctrlRow) ctrlRow.style.display = 'none';
-        if (selRow && selRow.style.display === 'flex') selRow.dataset.wasOpen = '1';
-        if (selRow) selRow.style.display = 'none';
-      } else {
-        terminals.style.marginBottom = '0';
-        if (mobileKeys && window.innerWidth <= 768 && settings.mobilekeys !== false) {
-          mobileKeys.style.display = 'flex';
-        }
-        if (window.innerWidth <= 768 && settings.mobilekeys !== false) {
+      clearTimeout(_viewportDebounce);
+      _viewportDebounce = setTimeout(() => {
+        const vvH = window.visualViewport.height;
+        const vvScale = window.visualViewport.scale || 1;
+        // Samsung Internet: innerHeight resizes, not visualViewport. Use layout viewport height via window.innerHeight vs vvH
+        // On iOS, keyboard shows as vvH < innerHeight. On Samsung, opposite. Take max diff and ignore when scaled (pinch zoom).
+        if (vvScale !== 1) return; // ignore pinch-zoom (U61, U65)
+        const diff = vvH - window.innerHeight;
+        const absDiff = Math.abs(diff);
+        const isKeyboard = absDiff > 50 && diff < 0; // iOS: vv smaller. For Samsung, also check visualViewport offsetTop
+        // Fallback: check visualViewport offsetTop > 10 indicates keyboard on some Android
+        const offsetTop = window.visualViewport.offsetTop || 0;
+        const keyboardOpen = isKeyboard || offsetTop > 10;
+        const mobileKeys = document.getElementById('mobile-keys');
+        const selRow = document.getElementById('mkey-sel-row');
+        const terminals = document.getElementById('terminals');
+        if (!terminals) return;
+        if (keyboardOpen) {
+          terminals.style.marginBottom = absDiff + 'px';
+          if (mobileKeys) mobileKeys.style.display = 'none';
           const ctrlRow = document.getElementById('mkey-ctrl-row');
-          if (ctrlRow && ctrlRow.dataset.wasOpen === '1') {
-            ctrlRow.style.display = 'flex';
-            delete ctrlRow.dataset.wasOpen;
+          if (ctrlRow && ctrlRow.style.display === 'flex') ctrlRow.dataset.wasOpen = '1';
+          if (ctrlRow) ctrlRow.style.display = 'none';
+          if (selRow && selRow.style.display === 'flex') selRow.dataset.wasOpen = '1';
+          if (selRow) selRow.style.display = 'none';
+        } else {
+          terminals.style.marginBottom = '0';
+          if (mobileKeys && window.innerWidth <= 768 && settings.mobilekeys !== false) {
+            mobileKeys.style.display = 'flex';
+          }
+          if (window.innerWidth <= 768 && settings.mobilekeys !== false) {
+            const ctrlRow = document.getElementById('mkey-ctrl-row');
+            if (ctrlRow && ctrlRow.dataset.wasOpen === '1') {
+              ctrlRow.style.display = 'flex';
+              delete ctrlRow.dataset.wasOpen;
+            }
+          }
+          if (selRow && window.innerWidth <= 768) {
+            if (selRow.dataset.wasOpen === '1') {
+              selRow.style.display = 'flex';
+              delete selRow.dataset.wasOpen;
+            } else {
+              selRow.style.display = termSelectMode ? 'flex' : 'none';
+            }
           }
         }
-        if (selRow && window.innerWidth <= 768) {
-          if (selRow.dataset.wasOpen === '1') {
-            selRow.style.display = 'flex';
-            delete selRow.dataset.wasOpen;
-          } else {
-            selRow.style.display = termSelectMode ? 'flex' : 'none';
-          }
-        }
-      }
+      }, 100);
     };
     window.visualViewport.addEventListener('resize', handler);
-    window._cleanups?.push(() => window.visualViewport.removeEventListener('resize', handler));
+    window.visualViewport.addEventListener('scroll', handler);
+    window._cleanups?.push(() => {
+      window.visualViewport.removeEventListener('resize', handler);
+      window.visualViewport.removeEventListener('scroll', handler);
+    });
   }
 }
 
@@ -5440,8 +5608,10 @@ function closeOverlay(id) {
     lastFocusedElement = null;
   }
 }
+let _focusTrapContainer = null;
 function installFocusTrap(container) {
   removeFocusTrap();
+  _focusTrapContainer = container;
   _focusTrapHandler = e => {
     if (e.key !== 'Tab') return;
     const focusable = container.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
@@ -5457,15 +5627,25 @@ function installFocusTrap(container) {
   container.addEventListener('keydown', _focusTrapHandler);
 }
 function removeFocusTrap() {
-  if (_focusTrapHandler) {
+  if (_focusTrapHandler && _focusTrapContainer) {
+    _focusTrapContainer.removeEventListener('keydown', _focusTrapHandler);
+    _focusTrapHandler = null;
+    _focusTrapContainer = null;
+  } else if (_focusTrapHandler) {
     document.removeEventListener('keydown', _focusTrapHandler);
     _focusTrapHandler = null;
   }
 }
 
 let _confirmState = null;
+let _confirmQueue = [];
 function confirmDialog({ title = 'Confirm', message = '', okText = 'OK', cancelText = 'Cancel', danger = false } = {}) {
   return new Promise(resolve => {
+    if (_confirmState) {
+      // Queue second dialog until first settles (fixes race U51)
+      _confirmQueue.push({ title, message, okText, cancelText, danger, resolve });
+      return;
+    }
     const ov = document.getElementById('confirm-overlay');
     if (!ov || !ov.parentNode) { resolve(false); return; }
     const okBtn = document.getElementById('confirm-ok-btn');
@@ -5486,8 +5666,14 @@ function confirmDialog({ title = 'Confirm', message = '', okText = 'OK', cancelT
       settled = true;
       _confirmState = null;
       ov.classList.remove('open');
+      ov.removeEventListener('keydown', onKey);
       removeFocusTrap();
       if (lastFocusedElement) { setTimeout(() => lastFocusedElement?.focus(), 50); lastFocusedElement = null; }
+      // Dequeue next pending dialog
+      if (_confirmQueue.length) {
+        const next = _confirmQueue.shift();
+        setTimeout(() => confirmDialog(next).then(next.resolve), 80);
+      }
     };
     const finish = val => { const cb = _confirmState && _confirmState.resolve; cleanup(); if (cb) cb(val); };
     const onKey = e => {
@@ -5517,8 +5703,8 @@ document.querySelectorAll('.overlay').forEach(o => {
 
 function setBtnBusy(btn, busy) {
   if (!btn) return;
-  if (busy) { btn.dataset.busy = 'true'; btn.classList.add('loading'); btn.disabled = true; }
-  else { btn.dataset.busy = 'false'; btn.classList.remove('loading'); btn.disabled = false; }
+  if (busy) { btn.dataset.busy = 'true'; btn.classList.add('loading'); btn.disabled = true; btn.setAttribute('aria-busy','true'); }
+  else { btn.dataset.busy = 'false'; btn.classList.remove('loading'); btn.disabled = false; btn.removeAttribute('aria-busy'); }
 }
 
 function showFieldError(id, msg) {
@@ -5829,15 +6015,24 @@ function saveCmdLib(cmds) {
 function toggleCmdLib() {
   const panel = document.getElementById('cmd-lib-panel');
   const isOpen = panel.classList.contains('open');
+  const main = document.getElementById('main');
   panel.classList.toggle('open');
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-modal', String(!isOpen));
   document.getElementById('cmd-lib-toggle').classList.toggle('active', !isOpen);
+  document.getElementById('cmd-lib-toggle').setAttribute('aria-expanded', String(!isOpen));
   if (!isOpen) {
     loadHistMax();
     switchCmdTab('library');
+    if (main) main.setAttribute('inert', '');
+    installFocusTrap(panel);
     setTimeout(() => {
       document.addEventListener('click', closeCmdLibOnClickOutside, true);
+      panel.querySelector('input, button')?.focus();
     }, 0);
   } else {
+    if (main) main.removeAttribute('inert');
+    removeFocusTrap();
     document.removeEventListener('click', closeCmdLibOnClickOutside, true);
   }
 }
@@ -5851,6 +6046,9 @@ function closeCmdLibOnClickOutside(e) {
   }
   if (panel.contains(e.target) || btn.contains(e.target)) return;
   toggleCmdLib();
+  const main = document.getElementById('main');
+  if (main) main.removeAttribute('inert');
+  removeFocusTrap();
 }
 
 function renderCmdLib(filter) {
@@ -5935,11 +6133,17 @@ function filterCmdLib() {
   renderCmdLib();
 }
 
-function runCmdLib(cmd) {
+async function runCmdLib(cmd) {
   const tab = getActiveTab();
   if (!tab || !tab.ws || tab.ws.readyState !== WebSocket.OPEN) {
     toast('No active terminal', 'error');
     return;
+  }
+  // RCE guard: curl | bash requires confirmation (U91)
+  const needsConfirm = (typeof DEFAULT_CMDS !== 'undefined' && DEFAULT_CMDS.some(c => c.cmd === cmd && c.requiresConfirm)) || /\bcurl\b.*\|\s*bash/.test(cmd);
+  if (needsConfirm) {
+    const ok = await confirmDialog({ title: 'Confirm run', message: `Run sensitive command?\n\n${cmd}`, okText: 'Run', cancelText: 'Cancel', danger: true });
+    if (!ok) return;
   }
   const text = cmd + '\n';
   const enc = new TextEncoder().encode(text);
@@ -6055,8 +6259,8 @@ function switchCmdTab(tab) {
   const footer = document.getElementById('cmd-lib-footer');
   const search = document.getElementById('cmd-lib-search');
   if (tab === 'library') {
-    libBtn.classList.add('active');
-    histBtn.classList.remove('active');
+    libBtn.classList.add('active'); libBtn.setAttribute('aria-selected','true');
+    histBtn.classList.remove('active'); histBtn.setAttribute('aria-selected','false');
     libList.style.display = '';
     histList.style.display = 'none';
     histHeader.style.display = 'none';
@@ -6065,9 +6269,10 @@ function switchCmdTab(tab) {
     search.oninput = () => filterCmdLib();
     filterCmdLib();
   } else {
-    histBtn.classList.add('active');
-    libBtn.classList.remove('active');
+    histBtn.classList.add('active'); histBtn.setAttribute('aria-selected','true');
+    libBtn.classList.remove('active'); libBtn.setAttribute('aria-selected','false');
     histList.style.display = 'flex';
+    histList.setAttribute('aria-live','polite');
     libList.style.display = 'none';
     histHeader.style.display = '';
     footer.style.display = 'none';
@@ -6146,13 +6351,23 @@ function openSystemStats() {
   refreshSystemStats(true);
   clearInterval(sysStatsTimer);
   if (!settings.datasaver) {
-    sysStatsTimer = setInterval(() => refreshSystemStats(false), 5000);
+    sysStatsTimer = setInterval(() => {
+      if (document.hidden) return;
+      refreshSystemStats(false);
+    }, 5000);
+    document.addEventListener('visibilitychange', _sysVisibilityHandler);
+  }
+}
+function _sysVisibilityHandler() {
+  if (document.hidden && sysStatsTimer) {
+    // pause polling when hidden to save tunnel bandwidth (U93)
   }
 }
 
 function closeSystemStats() {
   clearInterval(sysStatsTimer);
   sysStatsTimer = null;
+  document.removeEventListener('visibilitychange', _sysVisibilityHandler);
   closeOverlay('sys-overlay');
 }
 
@@ -6262,7 +6477,9 @@ function showInstallBanner(isIOS) {
   }
   const mk = document.getElementById('mobile-keys');
   if (mk && window.getComputedStyle(mk).display !== 'none') {
-    el.style.bottom = 'var(--mobilekey-h)';
+    el.style.bottom = 'calc(var(--mobilekey-h) + env(safe-area-inset-bottom, 0px))';
+  } else {
+    el.style.bottom = 'env(safe-area-inset-bottom, 0px)';
   }
   el.style.display = 'flex';
   document.getElementById('toast-container').classList.add('banner-visible');

@@ -49,14 +49,26 @@ function parseArgs(argv) {
       process.exit(0);
     }
     if (arg === '--port' || arg === '-p') {
+      if (!argv[i+1] || argv[i+1].startsWith('-')) {
+        console.error('Error: --port requires a value');
+        process.exit(1);
+      }
       opts.port = parseInt(argv[++i], 10);
       if (isNaN(opts.port)) {
         console.error('Error: --port requires a numeric value');
         process.exit(1);
       }
     } else if (arg === '--host' || arg === '-h') {
+      if (!argv[i+1] || argv[i+1].startsWith('-')) {
+        console.error('Error: --host requires a value');
+        process.exit(1);
+      }
       opts.host = argv[++i];
     } else if (arg === '--pin') {
+      if (!argv[i+1] || argv[i+1].startsWith('-')) {
+        console.error('Error: --pin requires a value');
+        process.exit(1);
+      }
       process.env.PIN = argv[++i] || '';
     } else if (arg === '--tunnel' || arg === '-t') {
       opts.tunnel = true;

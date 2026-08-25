@@ -175,6 +175,13 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh &&
 
 ## Changelog
 
+### v1.5.4
+- Security hardening: path sandbox `ALLOW_FULL_FS` (default `~`), symlink containment, null-byte/array guards, `rename` traversal block, `delete` uses `lstat`, batch caps 100, zip 1GB/unzip bomb guards, `download` header sanitization, `image` no-store, `write` 10MB cap, tunnel SSRF (localhost-only) + URL validation
+- Auth & transport: `checkPin` array guard, length-leak free `constantTimeEqual`, rate limiter uses `req.ip` with `trust proxy` + Map cap 10k, `--pin` arg consumption fix, WS `cols/rows` clamp 2-500, empty `Origin` deny + `constantTimeEqual` token, `sessionId` length 1-64, per-IP `clipboard`, `history` max 1k & `cmdhist.json` 0600 atomic writes, `ptySessions` TTL 30m + cap 100
+- Build: predictable `tmp` via `mkdtemp`, tar-slip validation, heredoc no-expansion `printf`, `.env` parser divergence fix
+- UI/UX: touch targets 32-36px (`file-ellipsis`, `icon-btn`, `tunnel-btn`, resize 12px), `aria-pressed`/`aria-expanded`/`aria-modal`/`inert`, focus-trap container fix, `confirmDialog` queue, `skip-link` tabindex, `touch-action: pan-y manipulation` + `overscroll-behavior:contain`, `visualViewport` Samsung+scale debounce, `pull-to-refresh` CSS contain, `safe-area` `max()` padding, `cmd-lib` dialog trap, `tiles` `min(300px,100%)`, `search-bar` tiles fixed, `upload` 6px + cancel, `paste` 60KB chunk + fallback warning, `WebGL` memory guard, `iframe` `allow-scripts` only (`style` tag removed), editor `autosave draft` 2s + `getCMmode` `jsx:true`, `installFocusTrap` leak fix
+- PWA: `sw.js` no immediate `skipWaiting`, `token`/`/ws` cache bypass, stale-while-revalidate
+
 ### v1.5.3
 - Terminal session persistence without tmux (in-memory PTY on Windows + Linux)
 - Session IDs always generated; tabs now survive page reload on all platforms

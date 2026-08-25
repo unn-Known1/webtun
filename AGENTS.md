@@ -100,6 +100,6 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
   - `GET /api/search?q=&path=` — async file search (max depth 4, max 50 results)
 - **Auth endpoint**: `POST /api/auth` and `GET /api/auth/required` — rate-limited separately.
 - **History endpoint**: `GET /api/history`, `POST /api/history`, `DELETE /api/history`, `DELETE /api/history/:index` — all under `checkPin`.
-- **REST command execution**: `POST /api/exec` (with timeout, max 10MB output, 300s max timeout) and `GET /api/exec/stream` (SSE streaming).
-- **Startup cleanup**: loads persisted tunnels, kills orphan `wt-*` tmux sessions.
+- **Startup cleanup**: loads persisted tunnels, kills orphan `wt-webtun-*` (and legacy `wt-*`) tmux sessions.
+- **Workspace sandbox**: `ALLOW_FULL_FS` (default `false` restricts to `WORKSPACE_ROOT`), enforced via `pathContained()`.
 - **Cross-platform**: All file operations, process management, and system commands have Windows (PowerShell), macOS (BSD tools), and Linux (GNU tools) code paths.

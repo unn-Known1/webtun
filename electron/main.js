@@ -6,7 +6,14 @@ const fs = require('fs');
 
 let mainWindow;
 let serverProcess;
-const PORT = process.env.PORT || 3000;
+const PORT = (() => {
+  const p = parseInt(process.env.PORT, 10);
+  return Number.isFinite(p) && p > 0 && p <= 65535 ? p : 3000;
+})();
+const PIN = process.env.PIN || '';
+if (PIN && typeof PIN !== 'string') {
+  console.warn('Invalid PIN type — expected string');
+}
 
 function resolveNodeModules() {
   // Packaged app: resources/node_modules or app.asar.unpacked/node_modules
@@ -32,6 +39,13 @@ function startServer() {
       PORT: String(PORT),
       HOST: '127.0.0.1',
     };
+    // Validate PIN exists and is a non-empty string before passing to server
+    if (PIN && typeof PIN === 'string' && PIN.trim().length > 0) {
+      env.PIN = PIN.trim();
+    } else if (PIN) {
+      console.warn('Invalid PIN — starting without authentication');
+      delete env.PIN;
+    }
     // Ensure forked server can resolve deps when packaged
     env.NODE_PATH = [nodeModules, env.NODE_PATH].filter(Boolean).join(path.delimiter);
 
@@ -156,7 +170,7 @@ ipcMain.handle('set-autostart', (_event, enabled) => {
   app.setLoginItemSettings({
     openAtLogin: enabled,
     path: process.execPath,
-    args: process.argv.slice(1).filter(a => a !== '--')
+    args: process.argv.slice(1).filter(a => !a.startsWith('--'))
   });
   return app.getLoginItemSettings().openAtLogin;
 });

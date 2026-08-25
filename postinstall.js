@@ -17,12 +17,21 @@ function rebuildNodePty() {
 
   console.log('  rebuilding node-pty...');
   try {
-    spawnSync('npm', ['rebuild', 'node-pty'], {
+    const r = spawnSync('npm', ['rebuild', 'node-pty'], {
       cwd: __dirname,
-      stdio: 'inherit',
-      timeout: 120000,
-      shell: os.platform() === 'win32'
+      stdio: 'pipe',
+      timeout: 120000
     });
+    if (r.status !== 0) {
+      const out = (r.stderr ? r.stderr.toString() : '') + (r.stdout ? r.stdout.toString() : '');
+      if (out.includes('allow-scripts') || out.toLowerCase().includes('not allowed')) {
+        console.log('  npm blocked build scripts (allow-scripts). To fix:');
+        console.log('    npm install -g --allow-scripts=webtun,node-pty webtun');
+        console.log('  Or: npm config set allow-scripts=webtun,node-pty --location=user');
+        console.log('  Then: npm install -g webtun');
+      }
+      throw new Error(out.trim() || 'rebuild failed with status ' + r.status);
+    }
     // Verify it worked
     delete require.cache[require.resolve('node-pty')];
     require('node-pty');
@@ -34,6 +43,9 @@ function rebuildNodePty() {
     console.log('  macOS:   xcode-select --install');
     console.log('  Windows: install Visual Studio Build Tools with "Desktop development with C++"');
     console.log('           https://visualstudio.microsoft.com/visual-cpp-build-tools/');
+    console.log('  If npm v10+ blocks scripts, allow them:');
+    console.log('    npm config set allow-scripts=webtun,node-pty --location=user');
+    console.log('    npm install --allow-scripts=webtun,node-pty webtun');
   }
 }
 
@@ -89,11 +101,13 @@ if (!file) process.exit(0);
 console.log('  installing cloudflared...');
 
 const url = CF_RELEASES + '/' + file;
-const tmpDir = os.tmpdir();
-const tmp = path.join(tmpDir, 'cloudflared-' + process.pid + (platform === 'win32' ? '.exe' : ''));
+const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'webtun-'));
+const tmp = path.join(tmpDir, 'cloudflared' + (platform === 'win32' ? '.exe' : ''));
 
 function cleanup() {
   try { fs.unlinkSync(tmp); } catch {}
+  try { fs.rmdirSync(tmpDir); } catch {}
+  try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
 }
 
 function downloadFile(downloadUrl, dest) {
@@ -121,22 +135,14 @@ function downloadFile(downloadUrl, dest) {
   });
 }
 
-function downloadWithCurlOrWget() {
-  const r = spawnSync('curl', ['-#fL', url, '-o', tmp], { stdio: 'inherit', timeout: 60000 });
-  if (r.status === 0) return true;
-  const r2 = spawnSync('wget', ['-q', url, '-O', tmp], { stdio: 'inherit', timeout: 60000 });
-  return r2.status === 0;
-}
-
 async function main() {
   try {
     await downloadFile(url, tmp);
   } catch (e) {
-    if (!downloadWithCurlOrWget()) {
-      console.log('  cloudflared install failed (download error) — skipping');
-      cleanup();
-      return;
-    }
+    console.log('  cloudflared install failed (download error) — skipping: ' + e.message);
+    console.log('  (Node https download failed; ensure network access to github.com)');
+    cleanup();
+    return;
   }
 
   // Validate downloaded file is not HTML (e.g. 404 page)
@@ -183,8 +189,20 @@ async function main() {
 
   function extractDarwinIfNeeded() {
     if (platform !== 'darwin') return tmp;
-    const result = spawnSync('tar', ['xzf', tmp, '-C', tmpDir], { stdio: 'inherit' });
-    if (result.status !== 0) throw new Error('tar extraction failed');
+    // Validate tar entries to prevent tar slip (filter .. and absolute paths)
+    const list = spawnSync('tar', ['tzf', tmp], { encoding: 'utf8', timeout: 10000 });
+    if (list.stdout) {
+      const entries = list.stdout.split('\n').map(s => s.trim()).filter(Boolean);
+      for (const entry of entries) {
+        if (entry.includes('..') || path.isAbsolute(entry) || entry.startsWith('/')) {
+          throw new Error('tar slip detected: invalid entry ' + entry);
+        }
+      }
+    } else if (list.status !== 0) {
+      throw new Error('tar list failed: ' + (list.stderr ? list.stderr.toString().trim() : 'unknown error'));
+    }
+    const result = spawnSync('tar', ['xzf', tmp, '-C', tmpDir], { stdio: 'pipe', timeout: 30000 });
+    if (result.status !== 0) throw new Error('tar extraction failed: ' + (result.stderr ? result.stderr.toString().trim() : 'unknown'));
     try { fs.unlinkSync(tmp); } catch {}
     return path.join(tmpDir, 'cloudflared');
   }
