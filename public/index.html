@@ -425,8 +425,10 @@ svg { display: block; }
 /* ═══════════════════════════════════════════════════════
    SIDEBAR / FILE EXPLORER
    ═══════════════════════════════════════════════════════ */
-#sidebar-header { display: flex; align-items: center; padding: 2px 4px; gap: 2px; border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap; min-height: 32px; height: auto; }
-#sidebar-header input { flex: 1 1 60px; min-width: 40px; height: 26px; font-size: 12px; }
+#sidebar-header, #file-breadcrumb { display: flex; align-items: center; gap: 3px; padding: 3px 6px; border-bottom: 1px solid var(--border); flex-shrink: 0; min-height: 30px; background: var(--bg2); }
+#sidebar-header { flex-wrap: wrap; height: auto; }
+#file-breadcrumb { white-space: nowrap; overflow-x: auto; line-height: 1; scrollbar-width: none; font-size: 11px; color: var(--fg2); }
+#sidebar-header input { flex: 1 1 60px; min-width: 40px; height: 24px; font-size: 12px; border-radius: var(--radius-sm); }
 #file-list-wrap { flex: 1; overflow-y: auto; min-height: 0; touch-action: pan-y; -webkit-overflow-scrolling: touch; position: relative; overscroll-behavior: contain; content-visibility: auto; contain-intrinsic-size: 600px; }
 #ptr-indicator { position: absolute; top: -40px; left: 0; right: 0; height: 36px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 11px; color: var(--fg2); opacity: 0; pointer-events: none; }
 #ptr-indicator .ptr-arrow { display: inline-flex; }
@@ -444,7 +446,7 @@ svg { display: block; }
 .empty-actions .btn { font-size: 12px; padding: 4px 12px; }
 #file-breadcrumb { display: flex; align-items: center; gap: 0; padding: 2px 4px; font-size: 11px; color: var(--fg2); border-bottom: 1px solid var(--border); white-space: nowrap; overflow-x: auto; line-height: 1; flex-shrink: 0; scrollbar-width: none; }
 #file-breadcrumb::-webkit-scrollbar { display: none; }
-#file-breadcrumb a { transition: background var(--transition-fast); border-radius: var(--radius-sm); padding: 1px 3px !important; display: inline-block; }
+#file-breadcrumb a { transition: background var(--transition-fast); border-radius: var(--radius-sm); padding: 2px 6px !important; display: inline-flex !important; align-items: center; height: 24px; line-height: 1; }
 #file-breadcrumb a:hover { background: var(--bg3); }
 @media (pointer: coarse) {
   #file-breadcrumb { padding: 10px 12px; font-size: 13px; }
@@ -3218,9 +3220,9 @@ function renderBreadcrumb(fullPath) {
     } else {
       html = segments.map((seg, i) => {
         const isLast = i === segments.length - 1;
-        if (isLast) return `<span style="color:var(--fg);font-weight:500">${escHtml(seg.label)}</span>`;
-        return `<a href="#" data-path="${escHtml(seg.path)}" style="color:var(--accent);text-decoration:none;padding:1px 2px;display:inline-block">${escHtml(seg.label)}</a>` +
-          `<span style="color:var(--fg2);margin:0 1px">\\</span>`;
+        if (isLast) return `<span style="color:var(--fg);font-weight:500;display:inline-flex;align-items:center;height:24px;padding:2px 4px">${escHtml(seg.label)}</span>`;
+        return `<a href="#" data-path="${escHtml(seg.path)}" style="color:var(--accent);text-decoration:none;display:inline-flex;align-items:center;height:24px;padding:2px 6px;border-radius:var(--radius-sm)">${escHtml(seg.label)}</a>` +
+          `<span style="color:var(--fg2);margin:0 2px;display:inline-flex;align-items:center">\\</span>`;
       }).join('');
     }
   } else {
@@ -3230,10 +3232,10 @@ function renderBreadcrumb(fullPath) {
       accumulated += '/' + part;
       const isLast = part === parts[parts.length - 1];
       if (isLast) {
-        html += `<span style="color:var(--fg);font-weight:500">${escHtml(part)}</span>`;
+        html += `<span style="color:var(--fg);font-weight:500;display:inline-flex;align-items:center;height:24px;padding:2px 4px">${escHtml(part)}</span>`;
       } else {
-        html += `<a href="#" data-path="${escHtml(accumulated)}" style="color:var(--accent);text-decoration:none;padding:1px 2px;display:inline-block">${escHtml(part)}</a>`;
-        html += `<span style="color:var(--fg2);margin:0 1px">/</span>`;
+        html += `<a href="#" data-path="${escHtml(accumulated)}" style="color:var(--accent);text-decoration:none;display:inline-flex;align-items:center;height:24px;padding:2px 6px;border-radius:var(--radius-sm)">${escHtml(part)}</a>`;
+        html += `<span style="color:var(--fg2);margin:0 2px;display:inline-flex;align-items:center">/</span>`;
       }
     }
     if (!parts.length) {
