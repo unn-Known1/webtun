@@ -165,7 +165,7 @@ a { color: var(--accent); text-decoration: none; }
 @media (pointer: coarse) {
   .tab { height: 38px; }
   .tab .tab-close { width: 44px; height: 44px; }
-  #new-tab-btn { width: 36px; height: 36px; }
+  #new-tab-btn { width: 36px; height: 36px; min-width: 36px; min-height: 36px; }
   .icon-btn { width: 40px; height: 40px; }
   .file-action-btn { width: 36px; height: 36px; }
   .search-btn { width: 32px; height: 32px; }
@@ -408,7 +408,7 @@ svg { display: block; }
 .tab-close { width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-sm); opacity: 0.4; flex-shrink: 0; transition: opacity var(--transition-fast), background var(--transition-fast); }
 .tab:hover .tab-close, .tab.active .tab-close { opacity: 0.6; }
 .tab-close:hover { opacity: 1; background: var(--border); }
-#new-tab-btn { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius); color: var(--fg2); flex-shrink: 0; }
+#new-tab-btn { width: 28px; height: 28px; min-width: 28px; min-height: 28px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius); color: var(--fg2); flex-shrink: 0; position: sticky; right: 0; background: var(--bg2); border: 1px solid var(--border); z-index: 1; margin-left: 4px; }
 #new-tab-btn:hover { background: var(--bg4); color: var(--fg); }
 
 /* ═══════════════════════════════════════════════════════
@@ -1135,10 +1135,11 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
     <!-- Content -->
     <div id="content" role="main" tabindex="-1">
       <div id="tab-bar">
-        <div id="tab-scroll"></div>
-        <button id="new-tab-btn" onclick="newTab()" title="New terminal" aria-label="New terminal">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        </button>
+        <div id="tab-scroll">
+          <button id="new-tab-btn" onclick="newTab()" title="New terminal" aria-label="New terminal">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+        </div>
       </div>
       <div id="editor-split-area">
         <div id="terminals">
@@ -2064,7 +2065,10 @@ function createTabButton(tab) {
   setupTabInlineRename(titleSpan, tab);
   setupTabSwipeGesture(tabEl, id);
 
-  document.getElementById('tab-scroll').appendChild(tabEl);
+  const scroll = document.getElementById('tab-scroll');
+  const newBtn = document.getElementById('new-tab-btn');
+  if (newBtn && newBtn.parentElement === scroll) scroll.insertBefore(tabEl, newBtn);
+  else scroll.appendChild(tabEl);
   tab.el = tabEl;
 }
 
@@ -5101,7 +5105,11 @@ function moveTabToEnd(fromId) {
   const [moved] = tabs.splice(fromIdx, 1);
   tabs.push(moved);
   const bar = document.getElementById('tab-scroll');
-  if (moved.el && moved.el.parentNode === bar) bar.appendChild(moved.el);
+  const newBtn = document.getElementById('new-tab-btn');
+  if (moved.el && moved.el.parentNode === bar) {
+    if (newBtn && newBtn.parentElement === bar) bar.insertBefore(moved.el, newBtn);
+    else bar.appendChild(moved.el);
+  }
   saveTabState();
 }
 
