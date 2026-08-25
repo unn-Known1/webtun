@@ -65,10 +65,11 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh &&
 
 ### Terminal
 - **Real shell sessions** — node-pty backed, full bash/zsh/PowerShell support
-- **Multi-tab** — drag to reorder, side-by-side sessions
-- **Bracketed paste** — Ctrl+V works in TUI apps (vim, nano, htop)
+- **Multi-tab** — drag to reorder, side-by-side sessions, new-tab button next to last tab
+- **Bracketed paste** — Ctrl+V works in TUI apps (vim, nano, htop) — 60KB chunked
 - **Command history** — keystroke-based capture, strips ANSI/control sequences
 - **Session persistence** — tmux or in-memory PTY; tabs survive page reload (all platforms)
+- **Fullscreen** — terminal fullscreen `Shift+F11` (header button), fits and refocuses
 - **Keyboard Shortcuts** — reference dialog in the overflow menu (Ctrl+P/T/W/B/F, etc.)
 
 ### File Explorer
@@ -77,7 +78,8 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh &&
 - **Zip/Extract** — right-click any file or folder
 - **Image viewer** — preview inline (png, jpg, gif, svg, webp)
 - **Conflict resolution** — replace, merge, keep both, skip
-- **Breadcrumb navigation** — tappable directory segments
+- **Breadcrumb navigation** — tappable segments, folder icon + path one line, `2px` tight spacing, header/breadcrumb unified `30px` bar
+- **Editor** — CodeMirror with autosave draft, `F11` fullscreen + `horizontal/vertical` split toggle, markdown/HTML preview
 
 ### Mobile
 - **Touch gestures** — swipe to close tabs, pull-to-refresh
@@ -96,7 +98,7 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh &&
 - CPU, Memory, Disk, Uptime — real-time with progress bars
 - GPU detection (nvidia-smi, system_profiler, WMI)
 - Multi-GPU support with VRAM, utilization, temperature
-- Top processes sorted by CPU
+- Top processes sorted by CPU — **Kill** button per row (`POST /api/system/kill`)
 
 ### Desktop (Electron)
 - Cross-platform app for Linux, Windows, macOS
@@ -133,6 +135,7 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh &&
 | `PIN` | Auth PIN (empty = no auth) | none |
 | `SHELL` | Shell to use | platform default |
 | `WORKSPACE_ROOT` | File explorer root | `~` |
+| `ALLOW_FULL_FS` | Allow browsing outside `WORKSPACE_ROOT` (full FS) | `false` |
 | `TRUST_PROXY` | Trust `X-Forwarded-For` from first proxy | `false` |
 | `WEBTUN_SHELL` | Override shell on Windows | PowerShell |
 
@@ -177,10 +180,14 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh &&
 
 ### v1.5.4
 - Security hardening: path sandbox `ALLOW_FULL_FS` (default `~`), symlink containment, null-byte/array guards, `rename` traversal block, `delete` uses `lstat`, batch caps 100, zip 1GB/unzip bomb guards, `download` header sanitization, `image` no-store, `write` 10MB cap, tunnel SSRF (localhost-only) + URL validation
-- Auth & transport: `checkPin` array guard, length-leak free `constantTimeEqual`, rate limiter uses `req.ip` with `trust proxy` + Map cap 10k, `--pin` arg consumption fix, WS `cols/rows` clamp 2-500, empty `Origin` deny + `constantTimeEqual` token, `sessionId` length 1-64, per-IP `clipboard`, `history` max 1k & `cmdhist.json` 0600 atomic writes, `ptySessions` TTL 30m + cap 100
-- Build: predictable `tmp` via `mkdtemp`, tar-slip validation, heredoc no-expansion `printf`, `.env` parser divergence fix
-- UI/UX: touch targets 32-36px (`file-ellipsis`, `icon-btn`, `tunnel-btn`, resize 12px), `aria-pressed`/`aria-expanded`/`aria-modal`/`inert`, focus-trap container fix, `confirmDialog` queue, `skip-link` tabindex, `touch-action: pan-y manipulation` + `overscroll-behavior:contain`, `visualViewport` Samsung+scale debounce, `pull-to-refresh` CSS contain, `safe-area` `max()` padding, `cmd-lib` dialog trap, `tiles` `min(300px,100%)`, `search-bar` tiles fixed, `upload` 6px + cancel, `paste` 60KB chunk + fallback warning, `WebGL` memory guard, `iframe` `allow-scripts` only (`style` tag removed), editor `autosave draft` 2s + `getCMmode` `jsx:true`, `installFocusTrap` leak fix
-- PWA: `sw.js` no immediate `skipWaiting`, `token`/`/ws` cache bypass, stale-while-revalidate
+- Auth & transport: `checkPin` array guard, length-leak free `constantTimeEqual`, rate limiter uses `req.ip` with `trust proxy` + Map cap 10k, `--pin` arg consumption fix, WS `cols/rows` clamp 2-500, Origin check + `constantTimeEqual` token, `sessionId` length 1-64, per-IP `clipboard`, `history` max 1k & `cmdhist.json` 0600 atomic writes, `ptySessions` TTL 30m + cap 100, `TMUX_PREFIX=wt-webtun-`
+- Build: predictable `tmp` via `mkdtemp`, tar-slip `tzf` validation, heredoc `printf` no-expansion, `.env` parser first-`=` fix, `pkill $SCRIPT_DIR` + `kill -0` race, `electron` `parseInt PORT` + `autostart` filter, `ws ^8.17.1`
+- UI/UX: touch 32-36px, `aria-pressed`/`aria-expanded`/`aria-modal`/`inert` (siblings), focus-trap fix, `confirmDialog` queue, `skip-link`, `pan-y` + `contain`, `visualViewport` Samsung+scale, `pull-to-refresh`, `safe-area`, `cmd-lib` trap, `tiles min(300px,100%)`, `upload 6px+cancel`, `paste 60KB`, `WebGL<4`, `iframe allow-scripts`, `autosave draft 2s` + `jsx:true`
+- Explorer: `new-tab` next to last tab (sticky), `sidebar-header`/`breadcrumb` unified `30px` `3px 6px gap3`, `file-item 2→1px` `breadcrumb 1px sep`, `sidebar-footer/bookmarks` compact, folder icon + path one line `flex gap2`
+- Editor: `F11` fullscreen (`fixed inset0`) + `horizontal/vertical` split toggle stays usable, `Esc` to exit, `requestFullscreen` fallback, `closeEditor` clears
+- Terminal: `Shift+F11` fullscreen (`#content.terminal-fullscreen` + `#terminals.fullscreen`), header button, `fitTerm` refit
+- System Stats: **Kill** `POST /api/system/kill` per-row button (refuse `1/self/cloudflared`)
+- PWA: `sw.js` no immediate `skipWaiting`, `token`/`/ws` bypass, stale-while-revalidate, `manifest` `?newTerm=1` + `titlebar-area` CSS
 
 ### v1.5.3
 - Terminal session persistence without tmux (in-memory PTY on Windows + Linux)
