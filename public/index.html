@@ -414,7 +414,7 @@ svg { display: block; }
 /* ═══════════════════════════════════════════════════════
    SIDEBAR / FILE EXPLORER
    ═══════════════════════════════════════════════════════ */
-#sidebar-header { display: flex; align-items: center; padding: 6px 8px; gap: 4px; border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap; min-height: 40px; height: auto; }
+#sidebar-header { display: flex; align-items: center; padding: 4px 6px; gap: 3px; border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap; min-height: 36px; height: auto; }
 #sidebar-header input { flex: 1 1 60px; min-width: 40px; height: 26px; font-size: 12px; }
 #file-list-wrap { flex: 1; overflow-y: auto; min-height: 0; touch-action: pan-y; -webkit-overflow-scrolling: touch; position: relative; overscroll-behavior: contain; content-visibility: auto; contain-intrinsic-size: 600px; }
 #ptr-indicator { position: absolute; top: -40px; left: 0; right: 0; height: 36px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 11px; color: var(--fg2); opacity: 0; pointer-events: none; }
@@ -427,11 +427,11 @@ svg { display: block; }
 #file-list-wrap.loading::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--bg3); z-index: 5; }
 #file-list-wrap.loading::after { content: ''; position: absolute; top: 0; left: -30%; width: 30%; height: 3px; background: var(--accent); border-radius: 0 2px 2px 0; z-index: 6; animation: fileListProgress 0.9s ease-in-out infinite; box-shadow: 0 1px 4px var(--shadow-color); }
 @keyframes fileListProgress { from { left: -30%; } to { left: 100%; } }
-.file-list-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 20px; color: var(--fg2); font-size: 13px; text-align: center; gap: 8px; }
+.file-list-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 12px; color: var(--fg2); font-size: 13px; text-align: center; gap: 6px; }
 .file-list-empty svg { opacity: 0.4; }
-.empty-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.empty-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
 .empty-actions .btn { font-size: 12px; padding: 4px 12px; }
-#file-breadcrumb { padding: 8px 10px; font-size: 12px; color: var(--fg2); border-bottom: 1px solid var(--border); white-space: nowrap; overflow-x: auto; line-height: 1.8; flex-shrink: 0; scrollbar-width: none; }
+#file-breadcrumb { padding: 5px 8px; font-size: 12px; color: var(--fg2); border-bottom: 1px solid var(--border); white-space: nowrap; overflow-x: auto; line-height: 1.6; flex-shrink: 0; scrollbar-width: none; }
 #file-breadcrumb::-webkit-scrollbar { display: none; }
 #file-breadcrumb a { transition: background var(--transition-fast); border-radius: var(--radius-sm); padding: 4px 6px !important; display: inline-block; }
 #file-breadcrumb a:hover { background: var(--bg3); }
@@ -439,7 +439,7 @@ svg { display: block; }
   #file-breadcrumb { padding: 10px 12px; font-size: 13px; }
   #file-breadcrumb a { padding: 6px 8px !important; }
 }
-.file-item { display: flex; align-items: center; gap: 8px; padding: 5px 10px; cursor: pointer; border-bottom: 1px solid transparent; font-size: 12px; position: relative; user-select: none; }
+.file-item { display: flex; align-items: center; gap: 6px; padding: 3px 8px; cursor: pointer; border-bottom: 1px solid transparent; font-size: 12px; position: relative; user-select: none; }
 .file-item:hover { background: var(--bg3); }
 .file-item.selected { background: var(--bg4); }
 .file-item.focused { background: var(--bg3); outline: 1px solid var(--accent); outline-offset: -1px; }
@@ -462,7 +462,7 @@ svg { display: block; }
 #sidebar[data-select-mode="true"] .file-select-check { display: flex; }
 #sidebar[data-select-mode="true"] .file-item { padding-left: 6px; }
 .file-action-btn:hover { background: var(--border); color: var(--fg); }
-#sidebar-footer { padding: 8px 10px; border-top: 1px solid var(--border); display: flex; gap: 4px; flex-wrap: wrap; flex-shrink: 0; }
+#sidebar-footer { padding: 6px 8px; border-top: 1px solid var(--border); display: flex; gap: 3px; flex-wrap: wrap; flex-shrink: 0; }
 .sidebar-action-btn { flex: 1; min-width: 60px; height: 28px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); color: var(--fg2); font-size: 11px; display: flex; align-items: center; justify-content: center; gap: 4px; transition: all var(--transition-fast); }
 .sidebar-action-btn:hover { background: var(--bg4); color: var(--fg); border-color: var(--accent); }
 
@@ -725,17 +725,17 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
    BOOKMARKS
    ═══════════════════════════════════════════════════════ */
 #bookmarks-header {
-  display: flex; align-items: center; gap: 6px;
-  padding: 4px 10px; font-size: 11px; color: var(--fg2);
-  text-transform: uppercase; letter-spacing: 0.5px;
+  display: flex; align-items: center; gap: 5px;
+  padding: 3px 8px; font-size: 10px; color: var(--fg2);
+  text-transform: uppercase; letter-spacing: 0.4px;
   border-bottom: 1px solid var(--border); flex-shrink: 0; cursor: pointer;
 }
 #bookmarks-header:hover { color: var(--fg); }
 #bookmarks-list { max-height: 0; overflow: hidden; transition: max-height var(--transition-normal); flex-shrink: 0; }
 #bookmarks-list.open { max-height: 200px; overflow-y: auto; }
 .bookmark-item {
-  display: flex; align-items: center; gap: 6px;
-  padding: 3px 10px; font-size: 12px; cursor: pointer;
+  display: flex; align-items: center; gap: 5px;
+  padding: 2px 8px; font-size: 11px; cursor: pointer;
   border-bottom: 1px solid transparent;
 }
 .bookmark-item:hover { background: var(--bg3); }
@@ -1098,7 +1098,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
         </div>
         <div id="file-list"></div>
       </div>
-      <div id="select-actions" style="display:none;padding:8px 10px;border-top:1px solid var(--border);background:var(--bg2);gap:4px;flex-wrap:wrap">
+      <div id="select-actions" style="display:none;padding:6px 8px;border-top:1px solid var(--border);background:var(--bg2);gap:3px;flex-wrap:wrap">
         <span id="select-count" style="font-size:11px;color:var(--fg2);line-height:28px;flex:1"></span>
         <button class="sidebar-action-btn" id="select-all-btn" onclick="selectAllFiles()">Select All</button>
         <button class="sidebar-action-btn" onclick="deleteSelected()">Delete</button>
