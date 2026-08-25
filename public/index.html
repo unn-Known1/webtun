@@ -4627,30 +4627,30 @@ function toggleSetting(k) {
 function openSettings() {
   const panel = document.getElementById('settings-panel');
   const isOpen = panel.classList.contains('open');
-  // Don't inert #main because panel is inside #main — inert would disable panel itself. Inert siblings instead.
-  const bgEls = [document.getElementById('sidebar'), document.getElementById('content')].filter(Boolean);
+  // Don't inert #main because panel is inside #main — inert would disable panel itself. Inert content only (sidebar is sibling).
+  const content = document.getElementById('content');
   panel.classList.toggle('open');
   if (!isOpen) {
     panel.setAttribute('aria-modal', 'true');
     panel.setAttribute('role', 'dialog');
-    bgEls.forEach(el => el.setAttribute('inert', ''));
+    if (content) content.setAttribute('inert', '');
     installFocusTrap(panel);
     panel.querySelector('select, button, input')?.focus();
     // Defer outside-click handler to next tick so opening click doesn't immediately close
     setTimeout(() => document.addEventListener('click', closeSettingsOnClickOutside, true), 50);
   } else {
     panel.removeAttribute('aria-modal');
-    bgEls.forEach(el => el.removeAttribute('inert'));
+    if (content) content.removeAttribute('inert');
     removeFocusTrap();
     document.removeEventListener('click', closeSettingsOnClickOutside, true);
   }
 }
 function closeSettings() {
   const panel = document.getElementById('settings-panel');
-  const bgEls = [document.getElementById('sidebar'), document.getElementById('content')].filter(Boolean);
+  const content = document.getElementById('content');
   panel.classList.remove('open');
   panel.removeAttribute('aria-modal');
-  bgEls.forEach(el => el.removeAttribute('inert'));
+  if (content) content.removeAttribute('inert');
   removeFocusTrap();
   document.removeEventListener('click', closeSettingsOnClickOutside, true);
 }
@@ -5136,6 +5136,7 @@ function _fsEscHandler(e) {
 function toggleTerminalFullscreen() {
   const content = document.getElementById('content');
   const term = document.getElementById('terminals');
+  const sidebar = document.getElementById('sidebar');
   if (!content || !term) return;
   const isFS = content.classList.toggle('terminal-fullscreen');
   term.classList.toggle('fullscreen', isFS);
@@ -5154,6 +5155,14 @@ function toggleTerminalFullscreen() {
   } else {
     document.removeEventListener('keydown', _termFsEscHandler);
     try { if (document.fullscreenElement) document.exitFullscreen(); } catch {}
+    // Ensure sidebar is visible when exiting fullscreen
+    if (sidebar) {
+      sidebar.style.display = '';
+      sidebar.classList.remove('hidden');
+      if (window.innerWidth <= 768) {
+        sidebar.classList.add('mobile-open');
+      }
+    }
   }
   requestAnimationFrame(() => { tabs.forEach(t=>{try{fitTerm(t);}catch(e){console.warn(e);}}); const at=getActiveTab(); try{at?.term?.focus();}catch{} });
 }
@@ -6137,7 +6146,8 @@ function saveCmdLib(cmds) {
 function toggleCmdLib() {
   const panel = document.getElementById('cmd-lib-panel');
   const isOpen = panel.classList.contains('open');
-  const bgEls = [document.getElementById('terminals'), document.getElementById('sidebar'), document.querySelector('#header')].filter(Boolean);
+  // Only inert the terminals area (content), not sidebar (panel is on right side)
+  const terms = document.getElementById('terminals');
   panel.classList.toggle('open');
   panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-modal', String(!isOpen));
@@ -6146,14 +6156,14 @@ function toggleCmdLib() {
   if (!isOpen) {
     loadHistMax();
     switchCmdTab('library');
-    bgEls.forEach(el => el.setAttribute('inert', ''));
+    if (terms) terms.setAttribute('inert', '');
     installFocusTrap(panel);
     setTimeout(() => {
       document.addEventListener('click', closeCmdLibOnClickOutside, true);
       panel.querySelector('input, button')?.focus();
     }, 50);
   } else {
-    bgEls.forEach(el => el.removeAttribute('inert'));
+    if (terms) terms.removeAttribute('inert');
     removeFocusTrap();
     document.removeEventListener('click', closeCmdLibOnClickOutside, true);
   }
@@ -6168,8 +6178,8 @@ function closeCmdLibOnClickOutside(e) {
   }
   if (panel.contains(e.target) || btn.contains(e.target)) return;
   toggleCmdLib();
-  const bgEls = [document.getElementById('terminals'), document.getElementById('sidebar'), document.querySelector('#header')].filter(Boolean);
-  bgEls.forEach(el => el.removeAttribute('inert'));
+  const terms = document.getElementById('terminals');
+  if (terms) terms.removeAttribute('inert');
   removeFocusTrap();
 }
 
