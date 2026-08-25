@@ -2168,6 +2168,32 @@ app.get('/api/system', checkPin, async (req, res) => {
   });
 });
 
+// ── Kill process (from System Stats) ────────────────────────────────
+app.post('/api/system/kill', checkPin, async (req, res) => {
+  try {
+    const raw = req.body && (req.body.pid ?? req.body.id);
+    const pid = parseInt(raw, 10);
+    if (!Number.isInteger(pid) || pid <= 0) return res.status(400).json({ error: 'invalid pid' });
+    if (pid === 1) return res.status(400).json({ error: 'refusing to kill pid 1' });
+    if (pid === process.pid) return res.status(400).json({ error: 'refusing to kill self' });
+    // Prevent killing cloudflared tunnels managed by WebTun
+    for (const [, t] of tunnels) { if (t.pid === pid) return res.status(400).json({ error: 'refusing to kill managed cloudflared' }); }
+    if (os.platform() === 'win32') {
+      try { execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' }); } catch (e) { return res.status(500).json({ error: e.message || 'kill failed' }); }
+    } else {
+      try { process.kill(pid, 'SIGTERM'); } catch (e) {
+        if (e.code === 'ESRCH') return res.status(404).json({ error: 'process not found' });
+        try { process.kill(pid, 'SIGKILL'); } catch (e2) { return res.status(500).json({ error: e2.message }); }
+      }
+      // Give 1.5s then SIGKILL if still alive
+      setTimeout(() => { try { process.kill(pid, 0); process.kill(pid, 'SIGKILL'); } catch {} }, 1500);
+    }
+    res.json({ success: true, pid });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Cloudflared tunnel management ──────────────────────────────────
 const tunnels = new Map();
 const TUNNEL_FILE = path.join(__dirname, '.tunnels.json');

@@ -1535,7 +1535,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
         <h3>Top Processes by CPU</h3>
         <div class="sys-table-wrap">
           <table class="sys-table" id="sys-proc-table">
-            <thead><tr><th>PID</th><th>User</th><th>CPU%</th><th>Mem%</th><th>Command</th></tr></thead>
+            <thead><tr><th>PID</th><th>User</th><th>CPU%</th><th>Mem%</th><th>Command</th><th style="width:48px">Kill</th></tr></thead>
             <tbody id="sys-proc-body"></tbody>
           </table>
         </div>
@@ -6451,9 +6451,29 @@ async function refreshSystemStats(showLoading) {
       const addTd = (txt, extra) => { const td = document.createElement('td'); if (extra) td.style.cssText = extra; td.textContent = txt; tr.appendChild(td); };
       addTd(p.pid); addTd(p.user); addTd(p.cpu); addTd(p.mem);
       addTd(p.cmd, 'max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap');
+      const killTd = document.createElement('td');
+      killTd.style.textAlign = 'center';
+      const killBtn = document.createElement('button');
+      killBtn.className = 'btn btn-danger';
+      killBtn.style.cssText = 'height:22px;padding:0 8px;font-size:11px;min-width:36px';
+      killBtn.textContent = 'Kill';
+      killBtn.setAttribute('aria-label', 'Kill process ' + p.pid);
+      killBtn.title = 'Kill PID ' + p.pid;
+      killBtn.onclick = () => killProcess(p.pid, p.cmd);
+      killTd.appendChild(killBtn);
+      tr.appendChild(killTd);
       tbody.appendChild(tr);
     });
   }
+}
+
+async function killProcess(pid, cmd) {
+  const display = cmd ? `${pid} (${cmd.split('/').pop().slice(0,30)})` : String(pid);
+  const ok = await confirmDialog({ title: 'Kill process', message: `Kill process ${display}?\n\nThis will send SIGTERM (then SIGKILL).`, okText: 'Kill', cancelText: 'Cancel', danger: true });
+  if (!ok) return;
+  const r = await api('/api/system/kill', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pid: Number(pid) }) });
+  if (r && r.success) { toast('Killed ' + pid, 'success'); refreshSystemStats(false); }
+  else toast(r && r.error ? r.error : 'Kill failed', 'error');
 }
 
 // ═══════════════════════════════════════════════════════
