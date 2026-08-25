@@ -1753,12 +1753,8 @@ function getWsOrigin(req) {
 }
 
 wss.on('connection', (ws, req) => {
-  // Origin check to prevent Cross-Site WebSocket Hijacking
+  // Origin check to prevent Cross-Site WebSocket Hijacking — allow empty Origin (non-browser clients) but validate token separately
   const origin = getWsOrigin(req);
-  if (PIN && !origin) {
-    ws.close(1008, 'Origin not allowed');
-    return;
-  }
   if (origin) {
     const host = req.headers['host'] || '';
     const allowedLocal = origin === `http://${host}` || origin === `https://${host}` || origin === `http://localhost` || origin === `https://localhost`;
