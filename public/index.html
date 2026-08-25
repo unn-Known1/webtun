@@ -1736,7 +1736,18 @@ function loadTabState() {
   } catch(e) { console.warn('loadTabState error:', e); return []; }
 }
 
-// ═══════════════════════════════════════════════════════
+function saveCurrentPath() {
+  try { safeStorage.setItem('wt-current-path', currentPath); } catch(e) { console.warn('Failed to save path:', e); }
+}
+
+function loadCurrentPath() {
+  try {
+    const val = safeStorage.getItem('wt-current-path');
+    return typeof val === 'string' && val ? val : null;
+  } catch(e) { console.warn('loadCurrentPath error:', e); return null; }
+}
+
+// ════════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════
 function handlePinKeydown(e) {
@@ -1803,9 +1814,21 @@ async function unlockApp() {
 
   const info = await api('/api/home');
   homeDir = info.home;
-  currentPath = homeDir;
   serverPlatform = info.platform || '';
   document.getElementById('hostname-badge').textContent = info.hostname || '—';
+
+  // Restore last visited path
+  const savedPath = loadCurrentPath();
+  if (savedPath) {
+    try {
+      // Validate saved path is within workspace or full fs is allowed
+      currentPath = savedPath;
+    } catch(e) {
+      currentPath = homeDir;
+    }
+  } else {
+    currentPath = homeDir;
+  }
 
   // Check tmux availability
   const sessInfo = await api('/api/sessions');
@@ -2887,6 +2910,7 @@ async function loadFiles(dir) {
   currentPath = dir;
   document.getElementById('path-input').value = dir;
   renderBreadcrumb(dir);
+  saveCurrentPath();
 
   const list = document.getElementById('file-list');
 
