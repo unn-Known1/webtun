@@ -271,6 +271,13 @@ svg { display: block; }
 #editor-view.fullscreen #editor-header { border-bottom: 1px solid var(--border); background: var(--bg2); }
 #editor-view.fullscreen #editor-area { flex: 1; min-height: 0; }
 #editor-view.fullscreen #editor-area .CodeMirror { height: 100vh; }
+#terminals.fullscreen { position: fixed; inset: 0; z-index: var(--z-overlay); width: 100vw; height: 100vh; max-height: 100vh; background: var(--bg); display: flex; flex-direction: column; }
+#terminals.fullscreen .term-wrapper { flex: 1; min-height: 0; }
+#terminals.fullscreen #search-bar { top: 8px; }
+#content.terminal-fullscreen { position: fixed; inset: 0; z-index: var(--z-overlay); background: var(--bg); display: flex; flex-direction: column; }
+#content.terminal-fullscreen #tab-bar { flex-shrink: 0; }
+#content.terminal-fullscreen #editor-split-area { flex: 1; min-height: 0; }
+#content.terminal-fullscreen #sidebar { display: none !important; }
 
 /* Desktop: split layout */
 @media (min-width: 769px) {
@@ -418,7 +425,7 @@ svg { display: block; }
 /* ═══════════════════════════════════════════════════════
    SIDEBAR / FILE EXPLORER
    ═══════════════════════════════════════════════════════ */
-#sidebar-header { display: flex; align-items: center; padding: 4px 6px; gap: 3px; border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap; min-height: 36px; height: auto; }
+#sidebar-header { display: flex; align-items: center; padding: 2px 4px; gap: 2px; border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap; min-height: 32px; height: auto; }
 #sidebar-header input { flex: 1 1 60px; min-width: 40px; height: 26px; font-size: 12px; }
 #file-list-wrap { flex: 1; overflow-y: auto; min-height: 0; touch-action: pan-y; -webkit-overflow-scrolling: touch; position: relative; overscroll-behavior: contain; content-visibility: auto; contain-intrinsic-size: 600px; }
 #ptr-indicator { position: absolute; top: -40px; left: 0; right: 0; height: 36px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 11px; color: var(--fg2); opacity: 0; pointer-events: none; }
@@ -435,7 +442,7 @@ svg { display: block; }
 .file-list-empty svg { opacity: 0.4; }
 .empty-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
 .empty-actions .btn { font-size: 12px; padding: 4px 12px; }
-#file-breadcrumb { display: flex; align-items: center; gap: 2px; padding: 4px 6px; font-size: 12px; color: var(--fg2); border-bottom: 1px solid var(--border); white-space: nowrap; overflow-x: auto; line-height: 1; flex-shrink: 0; scrollbar-width: none; }
+#file-breadcrumb { display: flex; align-items: center; gap: 1px; padding: 2px 4px; font-size: 11px; color: var(--fg2); border-bottom: 1px solid var(--border); white-space: nowrap; overflow-x: auto; line-height: 1; flex-shrink: 0; scrollbar-width: none; }
 #file-breadcrumb::-webkit-scrollbar { display: none; }
 #file-breadcrumb a { transition: background var(--transition-fast); border-radius: var(--radius-sm); padding: 4px 6px !important; display: inline-block; }
 #file-breadcrumb a:hover { background: var(--bg3); }
@@ -443,7 +450,7 @@ svg { display: block; }
   #file-breadcrumb { padding: 10px 12px; font-size: 13px; }
   #file-breadcrumb a { padding: 6px 8px !important; }
 }
-.file-item { display: flex; align-items: center; gap: 4px; padding: 2px 6px; cursor: pointer; border-bottom: 1px solid transparent; font-size: 12px; position: relative; user-select: none; white-space: nowrap; flex-wrap: nowrap; }
+.file-item { display: flex; align-items: center; gap: 2px; padding: 1px 4px; cursor: pointer; border-bottom: 1px solid transparent; font-size: 12px; position: relative; user-select: none; white-space: nowrap; flex-wrap: nowrap; }
 .file-item:hover { background: var(--bg3); }
 .file-item.selected { background: var(--bg4); }
 .file-item.focused { background: var(--bg3); outline: 1px solid var(--accent); outline-offset: -1px; }
@@ -466,7 +473,7 @@ svg { display: block; }
 #sidebar[data-select-mode="true"] .file-select-check { display: flex; }
 #sidebar[data-select-mode="true"] .file-item { padding-left: 6px; }
 .file-action-btn:hover { background: var(--border); color: var(--fg); }
-#sidebar-footer { padding: 6px 8px; border-top: 1px solid var(--border); display: flex; gap: 3px; flex-wrap: wrap; flex-shrink: 0; }
+#sidebar-footer { padding: 4px 6px; border-top: 1px solid var(--border); display: flex; gap: 2px; flex-wrap: wrap; flex-shrink: 0; }
 .sidebar-action-btn { flex: 1; min-width: 60px; height: 28px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); color: var(--fg2); font-size: 11px; display: flex; align-items: center; justify-content: center; gap: 4px; transition: all var(--transition-fast); }
 .sidebar-action-btn:hover { background: var(--bg4); color: var(--fg); border-color: var(--accent); }
 
@@ -729,17 +736,17 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
    BOOKMARKS
    ═══════════════════════════════════════════════════════ */
 #bookmarks-header {
-  display: flex; align-items: center; gap: 5px;
-  padding: 3px 8px; font-size: 10px; color: var(--fg2);
-  text-transform: uppercase; letter-spacing: 0.4px;
+  display: flex; align-items: center; gap: 3px;
+  padding: 2px 6px; font-size: 10px; color: var(--fg2);
+  text-transform: uppercase; letter-spacing: 0.3px;
   border-bottom: 1px solid var(--border); flex-shrink: 0; cursor: pointer;
 }
 #bookmarks-header:hover { color: var(--fg); }
 #bookmarks-list { max-height: 0; overflow: hidden; transition: max-height var(--transition-normal); flex-shrink: 0; }
 #bookmarks-list.open { max-height: 200px; overflow-y: auto; }
 .bookmark-item {
-  display: flex; align-items: center; gap: 5px;
-  padding: 2px 8px; font-size: 11px; cursor: pointer;
+  display: flex; align-items: center; gap: 3px;
+  padding: 1px 6px; font-size: 11px; cursor: pointer;
   border-bottom: 1px solid transparent;
 }
 .bookmark-item:hover { background: var(--bg3); }
@@ -1051,6 +1058,9 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
     </button>
     <button class="icon-btn" id="tilesBtn" aria-label="Tiles Mode" title="Tiles Mode" onclick="toggleTiles()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+    </button>
+    <button class="icon-btn" id="term-fullscreen-btn" aria-label="Terminal fullscreen" title="Terminal fullscreen (Shift+F11)" onclick="toggleTerminalFullscreen()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
     </button>
     <button class="icon-btn" id="more-btn" aria-label="More options" title="More options" onclick="toggleMoreMenu()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
@@ -5096,6 +5106,41 @@ function _fsEscHandler(e) {
     if (v && v.classList.contains('fullscreen')) { e.preventDefault(); toggleEditorFullscreen(); }
   }
 }
+
+function toggleTerminalFullscreen() {
+  const content = document.getElementById('content');
+  const term = document.getElementById('terminals');
+  if (!content || !term) return;
+  const isFS = content.classList.toggle('terminal-fullscreen');
+  term.classList.toggle('fullscreen', isFS);
+  const btn = document.getElementById('term-fullscreen-btn');
+  if (btn) {
+    btn.classList.toggle('active', isFS);
+    btn.setAttribute('aria-label', isFS ? 'Exit terminal fullscreen' : 'Terminal fullscreen');
+    btn.title = isFS ? 'Exit terminal fullscreen (Esc/Shift+F11)' : 'Terminal fullscreen (Shift+F11)';
+    btn.innerHTML = isFS
+      ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 14 10 14 10 4"/><polyline points="20 10 14 10 14 20"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="10" y1="14" x2="3" y2="21"/></svg>'
+      : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
+  }
+  if (isFS) {
+    document.addEventListener('keydown', _termFsEscHandler);
+    try { content.requestFullscreen?.(); } catch {}
+  } else {
+    document.removeEventListener('keydown', _termFsEscHandler);
+    try { if (document.fullscreenElement) document.exitFullscreen(); } catch {}
+  }
+  requestAnimationFrame(() => { tabs.forEach(t=>{try{fitTerm(t);}catch(e){console.warn(e);}}); const at=getActiveTab(); try{at?.term?.focus();}catch{} });
+}
+function _termFsEscHandler(e) {
+  const isTermFS = document.getElementById('content')?.classList.contains('terminal-fullscreen');
+  if (!isTermFS) return;
+  if (e.key === 'Escape' || (e.key === 'F11' && e.shiftKey)) { e.preventDefault(); toggleTerminalFullscreen(); }
+  else if (e.key === 'F11' && !e.shiftKey) {
+    // Let editor handle F11 when editor fullscreen, but prevent browser default
+    const ev = document.getElementById('editor-view');
+    if (!ev || !ev.classList.contains('fullscreen')) e.preventDefault();
+  }
+}
 const hasWakeLock = 'wakeLock' in navigator;
 
 async function requestWakeLock() {
@@ -5190,7 +5235,8 @@ function setupKeyboardShortcuts() {
     if (ctrl && e.shiftKey && e.key === 'ArrowRight') { e.preventDefault(); cycleTab(1); }
     if (ctrl && e.shiftKey && e.key === 'ArrowLeft') { e.preventDefault(); cycleTab(-1); }
     if (ctrl && e.shiftKey && e.key === 'r') { e.preventDefault(); refreshPreview(); }
-    if (e.key === 'F11' && document.getElementById('editor-view').classList.contains('open')) { e.preventDefault(); toggleEditorFullscreen(); }
+    if (e.key === 'F11' && e.shiftKey) { e.preventDefault(); toggleTerminalFullscreen(); }
+    else if (e.key === 'F11' && document.getElementById('editor-view').classList.contains('open')) { e.preventDefault(); toggleEditorFullscreen(); }
     if (e.key === 'Escape') {
       const termMenu = document.getElementById('term-ctx-menu');
       if (termMenu && termMenu.style.display !== 'none') {
