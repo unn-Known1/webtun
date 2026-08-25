@@ -125,7 +125,7 @@
     "safer-buffer": "npm:@socketregistry/safer-buffer@^1",
     "side-channel": "npm:@socketregistry/side-channel@^1",
     "typedarray": "npm:@socketregistry/typedarray@^1",
-    "ws": "^8.17.1"
+    "ws": "^8.21.0"
   },
   "resolutions": {
     "array-flatten": "npm:@socketregistry/array-flatten@^1",
@@ -145,7 +145,7 @@
     "safer-buffer": "npm:@socketregistry/safer-buffer@^1",
     "side-channel": "npm:@socketregistry/side-channel@^1",
     "typedarray": "npm:@socketregistry/typedarray@^1",
-    "ws": "^8.17.1"
+    "ws": "^8.21.0"
   },
   "allowScripts": {
     "node-pty": true
