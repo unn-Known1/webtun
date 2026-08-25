@@ -442,9 +442,9 @@ svg { display: block; }
 .file-list-empty svg { opacity: 0.4; }
 .empty-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
 .empty-actions .btn { font-size: 12px; padding: 4px 12px; }
-#file-breadcrumb { display: flex; align-items: center; gap: 1px; padding: 2px 4px; font-size: 11px; color: var(--fg2); border-bottom: 1px solid var(--border); white-space: nowrap; overflow-x: auto; line-height: 1; flex-shrink: 0; scrollbar-width: none; }
+#file-breadcrumb { display: flex; align-items: center; gap: 0; padding: 2px 4px; font-size: 11px; color: var(--fg2); border-bottom: 1px solid var(--border); white-space: nowrap; overflow-x: auto; line-height: 1; flex-shrink: 0; scrollbar-width: none; }
 #file-breadcrumb::-webkit-scrollbar { display: none; }
-#file-breadcrumb a { transition: background var(--transition-fast); border-radius: var(--radius-sm); padding: 4px 6px !important; display: inline-block; }
+#file-breadcrumb a { transition: background var(--transition-fast); border-radius: var(--radius-sm); padding: 1px 3px !important; display: inline-block; }
 #file-breadcrumb a:hover { background: var(--bg3); }
 @media (pointer: coarse) {
   #file-breadcrumb { padding: 10px 12px; font-size: 13px; }
@@ -3214,13 +3214,13 @@ function renderBreadcrumb(fullPath) {
     }
 
     if (!segments.length) {
-      html = `<span style="color:var(--fg2)">\\</span><span style="color:var(--fg2);font-size:11px;margin-left:6px">(root)</span>`;
+      html = `<span style="color:var(--fg2)">\\</span><span style="color:var(--fg2);font-size:11px;margin-left:3px">(root)</span>`;
     } else {
       html = segments.map((seg, i) => {
         const isLast = i === segments.length - 1;
         if (isLast) return `<span style="color:var(--fg);font-weight:500">${escHtml(seg.label)}</span>`;
-        return `<a href="#" data-path="${escHtml(seg.path)}" style="color:var(--accent);text-decoration:none;padding:4px 2px;display:inline-block">${escHtml(seg.label)}</a>` +
-          `<span style="color:var(--fg2);margin:0 2px">\\</span>`;
+        return `<a href="#" data-path="${escHtml(seg.path)}" style="color:var(--accent);text-decoration:none;padding:1px 2px;display:inline-block">${escHtml(seg.label)}</a>` +
+          `<span style="color:var(--fg2);margin:0 1px">\\</span>`;
       }).join('');
     }
   } else {
@@ -3232,8 +3232,8 @@ function renderBreadcrumb(fullPath) {
       if (isLast) {
         html += `<span style="color:var(--fg);font-weight:500">${escHtml(part)}</span>`;
       } else {
-        html += `<a href="#" data-path="${escHtml(accumulated)}" style="color:var(--accent);text-decoration:none;padding:4px 2px;display:inline-block">${escHtml(part)}</a>`;
-        html += `<span style="color:var(--fg2);margin:0 2px">/</span>`;
+        html += `<a href="#" data-path="${escHtml(accumulated)}" style="color:var(--accent);text-decoration:none;padding:1px 2px;display:inline-block">${escHtml(part)}</a>`;
+        html += `<span style="color:var(--fg2);margin:0 1px">/</span>`;
       }
     }
     if (!parts.length) {
