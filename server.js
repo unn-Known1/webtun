@@ -132,7 +132,7 @@ const SHELL = (os.platform() === 'win32' && !process.env.WEBTUN_SHELL)
   ? 'powershell.exe'
   : (process.env.SHELL || (os.platform() === 'win32' ? 'powershell.exe' : (fs.existsSync('/bin/bash') ? '/bin/bash' : 'sh')));
 const HOST = process.env.HOST || '0.0.0.0';
-const ALLOW_FULL_FS = process.env.ALLOW_FULL_FS === 'true';
+const ALLOW_FULL_FS = process.env.ALLOW_FULL_FS !== 'false';
 const WORKSPACE_ROOT = (() => {
   let ws = process.env.WORKSPACE_ROOT ? path.resolve(process.env.WORKSPACE_ROOT) : os.homedir();
   if (!ws || ws.trim() === '') ws = os.homedir() || process.cwd();
@@ -613,7 +613,7 @@ app.get('/api/files', checkPin, async (req, res) => {
               const full = path.join(dir, e.name);
               const st = await safeStat(full);
               files.push({
-                name: e.name, path: full, isDir: e.isDirectory(),
+                name: e.name, path: full, isDir: st ? st.isDirectory() : e.isDirectory(),
                 isSymlink: e.isSymbolicLink(), size: st ? st.size : 0,
                 modified: st ? st.mtime : null, ext: path.extname(e.name).toLowerCase()
               });
@@ -633,11 +633,14 @@ app.get('/api/files', checkPin, async (req, res) => {
       entries.map(async e => {
         const full = path.join(dir, e.name);
         const st = await safeStat(full);
+        const isSymlink = e.isSymbolicLink();
+        // Use stat result for isDir so symlink→dir is navigable; Dirent.isDirectory() is false for symlink
+        const isDir = st ? st.isDirectory() : e.isDirectory();
         return {
           name: e.name,
           path: full,
-          isDir: e.isDirectory(),
-          isSymlink: e.isSymbolicLink(),
+          isDir,
+          isSymlink,
           size: st ? st.size : 0,
           modified: st ? st.mtime : null,
           ext: path.extname(e.name).toLowerCase()
@@ -648,8 +651,10 @@ app.get('/api/files', checkPin, async (req, res) => {
       if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
       return a.name.localeCompare(b.name);
     });
-    const parent = path.dirname(dir);
-    res.json({ path: dir, parent: parent !== dir ? parent : null, files });
+    let parent = path.dirname(dir);
+    if (parent === dir) parent = null;
+    else if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, parent)) parent = null;
+    res.json({ path: dir, parent, files });
   } catch (e) {
     const status = e.status || 500;
     res.status(status).json({ error: e.message });

@@ -208,10 +208,10 @@ svg { display: block; }
 #upload-progress.active #upload-progress-text { opacity: 1; }
 #upload-cancel-btn { position: absolute; right: 8px; top: -28px; height: 22px; padding: 0 8px; font-size: 11px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--fg2); cursor: pointer; display: none; z-index: 2; }
 #upload-progress.active #upload-cancel-btn { display: block; pointer-events: auto; }
-#main { display: flex; flex: 1; overflow: hidden; min-height: 0; position: relative; }
-#sidebar { position: relative; width: var(--sidebar-w); background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; transition: var(--transition-normal); }
-#sidebar.dragging { transition: none; }
-#sidebar.hidden { width: 0 !important; }
+#main { display: flex; flex: 1; overflow: hidden; min-height: 0; position: relative; isolation: isolate; }
+#sidebar { position: relative; width: var(--sidebar-w); background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; transition: width var(--transition-normal) ease, transform var(--transition-normal) ease; will-change: width, transform; backface-visibility: hidden; }
+#sidebar.dragging { transition: none; will-change: width; }
+#sidebar.hidden { width: 0 !important; overflow: hidden; }
 #content { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; min-height: 0; position: relative; }
 #tab-bar { display: flex; align-items: center; height: var(--tab-h); background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0; gap: 2px; padding: 0 4px; }
 #tab-scroll { display: flex; align-items: center; gap: 2px; height: 100%; flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; mask-image: linear-gradient(to right, black calc(100% - 20px), transparent); -webkit-mask-image: linear-gradient(to right, black calc(100% - 20px), transparent); scrollbar-width: none; }
@@ -267,17 +267,11 @@ svg { display: block; }
 }
 #editor-view { display: none; flex-direction: column; background: var(--bg); overflow: hidden; }
 #editor-view.open { display: flex; }
-#editor-view.fullscreen { position: fixed; inset: 0; z-index: var(--z-overlay); width: 100vw; height: 100vh; max-height: 100vh; background: var(--bg); border: none; }
+#editor-view.fullscreen { position: absolute; inset: 0; z-index: 30; width: 100%; height: 100%; background: var(--bg); border: none; }
 #editor-view.fullscreen #editor-header { border-bottom: 1px solid var(--border); background: var(--bg2); }
 #editor-view.fullscreen #editor-area { flex: 1; min-height: 0; }
-#editor-view.fullscreen #editor-area .CodeMirror { height: 100vh; }
-#terminals.fullscreen { position: fixed; inset: 0; z-index: var(--z-overlay); width: 100vw; height: 100vh; max-height: 100vh; background: var(--bg); display: flex; flex-direction: column; }
-#terminals.fullscreen .term-wrapper { flex: 1; min-height: 0; }
-#terminals.fullscreen #search-bar { top: 8px; }
-#content.terminal-fullscreen { position: fixed; inset: 0; z-index: var(--z-overlay); background: var(--bg); display: flex; flex-direction: column; }
-#content.terminal-fullscreen #tab-bar { flex-shrink: 0; }
-#content.terminal-fullscreen #editor-split-area { flex: 1; min-height: 0; }
-#content.terminal-fullscreen #sidebar { display: none !important; }
+#editor-view.fullscreen #editor-area .CodeMirror { height: 100%; }
+#editor-split-area { position: relative; }
 
 /* Desktop: split layout */
 @media (min-width: 769px) {
@@ -350,8 +344,11 @@ svg { display: block; }
   background: var(--bg2); border-left: 1px solid var(--border);
   display: flex; flex-direction: column;
   transform: translateX(100%);
-  transition: var(--transition-normal);
+  transition: transform var(--transition-normal) ease;
+  will-change: transform;
+  backface-visibility: hidden;
   z-index: var(--z-drawer);
+  contain: layout style;
 }
 #settings-panel.open {
   transform: translateX(0);
@@ -401,7 +398,7 @@ svg { display: block; }
 .tunnel-status, .tunnel-target { font-size: 9px; padding: 1px 5px; border-radius: 4px; flex-shrink: 0; display: inline-flex; align-items: center; gap: 2px; }
 .tunnel-btn { width: 28px; height: 28px; min-width: 28px; min-height: 28px; flex-shrink: 0; }
 .tunnel-btn.stop { color: var(--red); }
-#conn-status { transition: background var(--transition-slow); }
+#conn-status { transition: background var(--transition-slow); margin-left: 6px; }
 .reconnect-spinner { display: inline-flex; vertical-align: -1px; margin-right: 4px; }
 .reconnect-spinner svg { animation: reconnectSpin 1s linear infinite; }
 @keyframes reconnectSpin { to { transform: rotate(360deg); } }
@@ -429,7 +426,7 @@ svg { display: block; }
 #sidebar-header { flex-wrap: wrap; height: auto; }
 #file-breadcrumb { white-space: nowrap; overflow-x: auto; line-height: 1; scrollbar-width: none; font-size: 11px; color: var(--fg2); }
 #sidebar-header input { flex: 1 1 60px; min-width: 40px; height: 24px; font-size: 12px; border-radius: var(--radius-sm); }
-#file-list-wrap { flex: 1; overflow-y: auto; min-height: 0; touch-action: pan-y; -webkit-overflow-scrolling: touch; position: relative; overscroll-behavior: contain; content-visibility: auto; contain-intrinsic-size: 600px; }
+#file-list-wrap { flex: 1; overflow-y: auto; min-height: 0; touch-action: pan-y; -webkit-overflow-scrolling: touch; position: relative; overscroll-behavior: contain; }
 #ptr-indicator { position: absolute; top: -40px; left: 0; right: 0; height: 36px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 11px; color: var(--fg2); opacity: 0; pointer-events: none; }
 #ptr-indicator .ptr-arrow { display: inline-flex; }
 #ptr-indicator .ptr-arrow svg { transition: transform 0.2s ease; }
@@ -1060,9 +1057,6 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
     </button>
     <button class="icon-btn" id="tilesBtn" aria-label="Tiles Mode" title="Tiles Mode" onclick="toggleTiles()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-    </button>
-    <button class="icon-btn" id="term-fullscreen-btn" aria-label="Terminal fullscreen" title="Terminal fullscreen (Shift+F11)" onclick="toggleTerminalFullscreen()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
     </button>
     <button class="icon-btn" id="more-btn" aria-label="More options" title="More options" onclick="toggleMoreMenu()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
@@ -1850,6 +1844,7 @@ async function unlockApp() {
   setupSwipeGestures();
   setupFileListTouch();
   setupFileListKeyboard();
+  setupFileListContextMenu();
   setupCtxMenuKeyboard();
   setupMoreMenuKeyboard();
   restoreSidebarWidth();
@@ -2897,20 +2892,9 @@ async function loadFiles(dir) {
   if (loadFilesAbortController) loadFilesAbortController.abort();
   loadFilesAbortController = new AbortController();
 
-  if (skipHistoryPush) {
-    // back/forward — don't push and don't clear forward
-  } else {
-    if (currentPath && currentPath !== dir) {
-      navHistory.push(currentPath);
-    }
-    navForwardHistory = [];
-  }
+  const prevPath = currentPath;
+  const shouldPushHistory = !skipHistoryPush && currentPath && currentPath !== dir;
   skipHistoryPush = false;
-
-  currentPath = dir;
-  document.getElementById('path-input').value = dir;
-  renderBreadcrumb(dir);
-  saveCurrentPath();
 
   const list = document.getElementById('file-list');
 
@@ -2924,18 +2908,51 @@ async function loadFiles(dir) {
     const errorDiv = document.createElement('div');
     errorDiv.style.cssText = 'padding:16px;text-align:center;';
     errorDiv.innerHTML = '<div style="color:var(--red);margin-bottom:8px">Failed to load directory</div>' +
+      '<div style="color:var(--fg2);font-size:11px;margin-bottom:8px;word-break:break-all">' + escHtml(e.message || 'Unknown error') + '</div>' +
       '<button class="btn btn-primary" style="height:28px;padding:0 12px;font-size:11px">Retry</button>';
     list.innerHTML = '';
     list.appendChild(errorDiv);
     errorDiv.querySelector('button').addEventListener('click', () => loadFiles(dir));
+    toast(e.message || 'Failed to load directory', 'error');
     return;
   }
 
   if (!data.files) {
     setFileListLoading(false);
-    if (dir !== homeDir) loadFiles(homeDir);
+    const msg = data.error || 'Failed to load directory';
+    // Revert optimistic path — don't save failed dir
+    // Show error instead of silent bounce
+    const errorDiv = document.createElement('div');
+    errorDiv.style.cssText = 'padding:16px;text-align:center;';
+    errorDiv.innerHTML = '<div style="color:var(--red);margin-bottom:8px">' + escHtml(msg) + '</div>' +
+      '<button class="btn btn-primary" style="height:28px;padding:0 12px;font-size:11px">Retry</button>';
+    list.innerHTML = '';
+    list.appendChild(errorDiv);
+    errorDiv.querySelector('button').addEventListener('click', () => loadFiles(dir));
+    toast(msg, 'error');
+    // Only bounce to home if dir != home and home is different and we haven't already shown home
+    if (dir !== homeDir && prevPath !== homeDir) {
+      // keep currentPath as prevPath, don't update breadcrumb to failed dir
+      document.getElementById('path-input').value = prevPath;
+      renderBreadcrumb(prevPath);
+    } else {
+      // we are already at home or prevPath is home — update UI to reflect attempted dir for debugging
+      document.getElementById('path-input').value = dir;
+      renderBreadcrumb(dir);
+    }
     return;
   }
+
+  // Success — now update history and UI state
+  if (shouldPushHistory) {
+    navHistory.push(prevPath);
+    navForwardHistory = [];
+  }
+
+  currentPath = data.path || dir;
+  document.getElementById('path-input').value = currentPath;
+  renderBreadcrumb(currentPath);
+  saveCurrentPath();
 
   currentParent = data.parent || '';
 
@@ -3000,13 +3017,16 @@ async function loadFiles(dir) {
         sizeEl.remove();
       }
       existing.dataset.isDir = String(f.isDir);
+      existing.dataset.path = key;
+      const checkEl = existing.querySelector('.file-select-check');
+      if (checkEl) checkEl.setAttribute('data-path', key);
+      const ellEl = existing.querySelector('.file-ellipsis');
+      if (ellEl) ellEl.setAttribute('aria-label', 'More actions for ' + f.name);
+      const nameEl2 = existing.querySelector('.file-name');
+      if (nameEl2) nameEl2.title = key;
     }
 
-    addItem(key, () => {
-      const item = makeFileItem(f.name, f.isDir, key, sizeStr, icon);
-      item.addEventListener('contextmenu', e => showCtxMenu(e, f));
-      return item;
-    });
+    addItem(key, () => makeFileItem(f.name, f.isDir, key, sizeStr, icon));
   });
 
   // Remove any orphaned nodes (not in new data)
@@ -3048,25 +3068,28 @@ function makeFileItem(name, isDir, fullPath, size, icon) {
     <span class="file-ellipsis" role="button" tabindex="0" aria-label="More actions for ${escHtml(name)}" title="More actions"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></span>
   `;
   div.addEventListener('click', e => {
+    const curPath = div.dataset.path;
+    const curIsDir = div.dataset.isDir === 'true';
+    const curName = (div.querySelector('.file-name')?.textContent || curPath.split(/[\\/]/).pop() || curPath);
     if (e.target.closest('.file-select-check')) {
-      toggleFileSelection(fullPath, div);
+      toggleFileSelection(curPath, div);
       if (selectedFiles.length > 0) document.getElementById('select-actions').style.display = 'flex';
       return;
     }
     if (e.target.closest('.file-ellipsis')) {
       e.stopPropagation();
       const rect = div.querySelector('.file-ellipsis').getBoundingClientRect();
-      const m = fullPath.match(/\.([^.]+)$/);
-      showCtxMenu({ clientX: rect.left + rect.width / 2, clientY: rect.bottom + 4, preventDefault() {}, stopPropagation() {} }, { path: fullPath, name, isDir, ext: m ? '.' + m[1].toLowerCase() : '' });
+      const m = curPath.match(/\.([^.]+)$/);
+      showCtxMenu({ clientX: rect.left + rect.width / 2, clientY: rect.bottom + 4, preventDefault() {}, stopPropagation() {} }, { path: curPath, name: curName, isDir: curIsDir, ext: m ? '.' + m[1].toLowerCase() : '' });
       return;
     }
     if (selectMode) {
-      toggleFileSelection(fullPath, div);
+      toggleFileSelection(curPath, div);
       return;
     }
-    if (isDir) loadFiles(fullPath);
-    else if (isImageFile(fullPath)) openImageViewer(fullPath);
-    else openFileEditor(fullPath);
+    if (curIsDir) loadFiles(curPath);
+    else if (isImageFile(curPath)) openImageViewer(curPath);
+    else openFileEditor(curPath);
   });
   const ell = div.querySelector('.file-ellipsis');
   if (ell) {
@@ -3074,9 +3097,12 @@ function makeFileItem(name, isDir, fullPath, size, icon) {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         e.stopPropagation();
+        const curPath = div.dataset.path;
+        const curIsDir = div.dataset.isDir === 'true';
+        const curName = (div.querySelector('.file-name')?.textContent || curPath.split(/[\\/]/).pop() || curPath);
         const rect = ell.getBoundingClientRect();
-        const m = fullPath.match(/\.([^.]+)$/);
-        showCtxMenu({ clientX: rect.left + rect.width / 2, clientY: rect.bottom + 4, preventDefault() {}, stopPropagation() {} }, { path: fullPath, name, isDir, ext: m ? '.' + m[1].toLowerCase() : '' });
+        const m = curPath.match(/\.([^.]+)$/);
+        showCtxMenu({ clientX: rect.left + rect.width / 2, clientY: rect.bottom + 4, preventDefault() {}, stopPropagation() {} }, { path: curPath, name: curName, isDir: curIsDir, ext: m ? '.' + m[1].toLowerCase() : '' });
       }
     });
   }
@@ -3120,10 +3146,33 @@ function setupFileListKeyboard() {
   });
 }
 
+function setupFileListContextMenu() {
+  const list = document.getElementById('file-list');
+  if (!list || list.dataset._ctxSetup) return;
+  list.dataset._ctxSetup = '1';
+  list.addEventListener('contextmenu', e => {
+    const item = e.target.closest('.file-item');
+    if (!item || !item.dataset.path) return;
+    const curPath = item.dataset.path;
+    const curIsDir = item.dataset.isDir === 'true';
+    const curName = (item.querySelector('.file-name')?.textContent || curPath.split(/[\\/]/).pop() || curPath);
+    const m = curPath.match(/\.([^.]+)$/);
+    const ext = m ? '.' + m[1].toLowerCase() : '';
+    showCtxMenu(e, { path: curPath, name: curName, isDir: curIsDir, ext });
+  });
+}
+
 function refreshFiles() {
   if (currentPath) loadFiles(currentPath);
 }
-function navigateTo(p) { loadFiles(p || homeDir); }
+function navigateTo(p) {
+  if (!p || !String(p).trim()) return loadFiles(homeDir);
+  let target = String(p).trim();
+  // If relative path, resolve against currentPath
+  const isAbsolute = target.startsWith('/') || /^[A-Za-z]:[\\/]/.test(target) || target.startsWith('\\\\');
+  if (!isAbsolute) target = joinPath(currentPath || homeDir, target);
+  loadFiles(target);
+}
 function navigateUp() {
   if (currentParent && currentParent !== currentPath) {
     loadFiles(currentParent);
@@ -3159,7 +3208,10 @@ function startFileWatcher() {
   if (fileWatchTimer) return;
   const watch = () => {
     const sb = document.getElementById('sidebar');
+    const sp = document.getElementById('settings-panel');
     if (!sb || sb.classList.contains('hidden') || document.hidden) return;
+    if (sp && sp.classList.contains('open')) return;
+    if (document.querySelector('.overlay.open')) return;
     if (currentPath) loadFiles(currentPath);
   };
   const onVisibility = () => {
@@ -3664,9 +3716,8 @@ async function confirmRename() {
     body: JSON.stringify({ oldPath: renamePath, newName })
   });
   setBtnBusy(document.getElementById('rename-ok-btn'), false);
-  if (r.success) { toast('Renamed', 'success'); refreshFiles(); }
+  if (r.success) { toast('Renamed', 'success'); refreshFiles(); closeOverlay('rename-overlay'); }
   else showFieldError('rename-error', r.error || 'Rename failed');
-  closeOverlay('rename-overlay');
 }
 
 async function deleteFile(file) {
@@ -4218,7 +4269,6 @@ async function closeEditor() {
   ev.classList.remove('open');
   ev.classList.remove('fullscreen');
   document.removeEventListener('keydown', _fsEscHandler);
-  try { if (document.fullscreenElement) document.exitFullscreen(); } catch {}
   const fsBtn = document.getElementById('editor-fullscreen-toggle');
   if (fsBtn) { fsBtn.setAttribute('aria-label','Fullscreen'); fsBtn.title='Fullscreen (F11)'; fsBtn.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>'; }
   document.getElementById('content').classList.remove('editor-open');
@@ -4629,16 +4679,20 @@ function openSettings() {
   const isOpen = panel.classList.contains('open');
   // Don't inert #main because panel is inside #main — inert would disable panel itself. Inert content only (sidebar is sibling).
   const content = document.getElementById('content');
-  panel.classList.toggle('open');
   if (!isOpen) {
+    panel.classList.add('open');
     panel.setAttribute('aria-modal', 'true');
     panel.setAttribute('role', 'dialog');
-    if (content) content.setAttribute('inert', '');
-    installFocusTrap(panel);
-    panel.querySelector('select, button, input')?.focus();
-    // Defer outside-click handler to next tick so opening click doesn't immediately close
+    // Defer inert + focus to next frame so panel transform can composite on GPU without reflowing sidebar/file-list
+    requestAnimationFrame(() => {
+      if (content) content.setAttribute('inert', '');
+      installFocusTrap(panel);
+      const firstFocusable = panel.querySelector('select, button, input');
+      if (firstFocusable) firstFocusable.focus({ preventScroll: true });
+    });
     setTimeout(() => document.addEventListener('click', closeSettingsOnClickOutside, true), 50);
   } else {
+    panel.classList.remove('open');
     panel.removeAttribute('aria-modal');
     if (content) content.removeAttribute('inert');
     removeFocusTrap();
@@ -5118,13 +5172,13 @@ function toggleEditorFullscreen() {
   }
   if (isFS) {
     document.addEventListener('keydown', _fsEscHandler);
-    try { view.requestFullscreen?.(); } catch {}
   } else {
     document.removeEventListener('keydown', _fsEscHandler);
-    try { if (document.fullscreenElement) document.exitFullscreen(); } catch {}
     requestAnimationFrame(() => { tabs.forEach(t=>{try{fitTerm(t);}catch(e){console.warn(e);}}); if(editor) editor.refresh(); });
   }
   if (editor) setTimeout(()=>editor.refresh(), 80);
+  // Keep sidebar visible — editor fullscreen now only covers terminal area (absolute inside #editor-split-area)
+  requestAnimationFrame(() => { tabs.forEach(t=>{try{fitTerm(t);}catch(e){console.warn(e);}}); });
 }
 function _fsEscHandler(e) {
   if (e.key === 'Escape' || e.key === 'F11') {
@@ -5133,49 +5187,8 @@ function _fsEscHandler(e) {
   }
 }
 
-function toggleTerminalFullscreen() {
-  const content = document.getElementById('content');
-  const term = document.getElementById('terminals');
-  const sidebar = document.getElementById('sidebar');
-  if (!content || !term) return;
-  const isFS = content.classList.toggle('terminal-fullscreen');
-  term.classList.toggle('fullscreen', isFS);
-  const btn = document.getElementById('term-fullscreen-btn');
-  if (btn) {
-    btn.classList.toggle('active', isFS);
-    btn.setAttribute('aria-label', isFS ? 'Exit terminal fullscreen' : 'Terminal fullscreen');
-    btn.title = isFS ? 'Exit terminal fullscreen (Esc/Shift+F11)' : 'Terminal fullscreen (Shift+F11)';
-    btn.innerHTML = isFS
-      ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 14 10 14 10 4"/><polyline points="20 10 14 10 14 20"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="10" y1="14" x2="3" y2="21"/></svg>'
-      : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
-  }
-  if (isFS) {
-    document.addEventListener('keydown', _termFsEscHandler);
-    try { content.requestFullscreen?.(); } catch {}
-  } else {
-    document.removeEventListener('keydown', _termFsEscHandler);
-    try { if (document.fullscreenElement) document.exitFullscreen(); } catch {}
-    // Ensure sidebar is visible when exiting fullscreen
-    if (sidebar) {
-      sidebar.style.display = '';
-      sidebar.classList.remove('hidden');
-      if (window.innerWidth <= 768) {
-        sidebar.classList.add('mobile-open');
-      }
-    }
-  }
-  requestAnimationFrame(() => { tabs.forEach(t=>{try{fitTerm(t);}catch(e){console.warn(e);}}); const at=getActiveTab(); try{at?.term?.focus();}catch{} });
-}
-function _termFsEscHandler(e) {
-  const isTermFS = document.getElementById('content')?.classList.contains('terminal-fullscreen');
-  if (!isTermFS) return;
-  if (e.key === 'Escape' || (e.key === 'F11' && e.shiftKey)) { e.preventDefault(); toggleTerminalFullscreen(); }
-  else if (e.key === 'F11' && !e.shiftKey) {
-    // Let editor handle F11 when editor fullscreen, but prevent browser default
-    const ev = document.getElementById('editor-view');
-    if (!ev || !ev.classList.contains('fullscreen')) e.preventDefault();
-  }
-}
+// Terminal fullscreen removed — per request, terminal fullscreen should not cover sidebar
+// toggleTerminalFullscreen and _termFsEscHandler intentionally removed
 const hasWakeLock = 'wakeLock' in navigator;
 
 async function requestWakeLock() {
@@ -5270,8 +5283,7 @@ function setupKeyboardShortcuts() {
     if (ctrl && e.shiftKey && e.key === 'ArrowRight') { e.preventDefault(); cycleTab(1); }
     if (ctrl && e.shiftKey && e.key === 'ArrowLeft') { e.preventDefault(); cycleTab(-1); }
     if (ctrl && e.shiftKey && e.key === 'r') { e.preventDefault(); refreshPreview(); }
-    if (e.key === 'F11' && e.shiftKey) { e.preventDefault(); toggleTerminalFullscreen(); }
-    else if (e.key === 'F11' && document.getElementById('editor-view').classList.contains('open')) { e.preventDefault(); toggleEditorFullscreen(); }
+    if (e.key === 'F11' && document.getElementById('editor-view').classList.contains('open')) { e.preventDefault(); toggleEditorFullscreen(); }
     if (e.key === 'Escape') {
       const termMenu = document.getElementById('term-ctx-menu');
       if (termMenu && termMenu.style.display !== 'none') {
@@ -5661,8 +5673,23 @@ function setupDragDrop() {
   });
   document.addEventListener('dragleave', e => {
     if (!isFileDrag(e)) return;
-    dragCnt--;
-    if (dragCnt <= 0) { dragCnt = 0; overlay.classList.remove('active'); }
+    // Only hide when leaving the viewport (relatedTarget null) or overlay itself
+    // Prevents nested dragenter/leave from child elements desyncing counter
+    if (!e.relatedTarget || e.relatedTarget === document.documentElement || e.target === overlay) {
+      dragCnt = 0;
+      overlay.classList.remove('active');
+    } else {
+      dragCnt--;
+      if (dragCnt <= 0) { dragCnt = 0; overlay.classList.remove('active'); }
+    }
+  });
+  document.addEventListener('dragend', () => {
+    dragCnt = 0;
+    overlay.classList.remove('active');
+  });
+  window.addEventListener('blur', () => {
+    dragCnt = 0;
+    overlay.classList.remove('active');
   });
   document.addEventListener('dragover', e => {
     if (!isFileDrag(e)) return;

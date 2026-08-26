@@ -69,17 +69,16 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh &&
 - **Bracketed paste** — Ctrl+V works in TUI apps (vim, nano, htop) — 60KB chunked
 - **Command history** — keystroke-based capture, strips ANSI/control sequences
 - **Session persistence** — tmux or in-memory PTY; tabs survive page reload (all platforms)
-- **Fullscreen** — terminal fullscreen `Shift+F11` (header button), fits and refocuses
 - **Keyboard Shortcuts** — reference dialog in the overflow menu (Ctrl+P/T/W/B/F, etc.)
 
 ### File Explorer
-- Browse, upload, download, rename, delete files
+- Browse, upload, download, rename, delete files — **full filesystem access** (`ALLOW_FULL_FS=true` by default)
 - **Multi-select** — batch delete, download, zip, cut, copy
 - **Zip/Extract** — right-click any file or folder
 - **Image viewer** — preview inline (png, jpg, gif, svg, webp)
 - **Conflict resolution** — replace, merge, keep both, skip
 - **Breadcrumb navigation** — tappable segments, folder icon + path one line, `2px` tight spacing, header/breadcrumb unified `30px` bar
-- **Editor** — CodeMirror with autosave draft, `F11` fullscreen + `horizontal/vertical` split toggle, markdown/HTML preview
+- **Editor** — CodeMirror with autosave draft, `F11` fullscreen (covers terminal area only, never the file explorer), `horizontal/vertical` split toggle, markdown/HTML preview
 
 ### Mobile
 - **Touch gestures** — swipe to close tabs, pull-to-refresh
@@ -135,7 +134,7 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh &&
 | `PIN` | Auth PIN (empty = no auth) | none |
 | `SHELL` | Shell to use | platform default |
 | `WORKSPACE_ROOT` | File explorer root | `~` |
-| `ALLOW_FULL_FS` | Allow browsing outside `WORKSPACE_ROOT` (full FS) | `false` |
+| `ALLOW_FULL_FS` | Allow browsing outside `WORKSPACE_ROOT` (full FS) | `true` |
 | `TRUST_PROXY` | Trust `X-Forwarded-For` from first proxy | `false` |
 | `WEBTUN_SHELL` | Override shell on Windows | PowerShell |
 
@@ -177,6 +176,13 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh &&
 ---
 
 ## Changelog
+
+### v1.5.5
+- Explorer: full filesystem access by default (`ALLOW_FULL_FS=true` unless `ALLOW_FULL_FS=false`), symlink dirs now navigable (`stat` `isDirectory`), fixed silent `403` bounce on `..` (now `toast` + error div), `parent` hidden at workspace root, `history`/`breadcrumb` desync fixed (deferred to success), stale closures on reused file items fixed (`dataset` live), drag overlay stuck fixed (`relatedTarget`/`dragend`/`blur`), relative `path-input` now `joinPath(currentPath)`, `rename` dialog no longer closes on error
+- Settings: drawer flicker fixed (`#main:isolation`, `#sidebar`/`#settings-panel` `will-change`/`backface-visibility`, `#file-list-wrap` `content-visibility` removed, `inert`/`focusTrap` deferred via `rAF` + `preventScroll`, `fileWatcher` skips when drawer/overlay open)
+- Editor: `F11` fullscreen now `absolute` inside terminal area only (`#editor-split-area` `relative`), never covers file explorer/sidebar or header, removed `requestFullscreen` browser overlay, `CodeMirror` height `100%`
+- Terminal: removed `Shift+F11` fullscreen button and `#terminals.fullscreen`/`#content.terminal-fullscreen` per request
+- UI: `#conn-status` `margin-left:6px` before dot
 
 ### v1.5.4
 - Security hardening: path sandbox `ALLOW_FULL_FS` (default `~`), symlink containment, null-byte/array guards, `rename` traversal block, `delete` uses `lstat`, batch caps 100, zip 1GB/unzip bomb guards, `download` header sanitization, `image` no-store, `write` 10MB cap, tunnel SSRF (localhost-only) + URL validation
