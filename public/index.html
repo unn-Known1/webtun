@@ -619,6 +619,19 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 #editor-preview.active { display: block; }
 #editor-preview-iframe { width: 100%; height: 100%; border: none; display: none; background: var(--bg); border-radius: var(--radius); }
 
+/* PDF / EPUB doc preview */
+#pdf-viewer, #epub-viewer { display: none; flex-direction: column; width: 100%; height: 100%; overflow: hidden; background: var(--bg); }
+#pdf-viewer.active, #epub-viewer.active { display: flex; }
+.doc-toolbar { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0; font-size: 12px; }
+.doc-toolbar .doc-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); font-family: var(--font); font-size: 12px; }
+.doc-toolbar .doc-page-info { color: var(--fg2); font-size: 11px; white-space: nowrap; }
+.doc-toolbar .icon-btn { width: 26px; height: 26px; min-width: 26px; min-height: 26px; }
+#pdf-canvas-wrap { flex: 1; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 12px; background: var(--bg3); }
+#pdf-canvas-wrap canvas { background: white; box-shadow: 0 2px 12px rgba(0,0,0,0.3); border-radius: 2px; max-width: 100%; }
+#epub-wrap { flex: 1; overflow: auto; display: flex; flex-direction: column; background: white; -webkit-overflow-scrolling: touch; }
+#epub-view { flex: 1; overflow: visible; position: relative; min-height: 100%; }
+#epub-view iframe { width: 100%; height: 100%; border: none; }
+
 /* ═══════════════════════════════════════════════════════
    CODEMIRROR
    ═══════════════════════════════════════════════════════ */
@@ -1227,7 +1240,29 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
           </div>
           <div id="editor-area">
             <textarea id="editor-textarea" spellcheck="false"></textarea>
-            <div id="editor-preview"><iframe id="editor-preview-iframe" sandbox="allow-scripts"></iframe></div>
+            <div id="editor-preview"><div id="md-preview-content" style="display:none"></div><iframe id="editor-preview-iframe" sandbox="allow-same-origin allow-scripts"></iframe></div>
+            <div id="pdf-viewer">
+              <div class="doc-toolbar">
+                <span class="doc-title" id="pdf-title"></span>
+                <span class="doc-page-info" id="pdf-page-info"></span>
+                <button class="icon-btn" title="Zoom out" onclick="pdfZoom(-0.2)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>
+                <button class="icon-btn" title="Zoom in" onclick="pdfZoom(0.2)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>
+                <button class="icon-btn" title="Previous page" onclick="pdfNav(-1)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>
+                <button class="icon-btn" title="Next page" onclick="pdfNav(1)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>
+                <button class="icon-btn" title="Download" onclick="downloadFile(editorPath)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+              </div>
+              <div id="pdf-canvas-wrap"></div>
+            </div>
+            <div id="epub-viewer">
+              <div class="doc-toolbar">
+                <span class="doc-title" id="epub-title"></span>
+                <span class="doc-page-info" id="epub-loc"></span>
+                <button class="icon-btn" title="Previous" onclick="epubNav(-1)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>
+                <button class="icon-btn" title="Next" onclick="epubNav(1)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>
+                <button class="icon-btn" title="Download" onclick="downloadFile(editorPath)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+              </div>
+              <div id="epub-wrap"><div id="epub-view"></div></div>
+            </div>
           </div>
         </div>
       </div>
@@ -3088,7 +3123,6 @@ function makeFileItem(name, isDir, fullPath, size, icon) {
       return;
     }
     if (curIsDir) loadFiles(curPath);
-    else if (isImageFile(curPath)) openImageViewer(curPath);
     else openFileEditor(curPath);
   });
   const ell = div.querySelector('.file-ellipsis');
@@ -3235,8 +3269,10 @@ function getFileIcon(ext) {
   const codeExts = { '.js':1,'.ts':1,'.jsx':1,'.tsx':1,'.py':1,'.rs':1,'.go':1,'.java':1,'.c':1,'.cpp':1,'.html':1,'.css':1,'.sh':1,'.yml':1,'.yaml':1,'.toml':1,'.json':1,'.sql':1 };
   const imgExts = { '.png':1,'.jpg':1,'.jpeg':1,'.gif':1,'.svg':1,'.webp':1,'.ico':1 };
   const archiveExts = { '.zip':1,'.tar':1,'.gz':1,'.bz2':1,'.xz':1,'.7z':1,'.rar':1 };
+  const docExts = { '.pdf':1,'.epub':1 };
   if (codeExts[ext]) return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>';
   if (imgExts[ext]) return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>';
+  if (docExts[ext]) return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>';
   if (archiveExts[ext]) return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/></svg>';
   return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
 }
@@ -3521,8 +3557,8 @@ function showCtxMenu(e, file) {
   ctxTarget = file;
   const menu = document.getElementById('ctx-menu');
   menu.style.display = 'block';
-  document.getElementById('ctx-open').style.display = file.isDir || isImageFile(file.path) ? '' : 'none';
-  document.getElementById('ctx-edit').style.display = file.isDir ? 'none' : (isImageFile(file.path) ? 'none' : '');
+  document.getElementById('ctx-open').style.display = file.isDir || isImageFile(file.path) || isDocFile(file.path) ? '' : 'none';
+  document.getElementById('ctx-edit').style.display = file.isDir ? 'none' : (!canOpenInEditor(file.path) ? 'none' : '');
   document.getElementById('ctx-open-term').style.display = file.isDir ? '' : 'none';
   document.getElementById('ctx-paste').style.display = fsClipboard ? '' : 'none';
   document.getElementById('ctx-zip').style.display = '';
@@ -3553,7 +3589,12 @@ document.addEventListener('click', () => {
   if (termMenu) termMenu.style.display = 'none';
 });
 
-document.getElementById('ctx-open').onclick = () => { if (!ctxTarget) return; if (isImageFile(ctxTarget.path)) openImageViewer(ctxTarget.path); else loadFiles(ctxTarget.path); };
+document.getElementById('ctx-open').onclick = () => {
+  if (!ctxTarget) return;
+  if (ctxTarget.isDir) loadFiles(ctxTarget.path);
+  else if (isImageFile(ctxTarget.path) || isDocFile(ctxTarget.path)) openFileEditor(ctxTarget.path);
+  else loadFiles(ctxTarget.path);
+};
 document.getElementById('ctx-edit').onclick = () => ctxTarget && openFileEditor(ctxTarget.path);
 document.getElementById('ctx-download').onclick = () => {
   if (selectedFiles.length > 0) { downloadSelected(); return; }
@@ -4152,8 +4193,15 @@ function getCMmode(fileName) {
 }
 
 async function openFileEditor(path) {
+  if (isImageFile(path)) { openImageViewer(path); return; }
+  if (isPdfFile(path)) { openPdfViewer(path); return; }
+  if (isEpubFile(path)) { openEpubViewer(path); return; }
+  if (!canOpenInEditor(path)) { toast('Preview not supported for this file type — use Download', 'warning'); return; }
   const r = await api(`/api/files/read?path=${encodeURIComponent(path)}`);
-  if (r.error) { toast(r.error, 'error'); return; }
+  if (r.error) {
+    if (r.isBinary) { toast(r.error || 'Preview not supported for binary files — use Download', 'warning'); return; }
+    toast(r.error, 'error'); return;
+  }
   if (r.length > MAX_EDITOR_SIZE) {
     const ok = await confirmDialog({ title: 'Large file', message: `File is ${(r.length / 1024 / 1024).toFixed(1)}MB. Open anyway?`, okText: 'Open', danger: true });
     if (!ok) return;
@@ -4164,6 +4212,9 @@ async function openFileEditor(path) {
   const fileName = path.split(sep).pop() || path;
   const isMd = /\.md$/i.test(fileName);
   const isHtml = /\.html?$/i.test(fileName);
+  // hide doc viewers when opening text file
+  cleanupDocViewers();
+  document.getElementById('editor-save-btn').style.display = '';
 
   const cm = initCodeMirror();
   cm.setValue(r.content);
@@ -4178,8 +4229,12 @@ async function openFileEditor(path) {
   const toggleBtn = document.getElementById('md-preview-toggle');
   const refreshBtn = document.getElementById('preview-refresh-btn');
   const previewIframe = document.getElementById('editor-preview-iframe');
+  const mdContent = document.getElementById('md-preview-content');
   preview.classList.remove('active');
   if (previewIframe) { previewIframe.style.display = 'none'; previewIframe.srcdoc = ''; }
+  if (mdContent) { mdContent.style.display = 'none'; mdContent.innerHTML = ''; }
+  mdPreviewActive = false;
+  clearPreviewLiveReload();
   if ((isMd && typeof marked !== 'undefined') || isHtml) {
     toggleBtn.style.display = '';
     toggleBtn.textContent = 'Preview';
@@ -4259,12 +4314,16 @@ async function saveFile() {
 }
 
 async function closeEditor() {
-  const currentContent = editor ? editor.getValue() : document.getElementById('editor-textarea').value;
-  if (currentContent !== editorOriginalContent) {
-    const ok = await confirmDialog({ title: 'Unsaved changes', message: 'You have unsaved changes. Close anyway?', okText: 'Discard', cancelText: 'Keep Editing', danger: true });
-    if (!ok) return;
+  const isDocPreview = !!(_pdfDoc || _epubBook);
+  if (!isDocPreview) {
+    const currentContent = editor ? editor.getValue() : document.getElementById('editor-textarea').value;
+    if (currentContent !== editorOriginalContent) {
+      const ok = await confirmDialog({ title: 'Unsaved changes', message: 'You have unsaved changes. Close anyway?', okText: 'Discard', cancelText: 'Keep Editing', danger: true });
+      if (!ok) return;
+    }
   }
   clearPreviewLiveReload();
+  cleanupDocViewers();
   const ev = document.getElementById('editor-view');
   ev.classList.remove('open');
   ev.classList.remove('fullscreen');
@@ -4277,6 +4336,8 @@ async function closeEditor() {
   document.getElementById('preview-refresh-btn').style.display = 'none';
   const previewIframe = document.getElementById('editor-preview-iframe');
   if (previewIframe) { previewIframe.style.display = 'none'; previewIframe.srcdoc = ''; }
+  const mdContent = document.getElementById('md-preview-content');
+  if (mdContent) { mdContent.style.display = 'none'; mdContent.innerHTML = ''; }
   const cm = document.querySelector('.CodeMirror');
   if (cm) cm.style.display = '';
   mdPreviewActive = false;
@@ -4289,10 +4350,444 @@ async function closeEditor() {
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.bmp', '.ico']);
 
+// Binary extensions from https://github.com/sindresorhus/binary-extensions (v2.3.0)
+// Used to block editor preview for non-text files. Images are previewable via image viewer, so they are checked first.
+const BINARY_EXTS = new Set([
+  '3dm','3ds','3g2','3gp','7z','a','aac','adp','afdesign','afphoto','afpub','ai','aif','aiff','alz','ape','apk','appimage','ar','arj','asf','au','avi','bak','baml','bh','bin','bk','bmp','btif','bz2','bzip2','cab','caf','cgm','class','cmx','cpio','cr2','cr3','cur','dat','dcm','deb','dex','djvu','dll','dmg','dng','doc','docm','docx','dot','dotm','dra','ds_store','dsk','dts','dtshd','dvb','dwg','dxf','ecelp4800','ecelp7470','ecelp9600','egg','eol','eot','epub','exe','f4v','fbs','fh','fla','flac','flatpak','fli','flv','fpx','fst','fvt','g3','gh','gif','graffle','gz','gzip','h261','h263','h264','icns','ico','ief','img','ipa','iso','jar','jpeg','jpg','jpgv','jpm','jxr','key','ktx','lha','lib','lvp','lz','lzh','lzma','lzo','m3u','m4a','m4v','mar','mdi','mht','mid','midi','mj2','mka','mkv','mmr','mng','mobi','mov','movie','mp3','mp4','mp4a','mpeg','mpg','mpga','mxu','nef','npx','numbers','nupkg','o','odp','ods','odt','oga','ogg','ogv','otf','ott','pages','pbm','pcx','pdb','pdf','pea','pgm','pic','png','pnm','pot','potm','potx','ppa','ppam','ppm','pps','ppsm','ppsx','ppt','pptm','pptx','psd','pya','pyc','pyo','pyv','qt','rar','ras','raw','resources','rgb','rip','rlc','rmf','rmvb','rpm','rtf','rz','s3m','s7z','scpt','sgi','shar','snap','sil','sketch','slk','smv','snk','so','stl','suo','sub','swf','tar','tbz','tbz2','tga','tgz','thmx','tif','tiff','tlz','ttc','ttf','txz','udf','uvh','uvi','uvm','uvp','uvs','uvu','viv','vob','war','wav','wax','wbmp','wdp','weba','webm','webp','whl','wim','wm','wma','wmv','wmx','woff','woff2','wrm','wvx','xbm','xif','xla','xlam','xls','xlsb','xlsm','xlsx','xlt','xltm','xltx','xm','xmind','xpi','xpm','xwd','xz','z','zip','zipx'
+]);
+
 function isImageFile(path) {
   const m = path.match(/\.([^.]+)$/);
   return m ? IMAGE_EXTS.has('.' + m[1].toLowerCase()) : false;
 }
+
+function getFileExt(path) {
+  const m = path.match(/\.([^.\\/]+)$/);
+  return m ? '.' + m[1].toLowerCase() : '';
+}
+
+function isBinaryFile(path) {
+  const ext = getFileExt(path);
+  return ext ? BINARY_EXTS.has(ext.slice(1).toLowerCase()) : false;
+}
+
+function canOpenInEditor(path) {
+  if (isImageFile(path)) return false;
+  if (isPdfFile(path) || isEpubFile(path)) return false;
+  if (isBinaryFile(path)) return false;
+  return true;
+}
+
+function isPdfFile(path) { return /\.pdf$/i.test(path); }
+function isEpubFile(path) { return /\.epub$/i.test(path); }
+function isDocFile(path) { return isPdfFile(path) || isEpubFile(path); }
+
+// ── Doc preview dynamic loader ──
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) return resolve();
+    const s = document.createElement('script');
+    s.src = src;
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('Failed to load ' + src));
+    document.head.appendChild(s);
+  });
+}
+async function loadPdfJs() {
+  if (window.pdfjsLib) return;
+  // pdf.js v2 UMD global is pdfjsLib
+  await loadScript('https://cdn.jsdelivr.net/npm/pdfjs-dist@2.16.105/build/pdf.min.js');
+  const lib = window.pdfjsLib || window['pdfjs-dist/build/pdf'];
+  if (!lib) throw new Error('PDF.js not found');
+  window.pdfjsLib = lib;
+  if (lib.GlobalWorkerOptions) {
+    lib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@2.16.105/build/pdf.worker.min.js';
+  }
+}
+async function loadEpubJs() {
+  if (window.ePub) return;
+  await loadScript('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
+  await loadScript('https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js');
+  if (!window.ePub && !window.EPUBJS) throw new Error('EPUB.js not found');
+  if (!window.ePub && window.EPUBJS) window.ePub = window.EPUBJS;
+}
+
+let _pdfDoc = null;
+let _pdfPath = '';
+let _pdfScale = 1.4;
+let _pdfCurrentPage = 1;
+let _pdfPageOrder = null;
+
+async function openPdfViewer(path) {
+  // Show viewer shell immediately for perceived performance
+  editorPath = path;
+  editorOriginalContent = '';
+  const fileName = path.split(/[\\/]/).pop() || path;
+  document.getElementById('editor-filename').textContent = fileName + '  /  ' + path;
+  document.getElementById('editor-status').textContent = '';
+  const cm = document.querySelector('.CodeMirror');
+  if (cm) cm.style.display = 'none';
+  document.getElementById('editor-preview').classList.remove('active');
+  const iframe = document.getElementById('editor-preview-iframe');
+  if (iframe) { iframe.style.display = 'none'; iframe.srcdoc = ''; }
+  const mdContent = document.getElementById('md-preview-content');
+  if (mdContent) { mdContent.style.display = 'none'; }
+  mdPreviewActive = false;
+  clearPreviewLiveReload();
+  document.getElementById('epub-viewer').classList.remove('active');
+  const pdfViewer = document.getElementById('pdf-viewer');
+  pdfViewer.classList.add('active');
+  document.getElementById('pdf-title').textContent = fileName;
+  document.getElementById('pdf-page-info').textContent = 'Loading…';
+  document.getElementById('pdf-canvas-wrap').innerHTML = '<div style="color:var(--fg2);padding:20px">Loading PDF…</div>';
+  // open editor split immediately
+  if (window.innerWidth > 768) {
+    document.getElementById('content').classList.add('editor-open');
+    const splitArea = document.getElementById('editor-split-area');
+    try {
+      const orient = safeStorage.getItem('wt-editor-split-orientation');
+      const isHoriz = orient === 'horizontal';
+      if (splitArea) splitArea.classList.toggle('horizontal', isHoriz);
+    } catch {}
+  }
+  document.getElementById('editor-view').classList.add('open');
+  document.getElementById('editor-save-btn').style.display = 'none';
+  document.getElementById('md-preview-toggle').style.display = 'none';
+  document.getElementById('preview-refresh-btn').style.display = 'none';
+  requestAnimationFrame(() => { tabs.forEach(tab => { try { fitTerm(tab); } catch (e) {} }); });
+  // Load PDF.js immediately without confirmation (cached after first load)
+  if (!window.pdfjsLib) {
+    const t = toast('Loading PDF viewer…', 'info');
+    try { await loadPdfJs(); t.remove(); } catch (e) { t.remove(); toast('Failed to load PDF viewer: ' + e.message, 'error'); return; }
+  }
+  try {
+    const resp = await fetch(`/api/files/image?path=${encodeURIComponent(path)}&_t=${Date.now()}`, { headers: { 'x-pin-token': authToken } });
+    if (!resp.ok) throw new Error('Failed to fetch PDF');
+    const buf = await resp.arrayBuffer();
+    const lib = window.pdfjsLib;
+    const loadingTask = lib.getDocument({ data: buf });
+    _pdfDoc = await loadingTask.promise;
+    _pdfPath = path;
+    _pdfCurrentPage = 1;
+    _pdfScale = 1.4;
+    await renderPdfDoc();
+  } catch (e) {
+    console.warn('PDF load failed', e);
+    document.getElementById('pdf-canvas-wrap').innerHTML = '<div style="color:var(--red);padding:20px">Failed to load PDF: ' + escHtml(e.message) + '</div>';
+    document.getElementById('pdf-page-info').textContent = 'Error';
+    toast('PDF load failed: ' + e.message, 'error');
+  }
+}
+async function renderPdfDoc() {
+  if (!_pdfDoc) return;
+  const wrap = document.getElementById('pdf-canvas-wrap');
+  wrap.innerHTML = '';
+  const total = _pdfDoc.numPages;
+  let pageLabels = null;
+  try { pageLabels = await _pdfDoc.getPageLabels(); } catch {}
+  const getLabel = (idx) => pageLabels && pageLabels[idx-1] ? pageLabels[idx-1] : String(idx);
+  // Build ordered list of pages sorted by actual page number (label if numeric, else index) to ensure preview matches printed page numbers
+  let pageOrder = Array.from({length: total}, (_, k) => k+1);
+  if (pageLabels) {
+    try {
+      pageOrder.sort((a,b) => {
+        const la = getLabel(a), lb = getLabel(b);
+        const na = parseInt(la, 10), nb = parseInt(lb, 10);
+        const aIsNum = !isNaN(na) && String(na) === la.trim();
+        const bIsNum = !isNaN(nb) && String(nb) === lb.trim();
+        if (aIsNum && bIsNum) return na - nb;
+        if (aIsNum && !bIsNum) return -1;
+        if (!aIsNum && bIsNum) return 1;
+        return la.localeCompare(lb);
+      });
+    } catch {}
+  }
+  _pdfPageOrder = pageOrder;
+  _pdfCurrentPage = pageOrder[0];
+  document.getElementById('pdf-page-info').textContent = getLabel(pageOrder[0]) + ' / ' + getLabel(pageOrder[pageOrder.length-1]) + ' • ' + total + ' pages';
+  // Render all pages vertically for scrollable preview in sorted order
+  try {
+    for (const i of pageOrder) {
+      const page = await _pdfDoc.getPage(i);
+      const viewport = page.getViewport({ scale: _pdfScale });
+      const canvas = document.createElement('canvas');
+      canvas.id = 'pdf-page-' + i;
+      canvas.dataset.page = i;
+      canvas.dataset.label = getLabel(i);
+      const ctx = canvas.getContext('2d');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      canvas.style.width = viewport.width + 'px';
+      canvas.style.height = viewport.height + 'px';
+      // label
+      const pageWrap = document.createElement('div');
+      pageWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:4px';
+      pageWrap.appendChild(canvas);
+      const label = document.createElement('div');
+      label.style.cssText = 'color:var(--fg2);font-size:10px';
+      label.textContent = 'Page ' + getLabel(i) + ' • ' + i + '/' + total;
+      pageWrap.appendChild(label);
+      wrap.appendChild(pageWrap);
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      // allow UI to breathe for large docs
+      if (i % 10 === 0) await new Promise(r => setTimeout(r, 0));
+    }
+    setupPdfScrollTracking();
+  } catch (e) {
+    wrap.innerHTML = '<div style="color:var(--red);padding:20px">Render failed: ' + escHtml(e.message) + '</div>';
+  }
+}
+let _pdfObserver = null;
+function setupPdfScrollTracking() {
+  const wrap = document.getElementById('pdf-canvas-wrap');
+  if (!wrap || !_pdfDoc) return;
+  if (_pdfObserver) try { _pdfObserver.disconnect(); } catch {}
+  const canvases = wrap.querySelectorAll('canvas[id^="pdf-page-"]');
+  if (!canvases.length) return;
+  let ticking = false;
+  const update = () => {
+    ticking = false;
+    let best = null;
+    let bestTop = Infinity;
+    const wrapRect = wrap.getBoundingClientRect();
+    for (const c of canvases) {
+      const r = c.getBoundingClientRect();
+      // visible if within wrap viewport
+      if (r.bottom > wrapRect.top && r.top < wrapRect.bottom) {
+        const dist = Math.abs(r.top - wrapRect.top);
+        if (dist < bestTop) { bestTop = dist; best = c; }
+      }
+    }
+    if (best) {
+      const pageNum = parseInt(best.dataset.page, 10);
+      const label = best.dataset.label || String(pageNum);
+      if (pageNum && pageNum !== _pdfCurrentPage) {
+        _pdfCurrentPage = pageNum;
+        let pageLabels2 = null;
+        try { pageLabels2 = _pdfDoc.getPageLabels && _pdfDoc._pageLabels ? _pdfDoc._pageLabels : null; } catch {}
+        // use stored label
+        document.getElementById('pdf-page-info').textContent = label + ' • ' + pageNum + '/' + _pdfDoc.numPages + ' • scroll vertically';
+      }
+    }
+  };
+  wrap.addEventListener('scroll', () => {
+    if (!ticking) { ticking = true; requestAnimationFrame(update); }
+  }, { passive: true });
+  // also use IntersectionObserver for more precise
+  try {
+    _pdfObserver = new IntersectionObserver((entries) => {
+      let best = null; let bestRatio = 0;
+      for (const e of entries) {
+        if (e.isIntersecting && e.intersectionRatio > bestRatio) {
+          bestRatio = e.intersectionRatio; best = e.target;
+        }
+      }
+      if (best) {
+        const pageNum = parseInt(best.dataset.page, 10);
+        const label = best.dataset.label || String(pageNum);
+        if (pageNum) {
+          _pdfCurrentPage = pageNum;
+          document.getElementById('pdf-page-info').textContent = label + ' • ' + pageNum + '/' + _pdfDoc.numPages + ' • scroll vertically';
+        }
+      }
+    }, { root: wrap, threshold: [0.5, 0.75] });
+    canvases.forEach(c => _pdfObserver.observe(c));
+  } catch { _pdfObserver = null; }
+  // initial update
+  setTimeout(update, 100);
+}
+function pdfNav(dir) {
+  if (!_pdfDoc) return;
+  const wrap = document.getElementById('pdf-canvas-wrap');
+  if (!wrap) return;
+  // Scroll to next/prev page in sorted order
+  const total = _pdfDoc.numPages;
+  const order = _pdfPageOrder || Array.from({length: total}, (_,k)=>k+1);
+  const idx = order.indexOf(_pdfCurrentPage);
+  let nextIdx = idx + dir;
+  if (nextIdx < 0) nextIdx = 0;
+  if (nextIdx >= order.length) nextIdx = order.length - 1;
+  const target = order[nextIdx];
+  _pdfCurrentPage = target;
+  const el = document.getElementById('pdf-page-' + target);
+  const label = el ? el.dataset.label : String(target);
+  document.getElementById('pdf-page-info').textContent = label + ' • ' + target + '/' + total + ' • scroll vertically';
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  else if (dir < 0) wrap.scrollBy({ top: -wrap.clientHeight * 0.9, behavior: 'smooth' });
+  else wrap.scrollBy({ top: wrap.clientHeight * 0.9, behavior: 'smooth' });
+}
+function pdfZoom(delta) {
+  if (!_pdfDoc) return;
+  _pdfScale = Math.max(0.6, Math.min(3, _pdfScale + delta));
+  // Re-render all pages at new scale (keeps scroll position near current page)
+  const wrap = document.getElementById('pdf-canvas-wrap');
+  const scrollTop = wrap ? wrap.scrollTop : 0;
+  if (_pdfObserver) try { _pdfObserver.disconnect(); _pdfObserver = null; } catch {}
+  renderPdfDoc().then(() => {
+    if (wrap) {
+      const el = document.getElementById('pdf-page-' + _pdfCurrentPage);
+      if (el) el.scrollIntoView({ block: 'start' });
+      else wrap.scrollTop = scrollTop;
+    }
+  });
+}
+
+let _epubBook = null;
+let _epubRendition = null;
+let _epubPath = '';
+let _epubBlobUrl = null;
+
+async function openEpubViewer(path) {
+  editorPath = path;
+  editorOriginalContent = '';
+  const fileName = path.split(/[\\/]/).pop() || path;
+  document.getElementById('editor-filename').textContent = fileName + '  /  ' + path;
+  document.getElementById('editor-status').textContent = '';
+  const cm = document.querySelector('.CodeMirror');
+  if (cm) cm.style.display = 'none';
+  document.getElementById('editor-preview').classList.remove('active');
+  const iframe = document.getElementById('editor-preview-iframe');
+  if (iframe) { iframe.style.display = 'none'; iframe.srcdoc = ''; }
+  const mdContent2 = document.getElementById('md-preview-content');
+  if (mdContent2) { mdContent2.style.display = 'none'; }
+  mdPreviewActive = false;
+  clearPreviewLiveReload();
+  document.getElementById('pdf-viewer').classList.remove('active');
+  const epubViewer = document.getElementById('epub-viewer');
+  epubViewer.classList.add('active');
+  document.getElementById('epub-title').textContent = fileName;
+  document.getElementById('epub-loc').textContent = 'Loading…';
+  if (!window.ePub) {
+    const t = toast('Loading EPUB viewer…', 'info');
+    try { await loadEpubJs(); t.remove(); } catch (e) { t.remove(); toast('Failed to load EPUB viewer: ' + e.message, 'error'); return; }
+  }
+  if (window.innerWidth > 768) {
+    document.getElementById('content').classList.add('editor-open');
+    const splitArea = document.getElementById('editor-split-area');
+    try {
+      const orient = safeStorage.getItem('wt-editor-split-orientation');
+      const isHoriz = orient === 'horizontal';
+      if (splitArea) splitArea.classList.toggle('horizontal', isHoriz);
+    } catch {}
+  }
+  document.getElementById('editor-view').classList.add('open');
+  document.getElementById('editor-save-btn').style.display = 'none';
+  document.getElementById('md-preview-toggle').style.display = 'none';
+  document.getElementById('preview-refresh-btn').style.display = 'none';
+  requestAnimationFrame(() => { tabs.forEach(tab => { try { fitTerm(tab); } catch (e) {} }); });
+  // cleanup previous
+  try { if (_epubRendition) { _epubRendition.destroy(); _epubRendition = null; } } catch {}
+  try { if (_epubBook) { _epubBook.destroy(); _epubBook = null; } } catch {}
+  if (_epubBlobUrl) { URL.revokeObjectURL(_epubBlobUrl); _epubBlobUrl = null; }
+  document.getElementById('epub-view').innerHTML = '';
+  // Show loading immediately
+  document.getElementById('epub-loc').textContent = 'Loading EPUB…';
+  try {
+    const resp = await fetch(`/api/files/image?path=${encodeURIComponent(path)}&_t=${Date.now()}`, { headers: { 'x-pin-token': authToken } });
+    if (!resp.ok) throw new Error('Failed to fetch EPUB (' + resp.status + ')');
+    const arrayBuffer = await resp.arrayBuffer();
+    if (!arrayBuffer || arrayBuffer.byteLength < 100) throw new Error('Empty or invalid EPUB file (size ' + (arrayBuffer ? arrayBuffer.byteLength : 0) + ')');
+    const header = new Uint8Array(arrayBuffer.slice(0, 4));
+    const isZip = header[0] === 0x50 && header[1] === 0x4B;
+    console.log('EPUB fetch OK', path, 'bytes', arrayBuffer.byteLength, 'isZip', isZip, 'header', Array.from(header));
+    if (!isZip) throw new Error('Not a valid EPUB (missing PK header, got ' + Array.from(header).join(',') + ')');
+    _epubPath = path;
+    const book = window.ePub(arrayBuffer, { openAs: 'binary', encoding: 'binary', store: false });
+    _epubBook = book;
+    // Listen for openFailed
+    book.on('openFailed', (e) => { console.warn('EPUB openFailed', e); throw e; });
+    // Ensure container is visible and has layout before renderTo
+    await new Promise(r => requestAnimationFrame(r));
+    // Try scrolled-doc first (vertical scroll), fallback to paginated if fails
+    let rendition;
+    try {
+      rendition = book.renderTo('epub-view', { flow: 'scrolled-doc', width: '100%', height: '100%', allowScriptedContent: false, store: false });
+    } catch (e) {
+      console.warn('scrolled-doc failed, fallback to paginated', e);
+      try { if (rendition) rendition.destroy(); } catch {}
+      document.getElementById('epub-view').innerHTML = '';
+      rendition = book.renderTo('epub-view', { flow: 'paginated', width: '100%', height: '100%', manager: 'default' });
+    }
+    _epubRendition = rendition;
+    const s = getComputedStyle(document.documentElement);
+    const bg = s.getPropertyValue('--bg').trim();
+    const fg = s.getPropertyValue('--fg').trim();
+    try {
+      rendition.themes.default({ body: { background: bg + ' !important', color: fg + ' !important', 'font-size': '16px', 'line-height': '1.6', 'padding': '0 12px' } });
+    } catch {}
+    const displayTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('EPUB display timeout - try downloading the file')), 15000));
+    await Promise.race([rendition.display(), displayTimeout]);
+    document.getElementById('epub-loc').textContent = 'Scroll vertically • ' + (rendition.location ? 'ready' : '');
+    // keyboard nav still works for scrolled-doc (prev/next section)
+    rendition.on('keyup', (e) => {
+      if (e.key === 'ArrowLeft') rendition.prev();
+      if (e.key === 'ArrowRight') rendition.next();
+    });
+    // also allow continuous wheel scroll naturally; update location on relocate
+    try {
+      rendition.on('relocated', (loc) => {
+        if (loc && loc.start && loc.start.percentage !== undefined) {
+          const pct = Math.round(loc.start.percentage * 100);
+          document.getElementById('epub-loc').textContent = pct + '% • scroll';
+        }
+      });
+    } catch {}
+  } catch (e) {
+    console.warn('EPUB load failed', e);
+    document.getElementById('epub-loc').textContent = 'Failed';
+    document.getElementById('epub-view').innerHTML = '<div style="color:var(--red);padding:20px">Failed to load EPUB: ' + escHtml(e.message) + '</div>';
+    toast('EPUB load failed: ' + e.message, 'error');
+  }
+}
+function epubNav(dir) {
+  if (!_epubRendition) return;
+  if (dir < 0) _epubRendition.prev();
+  else _epubRendition.next();
+}
+function cleanupDocViewers() {
+  // PDF
+  if (_pdfObserver) { try { _pdfObserver.disconnect(); } catch {} _pdfObserver = null; }
+  if (_pdfDoc) { try { _pdfDoc.destroy(); } catch {} _pdfDoc = null; }
+  _pdfPath = '';
+  _pdfPageOrder = null;
+  _pdfCurrentPage = 1;
+  const pdfWrap = document.getElementById('pdf-canvas-wrap');
+  if (pdfWrap) {
+    // remove scroll listener added in setupPdfScrollTracking
+    try { pdfWrap.onscroll = null; } catch {}
+    pdfWrap.innerHTML = '';
+  }
+  const pdfViewer = document.getElementById('pdf-viewer');
+  if (pdfViewer) pdfViewer.classList.remove('active');
+  // EPUB
+  try { if (_epubRendition) { _epubRendition.destroy(); _epubRendition = null; } } catch {}
+  try { if (_epubBook) { _epubBook.destroy(); _epubBook = null; } } catch {}
+  if (_epubBlobUrl) { URL.revokeObjectURL(_epubBlobUrl); _epubBlobUrl = null; }
+  _epubPath = '';
+  const epubViewer = document.getElementById('epub-viewer');
+  if (epubViewer) epubViewer.classList.remove('active');
+  const epubView = document.getElementById('epub-view');
+  if (epubView) epubView.innerHTML = '';
+  document.getElementById('editor-save-btn').style.display = '';
+}
+// Preload doc viewers in background for instant open (respect datasaver)
+function preloadDocViewers() {
+  try {
+    if (settings && settings.datasaver) return;
+    if (!window.pdfjsLib) loadPdfJs().catch(()=>{});
+    if (!window.ePub) loadEpubJs().catch(()=>{});
+  } catch {}
+}
+setTimeout(() => {
+  if (document.hidden) {
+    const h = () => { if (!document.hidden) { document.removeEventListener('visibilitychange', h); preloadDocViewers(); } };
+    document.addEventListener('visibilitychange', h);
+  } else {
+    if ('requestIdleCallback' in window) requestIdleCallback(preloadDocViewers, { timeout: 3000 });
+    else setTimeout(preloadDocViewers, 1500);
+  }
+}, 1500);
 
 let _ivImageUrl = null;
 
@@ -4349,6 +4844,9 @@ function toggleHtmlPreview() {
     editor.focus();
     clearPreviewLiveReload();
   } else {
+    // hide doc viewers when entering html preview
+    document.getElementById('pdf-viewer').classList.remove('active');
+    document.getElementById('epub-viewer').classList.remove('active');
     renderHtmlPreview();
     if (cmWrapper) cmWrapper.style.display = 'none';
     preview.classList.add('active');
@@ -4359,12 +4857,74 @@ function toggleHtmlPreview() {
   }
 }
 
+function getHtmlBaseDir() {
+  const p = editorPath || currentPath || '';
+  if (!p) return '';
+  const sep = p.includes('\\') ? '\\' : '/';
+  const idx = p.lastIndexOf(sep);
+  return idx > 0 ? p.slice(0, idx) : p;
+}
+function isAbsoluteUrlForHtml(url) {
+  return /^(?:[a-z][a-z0-9+.-]*:|\/\/|data:|blob:|#)/i.test(url.trim()) || url.trim().startsWith('/');
+}
+function toPreviewApiUrl(rel, baseDir) {
+  if (!rel || isAbsoluteUrlForHtml(rel)) return rel;
+  if (/^[A-Za-z]:[\\/]/.test(rel)) return rel;
+  // keep query/hash part
+  let hash = '';
+  let query = '';
+  let pathPart = rel;
+  const hIdx = pathPart.indexOf('#');
+  if (hIdx !== -1) { hash = pathPart.slice(hIdx); pathPart = pathPart.slice(0, hIdx); }
+  const qIdx = pathPart.indexOf('?');
+  if (qIdx !== -1) { query = pathPart.slice(qIdx); pathPart = pathPart.slice(0, qIdx); }
+  pathPart = pathPart.trim();
+  if (!pathPart) return rel;
+  const abs = joinPath(baseDir || '', pathPart);
+  let api = `/api/files/image?path=${encodeURIComponent(abs)}`;
+  if (authToken) api += `&token=${encodeURIComponent(authToken)}`;
+  if (query) api += (query.startsWith('?') ? `&${query.slice(1)}` : query);
+  if (hash) api += hash;
+  return api;
+}
+function rewriteHtmlRelativeUrls(html, baseDir) {
+  if (!baseDir) return html;
+  // src/href/srcset/poster/data/action/cite/background
+  html = html.replace(/\b(src|href|srcset|poster|data|cite|action|background)\s*=\s*(["'])([^"']+)\2/gi, (m, attr, q, val) => {
+    if (attr.toLowerCase() === 'srcset') {
+      const parts = val.split(',').map(p => {
+        const seg = p.trim();
+        if (!seg) return seg;
+        const sp = seg.split(/\s+/);
+        const url = sp[0];
+        const desc = sp.slice(1).join(' ');
+        const newUrl = toPreviewApiUrl(url, baseDir);
+        return desc ? `${newUrl} ${desc}` : newUrl;
+      });
+      return `${attr}=${q}${parts.join(', ')}${q}`;
+    }
+    const newVal = toPreviewApiUrl(val, baseDir);
+    if (newVal === val) return m;
+    return `${attr}=${q}${newVal}${q}`;
+  });
+  // url(...) in style attributes and <style> tags
+  html = html.replace(/url\(\s*(["']?)([^"'\)]+)\1\s*\)/gi, (m, q, url) => {
+    const trimmed = url.trim();
+    if (!trimmed || isAbsoluteUrlForHtml(trimmed) || trimmed.startsWith('/')) return m;
+    if (/^[A-Za-z]:[\\/]/.test(trimmed)) return m;
+    const newUrl = toPreviewApiUrl(trimmed, baseDir);
+    return `url(${q}${newUrl}${q})`;
+  });
+  return html;
+}
 function renderHtmlPreview() {
   const iframe = document.getElementById('editor-preview-iframe');
+  const mdContent = document.getElementById('md-preview-content');
   const raw = editor ? editor.getValue() : '';
   if (!iframe) return;
-  // Clear previous live reload to prevent leak on re-entry (U83)
-  clearPreviewLiveReload();
+  if (mdContent) mdContent.style.display = 'none';
+  if (iframe) iframe.style.display = 'block';
+  const baseDir = getHtmlBaseDir();
   const s = getComputedStyle(document.documentElement);
   const bg = s.getPropertyValue('--bg').trim();
   const fg = s.getPropertyValue('--fg').trim();
@@ -4373,11 +4933,31 @@ function renderHtmlPreview() {
   const border = s.getPropertyValue('--border').trim();
   const font = s.getPropertyValue('--font').trim();
   const isDark = !['#f9f9fb', '#ffffff', 'rgb(249, 249, 251)', 'rgb(255, 255, 255)'].includes(bg);
-  const doc = `<!DOCTYPE html>
+  const isFullDoc = /<!DOCTYPE|<html[\s>]/i.test(raw);
+  let doc;
+  if (isFullDoc) {
+    let sanitized = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(raw, { WHOLE_DOCUMENT: true, USE_PROFILES: { html: true }, ADD_TAGS: ['base','style'], ADD_ATTR: ['target'] }) : raw;
+    sanitized = rewriteHtmlRelativeUrls(sanitized, baseDir);
+    // Inject base tag if missing for any remaining relative URLs
+    if (!/<base\b/i.test(sanitized)) {
+      const baseHref = `/api/files/image?path=${encodeURIComponent(baseDir + '/')}` + (authToken ? `&token=${encodeURIComponent(authToken)}` : '');
+      sanitized = sanitized.replace(/<head[^>]*>/i, m => m + `<base href="${escHtml(baseHref)}">`);
+    }
+    // Ensure color-scheme meta
+    if (!/<meta[^>]*color-scheme/i.test(sanitized)) {
+      sanitized = sanitized.replace(/<head[^>]*>/i, m => m + `<meta name="color-scheme" content="${isDark ? 'dark' : 'light'}">`);
+    }
+    doc = sanitized;
+  } else {
+    let fragment = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(raw, { USE_PROFILES: { html: true }, ADD_ATTR: ['target'] }) : raw;
+    fragment = rewriteHtmlRelativeUrls(fragment, baseDir);
+    const baseHrefFrag = `/api/files/image?path=${encodeURIComponent(baseDir + '/')}` + (authToken ? `&token=${encodeURIComponent(authToken)}` : '');
+    doc = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
 <meta name="color-scheme" content="${isDark ? 'dark' : 'light'}">
+<base href="${escHtml(baseHrefFrag)}">
 <style>
   :root { color-scheme: ${isDark ? 'dark' : 'light'}; }
   * { box-sizing: border-box; }
@@ -4413,16 +4993,21 @@ function renderHtmlPreview() {
   input:focus, textarea:focus, select:focus { outline: 2px solid ${accent}; outline-offset: 1px; }
 </style>
 </head>
-<body>${typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(raw, { USE_PROFILES: { html: true }, ADD_ATTR: ['target'] }) : raw}</body>
+<body>${fragment}</body>
 </html>`;
+  }
   iframe.srcdoc = doc;
   iframe.style.display = 'block';
 }
 
 function renderMdPreview() {
   const preview = document.getElementById('editor-preview');
+  const mdContent = document.getElementById('md-preview-content');
+  const iframe = document.getElementById('editor-preview-iframe');
   const raw = editor ? editor.getValue() : '';
-  if (!preview) return;
+  if (!preview || !mdContent) return;
+  if (iframe) iframe.style.display = 'none';
+  mdContent.style.display = 'block';
   try {
     const html = marked.parse(raw, { breaks: true, gfm: true, langPrefix: 'language-' });
     const sanitized = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(html) : html;
@@ -4435,7 +5020,7 @@ function renderMdPreview() {
     const border = s.getPropertyValue('--border').trim();
     const fg2 = s.getPropertyValue('--fg2').trim();
     const font = s.getPropertyValue('--font').trim();
-    preview.innerHTML = `
+    mdContent.innerHTML = `
       <style>
         .md-rendered { max-width: 800px; margin: 0 auto; }
         .md-rendered h1, .md-rendered h2, .md-rendered h3, .md-rendered h4, .md-rendered h5, .md-rendered h6 { color: ${fg}; margin: 1.2em 0 0.5em; font-weight: 700; }
@@ -4461,7 +5046,7 @@ function renderMdPreview() {
       <div class="md-rendered">${sanitized}</div>`;
   } catch (e) {
     console.warn('Markdown preview error:', e);
-    preview.textContent = 'Error rendering markdown preview';
+    mdContent.textContent = 'Error rendering markdown preview';
   }
 }
 
@@ -4502,6 +5087,8 @@ function toggleMdPreview() {
   const refreshBtn = document.getElementById('preview-refresh-btn');
   mdPreviewActive = !mdPreviewActive;
   if (mdPreviewActive) {
+    document.getElementById('pdf-viewer').classList.remove('active');
+    document.getElementById('epub-viewer').classList.remove('active');
     renderMdPreview();
     if (cmWrapper) cmWrapper.style.display = 'none';
     preview.classList.add('active');
@@ -6143,7 +6730,11 @@ function doFinderSearch() {
       fiDir.className = 'fi-dir';
       fiDir.textContent = r.dir;
       div.appendChild(fiDir);
-      div.addEventListener('click', () => { closeOverlay('finder-overlay'); if (r.isDir) loadFiles(r.path); else openFileEditor(r.path); });
+      div.addEventListener('click', () => {
+        closeOverlay('finder-overlay');
+        if (r.isDir) loadFiles(r.path);
+        else openFileEditor(r.path);
+      });
       div.addEventListener('mouseenter', () => { document.querySelectorAll('.finder-item.selected').forEach(el => el.classList.remove('selected')); div.classList.add('selected'); finderIdx = i; });
       results.appendChild(div);
     });

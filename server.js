@@ -77,12 +77,17 @@ const MIME_MAP = {
   '.go':'text/x-go','.rs':'text/x-rust','.php':'text/x-php','.pl':'text/x-perl',
   '.sql':'application/sql','.graphql':'application/graphql',
   '.yaml':'text/yaml','.yml':'text/yaml','.toml':'application/toml','.ini':'text/plain',
-  '.env':'text/plain','.lock':'text/plain',
+  '.env':'text/plain','.lock':'text/plain','.epub':'application/epub+zip',
 };
 function mimeLookup(filePath) {
   const ext = path.extname(filePath).toLowerCase();
   return MIME_MAP[ext] || 'application/octet-stream';
 }
+
+// Binary extensions — preview not supported in editor (client has same list). Keep in sync.
+const BINARY_EXTS = new Set([
+  '3dm','3ds','3g2','3gp','7z','a','aac','adp','afdesign','afphoto','afpub','ai','aif','aiff','alz','ape','apk','appimage','ar','arj','asf','au','avi','bak','baml','bh','bin','bk','bmp','btif','bz2','bzip2','cab','caf','cgm','class','cmx','cpio','cr2','cr3','cur','dat','dcm','deb','dex','djvu','dll','dmg','dng','doc','docm','docx','dot','dotm','dra','ds_store','dsk','dts','dtshd','dvb','dwg','dxf','ecelp4800','ecelp7470','ecelp9600','egg','eol','eot','epub','exe','f4v','fbs','fh','fla','flac','flatpak','fli','flv','fpx','fst','fvt','g3','gh','gif','graffle','gz','gzip','h261','h263','h264','icns','ico','ief','img','ipa','iso','jar','jpeg','jpg','jpgv','jpm','jxr','key','ktx','lha','lib','lvp','lz','lzh','lzma','lzo','m3u','m4a','m4v','mar','mdi','mht','mid','midi','mj2','mka','mkv','mmr','mng','mobi','mov','movie','mp3','mp4','mp4a','mpeg','mpg','mpga','mxu','nef','npx','numbers','nupkg','o','odp','ods','odt','oga','ogg','ogv','otf','ott','pages','pbm','pcx','pdb','pdf','pea','pgm','pic','png','pnm','pot','potm','potx','ppa','ppam','ppm','pps','ppsm','ppsx','ppt','pptm','pptx','psd','pya','pyc','pyo','pyv','qt','rar','ras','raw','resources','rgb','rip','rlc','rmf','rmvb','rpm','rtf','rz','s3m','s7z','scpt','sgi','shar','snap','sil','sketch','slk','smv','snk','so','stl','suo','sub','swf','tar','tbz','tbz2','tga','tgz','thmx','tif','tiff','tlz','ttc','ttf','txz','udf','uvh','uvi','uvm','uvp','uvs','uvu','viv','vob','war','wav','wax','wbmp','wdp','weba','webm','webp','whl','wim','wm','wma','wmv','wmx','woff','woff2','wrm','wvx','xbm','xif','xla','xlam','xls','xlsb','xlsm','xlsx','xlt','xltm','xltx','xm','xmind','xpi','xpm','xwd','xz','z','zip','zipx'
+]);
 
 // In-memory rate limiter factory
 // NOTE: Behind cloudflared tunnel every remote IP appears as 127.0.0.1 (tunnel collapses to loopback).
@@ -169,7 +174,7 @@ app.use((req, res, next) => {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; connect-src 'self' https://*.trycloudflare.com wss:; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; font-src 'self' data: https://fonts.gstatic.com https://fonts.googleapis.com; img-src 'self' data:;");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; connect-src 'self' https://*.trycloudflare.com wss: blob:; script-src 'self' https://cdn.jsdelivr.net blob:; style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; font-src 'self' data: https://fonts.gstatic.com https://fonts.googleapis.com; img-src 'self' data: blob:; frame-src 'self' blob:; child-src 'self' blob:; worker-src 'self' blob: https://cdn.jsdelivr.net;");
   next();
 });
 
@@ -906,7 +911,15 @@ app.get('/api/files/read', checkPin, async (req, res) => {
     const st = await fsPromises.stat(p);
     if (st.isDirectory()) return res.status(400).json({ error: 'Cannot read a directory' });
     if (st.size > 10 * 1024 * 1024) return res.status(413).json({ error: 'File too large (max 10MB) - use download' });
-    const content = await fsPromises.readFile(p, 'utf8');
+    const ext = path.extname(p).toLowerCase().slice(1);
+    if (ext && BINARY_EXTS.has(ext)) {
+      return res.status(415).json({ error: 'Preview not supported for binary files - use download', isBinary: true });
+    }
+    const buf = await fsPromises.readFile(p);
+    if (buf.includes(0)) {
+      return res.status(415).json({ error: 'Preview not supported for binary files - use download', isBinary: true });
+    }
+    const content = buf.toString('utf8');
     res.json({ content, length: st.size });
   } catch (e) {
     const status = e.status || 500;
