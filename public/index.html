@@ -4418,8 +4418,26 @@ let _pdfPath = '';
 let _pdfScale = 1.4;
 let _pdfCurrentPage = 1;
 let _pdfPageOrder = null;
+let _pdfRenderGen = 0;
+let _pdfScrollHandler = null;
+let _pdfLazyObserver = null;
+let _pdfQueue = [];
+let _pdfQueued = new Set();
+let _pdfRendering = new Set();
+let _pdfQueueRunning = false;
+let _pdfLabelMap = {};
 
 async function openPdfViewer(path) {
+  // Invalidate any in-flight PDF load/render so reopen/double-click can't duplicate pages
+  const myGen = ++_pdfRenderGen;
+  // Tear down previous doc render before starting a new one
+  if (_pdfObserver) try { _pdfObserver.disconnect(); } catch {} _pdfObserver = null;
+  if (_pdfLazyObserver) try { _pdfLazyObserver.disconnect(); } catch {} _pdfLazyObserver = null;
+  _pdfQueue = []; _pdfQueued = new Set(); _pdfRendering = new Set(); _pdfQueueRunning = false; _pdfLabelMap = {};
+  if (_pdfDoc) try { _pdfDoc.destroy(); } catch {} _pdfDoc = null;
+  const _prevWrap = document.getElementById('pdf-canvas-wrap');
+  if (_prevWrap && _pdfScrollHandler) try { _prevWrap.removeEventListener('scroll', _pdfScrollHandler); } catch {}
+  _pdfScrollHandler = null;
   // Show viewer shell immediately for perceived performance
   editorPath = path;
   editorOriginalContent = '';
@@ -4461,31 +4479,76 @@ async function openPdfViewer(path) {
     const t = toast('Loading PDF viewer…', 'info');
     try { await loadPdfJs(); t.remove(); } catch (e) { t.remove(); toast('Failed to load PDF viewer: ' + e.message, 'error'); return; }
   }
+  if (myGen !== _pdfRenderGen) return;
   try {
     const resp = await fetch(`/api/files/image?path=${encodeURIComponent(path)}&_t=${Date.now()}`, { headers: { 'x-pin-token': authToken } });
+    if (myGen !== _pdfRenderGen) return;
     if (!resp.ok) throw new Error('Failed to fetch PDF');
-    const buf = await resp.arrayBuffer();
+    // Stream download with progress so big PDFs don't look stuck (fallback to arrayBuffer)
+    let buf;
+    try {
+      const totalLen = parseInt(resp.headers.get('content-length') || '0', 10);
+      if (resp.body && resp.body.getReader) {
+        const reader = resp.body.getReader();
+        const chunks = [];
+        let received = 0;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (myGen !== _pdfRenderGen) { try { reader.cancel(); } catch {} return; }
+          if (done) break;
+          chunks.push(value);
+          received += value.length;
+          if (totalLen > 0) {
+            const pct = Math.min(99, Math.round(received / totalLen * 100));
+            document.getElementById('pdf-page-info').textContent = 'Downloading… ' + pct + '%';
+          } else if (received % (1024*1024) < 65536) {
+            document.getElementById('pdf-page-info').textContent = 'Downloading… ' + (received/1024/1024).toFixed(1) + 'MB';
+          }
+        }
+        const merged = new Uint8Array(received);
+        let off = 0;
+        for (const c of chunks) { merged.set(c, off); off += c.length; }
+        buf = merged.buffer;
+      } else {
+        buf = await resp.arrayBuffer();
+      }
+    } catch (e2) {
+      if (myGen !== _pdfRenderGen) return;
+      buf = await resp.arrayBuffer().catch(() => { throw e2; });
+    }
+    if (myGen !== _pdfRenderGen) return;
     const lib = window.pdfjsLib;
     const loadingTask = lib.getDocument({ data: buf });
-    _pdfDoc = await loadingTask.promise;
+    const doc = await loadingTask.promise;
+    if (myGen !== _pdfRenderGen) { try { doc.destroy(); } catch {} return; }
+    _pdfDoc = doc;
     _pdfPath = path;
     _pdfCurrentPage = 1;
     _pdfScale = 1.4;
-    await renderPdfDoc();
+    await renderPdfDoc(myGen);
   } catch (e) {
+    if (myGen !== _pdfRenderGen) return;
     console.warn('PDF load failed', e);
     document.getElementById('pdf-canvas-wrap').innerHTML = '<div style="color:var(--red);padding:20px">Failed to load PDF: ' + escHtml(e.message) + '</div>';
     document.getElementById('pdf-page-info').textContent = 'Error';
     toast('PDF load failed: ' + e.message, 'error');
   }
 }
-async function renderPdfDoc() {
-  if (!_pdfDoc) return;
+async function renderPdfDoc(gen, opts) {
+  const myGen = (gen !== undefined) ? gen : _pdfRenderGen;
+  const doc = _pdfDoc;
+  if (!doc) return;
+  if (myGen !== _pdfRenderGen) return;
+  const keepPage = opts && opts.keepPage ? _pdfCurrentPage : null;
   const wrap = document.getElementById('pdf-canvas-wrap');
+  // reset lazy state for this generation
+  if (_pdfLazyObserver) try { _pdfLazyObserver.disconnect(); } catch {} _pdfLazyObserver = null;
+  _pdfQueue = []; _pdfQueued = new Set(); _pdfRendering = new Set(); _pdfQueueRunning = false;
   wrap.innerHTML = '';
-  const total = _pdfDoc.numPages;
+  const total = doc.numPages;
   let pageLabels = null;
-  try { pageLabels = await _pdfDoc.getPageLabels(); } catch {}
+  try { pageLabels = await doc.getPageLabels(); } catch {}
+  if (myGen !== _pdfRenderGen || _pdfDoc !== doc) return;
   const getLabel = (idx) => pageLabels && pageLabels[idx-1] ? pageLabels[idx-1] : String(idx);
   // Build ordered list of pages sorted by actual page number (label if numeric, else index) to ensure preview matches printed page numbers
   let pageOrder = Array.from({length: total}, (_, k) => k+1);
@@ -4504,54 +4567,165 @@ async function renderPdfDoc() {
     } catch {}
   }
   _pdfPageOrder = pageOrder;
-  _pdfCurrentPage = pageOrder[0];
+  _pdfLabelMap = {};
+  for (const p of pageOrder) _pdfLabelMap[p] = getLabel(p);
+  _pdfCurrentPage = (keepPage && pageOrder.includes(keepPage)) ? keepPage : pageOrder[0];
   document.getElementById('pdf-page-info').textContent = getLabel(pageOrder[0]) + ' / ' + getLabel(pageOrder[pageOrder.length-1]) + ' • ' + total + ' pages';
-  // Render all pages vertically for scrollable preview in sorted order
+  // Build cheap placeholders for all pages in one DOM pass (fast even for 1000+ pages),
+  // then lazily render only visible pages. This is the big-PDF optimization:
+  // previously every page was rendered upfront serially (O(N) canvas work).
   try {
+    const frag = document.createDocumentFragment();
     for (const i of pageOrder) {
-      const page = await _pdfDoc.getPage(i);
-      const viewport = page.getViewport({ scale: _pdfScale });
-      const canvas = document.createElement('canvas');
-      canvas.id = 'pdf-page-' + i;
-      canvas.dataset.page = i;
-      canvas.dataset.label = getLabel(i);
-      const ctx = canvas.getContext('2d');
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      canvas.style.width = viewport.width + 'px';
-      canvas.style.height = viewport.height + 'px';
-      // label
       const pageWrap = document.createElement('div');
-      pageWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:4px';
-      pageWrap.appendChild(canvas);
+      pageWrap.className = 'pdf-page-box';
+      pageWrap.id = 'pdf-wrap-' + i;
+      pageWrap.dataset.page = i;
+      pageWrap.dataset.label = getLabel(i);
+      pageWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:4px;width:100%';
+      const slot = document.createElement('div');
+      slot.className = 'pdf-page-slot';
+      slot.dataset.page = i;
+      slot.style.cssText = 'display:flex;align-items:center;justify-content:center;min-height:400px;min-width:min(100%,480px);background:rgba(127,127,127,0.08);border-radius:4px;color:var(--fg2);font-size:11px;padding:24px';
+      slot.textContent = 'Page ' + getLabel(i) + ' — scroll to load…';
+      pageWrap.appendChild(slot);
       const label = document.createElement('div');
       label.style.cssText = 'color:var(--fg2);font-size:10px';
       label.textContent = 'Page ' + getLabel(i) + ' • ' + i + '/' + total;
       pageWrap.appendChild(label);
-      wrap.appendChild(pageWrap);
-      await page.render({ canvasContext: ctx, viewport }).promise;
-      // allow UI to breathe for large docs
-      if (i % 10 === 0) await new Promise(r => setTimeout(r, 0));
+      frag.appendChild(pageWrap);
     }
+    wrap.appendChild(frag);
+    if (myGen !== _pdfRenderGen || _pdfDoc !== doc) return;
     setupPdfScrollTracking();
+    setupPdfLazyRender(wrap, doc, myGen);
+    // First-page-fast: render the current page immediately so the user sees content
+    // without waiting for the observer, then let the queue handle the rest.
+    await pdfRenderPageInto(_pdfCurrentPage, myGen, doc);
+    if (myGen !== _pdfRenderGen || _pdfDoc !== doc) return;
+    // Pre-queue neighbours of the current page for instant scroll
+    const order = _pdfPageOrder || pageOrder;
+    const idx = order.indexOf(_pdfCurrentPage);
+    for (let k = 1; k <= 2; k++) {
+      if (order[idx+k]) pdfQueuePage(order[idx+k], myGen, doc, true);
+      if (order[idx-k]) pdfQueuePage(order[idx-k], myGen, doc, true);
+    }
   } catch (e) {
+    if (myGen !== _pdfRenderGen) return;
     wrap.innerHTML = '<div style="color:var(--red);padding:20px">Render failed: ' + escHtml(e.message) + '</div>';
   }
+}
+// Queue a page for background render (deduped). Priority pages go to the front.
+function pdfQueuePage(pageNum, myGen, doc, priority) {
+  if (myGen !== _pdfRenderGen || !doc || _pdfDoc !== doc) return;
+  const slot = document.querySelector('#pdf-wrap-' + pageNum + ' .pdf-page-slot');
+  if (!slot || slot.dataset.rendered === '1' || _pdfRendering.has(pageNum) || _pdfQueued.has(pageNum)) return;
+  if (priority) _pdfQueue.unshift({ pageNum, myGen });
+  else _pdfQueue.push({ pageNum, myGen });
+  // cap queue so fast scrolling doesn't pile up hundreds of pending renders
+  if (_pdfQueue.length > 30) _pdfQueue.splice(30);
+  pumpPdfQueue(doc);
+}
+async function pumpPdfQueue(doc) {
+  if (_pdfQueueRunning) return;
+  _pdfQueueRunning = true;
+  try {
+    while (_pdfQueue.length) {
+      const job = _pdfQueue.shift();
+      _pdfQueued.delete(job.pageNum);
+      if (job.myGen !== _pdfRenderGen || _pdfDoc !== doc) { _pdfQueue.length = 0; break; }
+      try { await pdfRenderPageInto(job.pageNum, job.myGen, doc); }
+      catch (e) { /* placeholder keeps retry-on-visible */ }
+      // breathe between background pages so scrolling stays smooth
+      await new Promise(r => setTimeout(r, 0));
+    }
+  } finally {
+    _pdfQueueRunning = false;
+  }
+}
+async function pdfRenderPageInto(pageNum, myGen, doc) {
+  if (myGen !== _pdfRenderGen || _pdfDoc !== doc) return;
+  const box = document.getElementById('pdf-wrap-' + pageNum);
+  if (!box) return;
+  const slot = box.querySelector('.pdf-page-slot');
+  if (!slot || slot.dataset.rendered === '1' || _pdfRendering.has(pageNum)) return;
+  _pdfRendering.add(pageNum);
+  try {
+    const page = await doc.getPage(pageNum);
+    if (myGen !== _pdfRenderGen || _pdfDoc !== doc) return;
+    const viewport = page.getViewport({ scale: _pdfScale });
+    // Cap canvas backing store so huge pages don't OOM (~2.5MP max)
+    const MAX_PX = 2500000;
+    const px = viewport.width * viewport.height;
+    let outW = Math.round(viewport.width), outH = Math.round(viewport.height);
+    let styleW = viewport.width, styleH = viewport.height;
+    if (px > MAX_PX) {
+      const s = Math.sqrt(MAX_PX / px);
+      outW = Math.round(viewport.width * s); outH = Math.round(viewport.height * s);
+    }
+    const canvas = document.createElement('canvas');
+    canvas.id = 'pdf-page-' + pageNum;
+    canvas.dataset.page = pageNum;
+    canvas.dataset.label = _pdfLabelMap[pageNum] || String(pageNum);
+    canvas.width = outW; canvas.height = outH;
+    canvas.style.width = styleW + 'px';
+    canvas.style.height = styleH + 'px';
+    canvas.style.maxWidth = '100%';
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport: (outW === Math.round(viewport.width)) ? viewport : page.getViewport({ scale: _pdfScale * Math.sqrt(MAX_PX / px) }) }).promise;
+    if (myGen !== _pdfRenderGen || _pdfDoc !== doc || !box.isConnected) return;
+    slot.innerHTML = '';
+    slot.style.minHeight = '';
+    slot.style.background = 'transparent';
+    slot.style.padding = '0';
+    slot.appendChild(canvas);
+    slot.dataset.rendered = '1';
+    try { if (typeof page.cleanup === 'function') page.cleanup(); } catch {}
+  } catch (e) {
+    if (myGen !== _pdfRenderGen) return;
+    if (slot && slot.dataset.rendered !== '1') {
+      slot.textContent = 'Failed to render page ' + pageNum + ' — scroll away and back to retry';
+    }
+    throw e;
+  } finally {
+    _pdfRendering.delete(pageNum);
+  }
+}
+function setupPdfLazyRender(wrap, doc, myGen) {
+  if (_pdfLazyObserver) try { _pdfLazyObserver.disconnect(); } catch {}
+  try {
+    _pdfLazyObserver = new IntersectionObserver((entries) => {
+      if (myGen !== _pdfRenderGen || _pdfDoc !== doc) return;
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        const slot = e.target.nodeType === 1 && e.target.classList && e.target.classList.contains('pdf-page-slot')
+          ? e.target
+          : (e.target.querySelector ? e.target.querySelector('.pdf-page-slot') : null);
+        const pn = slot ? parseInt(slot.dataset.page, 10) : parseInt(e.target.dataset && e.target.dataset.page, 10);
+        if (pn) {
+          if (slot && slot.dataset.rendered === '1') { try { _pdfLazyObserver.unobserve(e.target); } catch {} continue; }
+          pdfQueuePage(pn, myGen, doc, false);
+        }
+      }
+    }, { root: wrap, rootMargin: '1200px 0px', threshold: 0.01 });
+    wrap.querySelectorAll('.pdf-page-box').forEach(b => _pdfLazyObserver.observe(b));
+  } catch { _pdfLazyObserver = null; }
 }
 let _pdfObserver = null;
 function setupPdfScrollTracking() {
   const wrap = document.getElementById('pdf-canvas-wrap');
   if (!wrap || !_pdfDoc) return;
   if (_pdfObserver) try { _pdfObserver.disconnect(); } catch {}
-  const canvases = wrap.querySelectorAll('canvas[id^="pdf-page-"]');
-  if (!canvases.length) return;
+  if (_pdfScrollHandler) try { wrap.removeEventListener('scroll', _pdfScrollHandler); } catch {}
+  // Track boxes (not just rendered canvases) so tracking works before lazy render
+  const boxes = wrap.querySelectorAll('.pdf-page-box');
+  if (!boxes.length) return;
   let ticking = false;
   const update = () => {
     ticking = false;
     let best = null;
     let bestTop = Infinity;
     const wrapRect = wrap.getBoundingClientRect();
-    for (const c of canvases) {
+    for (const c of boxes) {
       const r = c.getBoundingClientRect();
       // visible if within wrap viewport
       if (r.bottom > wrapRect.top && r.top < wrapRect.bottom) {
@@ -4571,9 +4745,10 @@ function setupPdfScrollTracking() {
       }
     }
   };
-  wrap.addEventListener('scroll', () => {
+  _pdfScrollHandler = () => {
     if (!ticking) { ticking = true; requestAnimationFrame(update); }
-  }, { passive: true });
+  };
+  wrap.addEventListener('scroll', _pdfScrollHandler, { passive: true });
   // also use IntersectionObserver for more precise
   try {
     _pdfObserver = new IntersectionObserver((entries) => {
@@ -4592,7 +4767,7 @@ function setupPdfScrollTracking() {
         }
       }
     }, { root: wrap, threshold: [0.5, 0.75] });
-    canvases.forEach(c => _pdfObserver.observe(c));
+    boxes.forEach(c => _pdfObserver.observe(c));
   } catch { _pdfObserver = null; }
   // initial update
   setTimeout(update, 100);
@@ -4610,24 +4785,34 @@ function pdfNav(dir) {
   if (nextIdx >= order.length) nextIdx = order.length - 1;
   const target = order[nextIdx];
   _pdfCurrentPage = target;
-  const el = document.getElementById('pdf-page-' + target);
-  const label = el ? el.dataset.label : String(target);
+  // Prefer the box (always present) so nav works even before lazy render;
+  // ensure the target is queued at priority so it renders immediately.
+  const box = document.getElementById('pdf-wrap-' + target);
+  const canvasEl = document.getElementById('pdf-page-' + target);
+  const label = (box && box.dataset.label) || (canvasEl && canvasEl.dataset.label) || (_pdfLabelMap[target]) || String(target);
   document.getElementById('pdf-page-info').textContent = label + ' • ' + target + '/' + total + ' • scroll vertically';
-  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (_pdfDoc) pdfQueuePage(target, _pdfRenderGen, _pdfDoc, true);
+  if (box) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
   else if (dir < 0) wrap.scrollBy({ top: -wrap.clientHeight * 0.9, behavior: 'smooth' });
   else wrap.scrollBy({ top: wrap.clientHeight * 0.9, behavior: 'smooth' });
 }
 function pdfZoom(delta) {
   if (!_pdfDoc) return;
   _pdfScale = Math.max(0.6, Math.min(3, _pdfScale + delta));
-  // Re-render all pages at new scale (keeps scroll position near current page)
+  // Lazy mode: rebuilding placeholders is cheap; only visible pages re-render.
+  // Bump generation so a stale in-flight render can't append duplicates.
+  const keepPage = _pdfCurrentPage;
+  const myGen = ++_pdfRenderGen;
   const wrap = document.getElementById('pdf-canvas-wrap');
   const scrollTop = wrap ? wrap.scrollTop : 0;
   if (_pdfObserver) try { _pdfObserver.disconnect(); _pdfObserver = null; } catch {}
-  renderPdfDoc().then(() => {
+  if (_pdfLazyObserver) try { _pdfLazyObserver.disconnect(); _pdfLazyObserver = null; } catch {}
+  _pdfQueue = []; _pdfQueued = new Set(); _pdfRendering = new Set(); _pdfQueueRunning = false;
+  renderPdfDoc(myGen, { keepPage: true }).then(() => {
+    if (myGen !== _pdfRenderGen) return;
     if (wrap) {
-      const el = document.getElementById('pdf-page-' + _pdfCurrentPage);
-      if (el) el.scrollIntoView({ block: 'start' });
+      const box = document.getElementById('pdf-wrap-' + keepPage);
+      if (box) box.scrollIntoView({ block: 'start' });
       else wrap.scrollTop = scrollTop;
     }
   });
@@ -4746,8 +4931,11 @@ function epubNav(dir) {
   else _epubRendition.next();
 }
 function cleanupDocViewers() {
-  // PDF
+  // PDF — invalidate any in-flight load/render first
+  _pdfRenderGen++;
   if (_pdfObserver) { try { _pdfObserver.disconnect(); } catch {} _pdfObserver = null; }
+  if (_pdfLazyObserver) { try { _pdfLazyObserver.disconnect(); } catch {} _pdfLazyObserver = null; }
+  _pdfQueue = []; _pdfQueued = new Set(); _pdfRendering = new Set(); _pdfQueueRunning = false; _pdfLabelMap = {};
   if (_pdfDoc) { try { _pdfDoc.destroy(); } catch {} _pdfDoc = null; }
   _pdfPath = '';
   _pdfPageOrder = null;
@@ -4755,7 +4943,8 @@ function cleanupDocViewers() {
   const pdfWrap = document.getElementById('pdf-canvas-wrap');
   if (pdfWrap) {
     // remove scroll listener added in setupPdfScrollTracking
-    try { pdfWrap.onscroll = null; } catch {}
+    if (_pdfScrollHandler) try { pdfWrap.removeEventListener('scroll', _pdfScrollHandler); } catch {}
+    _pdfScrollHandler = null;
     pdfWrap.innerHTML = '';
   }
   const pdfViewer = document.getElementById('pdf-viewer');
