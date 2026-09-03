@@ -78,6 +78,7 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh &&
 - **Image viewer** — preview inline (png, jpg, gif, svg, webp)
 - **Conflict resolution** — replace, merge, keep both, skip
 - **Unified path bar** — tappable breadcrumb segments + click current folder (or pencil) to type any path, `Enter` to go, `Esc` to cancel
+- **Git mini-panel** — branch + ahead/behind badge, staged/unstaged/untracked/conflict groups with stage/unstage, colorized diffs in a read-only editor tab, commit (inline errors), push/pull, last-5 log; auto-shows inside repos
 - **Editor** — CodeMirror with autosave draft, `F11` fullscreen (covers terminal area only, never the file explorer), `horizontal/vertical` split toggle, markdown/HTML preview
 
 ### Mobile
@@ -178,6 +179,9 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh &&
 ## Changelog
 
 ### v1.5.7
+- Explorer: path input + breadcrumb merged into one unified path bar (segments view, click current folder/pencil to type, `Enter` to go, `Esc`/blur to cancel); sidebar header `38px` to match the tab bar in single-row mode
+- Explorer: Git mini-panel — auto-shows inside repos with branch + ahead/behind badge, staged/unstaged/untracked/conflict groups, per-file stage/unstage/diff, commit with inline errors (+ stage-all), push/pull (90s timeout), last-5 log; diffs open colorized (green/red/hunk tint) in a read-only editor tab
+- Header: keep-screen-awake toggle is now an animated steaming coffee cup (glow + rising steam while active, dynamic ON/OFF tooltip)
 - PDF viewer: fixed each page rendering twice (render-generation guard cancels stale loads/renders on double-click, reopen, and zoom-during-load)
 - PDF viewer: lazy rendering for big PDFs — cheap placeholders for all pages in one DOM pass, first-page-fast + ±2 neighbours, `IntersectionObserver` prefetch (`1200px` margin, queue cap 30, serial pump)
 - PDF viewer: streamed download progress (`Downloading… %/MB`), canvas backing store capped at ~2.5MP with `page.cleanup()`

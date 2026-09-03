@@ -376,13 +376,17 @@ svg { display: block; }
 .icon-btn:hover { background: var(--bg4); color: var(--fg); }
 .icon-btn.active { color: var(--accent); }
 
-.keep-awake { display: flex; align-items: center; justify-content: center; margin-left: 4px; cursor: pointer; }
+.keep-awake { display: flex; align-items: center; justify-content: center; margin-left: 4px; cursor: pointer; width: 36px; height: 36px; min-width: 36px; border-radius: var(--radius); color: var(--fg2); transition: background var(--transition-fast), color var(--transition-fast); }
+.keep-awake:hover { background: var(--bg4); color: var(--fg); }
 .keep-awake input { display: none; }
-.keep-awake-box { width: 18px; height: 18px; border: 1.5px solid var(--border); border-radius: 4px; position: relative; transition: var(--transition-normal) ease; background: var(--bg2); }
-.keep-awake:hover .keep-awake-box { border-color: var(--fg2); }
-.keep-awake-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--fg); position: absolute; top: 4px; left: 3px; transition: left var(--transition-normal) ease; }
-.keep-awake input:checked + .keep-awake-box { border-color: var(--accent); background: var(--accent); }
-.keep-awake input:checked + .keep-awake-box .keep-awake-dot { background: var(--bg); left: calc(100% - 11px); }
+.awake-cup { display: flex; align-items: center; justify-content: center; }
+.awake-cup .steam { opacity: 0; }
+.keep-awake input:checked ~ .awake-cup { color: var(--accent); animation: awakeGlow 2.4s ease-in-out infinite; }
+.keep-awake input:checked ~ .awake-cup .steam { animation: steamRise 2.1s ease-in-out infinite; }
+.keep-awake input:checked ~ .awake-cup .s2 { animation-delay: .35s; }
+.keep-awake input:checked ~ .awake-cup .s3 { animation-delay: .7s; }
+@keyframes awakeGlow { 0%, 100% { filter: drop-shadow(0 0 0 transparent); } 50% { filter: drop-shadow(0 0 5px var(--accent)); } }
+@keyframes steamRise { 0% { opacity: 0; transform: translateY(2px); } 35% { opacity: 1; } 100% { opacity: 0; transform: translateY(-2.5px); } }
 
 #hostname-badge { font-size: 11px; color: var(--fg2); padding: 2px 8px; background: var(--bg3); border-radius: 999px; }
 #more-btn { display: none; }
@@ -421,7 +425,7 @@ svg { display: block; }
 /* ═══════════════════════════════════════════════════════
    SIDEBAR / FILE EXPLORER
    ═══════════════════════════════════════════════════════ */
-#sidebar-header { display: flex; align-items: center; gap: 3px; padding: 3px 6px; border-bottom: 1px solid var(--border); flex-shrink: 0; min-height: 30px; background: var(--bg2); }
+#sidebar-header { display: flex; align-items: center; gap: 3px; padding: 3px 6px; border-bottom: 1px solid var(--border); flex-shrink: 0; min-height: var(--tab-h); background: var(--bg2); }
 #sidebar-header { flex-wrap: wrap; height: auto; }
 #path-bar { display: flex; align-items: center; gap: 2px; padding: 3px 6px; border-bottom: 1px solid var(--border); flex-shrink: 0; min-height: 30px; background: var(--bg2); }
 #path-segments { flex: 1; min-width: 0; display: flex; align-items: center; gap: 0; white-space: nowrap; overflow-x: auto; line-height: 1; scrollbar-width: none; font-size: 11px; color: var(--fg2); }
@@ -773,6 +777,51 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
   .bookmark-item .bm-remove { width: 28px; height: 28px; font-size: 14px; }
 }
 
+/* ── Git mini-panel ── */
+#git-header {
+  display: flex; align-items: center; gap: 3px;
+  padding: 2px 6px; font-size: 10px; color: var(--fg2);
+  text-transform: uppercase; letter-spacing: 0.3px;
+  border-bottom: 1px solid var(--border); flex-shrink: 0; cursor: pointer;
+}
+#git-header:hover { color: var(--fg); }
+#git-branch { font-family: var(--font); font-size: 10px; color: var(--accent); background: var(--bg3); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none; letter-spacing: 0; }
+#git-sync { color: var(--accent); white-space: nowrap; font-weight: 700; }
+#git-panel { max-height: 0; overflow: hidden; transition: max-height var(--transition-normal); flex-shrink: 0; }
+#git-panel.open { max-height: 320px; overflow-y: auto; }
+.git-group-label { font-size: 10px; color: var(--fg2); text-transform: uppercase; letter-spacing: 0.3px; padding: 4px 8px 1px; }
+.git-file { display: flex; align-items: center; gap: 4px; padding: 1px 6px 1px 10px; font-size: 11px; font-family: var(--font); }
+.git-file:hover { background: var(--bg3); }
+.git-file .git-xy { width: 18px; flex-shrink: 0; font-weight: 700; }
+.git-file .git-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.git-file.staged .git-xy { color: var(--green); }
+.git-file.unstaged .git-xy { color: var(--accent); }
+.git-file.untracked .git-xy { color: var(--cyan); }
+.git-file.unmerged .git-xy { color: var(--red); }
+.git-file.unmerged .git-name { color: var(--red); }
+.git-file button { background: none; border: none; color: var(--fg2); cursor: pointer; font-size: 10px; padding: 2px 4px; border-radius: var(--radius-sm); flex-shrink: 0; }
+.git-file button:hover { background: var(--bg4); color: var(--fg); }
+.git-empty { font-size: 11px; color: var(--fg2); padding: 4px 10px; }
+#git-commit-row { display: flex; gap: 4px; padding: 6px 6px 2px; }
+#git-commit-row input { flex: 1; min-width: 0; height: 28px; font-size: 12px; }
+#git-commit-row .sidebar-action-btn { flex-shrink: 0; min-width: 0; padding: 0 10px; }
+#git-all-row { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--fg2); padding: 2px 8px; cursor: pointer; }
+#git-actions-row { display: flex; gap: 4px; padding: 4px 6px; }
+#git-log { border-top: 1px solid var(--border); }
+.git-log-item { padding: 3px 10px; font-size: 10px; border-bottom: 1px solid transparent; }
+.git-log-item:hover { background: var(--bg3); }
+.git-log-item .git-hash { font-family: var(--font); color: var(--accent); margin-right: 6px; }
+.git-log-item .git-subject { color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.git-log-item .git-meta { color: var(--fg2); }
+@media (pointer: coarse) {
+  .git-file { padding: 8px 8px 8px 12px; }
+  .git-file button { padding: 6px 8px; font-size: 12px; }
+}
+/* ── Diff colors (editor diff view) ── */
+.CodeMirror .diff-add { background: rgba(46,160,67,.14); color: var(--green); }
+.CodeMirror .diff-del { background: rgba(248,81,73,.13); color: var(--red); }
+.CodeMirror .diff-hunk { background: rgba(56,139,253,.13); color: var(--accent); }
+
 /* ═══════════════════════════════════════════════════════
    FUZZY FINDER
    ═══════════════════════════════════════════════════════ */
@@ -1054,8 +1103,8 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
     <div class="header-spacer"></div>
     <label id="keep-awake-toggle" class="keep-awake" title="Keep Screen Awake">
       <input type="checkbox" id="keep-awake-cb" aria-label="Keep screen awake" onchange="toggleKeepAwake(this.checked)">
-      <span class="keep-awake-box">
-        <span class="keep-awake-dot"></span>
+      <span class="awake-cup" aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path class="steam s1" d="M7.5 8.5c-1.2-1.4 1.2-2.2 0-3.6"/><path class="steam s2" d="M11.5 8.5c-1.2-1.4 1.2-2.2 0-3.6"/><path class="steam s3" d="M15.5 8.5c-1.2-1.4 1.2-2.2 0-3.6"/><path d="M4 10.5h13V16a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4v-5.5z"/><path d="M17 11.5h1.5a2.5 2.5 0 0 1 0 5H17"/></svg>
       </span>
     </label>
     <button class="icon-btn" id="sidebar-toggle" aria-label="Toggle sidebar" title="Toggle Explorer (Ctrl+B)" onclick="toggleSidebar()">
@@ -1137,6 +1186,24 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
       </div>
       <div id="bookmarks-header" role="button" tabindex="0" aria-expanded="true" aria-controls="bookmarks-list" onclick="toggleBookmarks()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleBookmarks();}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg> Bookmarks <span id="bm-count" style="margin-left:auto;font-size:10px"></span></div>
       <div id="bookmarks-list"></div>
+      <div id="git-section" style="display:none">
+        <div id="git-header" role="button" tabindex="0" aria-expanded="true" aria-controls="git-panel" onclick="toggleGitPanel()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleGitPanel();}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg> Git <span id="git-branch" title=""></span><span id="git-sync" style="font-size:10px"></span><span id="git-count" style="margin-left:auto;font-size:10px"></span></div>
+        <div id="git-panel">
+          <div id="git-files"></div>
+          <div id="git-commit-row">
+            <input id="git-msg" type="text" placeholder="Commit message…" aria-label="Commit message" maxlength="1000" oninput="clearFieldError('git-msg-error')">
+            <button class="sidebar-action-btn" id="git-commit-btn" onclick="gitCommit()" title="Commit staged changes">Commit</button>
+          </div>
+          <div class="field-error" id="git-msg-error" role="alert" style="padding:0 8px"></div>
+          <label id="git-all-row"><input type="checkbox" id="git-all-cb"> Stage all + commit</label>
+          <div id="git-actions-row">
+            <button class="sidebar-action-btn" id="git-pull-btn" onclick="gitPull()" title="git pull">Pull</button>
+            <button class="sidebar-action-btn" id="git-push-btn" onclick="gitPush()" title="git push">Push</button>
+            <button class="sidebar-action-btn" onclick="refreshGitPanel(currentPath, true)" title="Refresh git status">Refresh</button>
+          </div>
+          <div id="git-log"></div>
+        </div>
+      </div>
       <div id="sidebar-footer">
         <button class="sidebar-action-btn" onclick="bookmarkCurrentDir()" title="Bookmark current directory">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
@@ -2995,6 +3062,7 @@ async function loadFiles(dir) {
   document.getElementById('path-input').value = currentPath;
   renderBreadcrumb(currentPath);
   saveCurrentPath();
+  refreshGitPanel(currentPath);
 
   currentParent = data.parent || '';
 
@@ -4256,6 +4324,7 @@ async function openFileEditor(path) {
   const cm = initCodeMirror();
   cm.setValue(r.content);
   cm.setOption('mode', getCMmode(fileName) || 'text/plain');
+  cm.setOption('readOnly', false);
   document.querySelector('.CodeMirror').style.display = '';
   cm.refresh();
   const ta = document.getElementById('editor-textarea');
@@ -6035,6 +6104,8 @@ async function toggleKeepAwake(enabled) {
 function syncKeepAwakeUI() {
   const cb = document.getElementById('keep-awake-cb');
   if (cb) cb.checked = !!settings.keepAwake;
+  const label = document.getElementById('keep-awake-toggle');
+  if (label) label.title = settings.keepAwake ? 'Keep Screen Awake — ON (screen stays on)' : 'Keep Screen Awake';
 }
 
 document.addEventListener('visibilitychange', async () => {
@@ -6906,6 +6977,231 @@ function toggleBookmarks() {
   document.getElementById('bookmarks-list').classList.toggle('open', bookmarksOpen);
   try { safeStorage.setItem('wt-bm-open', bookmarksOpen); } catch(e) { console.warn(e); }
 }
+
+// ═══════════════════════════════════════════════════════
+// GIT MINI-PANEL
+// ═══════════════════════════════════════════════════════
+let gitRoot = null;
+let gitRepo = false;
+let gitUnsupported = false; // git binary missing on server — stop probing
+let _gitReq = 0;
+let gitOpen = (() => { try { const v = safeStorage.getItem('wt-git-open'); return v !== null ? v === 'true' : true; } catch(e) { console.warn(e); return true; } })();
+function toggleGitPanel() {
+  gitOpen = !gitOpen;
+  document.getElementById('git-panel').classList.toggle('open', gitOpen);
+  try { safeStorage.setItem('wt-git-open', gitOpen); } catch(e) { console.warn(e); }
+}
+async function refreshGitPanel(dir, manual) {
+  const section = document.getElementById('git-section');
+  if (!section) return;
+  if (gitUnsupported || !dir) { if (gitUnsupported) section.style.display = 'none'; return; }
+  const myReq = ++_gitReq;
+  let st;
+  try {
+    st = await api(`/api/git/status?path=${encodeURIComponent(dir)}`);
+  } catch { return; }
+  if (myReq !== _gitReq) return;
+  if (!st || st.git === false) {
+    gitUnsupported = true; section.style.display = 'none';
+    if (manual) toast('git is not installed on the server', 'warning');
+    return;
+  }
+  if (!st.isRepo) { gitRepo = false; gitRoot = null; section.style.display = 'none'; return; }
+  gitRepo = true; gitRoot = st.root;
+  section.style.display = '';
+  document.getElementById('git-panel').classList.toggle('open', gitOpen);
+  const branchEl = document.getElementById('git-branch');
+  branchEl.textContent = st.branch || '?';
+  branchEl.title = st.root || '';
+  branchEl.style.color = st.detached ? 'var(--red)' : '';
+  const sync = [];
+  if (st.ahead > 0) sync.push('↑' + st.ahead);
+  if (st.behind > 0) sync.push('↓' + st.behind);
+  document.getElementById('git-sync').textContent = sync.join(' ');
+  const total = st.staged.length + st.unstaged.length + st.untracked.length + st.unmerged.length;
+  document.getElementById('git-count').textContent = total ? String(total) : '';
+  renderGitFiles(st);
+  refreshGitLog();
+}
+function gitFileRow(e, cls) {
+  const row = document.createElement('div');
+  row.className = 'git-file ' + cls;
+  const xy = document.createElement('span');
+  xy.className = 'git-xy';
+  xy.textContent = cls === 'untracked' ? '?' : (((e.x || '') + (e.y || '')).trim() || '•');
+  row.appendChild(xy);
+  const nm = document.createElement('span');
+  nm.className = 'git-name';
+  nm.textContent = e.path;
+  nm.title = e.path;
+  row.appendChild(nm);
+  const addBtn = (label, title, fn) => {
+    const b = document.createElement('button');
+    b.textContent = label; b.title = title;
+    b.addEventListener('click', ev => { ev.stopPropagation(); fn(); });
+    row.appendChild(b);
+  };
+  if (cls === 'staged') {
+    addBtn('Unstage', 'git restore --staged', () => gitStageOp('unstage', [e.path]));
+    addBtn('Diff', 'staged diff', () => openGitDiff(e.path, true));
+  } else if (cls === 'unstaged') {
+    addBtn('Stage', 'git add', () => gitStageOp('stage', [e.path]));
+    addBtn('Diff', 'unstaged diff', () => openGitDiff(e.path, false));
+  } else if (cls === 'untracked') {
+    addBtn('Stage', 'git add', () => gitStageOp('stage', [e.path]));
+  } else if (cls === 'unmerged') {
+    addBtn('Diff', 'diff', () => openGitDiff(e.path, false));
+  }
+  return row;
+}
+function renderGitFiles(st) {
+  const box = document.getElementById('git-files');
+  box.innerHTML = '';
+  const groups = [
+    ['Unmerged', st.unmerged, 'unmerged'],
+    ['Staged', st.staged, 'staged'],
+    ['Unstaged', st.unstaged, 'unstaged'],
+    ['Untracked', st.untracked, 'untracked'],
+  ];
+  let any = false;
+  for (const [label, list, cls] of groups) {
+    if (!list || !list.length) continue;
+    any = true;
+    const h = document.createElement('div');
+    h.className = 'git-group-label';
+    h.textContent = label + ' (' + list.length + ')';
+    box.appendChild(h);
+    for (const e of list) box.appendChild(gitFileRow(e, cls));
+  }
+  if (!any) {
+    const d = document.createElement('div');
+    d.className = 'git-empty';
+    d.textContent = 'Working tree clean';
+    box.appendChild(d);
+  }
+  const commitBtn = document.getElementById('git-commit-btn');
+  const blocked = st.unmerged.length > 0;
+  commitBtn.disabled = blocked;
+  commitBtn.title = blocked ? 'Resolve conflicts first' : 'Commit staged changes';
+}
+async function gitStageOp(op, files) {
+  if (!gitRoot) return;
+  const r = await api(`/api/git/${op}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: gitRoot, files }) });
+  if (r && r.error) toast(r.error, 'error');
+  refreshGitPanel(currentPath);
+}
+async function gitCommit() {
+  if (!gitRoot) return;
+  clearFieldError('git-msg-error');
+  const input = document.getElementById('git-msg');
+  const msg = (input.value || '').trim();
+  if (!msg) { showFieldError('git-msg-error', 'Message required'); input.focus(); return; }
+  const btn = document.getElementById('git-commit-btn');
+  setBtnBusy(btn, true);
+  const r = await api('/api/git/commit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: gitRoot, message: msg, all: document.getElementById('git-all-cb').checked }) });
+  setBtnBusy(btn, false);
+  if (!r || r.error) { showFieldError('git-msg-error', (r && r.error) || 'Commit failed'); return; }
+  input.value = '';
+  document.getElementById('git-all-cb').checked = false;
+  toast('Committed' + (r.hash ? ' ' + r.hash : ''), 'success');
+  refreshGitPanel(currentPath);
+}
+async function gitPushPull(op) {
+  if (!gitRoot) return;
+  // Raw fetch with 90s timeout — api() caps at 30s, too short for big push/pull
+  const btn = document.getElementById(op === 'push' ? 'git-push-btn' : 'git-pull-btn');
+  setBtnBusy(btn, true);
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 90000);
+    const resp = await fetch(`/api/git/${op}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-pin-token': authToken }, body: JSON.stringify({ path: gitRoot }), signal: ctrl.signal });
+    clearTimeout(t);
+    const j = await resp.json().catch(() => ({}));
+    if (!resp.ok || j.error) {
+      toast((j && j.error) || (op + ' failed'), 'error');
+    } else {
+      const tail = (j.output || '').trim().split('\n').pop() || '';
+      toast((op === 'push' ? 'Pushed' : 'Pulled') + (tail ? ': ' + tail : ''), 'success');
+    }
+  } catch (e) {
+    toast(op + ' failed: ' + e.message, 'error');
+  }
+  setBtnBusy(btn, false);
+  refreshGitPanel(currentPath);
+}
+function gitPush() { gitPushPull('push'); }
+function gitPull() { gitPushPull('pull'); }
+async function refreshGitLog() {
+  const box = document.getElementById('git-log');
+  if (!box || !gitRoot) return;
+  const r = await api(`/api/git/log?path=${encodeURIComponent(gitRoot)}&n=5`);
+  box.innerHTML = '';
+  if (!r || !r.commits || !r.commits.length) return;
+  for (const c of r.commits) {
+    const d = document.createElement('div');
+    d.className = 'git-log-item';
+    d.title = (c.hash || '') + '\n' + (c.author || '') + ' • ' + (c.date || '');
+    const subj = document.createElement('span');
+    subj.className = 'git-subject';
+    const h = document.createElement('span');
+    h.className = 'git-hash';
+    h.textContent = c.short || '';
+    subj.appendChild(h);
+    subj.appendChild(document.createTextNode(c.subject || ''));
+    d.appendChild(subj);
+    const meta = document.createElement('span');
+    meta.className = 'git-meta';
+    meta.textContent = (c.author || '') + ' • ' + (c.date || '');
+    d.appendChild(meta);
+    box.appendChild(d);
+  }
+}
+async function openGitDiff(file, cached) {
+  if (!gitRoot) return;
+  const r = await api(`/api/git/diff?path=${encodeURIComponent(gitRoot)}&file=${encodeURIComponent(file)}${cached ? '&cached=1' : ''}`);
+  if (!r || r.error) { toast((r && r.error) || 'Diff failed', 'error'); return; }
+  const name = (String(file).split(/[\\/]/).pop() || file);
+  const content = r.diff ? (r.truncated ? r.diff + '\n…(truncated at 200KB)' : r.diff) : '(no changes)';
+  // Read-only diff in the editor tab (editorPath stays empty so Save is a no-op)
+  cleanupDocViewers();
+  editorPath = '';
+  editorOriginalContent = content;
+  document.getElementById('editor-save-btn').style.display = 'none';
+  document.getElementById('md-preview-toggle').style.display = 'none';
+  document.getElementById('preview-refresh-btn').style.display = 'none';
+  const cm = initCodeMirror();
+  cm.setValue(content);
+  cm.setOption('mode', 'text/plain');
+  cm.setOption('readOnly', true);
+  document.querySelector('.CodeMirror').style.display = '';
+  cm.refresh();
+  // Colorize diff lines (additions green, deletions red, hunks accent)
+  try {
+    const n = Math.min(cm.lineCount(), 10000);
+    for (let i = 0; i < n; i++) {
+      const t = cm.getLine(i) || '';
+      if (t.startsWith('+++') || t.startsWith('---')) cm.addLineClass(i, 'background', 'diff-hunk');
+      else if (t[0] === '+') cm.addLineClass(i, 'background', 'diff-add');
+      else if (t[0] === '-') cm.addLineClass(i, 'background', 'diff-del');
+      else if (t.startsWith('@@') || t.startsWith('diff --git')) cm.addLineClass(i, 'background', 'diff-hunk');
+    }
+  } catch {}
+  updateEditorDirty();
+  const preview = document.getElementById('editor-preview');
+  preview.classList.remove('active');
+  const previewIframe = document.getElementById('editor-preview-iframe');
+  if (previewIframe) { previewIframe.style.display = 'none'; previewIframe.srcdoc = ''; }
+  const mdContent = document.getElementById('md-preview-content');
+  if (mdContent) { mdContent.style.display = 'none'; mdContent.innerHTML = ''; }
+  mdPreviewActive = false;
+  clearPreviewLiveReload();
+  document.getElementById('editor-filename').textContent = name + (cached ? ' (staged diff)' : ' (diff)') + '  /  ' + gitRoot;
+  document.getElementById('editor-status').textContent = r.binary ? 'binary file' : 'read-only • git diff';
+  if (window.innerWidth > 768) document.getElementById('content').classList.add('editor-open');
+  document.getElementById('editor-view').classList.add('open');
+  requestAnimationFrame(() => { tabs.forEach(tab => { try { fitTerm(tab); } catch (e) {} }); });
+}
+document.getElementById('git-msg').addEventListener('keydown', e => { if (e.key === 'Enter') gitCommit(); });
 
 // ═══════════════════════════════════════════════════════
 // FUZZY FINDER (Ctrl+P)

@@ -100,6 +100,12 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
   - `GET /api/search?q=&path=` — async file search (max depth 4, max 50 results)
 - **Auth endpoint**: `POST /api/auth` and `GET /api/auth/required` — rate-limited separately.
 - **History endpoint**: `GET /api/history`, `POST /api/history`, `DELETE /api/history`, `DELETE /api/history/:index` — all under `checkPin`.
+- **Git endpoints** (`server.js`): all under `checkPin`; no-shell `git -C <root>` via `spawnRead`, file args validated inside repo root.
+  - `GET /api/git/status?path=` — repo detect (`rev-parse`), porcelain `-b` parse (rate-limited)
+  - `GET /api/git/diff?path=&file=[&cached=1]` — capped 200KB, binary flag (rate-limited)
+  - `GET /api/git/log?path=[&n=]` — last 1-20 commits (rate-limited)
+  - `POST /api/git/stage` / `unstage` — `{path, files[]}` max 100 files
+  - `POST /api/git/commit` — `{path, message≤1000, all}`; `POST /api/git/pull` / `push` — 60s timeout (frontend uses 90s raw fetch, `api()` caps at 30s)
 - **Startup cleanup**: loads persisted tunnels, kills orphan `wt-webtun-*` (and legacy `wt-*`) tmux sessions.
 - **Workspace sandbox**: `ALLOW_FULL_FS` (default `false` restricts to `WORKSPACE_ROOT`), enforced via `pathContained()`.
 - **Cross-platform**: All file operations, process management, and system commands have Windows (PowerShell), macOS (BSD tools), and Linux (GNU tools) code paths.

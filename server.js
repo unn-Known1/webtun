@@ -1651,6 +1651,220 @@ app.delete('/api/history/:index', checkPin, (req, res) => {
   res.json({ success: true, history: cmdHistory });
 });
 
+// ── Git panel ─────────────────────────────────────────────────────────
+// All git invocations use arg arrays (no shell). `git -C <root>` keeps the
+// child inside the repo without cwd plumbing. File args are validated to
+// stay within the repo root via pathContained().
+let GIT_STATE = null; // null = unchecked, 'ok' | 'missing'
+function gitAvailable() {
+  if (GIT_STATE) return GIT_STATE === 'ok';
+  try {
+    execFileSync('git', ['--version'], { stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 });
+    GIT_STATE = 'ok';
+  } catch { GIT_STATE = 'missing'; }
+  return GIT_STATE === 'ok';
+}
+
+// Resolve repo root for a directory. Throws 404 when not inside a repo.
+async function gitRootFor(dir) {
+  const resolved = resolvePath(dir);
+  let root;
+  try {
+    root = (await spawnRead('git', ['-C', resolved, 'rev-parse', '--show-toplevel'])).trim().split('\n')[0];
+  } catch {
+    const e = new Error('not a git repository'); e.status = 404; throw e;
+  }
+  if (!root) { const e = new Error('not a git repository'); e.status = 404; throw e; }
+  if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, root)) {
+    const e = new Error('Access denied: repo outside workspace'); e.status = 403; throw e;
+  }
+  return root;
+}
+
+function gitUnquote(s) {
+  s = (s || '').trim();
+  if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) {
+    try { return JSON.parse(s); } catch { return s.slice(1, -1); }
+  }
+  return s;
+}
+
+function parseGitStatus(raw) {
+  const lines = (raw || '').split('\n');
+  const head = lines[0] || '';
+  let branch = '?', detached = false, ahead = 0, behind = 0;
+  const hm = head.match(/^## (?:No commits yet on )?(.+?)(?:\.\.\.(.+?))?(?: \[(.+)\])?$/);
+  if (hm) {
+    const local = (hm[1] || '').trim();
+    if (local.startsWith('HEAD')) { detached = true; branch = '(detached)'; }
+    else branch = local;
+    const info = hm[3] || '';
+    const am = info.match(/ahead (\d+)/); if (am) ahead = parseInt(am[1], 10);
+    const bm = info.match(/behind (\d+)/); if (bm) behind = parseInt(bm[1], 10);
+  }
+  const staged = [], unstaged = [], untracked = [], unmerged = [];
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line || line.length < 4) continue;
+    const x = line[0], y = line[1];
+    let p = line.slice(3);
+    // Rename/copy: "R  old -> new" — show the new path
+    const arrow = p.indexOf(' -> ');
+    if (arrow !== -1) p = p.slice(arrow + 4);
+    p = gitUnquote(p);
+    if (!p) continue;
+    const entry = { path: p, x, y };
+    if (x === '?' && y === '?') { untracked.push({ path: p }); continue; }
+    if (x === 'U' || y === 'U' || ['AA', 'DD', 'AU', 'UA', 'DU', 'UD'].includes(x + y)) { unmerged.push(entry); continue; }
+    if (x !== ' ' && x !== '?') staged.push(entry);
+    if (y !== ' ' && y !== '?') unstaged.push(entry);
+  }
+  return { branch, detached, ahead, behind, staged, unstaged, untracked, unmerged };
+}
+
+app.get('/api/git/status', rateLimiter, checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.json({ git: false });
+    let root;
+    try { root = await gitRootFor(req.query.path); }
+    catch (e) {
+      if (e.status === 404) return res.json({ git: true, isRepo: false });
+      throw e;
+    }
+    const raw = await spawnRead('git', ['-C', root, 'status', '--porcelain=v1', '-b']);
+    const st = parseGitStatus(raw);
+    if (st.detached) {
+      try { st.branch = (await spawnRead('git', ['-C', root, 'rev-parse', '--short', 'HEAD'])).trim() + ' (detached)'; } catch {}
+    }
+    res.json({ git: true, isRepo: true, root, ...st });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+app.get('/api/git/diff', rateLimiter, checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    const root = await gitRootFor(req.query.path);
+    const file = req.query.file;
+    if (!file || typeof file !== 'string' || Array.isArray(file)) return res.status(400).json({ error: 'file is required' });
+    const abs = path.resolve(root, file);
+    if (!pathContained(root, abs)) return res.status(400).json({ error: 'file outside repo' });
+    const rel = path.relative(root, abs) || '.';
+    const args = ['-C', root, 'diff', '--no-color'];
+    if (req.query.cached === '1') args.push('--cached');
+    args.push('--', rel);
+    let diff = await spawnRead('git', args);
+    const binary = diff.includes('Binary files');
+    const truncated = diff.length > 200000;
+    if (truncated) diff = diff.slice(0, 200000);
+    res.json({ success: true, diff, binary, truncated });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+app.get('/api/git/log', rateLimiter, checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    const root = await gitRootFor(req.query.path);
+    let n = parseInt(req.query.n, 10);
+    if (isNaN(n) || n < 1) n = 10;
+    if (n > 20) n = 20;
+    const raw = await spawnRead('git', ['-C', root, 'log', '-n', String(n), '--format=%H%x1f%h%x1f%an%x1f%ad%x1f%s', '--date=short']);
+    const commits = raw.split('\n').filter(Boolean).map(l => {
+      const [hash, short, author, date, ...subj] = l.split('\x1f');
+      return { hash, short, author, date, subject: subj.join('\x1f') };
+    });
+    res.json({ success: true, commits });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+function gitFileArgs(root, files) {
+  if (!Array.isArray(files) || !files.length || files.length > 100) {
+    const e = new Error('files must be an array of 1-100 paths'); e.status = 400; throw e;
+  }
+  return files.map(f => {
+    if (typeof f !== 'string' || !f || f.includes('\0')) { const e = new Error('invalid file path'); e.status = 400; throw e; }
+    const abs = path.resolve(root, f);
+    if (!pathContained(root, abs)) { const e = new Error('file outside repo: ' + f); e.status = 400; throw e; }
+    return path.relative(root, abs) || '.';
+  });
+}
+
+app.post('/api/git/stage', checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    const root = await gitRootFor(req.body && req.body.path);
+    const rels = gitFileArgs(root, req.body && req.body.files);
+    await spawnRead('git', ['-C', root, 'add', '--', ...rels]);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+app.post('/api/git/unstage', checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    const root = await gitRootFor(req.body && req.body.path);
+    const rels = gitFileArgs(root, req.body && req.body.files);
+    await spawnRead('git', ['-C', root, 'restore', '--staged', '--', ...rels]);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+app.post('/api/git/commit', checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    const root = await gitRootFor(req.body && req.body.path);
+    let message = req.body && req.body.message;
+    if (typeof message !== 'string' || !message.trim()) return res.status(400).json({ error: 'commit message is required' });
+    message = message.trim().slice(0, 1000);
+    if (req.body && req.body.all) await spawnRead('git', ['-C', root, 'add', '-A']);
+    try {
+      await spawnRead('git', ['-C', root, 'commit', '-m', message]);
+    } catch (e) {
+      return res.status(400).json({ error: (e.message || 'commit failed').trim().slice(0, 500) || 'commit failed' });
+    }
+    let hash = '';
+    try { hash = (await spawnRead('git', ['-C', root, 'rev-parse', '--short', 'HEAD'])).trim(); } catch {}
+    res.json({ success: true, hash });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+app.post('/api/git/pull', checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    const root = await gitRootFor(req.body && req.body.path);
+    let out = '';
+    try { out = await spawnRead('git', ['-C', root, 'pull', '--no-rebase'], { timeout: 60000 }); }
+    catch (e) { return res.status(400).json({ error: (e.message || 'pull failed').trim().slice(0, 1000) || 'pull failed' }); }
+    res.json({ success: true, output: out.slice(-5000) });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+app.post('/api/git/push', checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    const root = await gitRootFor(req.body && req.body.path);
+    let out = '';
+    try { out = await spawnRead('git', ['-C', root, 'push'], { timeout: 60000 }); }
+    catch (e) { return res.status(400).json({ error: (e.message || 'push failed').trim().slice(0, 1000) || 'push failed' }); }
+    res.json({ success: true, output: out.slice(-5000) });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
 // ── Session persistence ──────────────────────────────────────────────
 let TMUX = (() => { try { return execSync('command -v tmux', { stdio: ['ignore','pipe','ignore'] }).toString().trim(); } catch { return null; } })();
 const TMUX_PREFIX = 'wt-webtun-'; // namespaced to avoid collision with user wt-* (F14)
@@ -2007,9 +2221,9 @@ app.get('/api/search', rateLimiter, checkPin, async (req, res) => {
   }
 });
 
-function spawnRead(cmd, args) {
+function spawnRead(cmd, args, opts = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], timeout: 5000 });
+    const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], timeout: opts.timeout || 5000 });
     let stdout = '', stderr = '';
     child.stdout.on('data', d => stdout += d.toString());
     child.stderr.on('data', d => stderr += d.toString());
