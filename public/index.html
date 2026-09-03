@@ -429,8 +429,16 @@ svg { display: block; }
 /* ═══════════════════════════════════════════════════════
    SIDEBAR / FILE EXPLORER
    ═══════════════════════════════════════════════════════ */
-#sidebar-header { display: flex; align-items: center; gap: 3px; padding: 3px 6px; border-bottom: 1px solid var(--border); flex-shrink: 0; min-height: var(--tab-h); background: var(--bg2); }
+#sidebar-header { display: flex; align-items: center; gap: 4px; padding: 3px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0; min-height: var(--tab-h); background: var(--bg2); }
 #sidebar-header { flex-wrap: wrap; height: auto; }
+/* Segmented history nav + group separators */
+.hdr-seg { display: flex; align-items: center; gap: 1px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 1px; flex-shrink: 0; }
+.hdr-seg .icon-btn { border-radius: calc(var(--radius) - 2px); }
+.hdr-sep { width: 1px; height: 18px; background: var(--border); margin: 0 3px; flex-shrink: 0; }
+/* Refresh spins while the list loads */
+#refresh-btn.spinning { color: var(--accent); pointer-events: none; }
+#refresh-btn.spinning svg { transform-box: fill-box; transform-origin: center; animation: hdrSpin 0.9s linear infinite; }
+@keyframes hdrSpin { to { transform: rotate(360deg); } }
 #path-bar { display: flex; align-items: center; gap: 2px; padding: 3px 6px; border-bottom: 1px solid var(--border); flex-shrink: 0; min-height: 30px; background: var(--bg2); }
 #path-segments { flex: 1; min-width: 0; display: flex; align-items: center; gap: 0; white-space: nowrap; overflow-x: auto; line-height: 1; scrollbar-width: none; font-size: 11px; color: var(--fg2); }
 #path-segments::-webkit-scrollbar { display: none; }
@@ -514,7 +522,8 @@ svg { display: block; }
 #sidebar[data-select-mode="true"] .file-select-check { display: flex; }
 #sidebar[data-select-mode="true"] .file-item { padding-left: 6px; }
 .file-action-btn:hover { background: var(--border); color: var(--fg); }
-#sidebar-footer { padding: 4px 6px; border-top: 1px solid var(--border); display: flex; gap: 2px; flex-wrap: wrap; flex-shrink: 0; }
+#sidebar-footer { padding: 6px 8px; border-top: 1px solid var(--border); display: flex; gap: 2px; flex-shrink: 0; }
+#sidebar-footer .icon-btn { width: 32px; height: 32px; min-width: 32px; min-height: 32px; }
 .sidebar-action-btn { flex: 1; min-width: 60px; height: 28px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); color: var(--fg2); font-size: 11px; display: flex; align-items: center; justify-content: center; gap: 4px; transition: all var(--transition-fast); }
 .sidebar-action-btn:hover { background: var(--bg4); color: var(--fg); border-color: var(--accent); }
 
@@ -833,27 +842,39 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
    BOOKMARKS
    ═══════════════════════════════════════════════════════ */
 #bookmarks-header {
-  display: flex; align-items: center; gap: 3px;
-  padding: 2px 6px; font-size: 10px; color: var(--fg2);
-  text-transform: uppercase; letter-spacing: 0.3px;
-  border-bottom: 1px solid var(--border); flex-shrink: 0; cursor: pointer;
+  display: flex; align-items: center; gap: 7px;
+  padding: 8px 10px 6px; font-size: 10px; color: var(--fg2);
+  text-transform: uppercase; letter-spacing: 0.6px; font-family: var(--font-ui);
+  flex-shrink: 0; cursor: pointer; user-select: none;
 }
 #bookmarks-header:hover { color: var(--fg); }
-#bookmarks-list { max-height: 0; overflow: hidden; transition: max-height var(--transition-normal); flex-shrink: 0; }
-#bookmarks-list.open { max-height: 200px; overflow-y: auto; }
+#bookmarks-header:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius-sm); }
+#bookmarks-header .bm-head-ico { display: inline-flex; color: var(--fg3); flex-shrink: 0; }
+#bookmarks-header:hover .bm-head-ico { color: var(--accent); }
+#bm-count { font-size: 9px; letter-spacing: 0.3px; border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; color: var(--fg2); }
+#bookmarks-header .bm-chev { margin-left: auto; display: inline-flex; color: var(--fg3); transition: transform var(--transition-fast); flex-shrink: 0; }
+#bookmarks-header[aria-expanded="true"] .bm-chev { transform: rotate(90deg); }
+#bookmarks-list { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--transition-normal); flex-shrink: 0; }
+#bookmarks-list.open { grid-template-rows: 1fr; }
+#bookmarks-list .bm-inner { overflow: hidden; min-height: 0; }
 .bookmark-item {
-  display: flex; align-items: center; gap: 3px;
-  padding: 1px 6px; font-size: 11px; cursor: pointer;
-  border-bottom: 1px solid transparent;
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 8px 4px 10px; margin: 1px 4px; font-size: 11px; cursor: pointer;
+  border-radius: var(--radius);
 }
 .bookmark-item:hover { background: var(--bg3); }
-.bookmark-item .bm-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); }
-.bookmark-item .bm-remove { opacity: 0.3; font-size: 14px; line-height: 1; width: 16px; text-align: center; }
-.bookmark-item .bm-remove:hover { opacity: 1; color: var(--red); }
+.bookmark-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.bookmark-item .bm-ico { width: 22px; height: 22px; min-width: 22px; border-radius: 7px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); }
+.bookmark-item .bm-text { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.35; }
+.bookmark-item .bm-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); }
+.bookmark-item .bm-path { font-size: 10px; color: var(--fg3); font-family: var(--font-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bookmark-item .bm-remove { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; min-width: 24px; border-radius: var(--radius-sm); color: var(--fg3); background: none; border: none; cursor: pointer; opacity: 0; flex-shrink: 0; }
+.bookmark-item:hover .bm-remove, .bookmark-item:focus-within .bm-remove { opacity: 0.8; }
+.bookmark-item .bm-remove:hover { opacity: 1; color: var(--red); background: var(--bg4); }
 @media (pointer: coarse) {
-  .bookmark-item { padding: 10px 12px; }
+  .bookmark-item { padding: 8px 8px 8px 10px; }
   .bookmark-item .bm-name { font-size: 13px; }
-  .bookmark-item .bm-remove { width: 28px; height: 28px; font-size: 14px; }
+  .bookmark-item .bm-remove { opacity: 0.8; width: 28px; height: 28px; min-width: 28px; }
 }
 
 /* ── Git mini-panel ── */
@@ -864,7 +885,6 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
   border-bottom: 1px solid var(--border); flex-shrink: 0; cursor: pointer;
 }
 #git-header:hover { color: var(--fg); }
-#git-branch { font-family: var(--font); font-size: 10px; color: var(--accent); background: var(--bg3); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none; letter-spacing: 0; }
 #git-sync { color: var(--accent); white-space: nowrap; font-weight: 700; }
 #git-panel { max-height: 0; overflow: hidden; transition: max-height var(--transition-normal); flex-shrink: 0; }
 #git-panel.open { max-height: 320px; overflow-y: auto; }
@@ -896,6 +916,25 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
   .git-file { padding: 8px 8px 8px 12px; }
   .git-file button { padding: 6px 8px; font-size: 12px; }
 }
+/* ── Git v2: branch switcher, stash, init ── */
+#git-branch-sel { font-family: var(--font); font-size: 10px; color: var(--accent); background: var(--bg3); border: 1px solid var(--border); border-radius: 999px; padding: 1px 4px; max-width: 130px; outline: none; cursor: pointer; }
+#git-branch-sel:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#git-branch-add { background: none; border: none; color: var(--fg2); cursor: pointer; font-size: 13px; line-height: 1; padding: 2px 5px; border-radius: var(--radius-sm); flex-shrink: 0; }
+#git-branch-add:hover { background: var(--bg4); color: var(--fg); }
+#git-newbranch-row { display: flex; gap: 4px; padding: 5px 6px; }
+#git-newbranch-row input { flex: 1; min-width: 0; height: 28px; font-size: 12px; font-family: var(--font); }
+#git-newbranch-row .sidebar-action-btn { flex-shrink: 0; min-width: 0; padding: 0 10px; }
+#git-init-row { display: flex; align-items: center; gap: 8px; padding: 7px 10px; font-size: 11px; color: var(--fg2); }
+#git-init-row .sidebar-action-btn { flex-shrink: 0; min-width: 0; padding: 0 10px; }
+#git-stash-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; }
+#git-stash-row .sidebar-action-btn { flex-shrink: 0; min-width: 0; padding: 0 10px; }
+#git-stash-count { font-size: 10px; color: var(--fg2); }
+.git-stash-item { display: flex; align-items: center; gap: 6px; padding: 1px 6px 1px 10px; font-size: 11px; font-family: var(--font); }
+.git-stash-item:hover { background: var(--bg3); }
+.git-stash-item .git-stash-msg { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg2); }
+.git-stash-item button { background: none; border: none; color: var(--fg2); cursor: pointer; font-size: 10px; padding: 2px 4px; border-radius: var(--radius-sm); flex-shrink: 0; }
+.git-stash-item button:hover { background: var(--bg4); color: var(--fg); }
+.git-file button.danger:hover { color: var(--red); }
 /* ── Diff colors (editor diff view) ── */
 .CodeMirror .diff-add { background: rgba(46,160,67,.14); color: var(--green); }
 .CodeMirror .diff-del { background: rgba(248,81,73,.13); color: var(--red); }
@@ -1225,23 +1264,27 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
     <!-- Sidebar -->
     <div id="sidebar" role="navigation" aria-label="File explorer">
       <div id="sidebar-header">
-        <button class="icon-btn" style="width:24px;height:24px" aria-label="Back" title="Back" onclick="navigateBack()" id="back-btn">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        <div class="hdr-seg" role="group" aria-label="History navigation">
+          <button class="icon-btn" style="width:26px;height:26px;min-width:26px;min-height:26px" aria-label="Back" title="Back" onclick="navigateBack()" id="back-btn">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          </button>
+          <button class="icon-btn" style="width:26px;height:26px;min-width:26px;min-height:26px" aria-label="Forward" title="Forward" onclick="navigateForward()" id="fwd-btn">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+        <button class="icon-btn" style="width:28px;height:28px;min-width:28px;min-height:28px" aria-label="Go to terminal directory" title="Go to terminal directory" onclick="goToTerminalDir()" id="term-dir-btn">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
         </button>
-        <button class="icon-btn" style="width:24px;height:24px" aria-label="Forward" title="Forward" onclick="navigateForward()" id="fwd-btn">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        <span class="hdr-sep" aria-hidden="true"></span>
+        <button class="icon-btn" style="width:28px;height:28px;min-width:28px;min-height:28px" aria-label="Go up" title="Go up" onclick="navigateUp()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
         </button>
-        <button class="icon-btn" style="width:24px;height:24px" aria-label="Go to terminal directory" title="Go to terminal directory" onclick="goToTerminalDir()" id="term-dir-btn">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        <button class="icon-btn" style="width:28px;height:28px;min-width:28px;min-height:28px" aria-label="Refresh" title="Refresh" onclick="refreshFiles()" id="refresh-btn">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
         </button>
-        <button class="icon-btn" style="width:24px;height:24px" aria-label="Go up" title="Go up" onclick="navigateUp()">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-        </button>
-        <button class="icon-btn" style="width:24px;height:24px" aria-label="Refresh" title="Refresh" onclick="refreshFiles()">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-        </button>
-        <button class="icon-btn" style="width:24px;height:24px" aria-label="Toggle select mode" title="Toggle select mode" onclick="toggleSelectMode()">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="9 12 11 14 15 10"/></svg>
+        <span class="hdr-sep" aria-hidden="true"></span>
+        <button class="icon-btn" style="width:28px;height:28px;min-width:28px;min-height:28px" aria-label="Toggle select mode" title="Toggle select mode" onclick="toggleSelectMode()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="9 12 11 14 15 10"/></svg>
         </button>
       </div>
       <div id="path-bar">
@@ -1265,10 +1308,20 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
         <button class="sidebar-action-btn" onclick="downloadSelected()">Download</button>
         <button class="sidebar-action-btn" onclick="clearSelection()">Cancel</button>
       </div>
-      <div id="bookmarks-header" role="button" tabindex="0" aria-expanded="true" aria-controls="bookmarks-list" onclick="toggleBookmarks()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleBookmarks();}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg> Bookmarks <span id="bm-count" style="margin-left:auto;font-size:10px"></span></div>
-      <div id="bookmarks-list"></div>
+      <div id="bookmarks-header" role="button" tabindex="0" title="Hover to peek • click to pin" aria-expanded="true" aria-controls="bookmarks-list" onclick="toggleBookmarks()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleBookmarks();}"><span class="bm-head-ico" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></span>Bookmarks <span id="bm-count"></span><span class="bm-chev" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></span></div>
+      <div id="bookmarks-list"><div class="bm-inner" id="bookmarks-inner"></div></div>
       <div id="git-section" style="display:none">
-        <div id="git-header" role="button" tabindex="0" aria-expanded="true" aria-controls="git-panel" onclick="toggleGitPanel()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleGitPanel();}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg> Git <span id="git-branch" title=""></span><span id="git-sync" style="font-size:10px"></span><span id="git-count" style="margin-left:auto;font-size:10px"></span></div>
+        <div id="git-header" role="button" tabindex="0" aria-expanded="true" aria-controls="git-panel" onclick="toggleGitPanel()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleGitPanel();}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg> Git <select id="git-branch-sel" title="Switch branch" aria-label="Switch branch" onclick="event.stopPropagation()" onkeydown="event.stopPropagation()" onchange="gitSwitchBranch(this.value)"></select><button id="git-branch-add" title="New branch" aria-label="New branch" onclick="event.stopPropagation();gitBranchNew()">+</button><span id="git-sync" style="font-size:10px"></span><span id="git-count" style="margin-left:auto;font-size:10px"></span></div>
+        <div id="git-newbranch-row" style="display:none">
+          <input id="git-newbranch-input" type="text" placeholder="new-branch-name" aria-label="New branch name" maxlength="100">
+          <button class="sidebar-action-btn" onclick="gitBranchCreate()">Create</button>
+          <button class="sidebar-action-btn" onclick="gitBranchNewCancel()">Cancel</button>
+        </div>
+        <div class="field-error" id="git-branch-error" role="alert" style="padding:0 8px"></div>
+        <div id="git-init-row" style="display:none">
+          <span>Not a git repository</span>
+          <button class="sidebar-action-btn" id="git-init-btn" onclick="gitInit()">Init repo here</button>
+        </div>
         <div id="git-panel">
           <div id="git-files"></div>
           <div id="git-commit-row">
@@ -1277,6 +1330,11 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
           </div>
           <div class="field-error" id="git-msg-error" role="alert" style="padding:0 8px"></div>
           <label id="git-all-row"><input type="checkbox" id="git-all-cb"> Stage all + commit</label>
+          <div id="git-stash-row">
+            <button class="sidebar-action-btn" id="git-stash-btn" onclick="gitStash()" title="Stash tracked changes (commit box text becomes the message)">Stash</button>
+            <span id="git-stash-count"></span>
+          </div>
+          <div id="git-stash-list"></div>
           <div id="git-actions-row">
             <button class="sidebar-action-btn" id="git-pull-btn" onclick="gitPull()" title="git pull">Pull</button>
             <button class="sidebar-action-btn" id="git-push-btn" onclick="gitPush()" title="git push">Push</button>
@@ -1285,26 +1343,21 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
           <div id="git-log"></div>
         </div>
       </div>
-      <div id="sidebar-footer">
-        <button class="sidebar-action-btn" onclick="bookmarkCurrentDir()" title="Bookmark current directory">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
-          Bookmark
+      <div id="sidebar-footer" role="toolbar" aria-label="File actions">
+        <button class="icon-btn" onclick="bookmarkCurrentDir()" title="Bookmark current directory" aria-label="Bookmark current directory">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
         </button>
-        <button class="sidebar-action-btn" onclick="uploadFiles()" title="Upload files">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          Upload
+        <button class="icon-btn" onclick="uploadFiles()" title="Upload files" aria-label="Upload files">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         </button>
-        <button class="sidebar-action-btn" onclick="newFolder()" title="New folder">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
-          New Folder
+        <button class="icon-btn" onclick="newFolder()" title="New folder" aria-label="New folder">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
         </button>
-        <button class="sidebar-action-btn" onclick="newFile()" title="New file">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-          New File
+        <button class="icon-btn" onclick="newFile()" title="New file" aria-label="New file">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
         </button>
-        <button class="sidebar-action-btn" id="footer-paste-btn" onclick="pasteFile(currentPath)" title="Paste" style="display:none">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="14" y="2" width="8" height="8" rx="2"/><path d="M16 14H8M8 18h8"/><path d="M5 4h4"/><rect x="2" y="6" width="16" height="16" rx="2"/></svg>
-          Paste
+        <button class="icon-btn" id="footer-paste-btn" onclick="pasteFile(currentPath)" title="Paste" aria-label="Paste" style="display:none">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="14" y="2" width="8" height="8" rx="2"/><path d="M16 14H8M8 18h8"/><path d="M5 4h4"/><rect x="2" y="6" width="16" height="16" rx="2"/></svg>
         </button>
       </div>
       <div class="sidebar-resize-handle" title="Drag to resize sidebar"></div>
@@ -3106,7 +3159,10 @@ function setFileListLoading(on) {
   if (!wrap) return;
   clearTimeout(fileListLoadingTimer);
   if (on) {
-    fileListLoadingTimer = setTimeout(() => wrap.classList.add('loading'), 150);
+    fileListLoadingTimer = setTimeout(() => {
+      wrap.classList.add('loading');
+      document.getElementById('refresh-btn')?.classList.add('spinning');
+    }, 150);
     // Skeleton shimmer on first paint (empty list only — refresh keeps live rows)
     const list = document.getElementById('file-list');
     if (list && !list.children.length) {
@@ -3123,6 +3179,7 @@ function setFileListLoading(on) {
   } else {
     fileListLoadingTimer = null;
     wrap.classList.remove('loading');
+    document.getElementById('refresh-btn')?.classList.remove('spinning');
   }
 }
 
@@ -7399,30 +7456,53 @@ function saveBookmarks(bm) { safeStorage.setItem('wt-bookmarks', JSON.stringify(
 
 function renderBookmarks() {
   const list = document.getElementById('bookmarks-list');
+  const inner = document.getElementById('bookmarks-inner');
+  const header = document.getElementById('bookmarks-header');
   const bm = getBookmarks();
-  document.getElementById('bm-count').textContent = bm.length ? `${bm.length}` : '';
-  list.innerHTML = '';
-  if (bm.length === 0) { list.classList.remove('open'); return; }
+  document.getElementById('bm-count').textContent = bm.length ? String(bm.length) : '';
+  inner.innerHTML = '';
+  if (bm.length === 0) {
+    list.classList.remove('open');
+    bmHoverOpened = false;
+    if (header) header.setAttribute('aria-expanded', 'false');
+    return;
+  }
   list.classList.toggle('open', bookmarksOpen);
-  bm.forEach((b, i) => {
+  if (header) header.setAttribute('aria-expanded', String(bookmarksOpen));
+  bm.forEach((b) => {
     const div = document.createElement('div');
     div.className = 'bookmark-item';
+    div.setAttribute('tabindex', '0');
+    div.setAttribute('role', 'button');
+    div.setAttribute('aria-label', 'Open bookmark ' + b.name);
+    const go = () => loadFiles(b.path);
     div.addEventListener('click', e => {
       if (e.target.closest('.bm-remove')) return;
-      loadFiles(b.path);
+      go();
     });
+    div.addEventListener('keydown', e => {
+      if ((e.key === 'Enter' || e.key === ' ') && !e.target.closest('.bm-remove')) { e.preventDefault(); go(); }
+    });
+    const ico = document.createElement('span');
+    ico.className = 'bm-ico';
+    ico.setAttribute('aria-hidden', 'true');
+    ico.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>';
+    div.appendChild(ico);
+    const tx = document.createElement('span');
+    tx.className = 'bm-text';
     const bmName = document.createElement('span');
     bmName.className = 'bm-name';
     bmName.textContent = b.name;
-    div.appendChild(bmName);
+    tx.appendChild(bmName);
     const bmPath = document.createElement('span');
-    bmPath.style.cssText = 'font-size:10px;color:var(--fg2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px';
+    bmPath.className = 'bm-path';
     bmPath.textContent = b.path;
-    div.appendChild(bmPath);
-    const rmBtn = document.createElement('span');
+    tx.appendChild(bmPath);
+    div.appendChild(tx);
+    const rmBtn = document.createElement('button');
+    rmBtn.type = 'button';
     rmBtn.className = 'bm-remove';
-    rmBtn.setAttribute('role', 'button');
-    rmBtn.setAttribute('aria-label', 'Remove bookmark');
+    rmBtn.setAttribute('aria-label', 'Remove bookmark ' + b.name);
     rmBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
     rmBtn.title = 'Remove';
     rmBtn.addEventListener('click', e => {
@@ -7433,7 +7513,7 @@ function renderBookmarks() {
       saveBookmarks(bm2);
     });
     div.appendChild(rmBtn);
-    list.appendChild(div);
+    inner.appendChild(div);
   });
 }
 
@@ -7447,11 +7527,51 @@ function bookmarkCurrentDir() {
 }
 
 let bookmarksOpen = (() => { try { const v = safeStorage.getItem('wt-bm-open'); return v !== null ? v === 'true' : true; } catch(e) { console.warn('Failed to read bookmarksOpen:', e); return true; } })();
-function toggleBookmarks() {
-  bookmarksOpen = !bookmarksOpen;
+let bmHoverOpened = false; // true while the list is open via hover-peek (not pinned)
+function applyBookmarksOpen() {
   document.getElementById('bookmarks-list').classList.toggle('open', bookmarksOpen);
+  const header = document.getElementById('bookmarks-header');
+  if (header) header.setAttribute('aria-expanded', String(bookmarksOpen));
   try { safeStorage.setItem('wt-bm-open', bookmarksOpen); } catch(e) { console.warn(e); }
 }
+function toggleBookmarks() {
+  if (bmHoverOpened) {
+    // Click while peeked: pin it open instead of closing
+    bmHoverOpened = false;
+    bookmarksOpen = true;
+  } else {
+    bookmarksOpen = !bookmarksOpen;
+  }
+  applyBookmarksOpen();
+}
+// Hover-peek: auto-open on hover intent, auto-close on leave.
+// Click (or Enter/Space) while peeked pins it open.
+let _bmHoverTimer = null;
+(() => {
+  const bmHeader = document.getElementById('bookmarks-header');
+  const bmList = document.getElementById('bookmarks-list');
+  if (!bmHeader || !bmList) return;
+  const inBmRegion = (t) => !!(t && t.closest && t.closest('#bookmarks-header, #bookmarks-list'));
+  bmHeader.addEventListener('mouseenter', () => {
+    clearTimeout(_bmHoverTimer);
+    if (bookmarksOpen) return;
+    if (window.matchMedia && window.matchMedia('(hover: none)').matches) return;
+    if (!getBookmarks().length) return;
+    _bmHoverTimer = setTimeout(() => {
+      if (!bookmarksOpen && getBookmarks().length) { toggleBookmarks(); bmHoverOpened = true; }
+    }, 110);
+  });
+  bmHeader.addEventListener('mouseleave', () => clearTimeout(_bmHoverTimer));
+  const maybePeekClose = (e) => {
+    if (!bmHoverOpened) return;
+    if (inBmRegion(e.relatedTarget)) return;
+    bmHoverOpened = false;
+    bookmarksOpen = false;
+    applyBookmarksOpen();
+  };
+  bmHeader.addEventListener('mouseleave', maybePeekClose);
+  bmList.addEventListener('mouseleave', maybePeekClose);
+})();
 
 // ═══════════════════════════════════════════════════════
 // GIT MINI-PANEL
@@ -7466,6 +7586,7 @@ function toggleGitPanel() {
   gitOpen = !gitOpen;
   document.getElementById('git-panel').classList.toggle('open', gitOpen);
   try { safeStorage.setItem('wt-git-open', gitOpen); } catch(e) { console.warn(e); }
+  if (gitOpen && gitRepo && gitRoot) refreshGitPanel(currentPath, true);
 }
 async function refreshGitPanel(dir, manual) {
   const section = document.getElementById('git-section');
@@ -7494,22 +7615,168 @@ async function _refreshGitPanelInner(section, dir, manual) {
     if (manual) toast('git is not installed on the server', 'warning');
     return;
   }
-  if (!st.isRepo) { gitRepo = false; gitRoot = null; section.style.display = 'none'; return; }
+  if (!st.isRepo) {
+    // Slim init affordance instead of hiding the section entirely
+    gitRepo = false; gitRoot = null;
+    section.style.display = '';
+    document.getElementById('git-panel').style.display = 'none';
+    document.getElementById('git-init-row').style.display = '';
+    document.getElementById('git-count').textContent = '';
+    document.getElementById('git-sync').textContent = '';
+    return;
+  }
   gitRepo = true; gitRoot = st.root;
   section.style.display = '';
+  document.getElementById('git-panel').style.display = '';
+  document.getElementById('git-init-row').style.display = 'none';
   document.getElementById('git-panel').classList.toggle('open', gitOpen);
-  const branchEl = document.getElementById('git-branch');
-  branchEl.textContent = st.branch || '?';
-  branchEl.title = st.root || '';
-  branchEl.style.color = st.detached ? 'var(--red)' : '';
   const sync = [];
   if (st.ahead > 0) sync.push('↑' + st.ahead);
   if (st.behind > 0) sync.push('↓' + st.behind);
+  if (st.stashCount > 0) sync.push('stash ' + st.stashCount);
   document.getElementById('git-sync').textContent = sync.join(' ');
+  if (st.upstream) document.getElementById('git-sync').title = 'upstream ' + st.upstream;
+  else document.getElementById('git-sync').removeAttribute('title');
   const total = st.staged.length + st.unstaged.length + st.untracked.length + st.unmerged.length;
   document.getElementById('git-count').textContent = total ? String(total) : '';
+  if (!gitOpen) return; // collapsed: header numbers set, skip detail fetches
   renderGitFiles(st);
+  try {
+    const b = await api(`/api/git/branches?path=${encodeURIComponent(st.root)}`);
+    if (myReq !== _gitReq) return;
+    renderGitBranches((b && b.branches) || [], st);
+  } catch {}
+  refreshGitStash();
   refreshGitLog();
+}
+function renderGitBranches(branches, st) {
+  const sel = document.getElementById('git-branch-sel');
+  if (!sel) return;
+  sel.innerHTML = '';
+  const mk = (val, label, disabled) => {
+    const o = document.createElement('option');
+    o.value = val; o.textContent = label;
+    if (disabled) o.disabled = true;
+    sel.appendChild(o);
+  };
+  if (st.detached) mk(st.branch.split(' ')[0] || 'HEAD', '⚠ ' + st.branch, true);
+  for (const b of (branches || [])) mk(b.name, b.name + (b.upstream ? '' : ' (local)'));
+  const cur = (branches || []).find(b => b.current);
+  const want = cur ? cur.name : (st.detached ? sel.options[0].value : st.branch);
+  sel.value = want;
+  if (sel.selectedIndex < 0 && sel.options.length) sel.selectedIndex = 0;
+  sel.title = 'Switch branch' + (st.upstream ? ' · upstream ' + st.upstream : '');
+}
+async function gitSwitchBranch(name) {
+  if (!gitRoot || !name) return;
+  const sel = document.getElementById('git-branch-sel');
+  if (sel) sel.disabled = true;
+  const r = await api('/api/git/switch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: gitRoot, branch: name }) });
+  if (sel) sel.disabled = false;
+  if (!r || r.error) { toast((r && r.error) || 'Switch failed', 'error'); refreshGitPanel(currentPath); return; }
+  toast('On ' + r.branch, 'success');
+  refreshGitPanel(currentPath);
+}
+function gitBranchNew() {
+  document.getElementById('git-newbranch-row').style.display = 'flex';
+  document.getElementById('git-branch-error').textContent = '';
+  const inp = document.getElementById('git-newbranch-input');
+  inp.value = '';
+  setTimeout(() => inp.focus(), 50);
+}
+function gitBranchNewCancel() {
+  document.getElementById('git-newbranch-row').style.display = 'none';
+  document.getElementById('git-newbranch-input').value = '';
+  document.getElementById('git-branch-error').textContent = '';
+}
+async function gitBranchCreate() {
+  if (!gitRoot) return;
+  const inp = document.getElementById('git-newbranch-input');
+  const name = (inp.value || '').trim();
+  if (!name) { showFieldError('git-branch-error', 'Enter a branch name'); inp.focus(); return; }
+  clearFieldError('git-branch-error');
+  const r = await api('/api/git/branch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: gitRoot, name }) });
+  if (!r || r.error) { showFieldError('git-branch-error', (r && r.error) || 'Create failed'); return; }
+  gitBranchNewCancel();
+  toast('Created + switched to ' + r.branch, 'success');
+  refreshGitPanel(currentPath);
+}
+async function gitInit() {
+  const r = await api('/api/git/init', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: currentPath }) });
+  if (!r || r.error) { toast((r && r.error) || 'Init failed', 'error'); return; }
+  toast(r.already ? 'Already a repository' : 'Repository created', 'success');
+  gitUnsupported = false;
+  refreshGitPanel(currentPath, true);
+}
+async function gitStash() {
+  if (!gitRoot) return;
+  const btn = document.getElementById('git-stash-btn');
+  setBtnBusy(btn, true);
+  const msg = (document.getElementById('git-msg').value || '').trim();
+  const r = await api('/api/git/stash', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: gitRoot, message: msg }) });
+  setBtnBusy(btn, false);
+  if (!r || r.error) { toast((r && r.error) || 'Stash failed', 'error'); return; }
+  toast('Stashed', 'success');
+  refreshGitPanel(currentPath);
+}
+async function gitStashPop() {
+  if (!gitRoot) return;
+  const r = await api('/api/git/stash/pop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: gitRoot }) });
+  if (!r || r.error) { toast((r && r.error) || 'Pop failed', 'error'); return; }
+  toast('Stash restored', 'success');
+  refreshGitPanel(currentPath);
+}
+async function refreshGitStash() {
+  const box = document.getElementById('git-stash-list');
+  const cnt = document.getElementById('git-stash-count');
+  if (!box || !gitRoot) return;
+  const r = await api(`/api/git/stash?path=${encodeURIComponent(gitRoot)}`);
+  const list = ((r && r.stashes) || []).slice(0, 10);
+  box.innerHTML = '';
+  cnt.textContent = list.length ? list.length + (list.length === 1 ? ' stash' : ' stashes') : '';
+  for (const s of list) {
+    const d = document.createElement('div');
+    d.className = 'git-stash-item';
+    d.title = s.ref || '';
+    const m = document.createElement('span');
+    m.className = 'git-stash-msg';
+    m.textContent = s.message || s.ref || 'stash';
+    d.appendChild(m);
+    const b = document.createElement('button');
+    b.textContent = 'Pop';
+    b.title = 'Restore ' + (s.ref || 'stash');
+    b.addEventListener('click', gitStashPop);
+    d.appendChild(b);
+    box.appendChild(d);
+  }
+}
+const gitAbs = (rel) => {
+  const sep = gitRoot.includes('\\') ? '\\' : '/';
+  return gitRoot.replace(/[\\/]+$/, '') + sep + String(rel || '').replace(/^[/\\]+/, '');
+};
+async function gitDiscardFile(rel) {
+  if (!gitRoot) return;
+  const ok = await confirmDialog({ title: 'Discard changes?', message: 'Revert "' + rel + '" to HEAD? Staged changes are kept.', okText: 'Discard', danger: true });
+  if (!ok) return;
+  const r = await api('/api/git/discard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: gitRoot, files: [rel] }) });
+  if (!r || r.error) { toast((r && r.error) || 'Discard failed', 'error'); return; }
+  toast('Discarded ' + rel, 'success');
+  refreshGitPanel(currentPath);
+}
+async function gitDeleteUntracked(rel) {
+  if (!gitRoot) return;
+  const ok = await confirmDialog({ title: 'Delete untracked?', message: '"' + rel + '" will be permanently deleted.', okText: 'Delete', danger: true });
+  if (!ok) return;
+  const r = await api(`/api/files?path=${encodeURIComponent(gitAbs(rel))}`, { method: 'DELETE' });
+  if (!r || r.error) { toast((r && r.error) || 'Delete failed', 'error'); return; }
+  toast('Deleted ' + rel, 'success');
+  loadFiles(currentPath);
+}
+function gitViewUntracked(rel) {
+  if (!gitRoot) return;
+  const abs = gitAbs(rel);
+  if (/[/\\]$/.test(rel)) loadFiles(abs);
+  else openFileEditor(abs);
 }
 function gitFileRow(e, cls) {
   const row = document.createElement('div');
@@ -7523,9 +7790,10 @@ function gitFileRow(e, cls) {
   nm.textContent = e.path;
   nm.title = e.path;
   row.appendChild(nm);
-  const addBtn = (label, title, fn) => {
+  const addBtn = (label, title, fn, danger) => {
     const b = document.createElement('button');
     b.textContent = label; b.title = title;
+    if (danger) b.classList.add('danger');
     b.addEventListener('click', ev => { ev.stopPropagation(); fn(); });
     row.appendChild(b);
   };
@@ -7535,8 +7803,11 @@ function gitFileRow(e, cls) {
   } else if (cls === 'unstaged') {
     addBtn('Stage', 'git add', () => gitStageOp('stage', [e.path]));
     addBtn('Diff', 'unstaged diff', () => openGitDiff(e.path, false));
+    addBtn('Discard', 'revert worktree to HEAD', () => gitDiscardFile(e.path), true);
   } else if (cls === 'untracked') {
     addBtn('Stage', 'git add', () => gitStageOp('stage', [e.path]));
+    addBtn('View', 'open file', () => gitViewUntracked(e.path));
+    addBtn('Delete', 'permanently delete', () => gitDeleteUntracked(e.path), true);
   } else if (cls === 'unmerged') {
     addBtn('Diff', 'diff', () => openGitDiff(e.path, false));
   }
@@ -7690,6 +7961,7 @@ async function openGitDiff(file, cached) {
   requestAnimationFrame(() => { tabs.forEach(tab => { try { fitTerm(tab); } catch (e) {} }); });
 }
 document.getElementById('git-msg').addEventListener('keydown', e => { if (e.key === 'Enter') gitCommit(); });
+document.getElementById('git-newbranch-input').addEventListener('keydown', e => { if (e.key === 'Enter') gitBranchCreate(); });
 
 // ═══════════════════════════════════════════════════════
 // FUZZY FINDER (Ctrl+P)

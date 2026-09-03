@@ -1791,6 +1791,12 @@ app.get('/api/git/status', rateLimiter, checkPin, async (req, res) => {
     if (st.detached) {
       try { st.branch = (await spawnRead('git', ['-C', root, 'rev-parse', '--short', 'HEAD'])).trim() + ' (detached)'; } catch {}
     }
+    try {
+      const sl = await spawnRead('git', ['-C', root, 'stash', 'list', '--format=%gd']);
+      st.stashCount = sl.split('\n').filter(Boolean).length;
+    } catch { st.stashCount = 0; }
+    try { st.upstream = (await spawnRead('git', ['-C', root, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'])).trim(); }
+    catch { st.upstream = ''; }
     res.json({ git: true, isRepo: true, root, ...st });
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message });
@@ -1915,6 +1921,132 @@ app.post('/api/git/push', checkPin, async (req, res) => {
     try { out = await spawnRead('git', ['-C', root, 'push'], { timeout: 60000 }); }
     catch (e) { return res.status(400).json({ error: (e.message || 'push failed').trim().slice(0, 1000) || 'push failed' }); }
     res.json({ success: true, output: out.slice(-5000) });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+// Validate a branch name with git itself (rejects `-x`, `..`, spaces, `~^:?*[`).
+async function assertSafeBranch(root, name) {
+  if (typeof name !== 'string' || !name.trim() || name.trim().length > 100) {
+    const e = new Error('invalid branch name'); e.status = 400; throw e;
+  }
+  try {
+    await spawnRead('git', ['-C', root, 'check-ref-format', '--branch', name.trim()]);
+  } catch {
+    const e = new Error('invalid branch name'); e.status = 400; throw e;
+  }
+  return name.trim();
+}
+
+app.get('/api/git/branches', rateLimiter, checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    const root = await gitRootFor(req.query.path);
+    const raw = await spawnRead('git', ['-C', root, 'branch', '--format=%(refname:short)%1f%(HEAD)%1f%(upstream:short)']);
+    const branches = raw.split('\n').filter(Boolean).map(l => {
+      const [name, head, upstream] = l.split('\x1f');
+      return { name, current: head === '*', upstream: upstream || '' };
+    });
+    res.json({ success: true, branches });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+app.post('/api/git/switch', checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    const root = await gitRootFor(req.body && req.body.path);
+    const branch = await assertSafeBranch(root, req.body && req.body.branch);
+    try { await spawnRead('git', ['-C', root, 'switch', branch]); }
+    catch (e) { return res.status(400).json({ error: (e.message || 'switch failed').trim().slice(0, 500) || 'switch failed' }); }
+    res.json({ success: true, branch });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+app.post('/api/git/branch', checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    const root = await gitRootFor(req.body && req.body.path);
+    const branch = await assertSafeBranch(root, req.body && req.body.name);
+    try { await spawnRead('git', ['-C', root, 'switch', '-c', branch]); }
+    catch (e) { return res.status(400).json({ error: (e.message || 'create failed').trim().slice(0, 500) || 'create failed' }); }
+    res.json({ success: true, branch });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+app.get('/api/git/stash', rateLimiter, checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    const root = await gitRootFor(req.query.path);
+    const raw = await spawnRead('git', ['-C', root, 'stash', 'list', '--format=%gd%x1f%gs']);
+    const stashes = raw.split('\n').filter(Boolean).map(l => {
+      const [ref, ...msg] = l.split('\x1f');
+      return { ref, message: msg.join('\x1f') };
+    });
+    res.json({ success: true, stashes });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+app.post('/api/git/stash', checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    const root = await gitRootFor(req.body && req.body.path);
+    let message = req.body && req.body.message;
+    message = typeof message === 'string' ? message.trim().slice(0, 200) : '';
+    const args = ['-C', root, 'stash', 'push'];
+    if (message) args.push('-m', message);
+    try { await spawnRead('git', args); }
+    catch (e) { return res.status(400).json({ error: (e.message || 'stash failed').trim().slice(0, 500) || 'stash failed' }); }
+    res.json({ success: true });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+app.post('/api/git/stash/pop', checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    const root = await gitRootFor(req.body && req.body.path);
+    try { await spawnRead('git', ['-C', root, 'stash', 'pop']); }
+    catch (e) { return res.status(400).json({ error: (e.message || 'pop failed').trim().slice(0, 500) || 'pop failed' }); }
+    res.json({ success: true });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+// Discard unstaged worktree changes (VS Code "discard" semantics:
+// restores worktree from the index, staged entries untouched).
+app.post('/api/git/discard', checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    const root = await gitRootFor(req.body && req.body.path);
+    const rels = gitFileArgs(root, req.body && req.body.files);
+    await spawnRead('git', ['-C', root, 'restore', '--', ...rels]);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+app.post('/api/git/init', checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    const dir = resolvePath(req.body && req.body.path);
+    let st;
+    try { st = await fsPromises.stat(dir); } catch { return res.status(400).json({ error: 'directory not found' }); }
+    if (!st.isDirectory()) return res.status(400).json({ error: 'not a directory' });
+    try { await spawnRead('git', ['-C', dir, 'rev-parse', '--show-toplevel']); }
+    catch { await spawnRead('git', ['-C', dir, 'init']); return res.json({ success: true }); }
+    res.json({ success: true, already: true });
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message });
   }
