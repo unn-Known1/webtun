@@ -78,7 +78,9 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh &&
 - **Image viewer** — preview inline (png, jpg, gif, svg, webp)
 - **Conflict resolution** — replace, merge, keep both, skip
 - **Unified path bar** — tappable breadcrumb segments + click current folder (or pencil) to type any path, `Enter` to go, `Esc` to cancel
-- **Git mini-panel** — branch + ahead/behind badge, staged/unstaged/untracked/conflict groups with stage/unstage, colorized diffs in a read-only editor tab, commit (inline errors), push/pull, last-5 log; auto-shows inside repos
+- **Rich rows** — type-tinted icons, live photo thumbnails, size + modified dates, hover quick-download, sortable sticky folder/file groups
+- **Git mini-panel** — branch switching/creation, stash, discard, repo init, staged/unstaged/untracked/conflict groups, colorized diffs, commit, push/pull; auto-shows inside repos
+- **Settings control deck** — collapsible groups with live search, runtime PIN set/change/disable (saved to `.env`)
 - **Editor** — CodeMirror with autosave draft, `F11` fullscreen (covers terminal area only, never the file explorer), `horizontal/vertical` split toggle, markdown/HTML preview
 
 ### Mobile
@@ -180,14 +182,12 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh &&
 ## Changelog
 
 ### v1.5.7
-- Explorer: path input + breadcrumb merged into one unified path bar (segments view, click current folder/pencil to type, `Enter` to go, `Esc`/blur to cancel); sidebar header `38px` to match the tab bar in single-row mode
-- Explorer: Git mini-panel — auto-shows inside repos with branch + ahead/behind badge, staged/unstaged/untracked/conflict groups, per-file stage/unstage/diff, commit with inline errors (+ stage-all), push/pull (90s timeout), last-5 log; diffs open colorized (green/red/hunk tint) in a read-only editor tab
-- Header: keep-screen-awake toggle is now an animated steaming coffee cup (glow + rising steam while active, dynamic ON/OFF tooltip)
-- PDF viewer: fixed each page rendering twice (render-generation guard cancels stale loads/renders on double-click, reopen, and zoom-during-load)
-- PDF viewer: lazy rendering for big PDFs — cheap placeholders for all pages in one DOM pass, first-page-fast + ±2 neighbours, `IntersectionObserver` prefetch (`1200px` margin, queue cap 30, serial pump)
-- PDF viewer: streamed download progress (`Downloading… %/MB`), canvas backing store capped at ~2.5MP with `page.cleanup()`
-- PDF viewer: scroll tracking, prev/next nav, and zoom now work pre-render via `pdf-wrap-*` boxes and preserve current page across zoom
-- Security: `express ^4.22.2`, `qs 6.16.0` override — `npm audit` clean (0 vulnerabilities)
+- Explorer overhaul — unified path bar, rich rows (type-tinted icons, photo thumbnails, dates), sortable sticky groups, skeleton loading, quick download, hover-peek bookmarks, segmented nav header; large folders load much faster
+- Git mini-panel — branch switching/creation, stash, discard, repo init, colorized diffs, commit, push/pull with ahead/behind + stash badges
+- Settings control deck — collapsible card groups (closed by default) with live search, staggered entrance, plus runtime PIN set/change/disable saved to `.env`
+- Lock screen redesign, animated keep-awake indicator, spinning refresh state
+- PDF viewer — duplicate-page fix, lazy rendering for big documents, download progress
+- Security — dependency audit clean (0 vulnerabilities); source-available license from this version (PolyForm Noncommercial, ≤v1.5.6 stays MIT)
 
 ### v1.5.6
 - Explorer: fixed preview for unsupported file types, fixed HTML preview
