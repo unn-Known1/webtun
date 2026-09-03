@@ -156,6 +156,7 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh &&
 ## Security
 
 - PIN authentication on all API endpoints (`x-pin-token` header or `?token=` query)
+- Change the PIN anytime from Settings → Security (applies instantly, saved to `.env`)
 - CSP headers restrict script sources to CDN
 - WebSocket origin check prevents cross-site hijacking
 - Per-IP rate limiting on auth and search endpoints

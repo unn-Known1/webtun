@@ -131,7 +131,9 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server, path: '/ws' });
 
 const PORT = process.env.PORT || 3000;
-const PIN = process.env.PIN || '';
+// Mutable at runtime via POST /api/pin (persisted to __dirname/.env).
+// All auth checks read this binding, so changes apply instantly.
+let PIN = process.env.PIN || '';
 // On Windows, ignore SHELL env from Git Bash/MSYS2/WSL — prefer PowerShell
 const SHELL = (os.platform() === 'win32' && !process.env.WEBTUN_SHELL)
   ? 'powershell.exe'
@@ -226,6 +228,52 @@ app.post('/api/auth', authRateLimiter, (req, res) => {
     res.json({ success: true, token: PIN || 'open' });
   } else {
     res.status(401).json({ error: 'Unauthorized' });
+  }
+});
+
+// Persist PIN to __dirname/.env (same file the startup parser reads).
+// Atomic tmp+rename with 0600, mirroring .cmdhist.json writes.
+const ENV_PATH = path.join(__dirname, '.env');
+function persistPinToEnv(pin) {
+  let lines = [];
+  try { lines = fs.readFileSync(ENV_PATH, 'utf8').split('\n'); }
+  catch (e) { if (e.code !== 'ENOENT') throw e; }
+  let found = false;
+  const out = lines.map(l => {
+    if (!found && /^\s*PIN\s*=/.test(l)) { found = true; return `PIN=${pin}`; }
+    return l;
+  });
+  if (!found) {
+    if (out.length && out[out.length - 1].trim() !== '') out.push('');
+    out.push(`PIN=${pin}`);
+  }
+  const tmp = ENV_PATH + '.tmp';
+  fs.writeFileSync(tmp, out.join('\n'), { mode: 0o600 });
+  try { fs.chmodSync(tmp, 0o600); } catch {}
+  fs.renameSync(tmp, ENV_PATH);
+}
+
+// Set/change/disable the PIN at runtime. Authed callers only (checkPin),
+// brute-force guarded (authRateLimiter). Empty newPin disables protection.
+app.post('/api/pin', authRateLimiter, checkPin, (req, res) => {
+  try {
+    const { currentPin, newPin } = req.body || {};
+    if (PIN) {
+      if (typeof currentPin !== 'string' || !constantTimeEqual(currentPin, PIN)) {
+        return res.status(401).json({ error: 'Current PIN is incorrect' });
+      }
+    }
+    let next = typeof newPin === 'string' ? newPin.trim() : '';
+    if (/[\r\n\0]/.test(next)) return res.status(400).json({ error: 'PIN contains invalid characters' });
+    if (next.length > 64) return res.status(400).json({ error: 'PIN must be 64 characters or less' });
+    PIN = next;
+    process.env.PIN = next;
+    let persisted = false, persistError = '';
+    try { persistPinToEnv(next); persisted = true; }
+    catch (e) { persistError = e.message || 'write failed'; }
+    res.json({ success: true, protected: !!PIN, persisted, persistError });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 

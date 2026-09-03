@@ -355,14 +355,18 @@ svg { display: block; }
 .settings-panel-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 16px; border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
+  flex-shrink: 0; position: sticky; top: 0; z-index: 2;
+  background: var(--bg2);
+  background: color-mix(in srgb, var(--bg2) 88%, transparent);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
 }
 .settings-panel-header h2 { font-size: 14px; font-weight: 700; color: var(--fg); }
-.settings-panel-body { padding: 16px; overflow-y: auto; flex: 1; }
+.settings-panel-body { padding: 12px; overflow-y: auto; flex: 1; }
 @media (hover: hover) {
   .settings-panel-body select,
   .settings-panel-body input[type="number"],
-  .settings-panel-body input[type="text"] {
+  .settings-panel-body input[type="text"],
+  .settings-panel-body input[type="password"] {
     font-size: 12px;
   }
 }
@@ -601,15 +605,25 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 /* ═══════════════════════════════════════════════════════
    PIN SCREEN
    ═══════════════════════════════════════════════════════ */
-#pin-screen { position: fixed; inset: 0; background: var(--bg); z-index: 200; display: flex; align-items: center; justify-content: center; }
+#pin-screen { position: fixed; inset: 0; background: var(--bg); z-index: 200; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 #pin-screen.hidden { display: none; }
-#pin-box { text-align: center; padding: 40px; max-width: 320px; width: 90%; }
-#pin-box h1 { font-size: 36px; color: var(--accent); margin-bottom: 12px; }
+#pin-screen::before { content: ''; position: absolute; width: min(560px, 92vw); height: min(560px, 92vw); background: radial-gradient(circle, var(--accent) 0%, transparent 65%); opacity: .13; filter: blur(12px); animation: pinAura 7s ease-in-out infinite; pointer-events: none; }
+#pin-screen::after { content: ''; position: absolute; inset: 0; background-image: radial-gradient(var(--border) 1px, transparent 1.2px); background-size: 22px 22px; opacity: .55; -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 45%, black 25%, transparent 75%); mask-image: radial-gradient(ellipse 70% 60% at 50% 45%, black 25%, transparent 75%); pointer-events: none; }
+@keyframes pinAura { 0%, 100% { transform: scale(1); opacity: .10; } 50% { transform: scale(1.12); opacity: .16; } }
+#pin-box { position: relative; text-align: center; padding: 34px 34px 26px; max-width: 340px; width: calc(100% - 48px); background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: 0 24px 64px var(--shadow-color); animation: pinIn .38s cubic-bezier(.2,.9,.3,1.15); }
+@keyframes pinIn { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
+#pin-box.shake { animation: pinShake .4s ease; border-color: var(--red); }
+@keyframes pinShake { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-9px); } 40% { transform: translateX(8px); } 60% { transform: translateX(-5px); } 80% { transform: translateX(4px); } }
+.pin-eyebrow { font-size: 10px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--fg3); font-family: var(--font-ui); margin-bottom: 10px; }
+#pin-box h1 { font-size: 36px; color: var(--accent); margin-bottom: 8px; }
+#pin-box h1 svg { filter: drop-shadow(0 0 9px var(--accent)); }
 #pin-box p { color: var(--fg2); margin-bottom: 16px; font-size: 14px; }
-#pin-input { text-align: center; font-size: 28px; letter-spacing: 8px; width: 200px; height: 44px; border: 2px solid var(--border); border-radius: var(--radius); background: var(--bg3); color: var(--fg); outline: none; font-family: var(--font); margin-bottom: 12px; }
+#pin-input { text-align: center; font-size: 28px; letter-spacing: 8px; width: 200px; height: 44px; border: 2px solid var(--border); border-radius: var(--radius); background: var(--bg3); color: var(--fg); outline: none; font-family: var(--font); margin-bottom: 12px; transition: border-color var(--transition-fast), box-shadow var(--transition-fast); }
 @media (max-width: 360px) { #pin-input { width: 100%; letter-spacing: 4px; font-size: 22px; } }
-#pin-input:focus { border-color: var(--accent); }
+#pin-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
 #pin-error { color: var(--red); font-size: 12px; min-height: 18px; }
+#pin-box .btn { width: 100%; height: 40px; font-size: 14px; }
+.pin-hint { margin-top: 14px; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--fg3); font-family: var(--font-ui); }
 
 /* ═══════════════════════════════════════════════════════
    EDITOR
@@ -677,11 +691,44 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 /* ═══════════════════════════════════════════════════════
    SETTINGS
    ═══════════════════════════════════════════════════════ */
-.settings-section { margin-bottom: 20px; }
-.settings-section h3 { font-size: 12px; color: var(--fg2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
-.setting-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; gap: 12px; }
+.settings-section { margin-bottom: 10px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.settings-section h3 { font-size: 11px; color: var(--fg2); text-transform: uppercase; letter-spacing: 0.6px; padding: 9px 12px 8px; margin-bottom: 0; border-bottom: 1px solid transparent; display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; transition: color var(--transition-fast), border-color var(--transition-fast); }
+.settings-section h3:hover { color: var(--fg); }
+.settings-section h3:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius-sm); }
+.settings-section.open h3 { border-bottom-color: var(--border); }
+.settings-section h3 .sec-ico { display: inline-flex; color: var(--fg3); transition: color var(--transition-fast); flex-shrink: 0; }
+.settings-section.open h3 .sec-ico { color: var(--accent); }
+.settings-section h3 .sec-chev { margin-left: auto; display: inline-flex; transition: transform var(--transition-fast); flex-shrink: 0; color: var(--fg3); }
+.settings-section.open h3 .sec-chev { transform: rotate(90deg); }
+.settings-section-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--transition-normal); }
+.settings-section.open .settings-section-body { grid-template-rows: 1fr; }
+.settings-section-inner { overflow: hidden; min-height: 0; padding: 2px 4px 6px; }
+.settings-section[data-static] { padding-bottom: 10px; }
+.settings-section[data-static] h3 { cursor: default; }
+.sec-status { font-size: 9px; letter-spacing: 0.3px; border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; color: var(--fg2); text-transform: none; }
+.sec-status.on { color: var(--green); border-color: var(--green); }
+/* ── Settings search ── */
+#settings-search-wrap { display: flex; align-items: center; gap: 7px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 0 10px; height: 34px; margin-bottom: 10px; color: var(--fg3); flex-shrink: 0; transition: border-color var(--transition-fast), color var(--transition-fast); }
+#settings-search-wrap:focus-within { border-color: var(--accent); color: var(--fg); }
+#settings-search { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--fg); font-size: 13px; height: 100%; font-family: var(--font-ui); }
+#settings-no-match { display: none; text-align: center; color: var(--fg3); font-size: 12px; padding: 20px 8px; }
+/* ── Staggered entrance on open ── */
+#settings-panel.sec-anim .settings-section, #settings-panel.sec-anim #settings-search-wrap { animation: secIn .32s cubic-bezier(.2,.8,.3,1) both; }
+#settings-panel.sec-anim .settings-section:nth-child(3) { animation-delay: .03s; }
+#settings-panel.sec-anim .settings-section:nth-child(4) { animation-delay: .06s; }
+#settings-panel.sec-anim .settings-section:nth-child(5) { animation-delay: .09s; }
+#settings-panel.sec-anim .settings-section:nth-child(6) { animation-delay: .12s; }
+#settings-panel.sec-anim .settings-section:nth-child(7) { animation-delay: .15s; }
+#settings-panel.sec-anim .settings-section:nth-child(8) { animation-delay: .18s; }
+#settings-panel.sec-anim .settings-section:nth-child(9) { animation-delay: .21s; }
+@keyframes secIn { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: none; } }
+/* ── Toggle glow ── */
+.toggle.on { box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 40%, transparent); }
+.toggle::after { box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+.setting-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; padding: 6px 8px; border-radius: var(--radius-sm); gap: 12px; }
+.setting-row:hover { background: var(--bg4); }
 .setting-row label { font-size: 13px; flex: 1; color: var(--fg2); }
-.setting-row select, .setting-row input[type="number"] { width: 160px; }
+  .setting-row select, .setting-row input[type="number"], .setting-row input[type="password"] { width: 160px; }
 .setting-row input[type="range"] { width: 120px; }
 .toggle { width: 40px; height: 22px; background: var(--bg4); border-radius: 11px; position: relative; cursor: pointer; border: 1px solid var(--border); flex-shrink: 0; transition: var(--transition-normal); }
 .toggle.on { background: var(--accent); border-color: var(--accent); }
@@ -1083,13 +1130,15 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 <!-- PIN Screen -->
 <div id="pin-screen">
   <div id="pin-box">
+    <div class="pin-eyebrow">Secure access</div>
     <h1 style="display:flex;align-items:center;justify-content:center;gap:6px"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="10" y2="8"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="6" y1="16" x2="8" y2="16"/><line x1="12" y1="8" x2="18" y2="8"/><line x1="12" y1="12" x2="18" y2="12"/><line x1="12" y1="16" x2="16" y2="16"/><line x1="10" y1="16" x2="10" y2="16"/></svg>WebTun</h1>
     <p>Enter PIN to continue</p>
     <input id="pin-input" type="password" placeholder="••••" autocomplete="off" maxlength="32" inputmode="text" aria-label="PIN code">
     <div id="pin-error" role="alert"></div>
     <div style="margin-top:12px">
-      <button class="btn btn-primary" onclick="submitPin()">Unlock</button>
+      <button class="btn btn-primary" id="pin-unlock-btn" onclick="submitPin()">Unlock</button>
     </div>
+    <div class="pin-hint">Protected by PIN • WebTun</div>
   </div>
 </div>
 
@@ -1415,7 +1464,32 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
         </button>
       </div>
       <div class="settings-panel-body">
-        <div class="settings-section">
+        <div id="settings-search-wrap">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input id="settings-search" type="text" placeholder="Search settings…" aria-label="Search settings" autocomplete="off">
+        </div>
+        <div id="settings-no-match">No settings match your search</div>
+        <div class="settings-section" data-sec="security">
+          <h3>Security <span class="sec-status" id="sec-pin-status">…</span></h3>
+          <div class="setting-row">
+            <label>Protection</label>
+            <span id="pin-state-label" style="font-size:12px;color:var(--fg2)">…</span>
+          </div>
+          <div class="setting-row">
+            <label for="pin-current">Current PIN</label>
+            <input type="password" id="pin-current" autocomplete="off" maxlength="64" placeholder="Required to change" oninput="clearFieldError('pin-field-error')">
+          </div>
+          <div class="setting-row">
+            <label for="pin-new">New PIN</label>
+            <input type="password" id="pin-new" autocomplete="new-password" maxlength="64" placeholder="Empty removes protection" oninput="clearFieldError('pin-field-error')">
+          </div>
+          <div class="field-error" id="pin-field-error" role="alert"></div>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <button class="btn btn-primary" id="pin-save-btn" onclick="changePin()" style="flex:1">Set / Update PIN</button>
+          </div>
+          <div style="font-size:11px;color:var(--fg3);margin-top:6px">Applies instantly. Saved to <span style="font-family:var(--font)">.env</span> so it survives restarts.</div>
+        </div>
+        <div class="settings-section" data-sec="appearance">
           <h3>Appearance</h3>
           <div class="setting-row">
             <label for="s-theme">Theme</label>
@@ -1456,7 +1530,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
             <div class="toggle" id="s-blink" role="switch" tabindex="0" aria-checked="true" onclick="toggleSetting('blink')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('blink')}"><input type="checkbox" id="s-blink-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
           </div>
         </div>
-        <div class="settings-section">
+        <div class="settings-section" data-sec="terminal">
           <h3>Terminal</h3>
           <div class="setting-row">
             <label for="s-scrollback">Scrollback Lines</label>
@@ -1471,7 +1545,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
             <div class="toggle on" id="s-termRightClick" role="switch" tabindex="0" aria-checked="true" onclick="toggleSetting('termRightClick')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('termRightClick')}"><input type="checkbox" id="s-termRightClick-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
           </div>
         </div>
-        <div class="settings-section">
+        <div class="settings-section" data-sec="interface">
           <h3>Interface</h3>
           <div class="setting-row">
             <label for="s-mobilekeys-cb">Show Mobile Keys</label>
@@ -1490,7 +1564,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
             <div class="toggle" id="s-autostart" role="switch" tabindex="0" aria-checked="false" onclick="toggleSetting('autostart')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('autostart')}"><input type="checkbox" id="s-autostart-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
           </div>
         </div>
-        <div class="settings-section">
+        <div class="settings-section" data-sec="tunnel">
           <h3>Tunnel</h3>
           <div class="setting-row" style="flex-wrap:wrap;gap:6px">
             <label for="tunnel-url" style="flex:0 0 auto">Local URL</label>
@@ -1503,7 +1577,10 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
           <div id="tunnel-list"></div>
           <div id="tunnel-status" style="font-size:11px;color:var(--fg2);min-height:16px;margin-top:2px"></div>
         </div>
-        <div class="settings-section" style="margin-top:12px;border-top:1px solid var(--border);padding-top:16px">
+        <div style="margin-top:4px">
+          <button class="btn btn-ghost" id="reset-settings-btn" onclick="resetSettings()" style="width:100%">Reset settings</button>
+        </div>
+        <div class="settings-section" data-static="1" style="margin-top:12px;border-top:1px solid var(--border);padding-top:16px">
           <h3>About</h3>
           <div style="display:flex;flex-direction:column;gap:8px;font-size:12px;color:var(--fg2)">
             <div style="display:flex;align-items:center;gap:8px">
@@ -1520,9 +1597,6 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
               <a href="https://github.com/unn-Known1/webtun" target="_blank" rel="noopener" style="color:var(--accent)">https://github.com/unn-Known1/webtun</a>
             </div>
           </div>
-        </div>
-        <div class="settings-section" style="margin-top:12px;border-top:1px solid var(--border);padding-top:16px">
-          <button class="btn btn-ghost" id="reset-settings-btn" onclick="resetSettings()" style="width:100%">Reset settings</button>
         </div>
       </div>
     </div>
@@ -1888,7 +1962,11 @@ async function init() {
 async function submitPin() {
   const pinInput = document.getElementById('pin-input');
   const pinError = document.getElementById('pin-error');
+  const pinBox = document.getElementById('pin-box');
+  const pinBtn = document.getElementById('pin-unlock-btn');
   const pin = pinInput.value;
+  pinBox.classList.remove('shake');
+  setBtnBusy(pinBtn, true);
   try {
     const r = await fetch('/api/auth', {
       method: 'POST',
@@ -1902,11 +1980,16 @@ async function submitPin() {
       pinError.textContent = r.error || 'Wrong PIN, try again';
       pinInput.value = '';
       pinInput.focus();
+      void pinBox.offsetWidth;
+      pinBox.classList.add('shake');
     }
   } catch(e) {
     pinError.textContent = 'Connection failed. Is the server running?';
     pinInput.focus();
+    void pinBox.offsetWidth;
+    pinBox.classList.add('shake');
   }
+  setBtnBusy(pinBtn, false);
 }
 
 async function unlockApp() {
@@ -5563,6 +5646,12 @@ function openSettings() {
   const content = document.getElementById('content');
   if (!isOpen) {
     panel.classList.add('open');
+    setupSettingsSections();
+    updateSecurityUI();
+    // Replay staggered card entrance on every open
+    panel.classList.remove('sec-anim');
+    void panel.offsetWidth;
+    panel.classList.add('sec-anim');
     panel.setAttribute('aria-modal', 'true');
     panel.setAttribute('role', 'dialog');
     // Defer inert + focus to next frame so panel transform can composite on GPU without reflowing sidebar/file-list
@@ -5596,6 +5685,163 @@ function closeSettingsOnClickOutside(e) {
   if (!panel.classList.contains('open')) { document.removeEventListener('click', closeSettingsOnClickOutside, true); return; }
   if (panel.contains(e.target) || (btn && btn.contains(e.target))) return;
   closeSettings();
+}
+
+// Collapsible settings groups — all closed by default, choice persisted per group.
+let _settingsSecsSetup = false;
+// Per-section SVG icons (12px, stroke) for the control-deck headers
+const _secIcons = {
+  security: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  appearance: '<path d="M12 2s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>',
+  terminal: '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>',
+  interface: '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/><circle cx="9" cy="6" r="2.2"/><circle cx="15" cy="12" r="2.2"/><circle cx="7" cy="18" r="2.2"/>',
+  tunnel: '<path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>',
+  reset: '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>',
+  about: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>'
+};
+function setupSettingsSections() {
+  if (_settingsSecsSetup) return;
+  _settingsSecsSetup = true;
+  document.querySelectorAll('#settings-panel .settings-section').forEach(sec => {
+    // Static sections (e.g. About) stay open and untouched
+    if (sec.hasAttribute('data-static')) return;
+    const h3 = sec.querySelector('h3');
+    if (!h3 || sec.dataset.secSetup) return;
+    sec.dataset.secSetup = '1';
+    const slug = sec.dataset.sec || h3.textContent.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    // Wrap body rows (everything after h3) in grid-animated body > inner
+    const body = document.createElement('div');
+    body.className = 'settings-section-body';
+    const inner = document.createElement('div');
+    inner.className = 'settings-section-inner';
+    [...sec.childNodes].forEach(n => { if (n !== h3) inner.appendChild(n); });
+    body.appendChild(inner);
+    sec.appendChild(body);
+    // Section icon (inserted before title text / status pill)
+    if (_secIcons[slug]) {
+      const ico = document.createElement('span');
+      ico.className = 'sec-ico';
+      ico.setAttribute('aria-hidden', 'true');
+      ico.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + _secIcons[slug] + '</svg>';
+      h3.insertBefore(ico, h3.firstChild);
+    }
+    // Chevron + toggle affordance on the header
+    const chev = document.createElement('span');
+    chev.className = 'sec-chev';
+    chev.setAttribute('aria-hidden', 'true');
+    chev.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>';
+    h3.appendChild(chev);
+    h3.setAttribute('role', 'button');
+    h3.setAttribute('tabindex', '0');
+    let open = false;
+    try { open = safeStorage.getItem('wt-settings-sec-' + slug) === 'true'; } catch {}
+    const apply = () => {
+      sec.classList.toggle('open', open);
+      h3.setAttribute('aria-expanded', String(open));
+    };
+    sec._secApply = apply;
+    const toggle = () => {
+      open = !open;
+      try { safeStorage.setItem('wt-settings-sec-' + slug, String(open)); } catch {}
+      apply();
+    };
+    h3.addEventListener('click', toggle);
+    h3.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    });
+    apply();
+  });
+  // Live search filter (wired once)
+  const si = document.getElementById('settings-search');
+  if (si && !si.dataset.wired) {
+    si.dataset.wired = '1';
+    si.addEventListener('input', () => filterSettings(si.value));
+    si.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { e.stopPropagation(); si.value = ''; filterSettings(''); si.blur(); }
+    });
+  }
+}
+function filterSettings(q) {
+  q = (q || '').trim().toLowerCase();
+  const secs = [...document.querySelectorAll('#settings-panel .settings-section')];
+  let anyVisible = false;
+  secs.forEach(sec => {
+    const h3 = sec.querySelector('h3');
+    if (!q) {
+      sec.style.display = '';
+      const inner = sec.querySelector('.settings-section-inner');
+      const kids = inner ? [...inner.children] : [...sec.children].filter(el => el.tagName !== 'H3');
+      kids.forEach(ch => ch.style.display = '');
+      if (sec._secApply) sec._secApply();
+      anyVisible = true;
+      return;
+    }
+    const titleHit = h3 && h3.textContent.toLowerCase().includes(q);
+    const inner = sec.querySelector('.settings-section-inner');
+    const kids = inner ? [...inner.children] : [...sec.querySelectorAll(':scope > div:not(.settings-section-body)')];
+    let show = !!titleHit;
+    kids.forEach(ch => {
+      const hit = !!titleHit || ((ch.textContent || '').toLowerCase().includes(q));
+      ch.style.display = hit ? '' : 'none';
+      if (hit) show = true;
+    });
+    if (show) { sec.style.display = ''; sec.classList.add('open'); anyVisible = true; }
+    else sec.style.display = 'none';
+  });
+  document.getElementById('settings-no-match').style.display = anyVisible ? 'none' : '';
+}
+
+// ── Security: set / change / disable PIN ──
+async function updateSecurityUI() {
+  let prot = null;
+  try {
+    const r = await api('/api/auth/required');
+    if (r && r.required !== undefined) prot = !!r.required;
+  } catch {}
+  const label = document.getElementById('pin-state-label');
+  const pill = document.getElementById('sec-pin-status');
+  const cur = document.getElementById('pin-current');
+  if (prot === null) {
+    if (label) label.textContent = 'Unknown';
+    if (pill) { pill.textContent = '?'; pill.classList.remove('on'); }
+    return prot;
+  }
+  if (label) {
+    label.textContent = prot ? 'ON — PIN required' : 'OFF — open access';
+    label.style.color = prot ? 'var(--green)' : 'var(--fg2)';
+  }
+  if (pill) {
+    pill.textContent = prot ? 'Protected' : 'Open';
+    pill.classList.toggle('on', prot);
+  }
+  if (cur) cur.disabled = !prot;
+  return prot;
+}
+async function changePin() {
+  clearFieldError('pin-field-error');
+  const curEl = document.getElementById('pin-current');
+  const newEl = document.getElementById('pin-new');
+  const cur = (curEl.value || '').trim();
+  const next = (newEl.value || '').trim();
+  if (/[\r\n\0]/.test(next)) { showFieldError('pin-field-error', 'PIN contains invalid characters'); return; }
+  if (next.length > 64) { showFieldError('pin-field-error', 'PIN must be 64 characters or less'); return; }
+  const prot = await updateSecurityUI();
+  if (prot && !cur) { showFieldError('pin-field-error', 'Enter the current PIN'); curEl.focus(); return; }
+  if (!next) {
+    const ok = await confirmDialog({ title: 'Remove protection?', message: 'Anyone with access to WebTun will be able to open it. Continue?', okText: 'Remove PIN', danger: true });
+    if (!ok) return;
+  }
+  const btn = document.getElementById('pin-save-btn');
+  setBtnBusy(btn, true);
+  const r = await api('/api/pin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currentPin: cur, newPin: next }) });
+  setBtnBusy(btn, false);
+  if (!r || r.error) { showFieldError('pin-field-error', (r && r.error) || 'Failed to update PIN'); return; }
+  // Re-auth this session with the new PIN so subsequent calls keep working
+  authToken = next || 'open';
+  curEl.value = ''; newEl.value = '';
+  updateSecurityUI();
+  toast(!next ? 'PIN removed — open access' : 'PIN updated', 'success');
+  if (!r.persisted) toast('Active now, but .env is not writable — restart will revert (' + (r.persistError || 'write failed') + ')', 'warning');
 }
 
 let tunnelList = [];

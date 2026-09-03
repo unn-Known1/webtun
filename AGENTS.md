@@ -98,7 +98,7 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
   - `POST /api/files/mkdir` / `touch` — create directory / empty file
   - `POST /api/files/zip` / `unzip` — create or extract zip archives
   - `GET /api/search?q=&path=` — async file search (max depth 4, max 50 results)
-- **Auth endpoint**: `POST /api/auth` and `GET /api/auth/required` — rate-limited separately.
+- **Auth endpoint**: `POST /api/auth` and `GET /api/auth/required` — rate-limited separately. `POST /api/pin` (`{currentPin, newPin}`) sets/changes/disables the PIN at runtime under `checkPin` + auth limiter; persists to `__dirname/.env` (atomic 0600 write).
 - **History endpoint**: `GET /api/history`, `POST /api/history`, `DELETE /api/history`, `DELETE /api/history/:index` — all under `checkPin`.
 - **Git endpoints** (`server.js`): all under `checkPin`; no-shell `git -C <root>` via `spawnRead`, file args validated inside repo root.
   - `GET /api/git/status?path=` — repo detect (`rev-parse`), porcelain `-b` parse (rate-limited)
