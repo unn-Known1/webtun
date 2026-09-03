@@ -9076,8 +9076,8 @@ function registerSW() {
 // ═══════════════════════════════════════════════════════
 init().catch(e => console.error('Init failed:', e));
 
-// Set version in About section
-fetch('/api/version').then(r => r.json()).then(d => {
+// Set version in About section (authed endpoint — header included)
+fetch('/api/version', { headers: { 'x-pin-token': authToken } }).then(r => r.json()).then(d => {
   const el = document.getElementById('about-version');
   if (el) el.textContent = 'v' + (d.version || '');
 }).catch(() => {});

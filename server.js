@@ -139,6 +139,7 @@ setInterval(() => {
 }, 60000);
 
 const app = express();
+app.disable('x-powered-by'); // don't advertise the stack
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server, path: '/ws' });
 
@@ -242,7 +243,9 @@ app.get('/api/auth/required', (req, res) => {
   res.json({ required: !!PIN });
 });
 
-app.get('/api/version', (req, res) => {
+// Version is authed (no free recon for targeted exploits); /api/auth/required
+// stays public for the unlock flow. The About fetch sends the token header.
+app.get('/api/version', checkPin, (req, res) => {
   res.json({ version: require('./package.json').version });
 });
 
