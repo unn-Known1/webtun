@@ -77,7 +77,7 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh &&
 - **Zip/Extract** — right-click any file or folder
 - **Image viewer** — preview inline (png, jpg, gif, svg, webp)
 - **Conflict resolution** — replace, merge, keep both, skip
-- **Breadcrumb navigation** — tappable segments, folder icon + path one line, `2px` tight spacing, header/breadcrumb unified `30px` bar
+- **Unified path bar** — tappable breadcrumb segments + click current folder (or pencil) to type any path, `Enter` to go, `Esc` to cancel
 - **Editor** — CodeMirror with autosave draft, `F11` fullscreen (covers terminal area only, never the file explorer), `horizontal/vertical` split toggle, markdown/HTML preview
 
 ### Mobile
@@ -176,6 +176,17 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh &&
 ---
 
 ## Changelog
+
+### v1.5.7
+- PDF viewer: fixed each page rendering twice (render-generation guard cancels stale loads/renders on double-click, reopen, and zoom-during-load)
+- PDF viewer: lazy rendering for big PDFs — cheap placeholders for all pages in one DOM pass, first-page-fast + ±2 neighbours, `IntersectionObserver` prefetch (`1200px` margin, queue cap 30, serial pump)
+- PDF viewer: streamed download progress (`Downloading… %/MB`), canvas backing store capped at ~2.5MP with `page.cleanup()`
+- PDF viewer: scroll tracking, prev/next nav, and zoom now work pre-render via `pdf-wrap-*` boxes and preserve current page across zoom
+- Security: `express ^4.22.2`, `qs 6.16.0` override — `npm audit` clean (0 vulnerabilities)
+
+### v1.5.6
+- Explorer: fixed preview for unsupported file types, fixed HTML preview
+- PDF/EPUB preview: PDF/EPUB preview with optional CDN loader, vertical scroll, instant setup, fixed EPUB stuck and PDF page numbers sorted
 
 ### v1.5.5
 - Explorer: full filesystem access by default (`ALLOW_FULL_FS=true` unless `ALLOW_FULL_FS=false`), symlink dirs now navigable (`stat` `isDirectory`), fixed silent `403` bounce on `..` (now `toast` + error div), `parent` hidden at workspace root, `history`/`breadcrumb` desync fixed (deferred to success), stale closures on reused file items fixed (`dataset` live), drag overlay stuck fixed (`relatedTarget`/`dragend`/`blur`), relative `path-input` now `joinPath(currentPath)`, `rename` dialog no longer closes on error
