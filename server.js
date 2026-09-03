@@ -682,24 +682,31 @@ app.get('/api/files', checkPin, async (req, res) => {
     }
 
     const entries = await fsPromises.readdir(dir, { withFileTypes: true });
-    const files = await Promise.all(
-      entries.map(async e => {
-        const full = path.join(dir, e.name);
-        const st = await safeStat(full);
-        const isSymlink = e.isSymbolicLink();
-        // Use stat result for isDir so symlink→dir is navigable; Dirent.isDirectory() is false for symlink
-        const isDir = st ? st.isDirectory() : e.isDirectory();
-        return {
-          name: e.name,
-          path: full,
-          isDir,
-          isSymlink,
-          size: st ? st.size : 0,
-          modified: st ? st.mtime : null,
-          ext: path.extname(e.name).toLowerCase()
-        };
-      })
-    );
+    // Bound stat concurrency so huge directories don't spike fds/CPU
+    const files = [];
+    const STAT_BATCH = 32;
+    for (let i = 0; i < entries.length; i += STAT_BATCH) {
+      const chunk = entries.slice(i, i + STAT_BATCH);
+      const out = await Promise.all(
+        chunk.map(async e => {
+          const full = path.join(dir, e.name);
+          const st = await safeStat(full);
+          const isSymlink = e.isSymbolicLink();
+          // Use stat result for isDir so symlink→dir is navigable; Dirent.isDirectory() is false for symlink
+          const isDir = st ? st.isDirectory() : e.isDirectory();
+          return {
+            name: e.name,
+            path: full,
+            isDir,
+            isSymlink,
+            size: st ? st.size : 0,
+            modified: st ? st.mtime : null,
+            ext: path.extname(e.name).toLowerCase()
+          };
+        })
+      );
+      files.push(...out);
+    }
     files.sort((a, b) => {
       if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
       return a.name.localeCompare(b.name);

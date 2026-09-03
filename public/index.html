@@ -446,8 +446,9 @@ svg { display: block; }
 #file-list-wrap.loading::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: var(--bg3); z-index: 5; }
 #file-list-wrap.loading::after { content: ''; position: absolute; top: 0; left: -30%; width: 30%; height: 3px; background: var(--accent); border-radius: 0 2px 2px 0; z-index: 6; animation: fileListProgress 0.9s ease-in-out infinite; box-shadow: 0 1px 4px var(--shadow-color); }
 @keyframes fileListProgress { from { left: -30%; } to { left: 100%; } }
-.file-list-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 12px; color: var(--fg2); font-size: 13px; text-align: center; gap: 6px; }
-.file-list-empty svg { opacity: 0.4; }
+.file-list-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 38px 16px; color: var(--fg2); font-size: 13px; text-align: center; gap: 8px; }
+.file-list-empty svg { opacity: 0.5; width: 42px; height: 42px; }
+.file-list-empty .empty-title { color: var(--fg); font-weight: 600; font-size: 13px; }
 .empty-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
 .empty-actions .btn { font-size: 12px; padding: 4px 12px; }
 #path-bar.editing #path-segments, #path-bar.editing #path-edit-btn { display: none; }
@@ -459,21 +460,52 @@ svg { display: block; }
   #path-segments .path-current { font-size: 13px; }
   #path-segments a { padding: 6px 8px !important; }
 }
-.file-item { display: flex; align-items: center; gap: 2px; padding: 1px 4px; cursor: pointer; border-bottom: 1px solid transparent; font-size: 12px; position: relative; user-select: none; white-space: nowrap; flex-wrap: nowrap; }
+.file-item { display: flex; align-items: center; gap: 9px; padding: 5px 8px 5px 10px; margin: 1px 4px; border-radius: var(--radius); cursor: pointer; font-size: 12px; position: relative; user-select: none; white-space: nowrap; flex-wrap: nowrap; transition: background var(--transition-fast); }
 .file-item:hover { background: var(--bg3); }
-.file-item.selected { background: var(--bg4); }
+.file-item.selected { background: color-mix(in srgb, var(--accent) 13%, transparent); box-shadow: inset 2px 0 0 var(--accent); }
 .file-item.focused { background: var(--bg3); outline: 1px solid var(--accent); outline-offset: -1px; }
-.file-item .file-ellipsis { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; min-width: 32px; min-height: 32px; border-radius: var(--radius-sm); color: var(--fg2); opacity: 0.45; flex-shrink: 0; }
+.file-item .file-ellipsis { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; min-width: 28px; min-height: 28px; border-radius: var(--radius-sm); color: var(--fg2); opacity: 0.45; flex-shrink: 0; }
 .file-item:hover .file-ellipsis { opacity: 1; }
-.file-icon { font-size: 14px; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; -webkit-user-select: text; }
-.file-size { font-size: 10px; color: var(--fg2); flex-shrink: 0; user-select: text; -webkit-user-select: text; }
+.file-icon { width: 28px; height: 28px; min-width: 28px; min-height: 28px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: 8px; position: relative; overflow: hidden; }
+.file-thumb { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity var(--transition-normal); }
+.file-thumb.ld { opacity: 1; }
+.file-icon svg { width: 14px; height: 14px; }
+.file-icon.k-dir { color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); }
+.file-icon.k-code { color: var(--green); background: color-mix(in srgb, var(--green) 13%, transparent); }
+.file-icon.k-img { color: var(--cyan); background: color-mix(in srgb, var(--cyan) 13%, transparent); }
+.file-icon.k-doc { color: var(--accent2); background: color-mix(in srgb, var(--accent2) 16%, transparent); }
+.file-icon.k-zip { color: var(--fg); background: var(--bg4); }
+.file-icon.k-file { color: var(--fg2); background: var(--bg4); }
+.file-text { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; line-height: 1.35; }
+.file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; -webkit-user-select: text; }
+.file-meta { font-size: 10px; color: var(--fg3); font-family: var(--font-ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .file-dir { color: var(--accent); }
+.file-item .file-quick { display: none; align-items: center; justify-content: center; width: 26px; height: 26px; min-width: 26px; border-radius: var(--radius-sm); color: var(--fg2); background: none; border: none; cursor: pointer; flex-shrink: 0; }
+.file-item:hover .file-quick { display: flex; }
+.file-item .file-quick:hover { background: var(--bg4); color: var(--fg); }
 .file-item .file-actions { display: none; position: absolute; right: 6px; top: 50%; transform: translateY(-50%); gap: 2px; background: var(--bg4); border-radius: var(--radius); padding: 2px; }
+/* Sticky group dividers */
+.file-group { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 7px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--fg3); font-family: var(--font-ui); padding: 9px 12px 4px; background: var(--bg2); background: color-mix(in srgb, var(--bg2) 88%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.file-group::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.file-group .fg-count { color: var(--fg2); }
+.file-group[role="button"] { cursor: pointer; }
+.file-group[role="button"]:hover { color: var(--fg); }
+.file-group .fg-sort { color: var(--accent); }
+/* Skeleton shimmer for first load */
+.file-skel { display: flex; align-items: center; gap: 9px; padding: 5px 8px 5px 10px; margin: 1px 4px; }
+.file-skel .sk-ico { width: 28px; height: 28px; min-width: 28px; border-radius: 8px; }
+.file-skel .sk-lines { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.file-skel .sk-l1 { height: 11px; border-radius: 4px; width: 58%; }
+.file-skel .sk-l2 { height: 8px; border-radius: 4px; width: 34%; }
+.file-skel:nth-child(3n) .sk-l1 { width: 72%; }
+.file-skel:nth-child(3n+1) .sk-l2 { width: 44%; }
+.file-skel .sk-ico, .file-skel .sk-l1, .file-skel .sk-l2 { background: linear-gradient(90deg, var(--bg3) 25%, var(--bg4) 50%, var(--bg3) 75%); background-size: 200% 100%; animation: skShimmer 1.2s ease-in-out infinite; }
+@keyframes skShimmer { to { background-position: -200% 0; } }
 .file-item:hover .file-actions { display: flex; }
 .file-action-btn { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-sm); font-size: 11px; color: var(--fg2); }
 @media (hover: none) and (pointer: coarse) {
   .file-item .file-actions { display: flex; }
+  .file-item .file-quick { display: flex; }
   .file-item:hover { background: var(--bg3); }
   .file-action-btn { width: 36px; height: 36px; }
 }
@@ -2035,6 +2067,7 @@ async function unlockApp() {
   restoreTunnels();
   setupSwipeGestures();
   setupFileListTouch();
+  setupFileListClicks();
   setupFileListKeyboard();
   setupFileListContextMenu();
   setupCtxMenuKeyboard();
@@ -3074,6 +3107,19 @@ function setFileListLoading(on) {
   clearTimeout(fileListLoadingTimer);
   if (on) {
     fileListLoadingTimer = setTimeout(() => wrap.classList.add('loading'), 150);
+    // Skeleton shimmer on first paint (empty list only — refresh keeps live rows)
+    const list = document.getElementById('file-list');
+    if (list && !list.children.length) {
+      const frag = document.createDocumentFragment();
+      for (let i = 0; i < 8; i++) {
+        const s = document.createElement('div');
+        s.className = 'file-skel';
+        s.setAttribute('aria-hidden', 'true');
+        s.innerHTML = '<span class="sk-ico"></span><span class="sk-lines"><span class="sk-l1"></span><span class="sk-l2"></span></span>';
+        frag.appendChild(s);
+      }
+      list.appendChild(frag);
+    }
   } else {
     fileListLoadingTimer = null;
     wrap.classList.remove('loading');
@@ -3172,20 +3218,70 @@ async function loadFiles(dir) {
     return item;
   }
 
-  // Parent dir entry
+  // Parent dir entry (+ Folders divider when it leads the group)
+  const dirCount = data.files.filter(f => f.isDir).length;
+  const fileCount = data.files.length - dirCount;
+  _thumbBudget = 48; // fresh thumbnail allowance per render
+  // Sort state: dirs always first (groups depend on it), then key+dir.
+  // Click a group divider = next key · right-click it = reverse direction.
+  const _sortKeyLabel = { name: 'name', modified: 'date', size: 'size' };
+  const sortTag = () => ` · ${_sortKeyLabel[fileSort.key]} ${fileSort.dir === 1 ? '↑' : '↓'}`;
+  const addGroupDivider = (label, count) => {
+    const gd = document.createElement('div');
+    gd.className = 'file-group';
+    gd.setAttribute('role', 'button');
+    gd.setAttribute('tabindex', '0');
+    gd.title = 'Change sort (right-click reverses)';
+    const s1 = document.createElement('span');
+    s1.textContent = label;
+    const s2 = document.createElement('span');
+    s2.className = 'fg-count';
+    s2.textContent = String(count);
+    const s3 = document.createElement('span');
+    s3.className = 'fg-sort';
+    s3.textContent = sortTag();
+    gd.appendChild(s1); gd.appendChild(s2); gd.appendChild(s3);
+    gd.addEventListener('click', cycleFileSort);
+    gd.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cycleFileSort(); }
+    });
+    gd.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      fileSort.dir = -fileSort.dir;
+      saveFileSort();
+      if (currentPath) loadFiles(currentPath);
+    });
+    fragment.appendChild(gd);
+  };
+  let dirsHeaderDone = false;
   if (data.parent && data.parent !== dir) {
     const folderSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>';
-    addItem(data.parent, () => makeFileItem('..', true, data.parent, null, folderSvg));
+    if (dirCount > 0) { addGroupDivider('Folders', dirCount); dirsHeaderDone = true; }
+    addItem(data.parent, () => makeFileItem('..', true, data.parent, { icon: folderSvg, meta: 'Parent directory', kind: 'dir' }));
   }
 
-  data.files.forEach(f => {
+  let filesHeaderDone = false;
+  const files = sortFiles(data.files || []);
+  files.forEach(f => {
     const key = f.path;
     const icon = f.isDir ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>' : getFileIcon(f.ext);
     const sizeStr = f.isDir ? null : formatSize(f.size);
+    const dateStr = f.modified ? timeAgo(f.modified) : '';
+    const kind = fileKind(f.ext, f.isDir);
+    const thumb = thumbUrlFor(f);
+    let meta = sizeStr ? sizeStr : '';
+    if (dateStr) meta += (meta ? ' · ' + dateStr : dateStr);
+    if (!meta && f.isDir) meta = 'Folder';
+    if (f.isSymlink) meta += (meta ? ' · link' : 'link');
+    if (f.isDir) {
+      if (!dirsHeaderDone) { addGroupDivider('Folders', dirCount); dirsHeaderDone = true; }
+    } else if (!filesHeaderDone) {
+      addGroupDivider('Files', fileCount); filesHeaderDone = true;
+    }
 
     const existing = oldMap.get(key);
     if (existing) {
-      // Update name/size/icon if changed (without recreating DOM)
+      // Update name/meta/icon if changed (without recreating DOM)
       const nameEl = existing.querySelector('.file-name');
       if (nameEl && nameEl.textContent !== f.name) {
         nameEl.textContent = f.name;
@@ -3193,21 +3289,45 @@ async function loadFiles(dir) {
         nameEl.className = 'file-name' + (f.isDir ? ' file-dir' : '');
       }
       const iconEl = existing.querySelector('.file-icon');
-      if (iconEl && iconEl.innerHTML !== icon) {
-        iconEl.innerHTML = icon;
+      if (iconEl) {
+        if (iconEl.innerHTML !== icon) iconEl.innerHTML = icon;
+        const tileCls = 'file-icon k-' + kind;
+        if (iconEl.className !== tileCls) iconEl.className = tileCls;
       }
-      const sizeEl = existing.querySelector('.file-size');
-      if (sizeStr) {
-        if (sizeEl) {
-          if (sizeEl.textContent !== sizeStr) sizeEl.textContent = sizeStr;
-        } else {
-          const span = document.createElement('span');
-          span.className = 'file-size';
-          span.textContent = sizeStr;
-          existing.querySelector('.file-name').after(span);
+      const metaEl = existing.querySelector('.file-meta');
+      if (metaEl) {
+        if (metaEl.textContent !== meta) metaEl.textContent = meta;
+      } else if (meta) {
+        const mspan = document.createElement('span');
+        mspan.className = 'file-meta';
+        mspan.textContent = meta;
+        const textWrap = existing.querySelector('.file-text');
+        if (textWrap) textWrap.appendChild(mspan);
+      }
+      // Thumbnail freshness: track expected URL, swap only on change
+      const tileEl = existing.querySelector('.file-icon');
+      if (thumb) {
+        if (existing.dataset.thumb !== thumb) {
+          existing.dataset.thumb = thumb;
+          let im = existing.querySelector('img.file-thumb');
+          if (!im) {
+            im = document.createElement('img');
+            im.className = 'file-thumb';
+            im.alt = '';
+            im.onload = () => im.classList.add('ld');
+            im.onerror = () => im.remove();
+            if (tileEl) tileEl.appendChild(im);
+          }
+          im.classList.remove('ld');
+          im.dataset.src = thumb;
+          im.removeAttribute('src');
+          if (_thumbObserver) _thumbObserver.observe(im);
+          else observeThumbs();
         }
-      } else if (sizeEl) {
-        sizeEl.remove();
+      } else {
+        delete existing.dataset.thumb;
+        const stale = existing.querySelector('img.file-thumb');
+        if (stale) stale.remove();
       }
       existing.dataset.isDir = String(f.isDir);
       existing.dataset.path = key;
@@ -3219,18 +3339,23 @@ async function loadFiles(dir) {
       if (nameEl2) nameEl2.title = key;
     }
 
-    addItem(key, () => makeFileItem(f.name, f.isDir, key, sizeStr, icon));
+    addItem(key, () => {
+      const el = makeFileItem(f.name, f.isDir, key, { icon, meta, kind, link: f.isSymlink, download: !f.isDir, thumb });
+      if (thumb) el.dataset.thumb = thumb;
+      return el;
+    });
   });
 
   // Remove any orphaned nodes (not in new data)
   for (const [, orphan] of oldMap) orphan.remove();
 
   list.replaceChildren(fragment);
+  observeThumbs();
 
   if (list.children.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'file-list-empty';
-    empty.innerHTML = '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg><span>Empty directory</span>' +
+    empty.innerHTML = '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg><span class="empty-title">Empty directory</span>' +
       '<div class="empty-actions">' +
       '<button class="btn btn-ghost" onclick="openOverlay(\'newfile-overlay\');document.getElementById(\'newfile-input\').focus()">New file</button>' +
       '<button class="btn btn-ghost" onclick="openOverlay(\'newfolder-overlay\');document.getElementById(\'newfolder-input\').focus()">New folder</button>' +
@@ -3245,7 +3370,101 @@ async function loadFiles(dir) {
 
 let fileItemCounter = 0;
 
-function makeFileItem(name, isDir, fullPath, size, icon) {
+// File list sort: dirs always first (groups depend on it), then key+dir.
+// Click a group divider = next key · right-click it = reverse direction.
+let fileSort = { key: 'name', dir: 1 };
+try {
+  const saved = JSON.parse(safeStorage.getItem('wt-file-sort') || 'null');
+  if (saved && ['name', 'modified', 'size'].includes(saved.key) && (saved.dir === 1 || saved.dir === -1)) fileSort = saved;
+} catch {}
+function saveFileSort() { try { safeStorage.setItem('wt-file-sort', JSON.stringify(fileSort)); } catch {} }
+function sortFiles(files) {
+  const { key, dir } = fileSort;
+  const val = (f) => key === 'name' ? (f.name || '').toLowerCase() : key === 'size' ? (f.size || 0) : (f.modified ? new Date(f.modified).getTime() || 0 : 0);
+  return [...files].sort((a, b) => {
+    if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+    const va = val(a), vb = val(b);
+    if (va < vb) return -1 * dir;
+    if (va > vb) return 1 * dir;
+    return (a.name || '').localeCompare(b.name || '');
+  });
+}
+const _sortCycle = ['name', 'modified', 'size'];
+function cycleFileSort() {
+  const i = _sortCycle.indexOf(fileSort.key);
+  fileSort.key = _sortCycle[(i + 1) % _sortCycle.length];
+  fileSort.dir = fileSort.key === 'name' ? 1 : -1;
+  saveFileSort();
+  if (currentPath) loadFiles(currentPath);
+}
+
+// Icon tile kind mirroring getFileIcon() groups (dir/code/image/doc/archive/file)
+function fileKind(ext, isDir) {
+  if (isDir) return 'dir';
+  const e = (ext || '').toLowerCase();
+  if (['.js','.jsx','.mjs','.cjs','.ts','.tsx','.json','.py','.c','.h','.cpp','.cc','.hpp','.java','.cs','.sh','.bash','.html','.htm','.css','.xml','.svg','.yml','.yaml','.toml','.sql','.go','.rs','.rb','.php','.pl','.swift','.kt','.dart','.lua','.r'].includes(e)) return 'code';
+  if (['.png','.jpg','.jpeg','.gif','.webp','.ico','.bmp','.avif'].includes(e)) return 'img';
+  if (['.pdf','.epub','.doc','.docx','.xls','.xlsx','.ppt','.pptx','.txt','.md'].includes(e)) return 'doc';
+  if (['.zip','.tar','.gz','.bz2','.xz','.7z','.rar','.tgz'].includes(e)) return 'zip';
+  return 'file';
+}
+
+function timeAgo(ts) {
+  if (!ts) return '';
+  const t = new Date(ts).getTime();
+  if (isNaN(t)) return '';
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 60) return 'just now';
+  const m = s / 60;
+  if (m < 60) return Math.floor(m) + 'm ago';
+  const h = m / 60;
+  if (h < 24) return Math.floor(h) + 'h ago';
+  const d = h / 24;
+  if (d < 30) return Math.floor(d) + 'd ago';
+  return new Date(t).toLocaleDateString();
+}
+
+// Lazy image thumbnails inside file tiles (IntersectionObserver on the
+// scroll wrap; gated by size so huge photos keep the generic tile).
+let _thumbObserver = null;
+let _thumbBudget = 48;
+function ensureThumbObserver() {
+  if (_thumbObserver) return;
+  if (!('IntersectionObserver' in window)) return;
+  const wrap = document.getElementById('file-list-wrap');
+  if (!wrap) return;
+  _thumbObserver = new IntersectionObserver((es) => {
+    for (const en of es) {
+      if (!en.isIntersecting) continue;
+      const img = en.target;
+      _thumbObserver.unobserve(img);
+      if (img.dataset.src) { img.src = img.dataset.src; img.removeAttribute('data-src'); }
+    }
+  }, { root: wrap, rootMargin: '200px 0px' });
+}
+function observeThumbs() {
+  const run = () => {
+    ensureThumbObserver();
+    const imgs = document.querySelectorAll('#file-list img.file-thumb[data-src]');
+    if (!_thumbObserver) {
+      imgs.forEach(img => { img.src = img.dataset.src; img.removeAttribute('data-src'); });
+      return;
+    }
+    imgs.forEach(img => _thumbObserver.observe(img));
+  };
+  if ('requestIdleCallback' in window) requestIdleCallback(run, { timeout: 1500 });
+  else setTimeout(run, 50);
+}
+function thumbUrlFor(f) {
+  if (!f || f.isDir || !(f.size > 0) || f.size > 600000) return null;
+  if (_thumbBudget <= 0) return null;
+  _thumbBudget--;
+  const v = (f.modified && Date.parse(f.modified)) || 0;
+  return `/api/files/image?path=${encodeURIComponent(f.path)}&token=${encodeURIComponent(authToken || '')}&v=${v}`;
+}
+
+function makeFileItem(name, isDir, fullPath, o) {
+  o = o || {};
   const div = document.createElement('div');
   div.className = 'file-item';
   div.id = 'file-item-' + (++fileItemCounter);
@@ -3255,50 +3474,60 @@ function makeFileItem(name, isDir, fullPath, size, icon) {
   div.dataset.isDir = String(isDir);
   div.innerHTML = `
     <span class="file-select-check" data-path="${escHtml(fullPath)}"></span>
-    <span class="file-icon">${icon}</span>
-    <span class="file-name ${isDir ? 'file-dir' : ''}" title="${escHtml(fullPath)}">${escHtml(name)}</span>
-    ${size ? `<span class="file-size">${escHtml(size)}</span>` : ''}
+    <span class="file-icon k-${o.kind || 'file'}">${o.icon || ''}${o.thumb ? `<img class="file-thumb" data-src="${escHtml(o.thumb)}" alt="" onload="this.classList.add('ld')" onerror="this.remove()">` : ''}</span>
+    <span class="file-text">
+      <span class="file-name ${isDir ? 'file-dir' : ''}" title="${escHtml(fullPath)}">${escHtml(name)}</span>
+      ${o.meta ? `<span class="file-meta">${escHtml(o.meta)}</span>` : ''}
+    </span>
+    ${o.download ? `<button class="file-quick" tabindex="-1" aria-label="Download ${escHtml(name)}" title="Download"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>` : ''}
     <span class="file-ellipsis" role="button" tabindex="0" aria-label="More actions for ${escHtml(name)}" title="More actions"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></span>
   `;
-  div.addEventListener('click', e => {
-    const curPath = div.dataset.path;
-    const curIsDir = div.dataset.isDir === 'true';
-    const curName = (div.querySelector('.file-name')?.textContent || curPath.split(/[\\/]/).pop() || curPath);
+  return div;
+}
+
+// Single delegated click + key handler for all rows (perf: no per-row
+// listeners, safe for thousand-file directories). Registered before the
+// keyboard nav so ellipsis Enter/Space can stop propagation first.
+function setupFileListClicks() {
+  const list = document.getElementById('file-list');
+  if (!list || list.dataset._clickSetup) return;
+  list.dataset._clickSetup = '1';
+  const rowInfo = (row) => {
+    const curPath = row.dataset.path;
+    const curIsDir = row.dataset.isDir === 'true';
+    const curName = (row.querySelector('.file-name')?.textContent || curPath.split(/[\\/]/).pop() || curPath);
+    const m = curPath.match(/\.([^.]+)$/);
+    return { curPath, curIsDir, curName, ext: m ? '.' + m[1].toLowerCase() : '' };
+  };
+  const openMenuFor = (row, anchorEl) => {
+    const { curPath, curIsDir, curName, ext } = rowInfo(row);
+    const rect = anchorEl.getBoundingClientRect();
+    showCtxMenu({ clientX: rect.left + rect.width / 2, clientY: rect.bottom + 4, preventDefault() {}, stopPropagation() {} }, { path: curPath, name: curName, isDir: curIsDir, ext });
+  };
+  list.addEventListener('click', e => {
+    const row = e.target.closest('.file-item');
+    if (!row || !row.dataset.path) return;
+    const { curPath, curIsDir } = rowInfo(row);
     if (e.target.closest('.file-select-check')) {
-      toggleFileSelection(curPath, div);
+      toggleFileSelection(curPath, row);
       if (selectedFiles.length > 0) document.getElementById('select-actions').style.display = 'flex';
       return;
     }
-    if (e.target.closest('.file-ellipsis')) {
-      e.stopPropagation();
-      const rect = div.querySelector('.file-ellipsis').getBoundingClientRect();
-      const m = curPath.match(/\.([^.]+)$/);
-      showCtxMenu({ clientX: rect.left + rect.width / 2, clientY: rect.bottom + 4, preventDefault() {}, stopPropagation() {} }, { path: curPath, name: curName, isDir: curIsDir, ext: m ? '.' + m[1].toLowerCase() : '' });
-      return;
-    }
-    if (selectMode) {
-      toggleFileSelection(curPath, div);
-      return;
-    }
+    if (e.target.closest('.file-quick')) { downloadFile(curPath); return; }
+    const ell = e.target.closest('.file-ellipsis');
+    if (ell) { openMenuFor(row, ell); return; }
+    if (selectMode) { toggleFileSelection(curPath, row); return; }
     if (curIsDir) loadFiles(curPath);
     else openFileEditor(curPath);
   });
-  const ell = div.querySelector('.file-ellipsis');
-  if (ell) {
-    ell.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        e.stopPropagation();
-        const curPath = div.dataset.path;
-        const curIsDir = div.dataset.isDir === 'true';
-        const curName = (div.querySelector('.file-name')?.textContent || curPath.split(/[\\/]/).pop() || curPath);
-        const rect = ell.getBoundingClientRect();
-        const m = curPath.match(/\.([^.]+)$/);
-        showCtxMenu({ clientX: rect.left + rect.width / 2, clientY: rect.bottom + 4, preventDefault() {}, stopPropagation() {} }, { path: curPath, name: curName, isDir: curIsDir, ext: m ? '.' + m[1].toLowerCase() : '' });
-      }
-    });
-  }
-  return div;
+  list.addEventListener('keydown', e => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.closest && e.target.closest('.file-ellipsis')) {
+      e.preventDefault();
+      e.stopPropagation();
+      const row = e.target.closest('.file-item');
+      if (row) openMenuFor(row, e.target.closest('.file-ellipsis'));
+    }
+  });
 }
 
 function setupFileListKeyboard() {
@@ -7118,7 +7347,7 @@ function setupFileListTouch() {
 
   list.addEventListener('touchstart', e => {
     const item = e.target.closest('.file-item');
-    if (!item || e.target.closest('.file-name, .file-size')) return;
+    if (!item || e.target.closest('.file-name, .file-meta')) return;
 
     const touch = e.touches[0];
     const file = {
@@ -7231,6 +7460,7 @@ let gitRoot = null;
 let gitRepo = false;
 let gitUnsupported = false; // git binary missing on server — stop probing
 let _gitReq = 0;
+let _gitFetching = false;
 let gitOpen = (() => { try { const v = safeStorage.getItem('wt-git-open'); return v !== null ? v === 'true' : true; } catch(e) { console.warn(e); return true; } })();
 function toggleGitPanel() {
   gitOpen = !gitOpen;
@@ -7241,6 +7471,18 @@ async function refreshGitPanel(dir, manual) {
   const section = document.getElementById('git-section');
   if (!section) return;
   if (gitUnsupported || !dir) { if (gitUnsupported) section.style.display = 'none'; return; }
+  // Skip background probes when the explorer is hidden; collapse overlaps
+  const _sb = document.getElementById('sidebar');
+  if (!manual && _sb && _sb.classList.contains('hidden')) return;
+  if (_gitFetching && !manual) return;
+  _gitFetching = true;
+  try {
+    await _refreshGitPanelInner(section, dir, manual);
+  } finally {
+    _gitFetching = false;
+  }
+}
+async function _refreshGitPanelInner(section, dir, manual) {
   const myReq = ++_gitReq;
   let st;
   try {

@@ -10,3 +10,4 @@ cloudflared.log
 .opencode
 dist/
 release/
+tunnel-url.txt
