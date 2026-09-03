@@ -6,7 +6,7 @@
     "name": "Gaurang Patel",
     "email": "ptelgm.yt@gmail.com"
   },
-  "license": "MIT",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "main": "server.js",
   "bin": {
     "webtun": "bin/webtun.js"

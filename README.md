@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/PWA-Installable-6BA428?style=flat-square" alt="PWA">
   <img src="https://img.shields.io/badge/Tunnel-Cloudflare-F38020?style=flat-square" alt="Tunnel">
   <img src="https://img.shields.io/badge/Desktop-Electron-47848F?style=flat-square" alt="Electron">
-  <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License">
+  <img src="https://img.shields.io/badge/License-PolyForm_Noncommercial-6BA428?style=flat-square" alt="License">
 </p>
 
 ---
@@ -251,6 +251,14 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh &&
 
 ---
 
+## License
+
+- Versions up to and including **v1.5.6**: MIT License.
+- **v1.5.7 and later**: [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) — free for noncommercial use (personal, research, education, charities, government). **Commercial use is not allowed** without permission.
+- For a commercial license, contact [ptelgm.yt@gmail.com](mailto:ptelgm.yt@gmail.com). See [LICENSE](LICENSE).
+
+---
+
 <p align="center">
-  <sub>Built by <a href="https://github.com/unn-known1">Gaurang Patel</a> · MIT License</sub>
+  <sub>Built by <a href="https://github.com/unn-known1">Gaurang Patel</a> · PolyForm Noncommercial 1.0.0 (v1.5.7+; ≤v1.5.6 MIT)</sub>
 </p>
