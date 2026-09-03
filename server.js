@@ -1,19 +1,31 @@
-// Load .env without dotenv dependency
+// Load .env without dotenv dependency.
+// Repo-local __dirname/.env first (back-compat), then the user data dir
+// (~/.config/webtun/.env — the writable home for global/npx installs).
+function loadEnvFile(envPath) {
+  try {
+    const envContent = require('fs').readFileSync(envPath, 'utf8');
+    envContent.split('\n').forEach(line => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) return;
+      const idx = trimmed.indexOf('=');
+      if (idx === -1) return;
+      const key = trimmed.slice(0, idx).trim();
+      let val = trimmed.slice(idx + 1).trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      if (!(key in process.env)) process.env[key] = val;
+    });
+  } catch {}
+}
 try {
-  const envPath = require('path').join(__dirname, '.env');
-  const envContent = require('fs').readFileSync(envPath, 'utf8');
-  envContent.split('\n').forEach(line => {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) return;
-    const idx = trimmed.indexOf('=');
-    if (idx === -1) return;
-    const key = trimmed.slice(0, idx).trim();
-    let val = trimmed.slice(idx + 1).trim();
-    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-      val = val.slice(1, -1);
-    }
-    if (!(key in process.env)) process.env[key] = val;
-  });
+  const _p = require('path');
+  loadEnvFile(_p.join(__dirname, '.env'));
+  try {
+    const _home = require('os').homedir();
+    const _base = process.env.XDG_CONFIG_HOME || _p.join(_home, '.config');
+    loadEnvFile(_p.join(_base, 'webtun', '.env'));
+  } catch {}
 } catch {}
 
 const express = require('express');
@@ -25,7 +37,7 @@ try {
   console.error('');
   console.error('  Error: node-pty native module not found.');
   console.error('');
-  console.error('  npm 12+ blocks install scripts by default. To fix:');
+  console.error('  Recent npm versions block install scripts by default. To fix:');
   console.error('');
   console.error('  Option 1 — Allow scripts once:');
   console.error('    npm install -g --allow-scripts=webtun,node-pty webtun');
@@ -214,6 +226,18 @@ function checkPin(req, res, next) {
   res.status(401).json({ error: 'Unauthorized' });
 }
 
+// Loopback detection for privileged first-run actions (no XFF involved).
+function isLoopbackReq(req) {
+  const ip = (req.ip || req.socket.remoteAddress || '').toLowerCase();
+  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+}
+// Destructive endpoints stay disabled until the owner enables PIN protection.
+// (With PIN empty, checkPin is a pass-through — this closes that hole.)
+function requirePinSet(req, res, next) {
+  if (!PIN) return res.status(403).json({ error: 'Enable PIN protection first (Settings → Security)' });
+  next();
+}
+
 app.get('/api/auth/required', (req, res) => {
   res.json({ required: !!PIN });
 });
@@ -231,16 +255,45 @@ app.post('/api/auth', authRateLimiter, (req, res) => {
   }
 });
 
-// Persist PIN to __dirname/.env (same file the startup parser reads).
+// Writable runtime data dir. Repo checkouts keep state next to the server
+// (back-compat); global/npx installs (root-owned __dirname) use
+// ~/.config/webtun (or $XDG_CONFIG_HOME/webtun) so PIN/history/tunnel
+// persistence actually works instead of failing silently.
+function resolveDataDir() {
+  try {
+    const base = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
+    const dir = path.join(base, 'webtun');
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+  } catch { return __dirname; }
+}
+const DATA_DIR = resolveDataDir();
+// One-time migration: carry state forward from legacy __dirname location.
+for (const _f of ['.env', '.cmdhist.json', '.tunnels.json', 'tunnel-url.txt']) {
+  try {
+    const _dst = path.join(DATA_DIR, _f), _src = path.join(__dirname, _f);
+    if (DATA_DIR !== __dirname && !fs.existsSync(_dst) && fs.existsSync(_src)) {
+      fs.copyFileSync(_src, _dst);
+    }
+  } catch {}
+}
+// Persist PIN to the writable .env (same file the startup parser reads).
 // Atomic tmp+rename with 0600, mirroring .cmdhist.json writes.
-const ENV_PATH = path.join(__dirname, '.env');
+function envPathForWrite() {
+  try {
+    if (fs.existsSync(path.join(__dirname, '.env'))) return path.join(__dirname, '.env');
+    fs.accessSync(__dirname, fs.constants.W_OK);
+    return path.join(__dirname, '.env');
+  } catch { return path.join(DATA_DIR, '.env'); }
+}
+const ENV_PATH = envPathForWrite();
 function persistPinToEnv(pin) {
   let lines = [];
   try { lines = fs.readFileSync(ENV_PATH, 'utf8').split('\n'); }
   catch (e) { if (e.code !== 'ENOENT') throw e; }
   let found = false;
   const out = lines.map(l => {
-    if (!found && /^\s*PIN\s*=/.test(l)) { found = true; return `PIN=${pin}`; }
+    if (!found && /^\s*(export\s+)?PIN\s*=/.test(l)) { found = true; return `PIN=${pin}`; }
     return l;
   });
   if (!found) {
@@ -255,8 +308,13 @@ function persistPinToEnv(pin) {
 
 // Set/change/disable the PIN at runtime. Authed callers only (checkPin),
 // brute-force guarded (authRateLimiter). Empty newPin disables protection.
+// When protection is off (!PIN), only loopback may set the first PIN —
+// otherwise any visitor could lock out the owner (and persist it to .env).
 app.post('/api/pin', authRateLimiter, checkPin, (req, res) => {
   try {
+    if (!PIN && !isLoopbackReq(req)) {
+      return res.status(403).json({ error: 'PIN setup is only allowed from this machine' });
+    }
     const { currentPin, newPin } = req.body || {};
     if (PIN) {
       if (typeof currentPin !== 'string' || !constantTimeEqual(currentPin, PIN)) {
@@ -835,6 +893,16 @@ async function handleCopyMove(req, res, isMove) {
 app.post('/api/files/copy', checkPin, (req, res) => handleCopyMove(req, res, false));
 app.post('/api/files/move', checkPin, (req, res) => handleCopyMove(req, res, true));
 
+// Never delete filesystem roots or the workspace root itself (one bad call
+// must not wipe the host). Shared by single + batch delete.
+function isDeletablePath(p) {
+  try {
+    const abs = path.resolve(p);
+    if (path.parse(abs).root === abs) return false;
+    if (abs === path.resolve(WORKSPACE_ROOT)) return false;
+    return true;
+  } catch { return false; }
+}
 app.delete('/api/files', checkPin, async (req, res) => {
   try {
     if (!req.query.path) {
@@ -842,6 +910,9 @@ app.delete('/api/files', checkPin, async (req, res) => {
       return res.status(400).json({ error: 'path is required', usage: 'DELETE /api/files?path=<path>' });
     }
     const p = realPath(req.query.path);
+    if (!isDeletablePath(p)) {
+      return res.status(400).json({ error: 'Refusing to delete this path' });
+    }
     const lst = await fsPromises.lstat(p);
     if (lst.isSymbolicLink()) {
       await fsPromises.unlink(p);
@@ -944,14 +1015,30 @@ app.post('/api/files/unzip', checkPin, async (req, res) => {
     } catch {}
     const destDir = path.join(path.dirname(p), path.basename(p, '.zip'));
     if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, destDir)) return res.status(403).json({ error: 'Access denied: destination outside workspace' });
-    await fsPromises.mkdir(destDir, { recursive: true });
+    // Refuse to merge into a non-empty directory; extract to a temp dir and
+    // rename into place so a failed extraction can't wipe pre-existing data.
     try {
-      await extractZip(p, destDir);
+      const st = await fsPromises.stat(destDir);
+      if (!st.isDirectory()) return res.status(400).json({ error: 'Destination exists and is not a directory' });
+      const entries = await fsPromises.readdir(destDir);
+      if (entries.length > 0) return res.status(409).json({ error: 'Destination already exists', dir: destDir });
+    } catch (e) { if (e.code !== 'ENOENT') throw e; }
+    const tmpDir = destDir + '.unzip-' + crypto.randomBytes(6).toString('hex');
+    await fsPromises.mkdir(tmpDir, { recursive: true });
+    try {
+      await extractZip(p, tmpDir);
     } catch (e) {
-      // Rollback partial on failure (F64)
-      try { await fsPromises.rm(destDir, { recursive: true, force: true }); } catch {}
+      // Rollback partial on failure (F64) — only the temp dir, never user data
+      try { await fsPromises.rm(tmpDir, { recursive: true, force: true }); } catch {}
       const status = e.status || 500;
       return res.status(status).json({ error: e.message });
+    }
+    try {
+      try { await fsPromises.rmdir(destDir); } catch {}
+      await fsPromises.rename(tmpDir, destDir);
+    } catch (e) {
+      try { await fsPromises.rm(tmpDir, { recursive: true, force: true }); } catch {}
+      return res.status(500).json({ error: e.message || 'Failed to move extracted files into place' });
     }
     res.json({ success: true, dir: destDir });
   } catch (e) {
@@ -1007,6 +1094,13 @@ app.post('/api/files/write', checkPin, async (req, res) => {
 app.get('/api/files/image', checkPin, async (req, res) => {
   try {
     const p = resolvePath(req.query.path);
+    // Stat before streaming: refuse directories, cap at 100MB
+    const lst = await fsPromises.lstat(p).catch(() => null);
+    if (!lst) return res.status(404).json({ error: 'Not found' });
+    if (!lst.isFile() && !lst.isSymbolicLink()) return res.status(400).json({ error: 'Not a file' });
+    const st = await fsPromises.stat(p).catch(() => null);
+    if (!st || !st.isFile()) return res.status(400).json({ error: 'Not a file' });
+    if (st.size > 100 * 1024 * 1024) return res.status(413).json({ error: 'File too large to preview inline' });
     const mimeType = mimeLookup(p);
     res.setHeader('Content-Type', mimeType);
     // Avoid caching secrets served as octet-stream (F57)
@@ -1037,6 +1131,11 @@ app.get('/api/files/download', checkPin, async (req, res) => {
     const p = realPath(req.query.path);
     const st = await fsPromises.stat(p);
     if (st.isDirectory()) {
+      // Same 1GB guard as /api/files/zip — no unbounded archive streams
+      try {
+        const size = await dirSize(p);
+        if (size > 1024 * 1024 * 1024) return res.status(413).json({ error: 'Directory too large to download as zip (1GB limit)' });
+      } catch {}
       const safeName = path.basename(p).replace(/["\r\n;]/g, '_') + '.zip';
       res.setHeader('Content-Type', 'application/zip');
       res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
@@ -1090,7 +1189,20 @@ app.post('/api/files/upload', checkPin, (req, res) => {
   });
   const upload = multer({ storage, limits: { fileSize: 500 * 1024 * 1024, files: 100 } }).array('files');
   upload(req, res, err => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) {
+      // Multer limit errors are 413, not 500 (e.g. LIMIT_FILE_SIZE)
+      const status = (err.code && err.code.startsWith('LIMIT_')) ? 413 : 500;
+      return res.status(status).json({ error: err.message });
+    }
+    // Total batch cap (2GB) against disk-fill; clean up the batch on exceed
+    try {
+      const files = Array.isArray(req.files) ? req.files : [];
+      const total = files.reduce((n, f) => n + (f.size || 0), 0);
+      if (total > 2 * 1024 * 1024 * 1024) {
+        for (const f of files) { try { fs.unlinkSync(f.path); } catch {} }
+        return res.status(413).json({ error: 'Total upload size exceeds 2GB' });
+      }
+    } catch {}
     res.json({ success: true, count: Array.isArray(req.files) ? req.files.length : 0 });
   });
 });
@@ -1202,6 +1314,7 @@ app.post('/api/files/batch-delete', checkPin, async (req, res) => {
     for (const raw of req.body.paths) {
       let p;
       try { p = realPath(raw); } catch (e) { results.push({ path: raw, success: false, error: e.message }); continue; }
+      if (!isDeletablePath(p)) { results.push({ path: raw, success: false, error: 'Refusing to delete this path' }); continue; }
       try {
         const lst = await fsPromises.lstat(p);
         if (lst.isSymbolicLink()) await fsPromises.unlink(p);
@@ -1636,19 +1749,22 @@ app.delete('/api/clipboard', checkPin, (req, res) => {
 });
 
 // ── Command history (server-side, persists across sessions) ────────────
-const HISTORY_FILE = path.join(__dirname, '.cmdhist.json');
+const HISTORY_FILE = path.join(DATA_DIR, '.cmdhist.json');
 let cmdHistory = [];
 let cmdHistMax = 50;
 
 function loadCmdHistory() {
-  try { cmdHistory = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8')); } catch { cmdHistory = []; }
+  try {
+    const parsed = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
+    cmdHistory = Array.isArray(parsed) ? parsed : [];
+  } catch { cmdHistory = []; }
 }
 function saveCmdHistory() {
   try {
     const tmp = HISTORY_FILE + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(cmdHistory));
+    fs.writeFileSync(tmp, JSON.stringify(cmdHistory), { mode: 0o600 });
+    try { fs.chmodSync(tmp, 0o600); } catch {}
     fs.renameSync(tmp, HISTORY_FILE);
-    try { fs.chmodSync(HISTORY_FILE, 0o600); } catch {}
   } catch {}
 }
 loadCmdHistory();
@@ -2061,12 +2177,14 @@ function getTMUX() {
 }
 
 // In-memory PTY session store — enables persistence without tmux (Windows + Linux)
-const ptySessions = new Map(); // sessionId -> { proc, drainCheck, createdAt }
- // TTL sweep every 5min: delete sessions older than 30min with no active ws (F73)
+const ptySessions = new Map(); // sessionId -> { proc, exited, createdAt, lastActive, attached }
+ // TTL sweep every 5min: delete sessions with no attached ws idle over 30min (F73).
+ // Sessions with a live connection are never swept, however long they run.
 setInterval(() => {
   const now = Date.now();
   for (const [sid, entry] of ptySessions) {
-    if (now - (entry.createdAt || 0) > 30 * 60 * 1000) {
+    if ((entry.attached || 0) > 0) continue;
+    if (now - (entry.lastActive || entry.createdAt || 0) > 30 * 60 * 1000) {
       // Cap size also enforced — evict oldest; here we evict stale
       try { if (entry.proc) entry.proc.kill(); } catch {}
       ptySessions.delete(sid);
@@ -2091,10 +2209,10 @@ function cleanupOrphanTmuxSessions() {
   if (!TMUX) return;
   try {
     const out = execFileSync(TMUX, ['list-sessions', '-F', '#{session_name}'], { encoding: 'utf8' }).trim();
-    const sessions = out.split('\n').filter(s => s.startsWith(TMUX_PREFIX) || s.startsWith('wt-'));
+    // Only our namespaced prefix — never bare 'wt-', which may belong to the user
+    const sessions = out.split('\n').filter(s => s.startsWith(TMUX_PREFIX));
     for (const s of sessions) {
-      // Prefer new prefix, but also clean old wt- for migration
-      if (!s.startsWith(TMUX_PREFIX) && !s.startsWith('wt-')) continue;
+      if (!s.startsWith(TMUX_PREFIX)) continue;
       try {
         const clients = execFileSync(TMUX, ['list-clients', '-t', s], { stdio: 'pipe', encoding: 'utf8' }).trim();
         if (!clients) {
@@ -2115,10 +2233,9 @@ app.get('/api/sessions', checkPin, (req, res) => {
     try {
       const out = execFileSync(tmuxBin, ['list-sessions', '-F', '#{session_name}'], { encoding: 'utf8' }).trim();
       const sessions = out.split('\n')
-        .filter(s => s.startsWith(TMUX_PREFIX) || s.startsWith('wt-'))
+        .filter(s => s.startsWith(TMUX_PREFIX))
         .map(s => {
-          const prefix = s.startsWith(TMUX_PREFIX) ? TMUX_PREFIX : 'wt-';
-          return { id: s.replace(new RegExp('^' + prefix.replace(/-/g,'\\-')), ''), name: s };
+          return { id: s.slice(TMUX_PREFIX.length), name: s };
         });
       return res.json({ tmux: true, sessions });
     } catch {
@@ -2167,6 +2284,12 @@ app.delete('/api/sessions/:id', checkPin, (req, res) => {
 //     0x02 = ping          (no payload)
 
 const ALLOWED_WS_ORIGINS = new Set();
+// Failed WS handshakes per IP (brute-force throttle), swept every minute.
+const wsAuthFails = new Map();
+setInterval(() => {
+  const _now = Date.now();
+  for (const [_ip, _w] of wsAuthFails) { if (_now > _w.resetAt) wsAuthFails.delete(_ip); }
+}, 60000);
 function getWsOrigin(req) {
   return (req.headers['origin'] || '').replace(/\/$/, '');
 }
@@ -2186,10 +2309,22 @@ wss.on('connection', (ws, req) => {
   const url   = new URL(req.url, `http://localhost`);
   const token = url.searchParams.get('token');
 
-  // Use constant-time compare for WS token (F49)
+  // Use constant-time compare for WS token (F49).
+  // Handshake throttle: >20 failed auths/min per IP gets dropped (no limiter otherwise).
   if (PIN) {
     const t = typeof token === 'string' ? token : '';
-    if (!t || !constantTimeEqual(t, PIN)) { ws.close(1008, 'Unauthorized'); return; }
+    if (!t || !constantTimeEqual(t, PIN)) {
+      try {
+        const _ip = req.socket.remoteAddress || 'unknown';
+        const _now = Date.now();
+        let _w = wsAuthFails.get(_ip);
+        if (!_w || _now > _w.resetAt) _w = { count: 0, resetAt: _now + 60000 };
+        _w.count++;
+        wsAuthFails.set(_ip, _w);
+        if (_w.count > 20) { try { req.socket.destroy(); } catch {} }
+      } catch {}
+      ws.close(1008, 'Unauthorized'); return;
+    }
   }
 
   let cols      = parseInt(url.searchParams.get('cols'))  || 80;
@@ -2324,8 +2459,8 @@ wss.on('connection', (ws, req) => {
   });
 
   // If this is a new in-memory session, register it now (after onExit is wired)
-  if (useInMemory && !rehattached) {
-    ptySessions.set(sessionId, { proc, exited: false, createdAt: Date.now() });
+  if (useInMemory && !reattached) {
+    ptySessions.set(sessionId, { proc, exited: false, createdAt: Date.now(), lastActive: Date.now(), attached: 1 });
     // Track exit so stale sessions are detected on reconnect
     proc.onExit(() => {
       const entry = ptySessions.get(sessionId);
@@ -2333,7 +2468,15 @@ wss.on('connection', (ws, req) => {
     });
   } else if (useInMemory && reattached) {
     const entry = ptySessions.get(sessionId);
-    if (entry) { entry.proc = proc; entry.exited = false; }
+    if (entry) {
+      entry.proc = proc; entry.exited = false;
+      entry.lastActive = Date.now(); entry.attached = (entry.attached || 0) + 1;
+      // Reinstall the exit tracker (reattach strips old listeners)
+      proc.onExit(() => {
+        const e2 = ptySessions.get(sessionId);
+        if (e2) e2.exited = true;
+      });
+    }
   }
 
   ws.isAlive = true;
@@ -2346,6 +2489,10 @@ wss.on('connection', (ws, req) => {
 
   ws.on('message', raw => {
     try {
+      if (useInMemory && sessionId) {
+        const _e = ptySessions.get(sessionId);
+        if (_e) _e.lastActive = Date.now();
+      }
       const buf  = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
       if (buf.length < 1) return;
       const type = buf[0];
@@ -2377,6 +2524,8 @@ wss.on('connection', (ws, req) => {
     if (useInMemory && sessionId) {
       // Keep the PTY alive for reattachment — just detach listeners
       try { proc.removeAllListeners('data'); } catch {}
+      const _e = ptySessions.get(sessionId);
+      if (_e) { _e.attached = Math.max(0, (_e.attached || 1) - 1); _e.lastActive = Date.now(); }
       return;
     }
     try { proc.kill(); } catch {}
@@ -2411,9 +2560,22 @@ app.get('/api/search', rateLimiter, checkPin, async (req, res) => {
 function spawnRead(cmd, args, opts = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], timeout: opts.timeout || 5000 });
-    let stdout = '', stderr = '';
-    child.stdout.on('data', d => stdout += d.toString());
-    child.stderr.on('data', d => stderr += d.toString());
+    // Cap buffered output so a huge repo can't OOM the server (diff/log/status)
+    const maxBuffer = opts.maxBuffer || 2 * 1024 * 1024;
+    let stdout = '', stderr = '', outLen = 0, killed = false;
+    const onData = store => d => {
+      if (killed) return;
+      outLen += d.length;
+      if (outLen > maxBuffer) {
+        killed = true;
+        try { child.kill('SIGKILL'); } catch {}
+        reject(new Error('command output exceeded limit'));
+        return;
+      }
+      if (store === 0) stdout += d.toString(); else stderr += d.toString();
+    };
+    child.stdout.on('data', onData(0));
+    child.stderr.on('data', onData(1));
     child.on('close', code => code === 0 ? resolve(stdout) : reject(new Error(stderr)));
     child.on('error', reject);
   });
@@ -2588,7 +2750,7 @@ app.get('/api/system', checkPin, async (req, res) => {
 });
 
 // ── Kill process (from System Stats) ────────────────────────────────
-app.post('/api/system/kill', checkPin, async (req, res) => {
+app.post('/api/system/kill', checkPin, requirePinSet, async (req, res) => {
   try {
     const raw = req.body && (req.body.pid ?? req.body.id);
     const pid = parseInt(raw, 10);
@@ -2615,8 +2777,8 @@ app.post('/api/system/kill', checkPin, async (req, res) => {
 
 // ── Cloudflared tunnel management ──────────────────────────────────
 const tunnels = new Map();
-const TUNNEL_FILE = path.join(__dirname, '.tunnels.json');
-const TUNNEL_URL_FILE = path.join(__dirname, 'tunnel-url.txt');
+const TUNNEL_FILE = path.join(DATA_DIR, '.tunnels.json');
+const TUNNEL_URL_FILE = path.join(DATA_DIR, 'tunnel-url.txt');
 
 function isCloudflaredProcess(pid) {
   if (!isValidPID(pid)) return false;
@@ -2642,7 +2804,8 @@ function saveTunnels() {
   }));
   try {
     const tmp = TUNNEL_FILE + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(arr, null, 2));
+    fs.writeFileSync(tmp, JSON.stringify(arr, null, 2), { mode: 0o600 });
+    try { fs.chmodSync(tmp, 0o600); } catch {}
     fs.renameSync(tmp, TUNNEL_FILE);
   } catch {}
   updateTunnelUrlFile();
@@ -2674,7 +2837,7 @@ async function verifyTunnelUrl(url, retries = 3) {
     try {
       const ac = new AbortController();
       const timer = setTimeout(() => ac.abort(), 5000);
-      const res = await fetch(url, { method: 'HEAD', signal: ac.signal, redirect: 'follow' });
+      const res = await fetch(url, { method: 'HEAD', signal: ac.signal, redirect: 'manual' });
       clearTimeout(timer);
       if (res.ok) return true;
     } catch {}
@@ -2782,10 +2945,14 @@ app.post('/api/tunnel', checkPin, async (req, res) => {
   try {
     const u = new URL(url);
     if (!['http:', 'https:'].includes(u.protocol)) return res.status(400).json({ error: 'url must be http or https' });
+    if (u.username || u.password) return res.status(400).json({ error: 'url must not contain credentials' });
     const host = u.hostname.toLowerCase();
-    const blockedHosts = ['169.254.169.254', 'metadata.google.internal', 'instance-data'];
+    // Metadata/link-local endpoints beyond the obvious one
+    const blockedHosts = ['169.254.169.254', 'metadata.google.internal', 'instance-data',
+      'metadata.google.internal.', '100.100.100.200', '192.0.0.192', 'fd00:ec2::254', '[fd00:ec2::254]'];
     if (blockedHosts.includes(host) || host.startsWith('169.254.')) return res.status(400).json({ error: 'url host blocked (SSRF)' });
-    const allowed = ['localhost', '127.0.0.1', '::1', '0.0.0.0'];
+    if (host === '0.0.0.0' || host === '[::]') return res.status(400).json({ error: 'url host is not connectable' });
+    const allowed = ['localhost', '127.0.0.1', '::1'];
     // Allow only local URLs unless ALLOW_FULL_FS true (admin opt-in for LAN tunneling)
     if (!ALLOW_FULL_FS && !allowed.includes(host)) {
       return res.status(400).json({ error: 'url must be localhost (use ALLOW_FULL_FS=true to allow LAN)' });

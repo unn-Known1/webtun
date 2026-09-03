@@ -21,11 +21,14 @@ if [ -f "$PID_FILE" ]; then
     rm -f "$PID_FILE"
   fi
 elif command -v pkill &>/dev/null; then
-  if pkill -f "node.*server\.js" 2>/dev/null; then
+  # Scoped to this checkout (setup.sh uses the same pattern) + our tunnels
+  if pkill -f "$SCRIPT_DIR/server\.js" 2>/dev/null; then
     echo "✓ WebTun stopped"
   else
     echo "⚠ Not running"
   fi
+  # Also stop tunnel children for this instance
+  pkill -f "cloudflared tunnel.*localhost:" 2>/dev/null || true
 else
-  echo "⚠ pkill not found and no PID file — try: kill \$(pgrep -f 'node.*server.js')"
+  echo "⚠ pkill not found and no PID file — try: kill \$(pgrep -f \"$SCRIPT_DIR/server.js\")"
 fi

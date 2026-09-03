@@ -36,12 +36,12 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
 - **`postinstall.js`** auto-downloads `cloudflared` to `/usr/local/bin/cloudflared` if missing.
 - **Tunnel cleanup** after server restart: `kill $(pgrep -f 'cloudflared tunnel')`
 - **Build output**: `dist/` (AppImage, deb, dmg, exe, zip), `release/`. Git-ignored.
-- **CI**: GitHub Actions builds Electron packages on `v*` tag push (Linux, macOS, Windows). All artifacts are uploaded to the release.
+- **CI**: GitHub Actions builds Electron packages on `v*` tag push (Linux, macOS, Windows). Release job uploads explicit asset globs (`*.exe`, `*.AppImage`, `*.deb`, `*.dmg`, `*.zip`), fails on missing files.
+- **Release checklist**: commit → bump `package.json` + `package-lock.json` → `git tag vX.Y.Z && git push origin vX.Y.Z` (tag MUST have `v` prefix or CI ignores it) → `npm publish` (manual; verify `npm audit` clean first).
 - **Systemd**: `setup.sh` optionally creates `/etc/systemd/system/webtun.service`.
 - **CSP** in `server.js` allows CDN scripts from `cdn.jsdelivr.net`.
 - **File API** workspace root: `WORKSPACE_ROOT` env var, falls back to `os.homedir()`.
-- `public/sw.js` enables PWA installability.
-- **`cloakbrowser`** and **`playwright-core`** in `dependencies` are unused in the codebase.
+- `public/sw.js` enables PWA installability. Cache `webtun-v4`; client `registerSW()` toasts on `updatefound` + `skipWaiting` (no auto-reload — live terminal).
 - **Favicon/Icons**: `public/favicon.png` (32px), `public/icon-192.png` (192px), `public/icon-512.png` (512px), `public/icon.svg` — all generated from the same terminal SVG logo.
 - **Safe localStorage** (`public/index.html:979`): `safeStorage` wrapper catches errors when Edge Tracking Prevention blocks storage on Cloudflare tunnel domains. All `localStorage` calls go through this wrapper.
 
@@ -69,7 +69,7 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
   - Server→Client: `0x00` data, `0x01` exit (1B code), `0x02` error
   - Client→Server: `0x00` input (max 64KB), `0x01` resize (4B: cols/rows uint16LE), `0x02` ping
 - **xterm textarea**: Each terminal gets a unique `id="xterm-helper-{tabId}"` for accessibility.
-- **Editor preview iframe**: `sandbox="allow-same-origin allow-scripts"` — scripts required for CodeMirror rendering.
+- **Editor preview iframe**: `sandbox="allow-scripts"` (opaque origin — no `allow-same-origin`). HTML/MD previews require DOMPurify (CDN); render is refused when it's missing.
 
 ### Command History
 - **Keystroke tracking** (client-side): `sendInput()` maintains `tab._currentInput` buffer tracking typed characters.
@@ -78,7 +78,7 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
 - **Server-side storage**: `POST /api/history` saves to `cmdHistory` array (max configurable). `GET /api/history` returns list.
 
 ### Session Persistence
-- **tmux sessions**: When tmux is available, WS `session` query param attaches to a `wt-{id}` tmux session. Cleaned on server exit and startup (`cleanupOrphanTmuxSessions`).
+- **tmux sessions**: When tmux is available, WS `session` query param attaches to a `wt-webtun-{id}` tmux session. Cleaned on server exit and startup (`cleanupOrphanTmuxSessions`, namespaced prefix only).
 - **In-memory PTY persistence**: When tmux is unavailable (e.g. Windows), the server keeps PTY processes alive in a `ptySessions` Map across WebSocket disconnects and reattaches on reconnect. Same lifecycle as tmux: sessions are lost on server restart.
 
 ## Architecture Notables
@@ -98,7 +98,8 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
   - `POST /api/files/mkdir` / `touch` — create directory / empty file
   - `POST /api/files/zip` / `unzip` — create or extract zip archives
   - `GET /api/search?q=&path=` — async file search (max depth 4, max 50 results)
-- **Auth endpoint**: `POST /api/auth` and `GET /api/auth/required` — rate-limited separately. `POST /api/pin` (`{currentPin, newPin}`) sets/changes/disables the PIN at runtime under `checkPin` + auth limiter; persists to `__dirname/.env` (atomic 0600 write).
+- **Auth endpoint**: `POST /api/auth` and `GET /api/auth/required` — rate-limited separately. `POST /api/pin` (`{currentPin, newPin}`) sets/changes/disables the PIN at runtime under `checkPin` + auth limiter; persists to the writable `.env` (repo-local `__dirname/.env`, else `~/.config/webtun/.env`, atomic 0600 write). First PIN setup on an open instance is loopback-only. `POST /api/system/kill` requires PIN protection to be enabled.
+- **Runtime state dir**: `DATA_DIR` = `__dirname` for repo checkouts, else `$XDG_CONFIG_HOME/webtun` / `~/.config/webtun` (global/npx installs). Holds `.env`, `.cmdhist.json`, `.tunnels.json`, `tunnel-url.txt` (migrated from legacy `__dirname` location on boot).
 - **History endpoint**: `GET /api/history`, `POST /api/history`, `DELETE /api/history`, `DELETE /api/history/:index` — all under `checkPin`.
 - **Git endpoints** (`server.js`): all under `checkPin`; no-shell `git -C <root>` via `spawnRead`, file args validated inside repo root.
   - `GET /api/git/status?path=` — repo detect (`rev-parse`), porcelain `-b` parse (rate-limited)
@@ -106,6 +107,6 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
   - `GET /api/git/log?path=[&n=]` — last 1-20 commits (rate-limited)
   - `POST /api/git/stage` / `unstage` — `{path, files[]}` max 100 files
   - `POST /api/git/commit` — `{path, message≤1000, all}`; `POST /api/git/pull` / `push` — 60s timeout (frontend uses 90s raw fetch, `api()` caps at 30s)
-- **Startup cleanup**: loads persisted tunnels, kills orphan `wt-webtun-*` (and legacy `wt-*`) tmux sessions.
-- **Workspace sandbox**: `ALLOW_FULL_FS` (default `false` restricts to `WORKSPACE_ROOT`), enforced via `pathContained()`.
+- **Startup cleanup**: loads persisted tunnels, kills orphan `wt-webtun-*` tmux sessions.
+- **Filesystem access**: full filesystem by design (`ALLOW_FULL_FS` defaults to `true`; set `ALLOW_FULL_FS=false` to restrict the File API to `WORKSPACE_ROOT` via `pathContained()`). Terminal shells are always unconfined.
 - **Cross-platform**: All file operations, process management, and system commands have Windows (PowerShell), macOS (BSD tools), and Linux (GNU tools) code paths.

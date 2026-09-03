@@ -43,7 +43,7 @@ npm install -g webtun
 webtun
 ```
 
-> **npm 12+ note:** Install scripts are blocked by default. Allow them for `node-pty`:
+> **Recent npm note:** Install scripts are blocked by default. Allow them for `node-pty`:
 > ```bash
 > npm install -g --allow-scripts=webtun,node-pty webtun
 > ```
@@ -55,8 +55,8 @@ webtun
 # One-command install
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/unn-Known1/webtun/main/install.sh)"
 
-# Manual setup
-git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh && npm start
+# Manual setup (setup.sh starts the server itself)
+git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh
 ```
 
 ---
@@ -180,6 +180,14 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh &&
 ---
 
 ## Changelog
+
+### v2.0.0
+- Launchpad home dashboard — zero-tab hero, recent commands with one-click or `1–6` keypress launch-and-run, places, live system pulse with sparkline, Today strip, optional screensaver
+- Home button pinned left of the tab bar, always visible; dashboard pauses explorer auto-reload while shown
+- Number-key runs work regardless of focus; inline syntax-checked, no new dependencies
+- Hardening — first-PIN setup on open instances is loopback-only, process-kill requires PIN protection, WS handshake brute-force throttle, preview iframe is opaque-origin + refused without sanitizer, reconnect auto-retry stops at 10, unzip extracts to temp dir (no rollback wipe), recursive delete refuses roots, upload/download/image/spawn output caps
+- Packaging — runtime state (`PIN`, history, tunnels) moves to `~/.config/webtun` for global/npx installs, PWA update flow, Electron single-instance + sandbox + no prod DevTools, Windows `npm.cmd` postinstall fix, release assets fail loudly on missing files
+- npm jumps `1.5.6` → `2.0.0` (`v1.5.7` was GitHub-only); ships under PolyForm Noncommercial 1.0.0 (≤v1.5.6 stays MIT)
 
 ### v1.5.7
 - Explorer overhaul — unified path bar, rich rows (type-tinted icons, photo thumbnails, dates), sortable sticky groups, skeleton loading, quick download, hover-peek bookmarks, segmented nav header; large folders load much faster

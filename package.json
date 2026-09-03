@@ -1,6 +1,6 @@
 {
   "name": "webtun",
-  "version": "1.5.7",
+  "version": "2.0.0",
   "description": "Self-hosted web terminal with Cloudflare Tunnel, file explorer, and PWA support",
   "author": {
     "name": "Gaurang Patel",
@@ -15,8 +15,7 @@
     "bin/",
     "server.js",
     "public/",
-    "postinstall.js",
-    "electron/"
+    "postinstall.js"
   ],
   "engines": {
     "node": ">=18.0.0"

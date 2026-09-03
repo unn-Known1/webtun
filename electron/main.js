@@ -98,10 +98,20 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
       preload: path.join(__dirname, 'preload.js')
     }
   });
 
+  const viewMenu = [
+    { role: 'reload' }, { role: 'forceReload' },
+    { type: 'separator' },
+    { role: 'togglefullscreen' },
+  ];
+  // DevTools only in dev — a packaged renderer with a console is a gift to XSS
+  if (!app.isPackaged) {
+    viewMenu.push({ type: 'separator' }, { role: 'toggleDevTools' });
+  }
   const menu = Menu.buildFromTemplate([
     {
       label: 'WebTun',
@@ -120,13 +130,7 @@ function createWindow() {
     },
     {
       label: 'View',
-      submenu: [
-        { role: 'reload' }, { role: 'forceReload' },
-        { type: 'separator' },
-        { role: 'togglefullscreen' },
-        { type: 'separator' },
-        { role: 'toggleDevTools' }
-      ]
+      submenu: viewMenu
     }
   ]);
   Menu.setApplicationMenu(menu);
@@ -136,7 +140,22 @@ function createWindow() {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
+// Single instance: a second launch focuses the running window instead of
+// racing the same PORT and showing an error dialog.
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
+
 app.whenReady().then(async () => {
+  if (!gotLock) return; // second instance — quitting, don't boot another server
   try {
     await startServer();
     createWindow();
@@ -153,6 +172,13 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   if (serverProcess) {
     try { serverProcess.kill('SIGTERM'); } catch {}
+    // Windows SIGTERM is best-effort — fall back to taskkill so the port frees
+    if (process.platform === 'win32' && serverProcess.pid) {
+      try {
+        const { execSync } = require('child_process');
+        execSync(`taskkill /PID ${serverProcess.pid} /T /F`, { stdio: 'ignore' });
+      } catch {}
+    }
     serverProcess = null;
   }
 });

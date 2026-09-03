@@ -17,7 +17,9 @@ function rebuildNodePty() {
 
   console.log('  rebuilding node-pty...');
   try {
-    const r = spawnSync('npm', ['rebuild', 'node-pty'], {
+    // On Windows npm is npm.cmd — bare 'npm' without shell raises ENOENT
+    const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    const r = spawnSync(NPM, ['rebuild', 'node-pty'], {
       cwd: __dirname,
       stdio: 'pipe',
       timeout: 120000
@@ -43,7 +45,7 @@ function rebuildNodePty() {
     console.log('  macOS:   xcode-select --install');
     console.log('  Windows: install Visual Studio Build Tools with "Desktop development with C++"');
     console.log('           https://visualstudio.microsoft.com/visual-cpp-build-tools/');
-    console.log('  If npm v10+ blocks scripts, allow them:');
+    console.log('  If recent npm blocks scripts, allow them:');
     console.log('    npm config set allow-scripts=webtun,node-pty --location=user');
     console.log('    npm install --allow-scripts=webtun,node-pty webtun');
   }

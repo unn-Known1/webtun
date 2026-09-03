@@ -16,8 +16,9 @@ function printHelp() {
     --host, -h <host>     Host to bind to (default: 0.0.0.0 or $HOST)
     --pin <pin>           PIN for authentication (default: $PIN)
     --tunnel, -t          Start a Cloudflare Tunnel for remote access
-    --help                Show this help message
-    --version             Show version number
+    --help, -H              Show this help message
+    --version, -v           Show version number
+    (note: -h means --host, not help)
 
   Environment Variables:
     PORT                  Server port (default: 3000)
@@ -54,8 +55,8 @@ function parseArgs(argv) {
         process.exit(1);
       }
       opts.port = parseInt(argv[++i], 10);
-      if (isNaN(opts.port)) {
-        console.error('Error: --port requires a numeric value');
+      if (isNaN(opts.port) || opts.port < 1 || opts.port > 65535) {
+        console.error('Error: --port requires a numeric value 1-65535');
         process.exit(1);
       }
     } else if (arg === '--host' || arg === '-h') {
@@ -65,7 +66,10 @@ function parseArgs(argv) {
       }
       opts.host = argv[++i];
     } else if (arg === '--pin') {
-      if (!argv[i+1] || argv[i+1].startsWith('-')) {
+      // Consume the next argv unconditionally (except other known flags) so
+      // dash-led PINs like -s3cret work; use PIN=-s3cret env for anything else.
+      const KNOWN_FLAGS = ['--port','-p','--host','-h','--pin','--tunnel','-t','--help','-H','--version','-v'];
+      if (argv[i+1] === undefined || KNOWN_FLAGS.includes(argv[i+1])) {
         console.error('Error: --pin requires a value');
         process.exit(1);
       }
@@ -134,6 +138,8 @@ function startTunnel(port) {
   };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
+  // Don't orphan cloudflared on normal exit either (untracked by server manager)
+  process.on('exit', () => { try { proc.kill('SIGTERM'); } catch {} });
 }
 
 const opts = parseArgs(args);
