@@ -158,7 +158,8 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh
 ## Security
 
 - PIN authentication on all API endpoints (`x-pin-token` header or `?token=` query)
-- Change the PIN anytime from Settings → Security (applies instantly, saved to `.env`)
+- Change the PIN anytime from Settings → Security (applies instantly, saved to `.env`; fresh sessions need another session's approval while others are signed in)
+- New devices sign in with the PIN but stay locked until an existing session approves them — see active sessions in Settings → Security
 - CSP headers restrict script sources to CDN
 - WebSocket origin check prevents cross-site hijacking
 - Per-IP rate limiting on auth and search endpoints
@@ -185,7 +186,9 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh
 - Launchpad home dashboard — zero-tab hero, recent commands with one-click or `1–6` keypress launch-and-run, places, live system pulse with sparkline, Today strip, optional screensaver
 - Home button pinned left of the tab bar, always visible; dashboard pauses explorer auto-reload while shown
 - Number-key runs work regardless of focus; inline syntax-checked, no new dependencies
-- Hardening — first-PIN setup on open instances is loopback-only, process-kill requires PIN protection, WS handshake brute-force throttle, preview iframe is opaque-origin + refused without sanitizer, reconnect auto-retry stops at 10, unzip extracts to temp dir (no rollback wipe), recursive delete refuses roots, upload/download/image/spawn output caps
+- Hardening — first-PIN setup on open instances is loopback-only, process-kill requires PIN protection, WS handshake brute-force throttle, preview iframe is opaque-origin + refused without sanitizer, reconnect auto-retry stops at 10, unzip extracts to temp dir (no rollback wipe), recursive delete refuses roots, upload/download/image/spawn output caps, no `x-powered-by`, `/api/version` requires auth
+- Sessions — revocable per-device login tokens with trusted-device resume; new logins start **pending** and can do nothing until a different active session approves them (correct PIN alone opens nothing); active-sessions list with per-device revoke, persistent header warning triangle + live count on the keep-awake cup, instant new-login / approval / PIN-change alerts with remote kick; fresh-session PIN rotations need a second session's approval (60s, deny-by-default)
+- PDF viewer — selectable text layer over each page; EPUB/PDF fixes as before
 - Packaging — runtime state (`PIN`, history, tunnels) moves to `~/.config/webtun` for global/npx installs, PWA update flow, Electron single-instance + sandbox + no prod DevTools, Windows `npm.cmd` postinstall fix, release assets fail loudly on missing files
 - npm jumps `1.5.6` → `2.0.0` (`v1.5.7` was GitHub-only); ships under PolyForm Noncommercial 1.0.0 (≤v1.5.6 stays MIT)
 

@@ -217,19 +217,150 @@ function constantTimeEqual(a, b) {
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────
+// Login sessions: revocable per-device tokens. A new session starts ACTIVE
+// only when no other active session exists (bootstrap); otherwise it starts
+// PENDING and can do nothing until a different active session approves it —
+// even with the correct PIN. The raw PIN is still accepted for back-compat
+// (local CLI/curl), but remote raw-PIN callers are gated the same way.
+// token (64-hex) -> { ip, device, createdAt, lastSeen, status, expiresAt, timer }
+const authSessions = new Map();
+const SESSION_IDLE_MS = 30 * 24 * 3600 * 1000; // expire after 30d idle
+const SESSION_MAX = 100;
+const SESSION_PENDING_MS = 5 * 60 * 1000; // pending approvals lapse after 5min (deny by default)
+const SESSION_PENDING_MAX = 5;
+setInterval(() => {
+  const _now = Date.now();
+  for (const [_t, _s] of authSessions) {
+    if (_s.status === 'pending' && _now > (_s.expiresAt || 0)) { clearSessionTimer(_s); authSessions.delete(_t); continue; }
+    if (_now - (_s.lastSeen || 0) > SESSION_IDLE_MS) { clearSessionTimer(_s); authSessions.delete(_t); }
+  }
+}, 60000);
+function clearSessionTimer(s) { try { if (s && s.timer) clearTimeout(s.timer); } catch {} if (s) s.timer = null; }
+function countActiveSessions(exceptToken) {
+  let n = 0;
+  for (const [t, s] of authSessions) {
+    if (s && s.status === 'active' && t !== exceptToken) n++;
+  }
+  return n;
+}
+function countPendingSessions() {
+  let n = 0;
+  for (const [, s] of authSessions) { if (s && s.status === 'pending') n++; }
+  return n;
+}
+
+function parseDevice(ua, hint) {
+  if (hint && typeof hint === 'string' && hint.trim()) return hint.trim().slice(0, 80);
+  ua = ua || '';
+  let os = 'Unknown OS';
+  if (/windows/i.test(ua)) os = 'Windows';
+  else if (/android/i.test(ua)) os = 'Android';
+  else if (/iphone|ipad/i.test(ua)) os = 'iOS';
+  else if (/mac os/i.test(ua)) os = 'macOS';
+  else if (/linux/i.test(ua)) os = 'Linux';
+  let br = '';
+  if (/edg\//i.test(ua)) br = 'Edge';
+  else if (/chrome\//i.test(ua)) br = 'Chrome';
+  else if (/firefox\//i.test(ua)) br = 'Firefox';
+  else if (/safari/i.test(ua) && !/chrome/i.test(ua)) br = 'Safari';
+  return br ? `${br} · ${os}` : os;
+}
+// Real client IP for DISPLAY (session list, alerts). Behind cloudflared the
+// socket is always loopback, so prefer CF-Connecting-IP / XFF-first. Display
+// only — never used for auth decisions (spoofable by design).
+function clientIp(req) {
+  try {
+    const h = (req && req.headers) || {};
+    const cf = h['cf-connecting-ip'];
+    if (typeof cf === 'string' && cf.trim()) return cf.trim().slice(0, 64);
+    const xff = h['x-forwarded-for'];
+    if (typeof xff === 'string' && xff.trim()) return xff.split(',')[0].trim().slice(0, 64);
+    return req.ip || (req.socket && req.socket.remoteAddress) || '';
+  } catch { return ''; }
+}
+function issueSession(req, deviceHint, status) {
+  const token = crypto.randomBytes(32).toString('hex');
+  const now = Date.now();
+  const s = {
+    ip: clientIp(req),
+    device: parseDevice(req.headers && req.headers['user-agent'], deviceHint),
+    createdAt: now, lastSeen: now,
+    status: status || 'active',
+    expiresAt: 0, timer: null,
+  };
+  if (s.status === 'pending') {
+    s.expiresAt = now + SESSION_PENDING_MS;
+    s.timer = setTimeout(() => {
+      // Deny by default: lapse the request and tell remaining clients
+      if (authSessions.get(token) === s) {
+        authSessions.delete(token);
+        broadcastClientEvent({ event: 'sessions-changed' });
+      }
+    }, SESSION_PENDING_MS);
+  }
+  authSessions.set(token, s);
+  while (authSessions.size > SESSION_MAX) {
+    const oldest = authSessions.keys().next().value;
+    if (oldest === undefined) break;
+    const _o = authSessions.get(oldest);
+    clearSessionTimer(_o);
+    authSessions.delete(oldest);
+  }
+  return token;
+}
+function getSession(token) {
+  if (typeof token !== 'string' || !token) return null;
+  const s = authSessions.get(token);
+  if (!s) return null;
+  if (Date.now() - (s.lastSeen || 0) > SESSION_IDLE_MS) { authSessions.delete(token); return null; }
+  s.lastSeen = Date.now();
+  return s;
+}
+
+// Remote callers presenting the raw PIN (no session) are trusted only on
+// loopback or when nobody else is signed in — otherwise they must sign in
+// through /api/auth and wait for approval like everyone else.
+function rawPinAllowed(req) {
+  try {
+    if (isLoopbackReq(req)) return true;
+    return countActiveSessions() === 0;
+  } catch { return true; }
+}
 function checkPin(req, res, next) {
   if (!PIN) return next();
   // Validate token is string to prevent array injection (?token=a&token=b) (F45)
   const raw = req.headers['x-pin-token'] || req.query.token;
   const token = typeof raw === 'string' ? raw.trim() : '';
   // Note: query token kept for backward compat (WS needs ?token=) but header preferred; query may leak to logs.
-  if (token && constantTimeEqual(token, PIN)) return next();
-  res.status(401).json({ error: 'Unauthorized' });
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  if (constantTimeEqual(token, PIN)) {
+    if (!rawPinAllowed(req)) {
+      return res.status(403).json({ error: 'Approval required — sign in from the app so an existing session can approve this device', approvalRequired: true });
+    }
+    req.authToken = token; req.authSession = null; return next();
+  } // legacy raw-PIN
+  const s = getSession(token);
+  if (!s) return res.status(401).json({ error: 'Unauthorized' });
+  req.authToken = token; req.authSession = s;
+  if (s.status === 'pending') {
+    // Pending sessions can do nothing except check their own status (and
+    // cancel themselves) until a different active session approves them.
+    if (req.path === '/api/auth/me') return next();
+    if (req.method === 'DELETE' && req.path === '/api/auth/sessions/' + token) return next();
+    return res.status(403).json({ error: 'Session awaiting approval from another device', pending: true });
+  }
+  return next();
 }
 
 // Loopback detection for privileged first-run actions (no XFF involved).
+// Critical subtlety: behind cloudflared/a reverse proxy every connection's
+// socket is loopback, so proxy headers disqualify "local". An attacker can
+// add X-Forwarded-For but can never strip the CF-Ray Cloudflare adds —
+// and erring toward "remote" only ever denies, never grants.
 function isLoopbackReq(req) {
-  const ip = (req.ip || req.socket.remoteAddress || '').toLowerCase();
+  const h = (req && req.headers) || {};
+  if (h['cf-ray'] || h['cf-connecting-ip'] || h['cf-ipcountry'] || h['cf-visitor'] || h['x-forwarded-for'] || h['forwarded']) return false;
+  const ip = ((req.ip || (req.socket && req.socket.remoteAddress)) || '').toLowerCase();
   return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
 }
 // Destructive endpoints stay disabled until the owner enables PIN protection.
@@ -250,12 +381,95 @@ app.get('/api/version', checkPin, (req, res) => {
 });
 
 app.post('/api/auth', authRateLimiter, (req, res) => {
-  const { pin } = req.body;
-  if (!PIN || (pin && constantTimeEqual(pin, PIN))) {
-    res.json({ success: true, token: PIN || 'open' });
-  } else {
-    res.status(401).json({ error: 'Unauthorized' });
+  const { pin, device } = req.body || {};
+  if (!PIN) return res.json({ success: true, token: 'open' });
+  if (pin && constantTimeEqual(pin, PIN)) {
+    // Bootstrap: nobody signed in → active immediately. Otherwise the new
+    // session pends until a different active session approves it.
+    if (countActiveSessions() === 0) {
+      const token = issueSession(req, device, 'active');
+      const s = authSessions.get(token);
+      if (s) broadcastClientEvent({ event: 'new-login', ip: s.ip, device: s.device, at: s.createdAt });
+      return res.json({ success: true, token });
+    }
+    if (countPendingSessions() >= SESSION_PENDING_MAX) {
+      return res.status(429).json({ error: 'Too many pending approvals — ask an existing session to review them' });
+    }
+    const token = issueSession(req, device, 'pending');
+    const s = authSessions.get(token);
+    if (s) broadcastClientEvent({ event: 'session-pending', id: token, ip: s.ip, device: s.device, at: s.createdAt, expiresAt: s.expiresAt });
+    return res.json({ success: true, pending: true, token, expiresAt: s ? s.expiresAt : 0 });
   }
+  res.status(401).json({ error: 'Unauthorized' });
+});
+
+// Validate the current token (resume trusted devices without re-login).
+// Pending sessions may poll here to learn the moment they are approved.
+app.get('/api/auth/me', checkPin, (req, res) => {
+  if (req.authSession && req.authSession.status === 'pending') {
+    return res.json({ ok: true, pending: true, expiresAt: req.authSession.expiresAt || 0 });
+  }
+  res.json({ ok: true, legacy: !req.authSession, session: req.authSession || undefined });
+});
+
+// Active login sessions for the Security panel (current flagged via req.authToken).
+app.get('/api/auth/sessions', checkPin, (req, res) => {
+  const list = [];
+  for (const [token, s] of authSessions) {
+    list.push({ id: token, device: s.device, ip: s.ip, createdAt: s.createdAt, lastSeen: s.lastSeen, current: token === req.authToken });
+  }
+  list.sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0));
+  for (const item of list) {
+    const s = authSessions.get(item.id);
+    item.status = (s && s.status) || 'active';
+    if (item.status === 'pending') item.expiresAt = s.expiresAt || 0;
+  }
+  // Pending rotation (if any) so the Security panel can show Approve/Revert.
+  // Never exposes the proposed PIN — only who asked and when it lapses.
+  const pending = pendingPinChange ? {
+    device: pendingPinChange.device,
+    ip: pendingPinChange.ip,
+    expiresAt: pendingPinChange.expiresAt,
+    mine: pendingPinChange.requesterToken === req.authToken,
+  } : null;
+  res.json({ sessions: list, pending });
+});
+
+// Approve a pending session. Only a DIFFERENT active session may approve —
+// pending sessions approve nothing, and raw-PIN callers approve nothing
+// (otherwise the PIN alone would defeat the gate).
+app.post('/api/auth/sessions/:id/approve', checkPin, (req, res) => {
+  const id = req.params.id;
+  if (typeof id !== 'string' || !/^[0-9a-f]{64}$/.test(id)) return res.status(400).json({ error: 'invalid session id' });
+  const t = authSessions.get(id);
+  if (!t) return res.status(404).json({ error: 'session not found' });
+  if (t.status === 'active') return res.json({ success: true });
+  if (!req.authSession || req.authSession.status !== 'active' || req.authToken === id) {
+    return res.status(403).json({ error: 'Approval needs a different active session' });
+  }
+  clearSessionTimer(t);
+  t.status = 'active'; t.lastSeen = Date.now(); t.expiresAt = 0;
+  broadcastClientEvent({ event: 'sessions-changed' });
+  res.json({ success: true });
+});
+
+// Revoke one login session. Kicked sockets get a session-revoked push.
+// A pending session may cancel itself; anyone else needs an active session.
+app.delete('/api/auth/sessions/:id', checkPin, (req, res) => {
+  const id = req.params.id;
+  if (typeof id !== 'string' || !/^[0-9a-f]{64}$/.test(id)) return res.status(400).json({ error: 'invalid session id' });
+  if (req.authSession && req.authSession.status === 'pending' && req.authToken !== id) {
+    return res.status(403).json({ error: 'Session awaiting approval from another device', pending: true });
+  }
+  const t = authSessions.get(id);
+  clearSessionTimer(t);
+  const existed = authSessions.delete(id);
+  if (existed) {
+    pushSessionRevoked(id);
+    // Tell remaining clients so header counts refresh
+    broadcastClientEvent({ event: 'sessions-changed' });
+  }
+  res.json({ success: true, revoked: existed });
 });
 
 // Writable runtime data dir. Repo checkouts keep state next to the server
@@ -309,6 +523,44 @@ function persistPinToEnv(pin) {
   fs.renameSync(tmp, ENV_PATH);
 }
 
+// Two-person rule for PIN rotation: a request from a fresh session (<10min
+// old) while other sessions exist does NOT apply instantly — it pends 60s
+// for approval from a different session. An attacker's first act with a
+// stolen PIN is always a fresh session, so hostile rotations get vetoed in
+// the very moment instead of locking the owner out. Trusted callers
+// (session ≥10min, sole session, or first setup) rotate instantly.
+const PIN_TRUST_MS = 10 * 60 * 1000;
+const PIN_PENDING_MS = 60 * 1000;
+let pendingPinChange = null; // { newPIN, requesterToken, device, ip, expiresAt, timer }
+function clearPendingPinChange() {
+  if (pendingPinChange && pendingPinChange.timer) { try { clearTimeout(pendingPinChange.timer); } catch {} }
+  pendingPinChange = null;
+}
+function describeChanger(req) {
+  try {
+    if (req.authSession && req.authSession.device) return req.authSession.device;
+    return parseDevice(req.headers && req.headers['user-agent'], null);
+  } catch { return 'unknown device'; }
+}
+// Performs the rotation: broadcast attribution, wipe sessions, persist.
+function applyPinRotation(req, next, byDevice) {
+  PIN = next;
+  process.env.PIN = next;
+  // A PIN change invalidates every issued session token (they were minted
+  // under the old secret). Clients re-login with the new PIN.
+  // Broadcast first (with the changer's identity) so other tabs learn WHO
+  // rotated it before their sessions die — hostile rotations stay visible.
+  try {
+    broadcastClientEvent({ event: 'pin-changed', ip: req.ip || '', device: byDevice, at: Date.now(), disabled: !next });
+  } catch {}
+  const sessionsRevoked = authSessions.size;
+  authSessions.clear();
+  let persisted = false, persistError = '';
+  try { persistPinToEnv(next); persisted = true; }
+  catch (e) { persistError = e.message || 'write failed'; }
+  return { persisted, persistError, sessionsRevoked };
+}
+
 // Set/change/disable the PIN at runtime. Authed callers only (checkPin),
 // brute-force guarded (authRateLimiter). Empty newPin disables protection.
 // When protection is off (!PIN), only loopback may set the first PIN —
@@ -327,12 +579,77 @@ app.post('/api/pin', authRateLimiter, checkPin, (req, res) => {
     let next = typeof newPin === 'string' ? newPin.trim() : '';
     if (/[\r\n\0]/.test(next)) return res.status(400).json({ error: 'PIN contains invalid characters' });
     if (next.length > 64) return res.status(400).json({ error: 'PIN must be 64 characters or less' });
-    PIN = next;
-    process.env.PIN = next;
-    let persisted = false, persistError = '';
-    try { persistPinToEnv(next); persisted = true; }
-    catch (e) { persistError = e.message || 'write failed'; }
-    res.json({ success: true, protected: !!PIN, persisted, persistError });
+    // Two-person rule (only when protection is already on — first setup is instant)
+    if (PIN) {
+      const requesterToken = req.authToken || null;
+      const otherCount = countActiveSessions(requesterToken);
+      const age = req.authSession ? Date.now() - (req.authSession.createdAt || 0) : 0;
+      const trusted = req.authSession ? age >= PIN_TRUST_MS : otherCount === 0;
+      if (!trusted && otherCount > 0) {
+        if (pendingPinChange) return res.status(409).json({ error: 'A PIN change is already awaiting approval' });
+        const device = describeChanger(req);
+        const ip = req.ip || '';
+        pendingPinChange = { newPIN: next, requesterToken, device, ip, expiresAt: Date.now() + PIN_PENDING_MS, timer: null };
+        pendingPinChange.timer = setTimeout(() => {
+          // Deny by default: expiry cancels and kicks the requester
+          if (!pendingPinChange) return;
+          const p = pendingPinChange;
+          clearPendingPinChange();
+          if (p.requesterToken) {
+            authSessions.delete(p.requesterToken);
+            pushSessionRevoked(p.requesterToken);
+          }
+          broadcastClientEvent({ event: 'pin-change-resolved', approved: false, expired: true, device: p.device, ip: p.ip });
+          broadcastClientEvent({ event: 'sessions-changed' });
+        }, PIN_PENDING_MS);
+        broadcastClientEvent({ event: 'pin-change-pending', device, ip, requester: requesterToken, expiresAt: pendingPinChange.expiresAt });
+        return res.json({ success: true, pending: true, expiresAt: pendingPinChange.expiresAt });
+      }
+    }
+    const out = applyPinRotation(req, next, describeChanger(req));
+    res.json({ success: true, protected: !!PIN, ...out });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Approve a pending rotation (a DIFFERENT session must approve — the
+// requester can never approve its own). Approver gets a fresh token since
+// rotation wipes all sessions.
+app.post('/api/pin/approve', authRateLimiter, checkPin, (req, res) => {
+  try {
+    if (!pendingPinChange) return res.status(404).json({ error: 'No pending PIN change' });
+    if (!req.authSession || !req.authToken || req.authToken === pendingPinChange.requesterToken) {
+      return res.status(403).json({ error: 'Approval needs a different signed-in session' });
+    }
+    const p = pendingPinChange;
+    clearPendingPinChange();
+    const out = applyPinRotation(req, p.newPIN, describeChanger(req));
+    // Fresh session for the approver (rotation wiped theirs too)
+    const token = issueSession(req, null);
+    broadcastClientEvent({ event: 'pin-change-resolved', approved: true, device: p.device, ip: p.ip });
+    res.json({ success: true, protected: !!PIN, token, ...out });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Veto a pending rotation: cancel it and kick the requester immediately.
+app.post('/api/pin/veto', authRateLimiter, checkPin, (req, res) => {
+  try {
+    if (!pendingPinChange) return res.status(404).json({ error: 'No pending PIN change' });
+    if (!req.authSession || !req.authToken || req.authToken === pendingPinChange.requesterToken) {
+      return res.status(403).json({ error: 'Only a different signed-in session can veto' });
+    }
+    const p = pendingPinChange;
+    clearPendingPinChange();
+    if (p.requesterToken) {
+      authSessions.delete(p.requesterToken);
+      pushSessionRevoked(p.requesterToken);
+    }
+    broadcastClientEvent({ event: 'pin-change-resolved', approved: false, vetoed: true, device: p.device, ip: p.ip });
+    broadcastClientEvent({ event: 'sessions-changed' });
+    res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -2281,6 +2598,7 @@ app.delete('/api/sessions/:id', checkPin, (req, res) => {
 //     0x00 = terminal data (UTF-8)
 //     0x01 = exit          (1B exit code)
 //     0x02 = error         (UTF-8 message)
+//     0x03 = event         (JSON: new-login alerts, session-revoked kicks)
 //   Client → Server:
 //     0x00 = input         (UTF-8) – max 64KB per message
 //     0x01 = resize        (4B: cols uint16LE, rows uint16LE)
@@ -2293,6 +2611,31 @@ setInterval(() => {
   const _now = Date.now();
   for (const [_ip, _w] of wsAuthFails) { if (_now > _w.resetAt) wsAuthFails.delete(_ip); }
 }, 60000);
+
+// Push a JSON control event to terminal clients (server→client type 0x03).
+// Used for new-login alerts and session-revoked kicks.
+function sendClientEvent(ws, obj) {
+  try {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const payload = Buffer.from(JSON.stringify(obj), 'utf8');
+    const frame = Buffer.alloc(1 + payload.length);
+    frame[0] = 0x03;
+    payload.copy(frame, 1);
+    ws.send(frame);
+  } catch {}
+}
+function broadcastClientEvent(obj) {
+  try {
+    for (const ws of wss.clients) sendClientEvent(ws, obj);
+  } catch {}
+}
+function pushSessionRevoked(token) {
+  try {
+    for (const ws of wss.clients) {
+      try { if (ws._authToken === token) sendClientEvent(ws, { event: 'session-revoked' }); } catch {}
+    }
+  } catch {}
+}
 function getWsOrigin(req) {
   return (req.headers['origin'] || '').replace(/\/$/, '');
 }
@@ -2314,9 +2657,13 @@ wss.on('connection', (ws, req) => {
 
   // Use constant-time compare for WS token (F49).
   // Handshake throttle: >20 failed auths/min per IP gets dropped (no limiter otherwise).
+  // Accepts active session tokens as well as the raw PIN (back-compat, gated
+  // like HTTP when other sessions exist). Pending sessions get no shell.
   if (PIN) {
     const t = typeof token === 'string' ? token : '';
-    if (!t || !constantTimeEqual(t, PIN)) {
+    const _s = t ? getSession(t) : null;
+    const _pinOk = t && constantTimeEqual(t, PIN) && rawPinAllowed({ ip: req.socket.remoteAddress, socket: req.socket, headers: req.headers });
+    if (!t || (!_pinOk && (!_s || _s.status !== 'active'))) {
       try {
         const _ip = req.socket.remoteAddress || 'unknown';
         const _now = Date.now();
@@ -2328,6 +2675,8 @@ wss.on('connection', (ws, req) => {
       } catch {}
       ws.close(1008, 'Unauthorized'); return;
     }
+    // Attribute the socket so session-revoke can kick exactly this client
+    try { ws._authToken = t; } catch {}
   }
 
   let cols      = parseInt(url.searchParams.get('cols'))  || 80;

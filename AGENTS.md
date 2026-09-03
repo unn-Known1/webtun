@@ -61,13 +61,14 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
   - `setupMoreMenuKeyboard()` — arrow/Home/End/Escape nav in overflow menu
 - **Dialogs**: `openOverlay(id)` sets `role="dialog"`, `aria-modal="true"`, `aria-labelledby` from the modal `h2`. Overlays without an `h2` need `aria-label`.
 - **Toasts**: `toast(msg, type)` supports `info|success|warning|error` with icons; stack capped at 4.
+- **Security header UI** (all in `public/index.html`): `#security-alert-btn` + `#security-alert-count` — persistent triangle for unreviewed logins (`wt-security-alerts` in storage, cleared by `openSecurityReview()`); `#sess-cup-num` — live session count drawn on the keep-awake cup (`updateSessionCupCount()`); `handleClientEvent()` handles `0x03` pushes (approve/deny modals via `confirmDialog`, pending rows in `refreshSessions()`).
 
 ### Terminal
 - **xterm.js** with addons: fit, search, web-links, unicode11, webgl (canvas fallback)
 - **CodeMirror** with modes: javascript, python, htmlmixed, xml, css, clike, shell, markdown, yaml, sql, go, rust, properties. Requires `simple.min.js` addon for rust mode.
 - **WebSocket binary protocol** (not JSON):
-  - Server→Client: `0x00` data, `0x01` exit (1B code), `0x02` error
-  - Client→Server: `0x00` input (max 64KB), `0x01` resize (4B: cols/rows uint16LE), `0x02` ping
+  - Server→Client: `0x00` data, `0x01` exit (1B code), `0x02` error, `0x03` event (JSON: `new-login` alerts, `session-revoked` kicks — handled by `handleClientEvent()`)
+  - Client→Server: `0x00` input (chunked ≤60KB via `sendWsInput()`), `0x01` resize (4B: cols/rows uint16LE), `0x02` ping
 - **xterm textarea**: Each terminal gets a unique `id="xterm-helper-{tabId}"` for accessibility.
 - **Editor preview iframe**: `sandbox="allow-scripts"` (opaque origin — no `allow-same-origin`). HTML/MD previews require DOMPurify (CDN); render is refused when it's missing.
 
@@ -98,7 +99,7 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
   - `POST /api/files/mkdir` / `touch` — create directory / empty file
   - `POST /api/files/zip` / `unzip` — create or extract zip archives
   - `GET /api/search?q=&path=` — async file search (max depth 4, max 50 results)
-- **Auth endpoint**: `POST /api/auth` and `GET /api/auth/required` — rate-limited separately. `POST /api/pin` (`{currentPin, newPin}`) sets/changes/disables the PIN at runtime under `checkPin` + auth limiter; persists to the writable `.env` (repo-local `__dirname/.env`, else `~/.config/webtun/.env`, atomic 0600 write). First PIN setup on an open instance is loopback-only. `POST /api/system/kill` requires PIN protection to be enabled.
+- **Auth endpoint**: `POST /api/auth` (`{pin, device}`) issues a revocable 64-hex session token — `active` immediately when nobody else is signed in, else `pending` until a different active session approves it via `POST /api/auth/sessions/:id/approve` (deny = `DELETE`, i.e. revoke; pending lapses after 5min). Pending tokens can only poll `GET /api/auth/me` (and cancel themselves); remote raw-PIN callers are gated the same way (loopback always trusted). Broadcasts `new-login` / `session-pending` to WS clients; raw PIN still accepted everywhere for back-compat. `GET /api/auth/required`; `GET /api/auth/me` (resume trusted devices); `GET /api/auth/sessions` (list with `current` flag + pending rotation); `DELETE /api/auth/sessions/:id` (revoke + `session-revoked` push to that client's sockets). `POST /api/pin` (`{currentPin, newPin}`) sets/changes/disables the PIN at runtime under `checkPin` + auth limiter — instant for trusted callers (session ≥10min, sole session, first setup), else 60s pending approval via `POST /api/pin/approve` / `veto` (a different session must decide; expiry denies + kicks requester). Rotation revokes all sessions and persists to the writable `.env` (repo-local `__dirname/.env`, else `~/.config/webtun/.env`, atomic 0600 write). Session tokens persist in browser `localStorage` (`wt-session-token` = trusted device). First PIN setup on an open instance is loopback-only. `POST /api/system/kill` requires PIN protection to be enabled.
 - **Runtime state dir**: `DATA_DIR` = `__dirname` for repo checkouts, else `$XDG_CONFIG_HOME/webtun` / `~/.config/webtun` (global/npx installs). Holds `.env`, `.cmdhist.json`, `.tunnels.json`, `tunnel-url.txt` (migrated from legacy `__dirname` location on boot).
 - **History endpoint**: `GET /api/history`, `POST /api/history`, `DELETE /api/history`, `DELETE /api/history/:index` — all under `checkPin`.
 - **Git endpoints** (`server.js`): all under `checkPin`; no-shell `git -C <root>` via `spawnRead`, file args validated inside repo root.

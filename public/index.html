@@ -437,6 +437,14 @@ svg { display: block; }
 .keep-awake input:checked ~ .awake-cup .steam { animation: steamRise 2.1s ease-in-out infinite; }
 .keep-awake input:checked ~ .awake-cup .s2 { animation-delay: .35s; }
 .keep-awake input:checked ~ .awake-cup .s3 { animation-delay: .7s; }
+/* Cup icon slightly larger without growing the 36px header button */
+#keep-awake-toggle .awake-cup svg { width: 21px; height: 21px; }
+#keep-awake-toggle { position: relative; }
+#sess-cup-num { pointer-events: none; font-family: var(--font-ui); }
+/* Persistent security alert (unreviewed login) next to the coffee cup */
+#security-alert-btn { position: relative; }
+#security-alert-btn svg { animation: secAlertPulse 1.6s ease-in-out infinite; }
+@keyframes secAlertPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 @keyframes awakeGlow { 0%, 100% { filter: drop-shadow(0 0 0 transparent); } 50% { filter: drop-shadow(0 0 5px var(--accent)); } }
 @keyframes steamRise { 0% { opacity: 0; transform: translateY(2px); } 35% { opacity: 1; } 100% { opacity: 0; transform: translateY(-2.5px); } }
 
@@ -1278,10 +1286,14 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
     <span id="logo" style="display:flex;align-items:center;gap:4px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="10" y2="8"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="12" y1="8" x2="18" y2="8"/><line x1="12" y1="12" x2="18" y2="12"/></svg>WebTun</span>
     <span id="hostname-badge">—</span>
     <div class="header-spacer"></div>
+    <button class="icon-btn" id="security-alert-btn" aria-label="Security alert: unreviewed login" title="Unreviewed login — click to review sessions" onclick="openSecurityReview()" style="display:none;color:var(--amber, #e5a50a)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+      <span id="security-alert-count" style="position:absolute;margin:-14px 0 0 10px;font-size:9px;font-weight:700;background:var(--red);color:#fff;border-radius:8px;padding:0 4px;line-height:14px"></span>
+    </button>
     <label id="keep-awake-toggle" class="keep-awake" title="Keep Screen Awake">
       <input type="checkbox" id="keep-awake-cb" aria-label="Keep screen awake" onchange="toggleKeepAwake(this.checked)">
       <span class="awake-cup" aria-hidden="true">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path class="steam s1" d="M7.5 8.5c-1.2-1.4 1.2-2.2 0-3.6"/><path class="steam s2" d="M11.5 8.5c-1.2-1.4 1.2-2.2 0-3.6"/><path class="steam s3" d="M15.5 8.5c-1.2-1.4 1.2-2.2 0-3.6"/><path d="M4 10.5h13V16a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4v-5.5z"/><path d="M17 11.5h1.5a2.5 2.5 0 0 1 0 5H17"/></svg>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path class="steam s1" d="M7.5 8.5c-1.2-1.4 1.2-2.2 0-3.6"/><path class="steam s2" d="M11.5 8.5c-1.2-1.4 1.2-2.2 0-3.6"/><path class="steam s3" d="M15.5 8.5c-1.2-1.4 1.2-2.2 0-3.6"/><path d="M4 10.5h13V16a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4v-5.5z"/><path d="M17 11.5h1.5a2.5 2.5 0 0 1 0 5H17"/><text id="sess-cup-num" x="10" y="17" text-anchor="middle" font-size="7.5" font-weight="700" fill="var(--accent)" stroke="none" style="display:none"></text></svg>
       </span>
     </label>
     <button class="icon-btn" id="sidebar-toggle" aria-label="Toggle sidebar" title="Toggle Explorer (Ctrl+B)" onclick="toggleSidebar()">
@@ -1655,6 +1667,16 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
             <button class="btn btn-primary" id="pin-save-btn" onclick="changePin()" style="flex:1">Set / Update PIN</button>
           </div>
           <div style="font-size:11px;color:var(--fg3);margin-top:6px">Applies instantly. Saved to <span style="font-family:var(--font)">.env</span> so it survives restarts.</div>
+          <div class="setting-row" style="margin-top:10px">
+            <label>Active sessions <span id="sess-count" style="color:var(--fg3)"></span></label>
+            <button class="btn btn-ghost" onclick="refreshSessions()" title="Refresh session list" aria-label="Refresh session list" style="height:26px;padding:0 10px;font-size:11px">Refresh</button>
+          </div>
+          <div id="sessions-list" style="display:flex;flex-direction:column;gap:6px;margin-top:2px"></div>
+          <div style="display:flex;gap:6px;margin-top:8px">
+            <button class="btn btn-ghost" onclick="revokeOtherSessions()" style="flex:1">Sign out other sessions</button>
+            <button class="btn btn-ghost" onclick="signOut()" style="flex:1" title="End this session on this device">Sign out here</button>
+          </div>
+          <div style="font-size:11px;color:var(--fg3);margin-top:6px">New logins alert every open tab. Revoking kicks that device immediately.</div>
         </div>
         <div class="settings-section" data-sec="appearance">
           <h3>Appearance</h3>
@@ -2114,6 +2136,8 @@ async function init() {
   if (r && r.required !== undefined) {
     document.getElementById('pin-error').textContent = '';
     if (r.required) {
+      // Trusted device? A stored session token skips the PIN screen.
+      if (await tryResumeSession()) return;
       const pinIn = document.getElementById('pin-input');
       pinIn.removeEventListener('keydown', handlePinKeydown);
       pinIn.addEventListener('keydown', handlePinKeydown);
@@ -2134,6 +2158,106 @@ async function init() {
   }
 }
 
+function clientDeviceLabel() {
+  try {
+    const ua = navigator.userAgent || '';
+    let os = 'Unknown OS';
+    if (/Windows/i.test(ua)) os = 'Windows';
+    else if (/Android/i.test(ua)) os = 'Android';
+    else if (/iPhone|iPad/i.test(ua)) os = 'iOS';
+    else if (/Mac OS/i.test(ua)) os = 'macOS';
+    else if (/Linux/i.test(ua)) os = 'Linux';
+    let br = '';
+    if (/Edg\//i.test(ua)) br = 'Edge';
+    else if (/Chrome\//i.test(ua)) br = 'Chrome';
+    else if (/Firefox/i.test(ua)) br = 'Firefox';
+    else if (/Safari/i.test(ua) && !/Chrome/i.test(ua)) br = 'Safari';
+    return (br ? br + ' · ' : '') + os;
+  } catch { return ''; }
+}
+function storeSessionToken(t) {
+  try {
+    if (t && t !== 'open') safeStorage.setItem('wt-session-token', t);
+    else safeStorage.removeItem('wt-session-token');
+  } catch {}
+}
+// Resume a trusted device: validate the stored session token without a PIN.
+async function tryResumeSession() {
+  let t = null;
+  try { t = safeStorage.getItem('wt-session-token'); } catch {}
+  if (!t || t === 'open') return false;
+  authToken = t;
+  try {
+    const r = await fetch('/api/auth/me', { headers: { 'x-pin-token': t } }).then(r => r.json());
+    if (r && r.ok && !r.pending) { unlockApp(); return true; }
+    // Stored session is pending approval (page reloaded mid-wait) — resume the wait
+    if (r && r.ok && r.pending) { enterWaitingRoom(t, r.expiresAt || 0); return true; }
+  } catch {}
+  // Stored session is dead (revoked/expired/rotated) — fall through to PIN
+  authToken = '';
+  storeSessionToken('');
+  return false;
+}
+// Waiting room: this device is locked until a different active session
+// approves it. Polls /api/auth/me; approval unlocks, denial/expiry bounces.
+let _pendingPollTimer = null;
+function stopPendingPoll() {
+  try { if (_pendingPollTimer) clearInterval(_pendingPollTimer); } catch {}
+  _pendingPollTimer = null;
+}
+function enterWaitingRoom(token, expiresAt) {
+  stopPendingPoll();
+  authToken = token;
+  storeSessionToken(token);
+  const pinError = document.getElementById('pin-error');
+  const pinBtn = document.getElementById('pin-unlock-btn');
+  setBtnBusy(pinBtn, false);
+  const tick = async () => {
+    if (expiresAt && Date.now() > expiresAt + 5000) {
+      stopPendingPoll();
+      if (pinError) pinError.textContent = 'Approval expired — no active session approved in time. Try again.';
+      authToken = '';
+      storeSessionToken('');
+      return;
+    }
+    try {
+      const r = await fetch('/api/auth/me', { headers: { 'x-pin-token': token } }).then(r => r.json());
+      if (r && r.ok && !r.pending) {
+        stopPendingPoll();
+        if (pinError) pinError.textContent = '';
+        unlockApp();
+      } else if (!r || !r.ok) {
+        // 401 (denied/revoked) — me returns {error}, not ok
+        stopPendingPoll();
+        if (pinError) pinError.textContent = 'Access denied by another device.';
+        authToken = '';
+        storeSessionToken('');
+      } else {
+        if (pinError) pinError.textContent = 'Waiting for approval from another signed-in device…';
+      }
+    } catch {
+      if (pinError) pinError.textContent = 'Waiting for approval from another signed-in device…';
+    }
+  };
+  if (pinError) pinError.textContent = 'Waiting for approval from another signed-in device…';
+  tick();
+  _pendingPollTimer = setInterval(tick, 3000);
+}
+async function signOut() {
+  const t = authToken;
+  stopPendingPoll();
+  storeSessionToken('');
+  authToken = '';
+  // Best-effort: revoke our own session server-side (fires before teardown)
+  if (t && t !== 'open' && /^[0-9a-f]{64}$/.test(t)) {
+    try { await fetch(`/api/auth/sessions/${t}`, { method: 'DELETE', headers: { 'x-pin-token': t } }); } catch {}
+  }
+  try { document.getElementById('pin-input').value = ''; } catch {}
+  window._appUnlocked = false;
+  showPinScreen();
+  toast('Signed out on this device', 'info');
+}
+
 async function submitPin() {
   const pinInput = document.getElementById('pin-input');
   const pinError = document.getElementById('pin-error');
@@ -2141,15 +2265,24 @@ async function submitPin() {
   const pinBtn = document.getElementById('pin-unlock-btn');
   const pin = pinInput.value;
   pinBox.classList.remove('shake');
+  stopPendingPoll();
   setBtnBusy(pinBtn, true);
   try {
     const r = await fetch('/api/auth', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pin })
+      body: JSON.stringify({ pin, device: clientDeviceLabel() })
     }).then(r => r.json());
     if (r.success) {
       authToken = r.token;
+      // Persist session tokens (trusted device); 'open' needs nothing stored.
+      // Fresh logins while others are active come back pending — wait it out.
+      if (r.pending) {
+        setBtnBusy(pinBtn, false);
+        enterWaitingRoom(r.token, r.expiresAt || 0);
+        return;
+      }
+      storeSessionToken(r.token);
       unlockApp();
     } else {
       pinError.textContent = r.error || 'Wrong PIN, try again';
@@ -2172,6 +2305,17 @@ async function unlockApp() {
   window._appUnlocked = true;
   document.getElementById('pin-screen').classList.add('hidden');
   document.getElementById('app').style.display = 'flex';
+  // Restore a persistent security triangle from unreviewed logins
+  try { renderSecurityAlert(); } catch {}
+  // Live session count on the coffee cup + slow refresh for stragglers
+  try { updateSessionCupCount(); } catch {}
+  try {
+    if (!window._sessCupTimer) {
+      window._sessCupTimer = setInterval(() => {
+        if (!document.hidden && window._appUnlocked) { try { updateSessionCupCount(); } catch {} }
+      }, 60000);
+    }
+  } catch {}
 
   const info = await api('/api/home');
   homeDir = info.home;
@@ -2745,7 +2889,80 @@ function connectWebSocket(tab, isReconnect = false) {
     if (type === 0x00) processTerminalOutput(payload);
     else if (type === 0x01) tab.term.writeln('\r\n\x1b[31m[Process exited]\x1b[0m');
     else if (type === 0x02) tab.term.writeln('\r\n\x1b[31m' + new TextDecoder().decode(payload) + '\x1b[0m');
+    else if (type === 0x03) handleClientEvent(payload);
   };
+
+// Server-pushed security events (0x03 JSON): new-login alerts, session-revoked kicks.
+function handleClientEvent(payload) {
+  let ev = null;
+  try { ev = JSON.parse(new TextDecoder().decode(payload)); } catch { return; }
+  if (!ev || !ev.event) return;
+  if (ev.event === 'new-login') {
+    const when = ev.at ? new Date(ev.at).toLocaleString() : 'just now';
+    toast(`New login — ${ev.device || 'unknown device'} · ${ev.ip || 'unknown IP'} · ${when}`, 'warning');
+    // Persistent triangle until reviewed (toast alone vanishes)
+    try { addSecurityAlert(ev); } catch {}
+    try { updateSessionCupCount(); } catch {}
+    // Refresh the sessions list if the Security panel is visible
+    try {
+      const sp = document.getElementById('settings-panel');
+      if (sp && sp.classList.contains('open') && typeof refreshSessions === 'function') refreshSessions();
+    } catch {}
+  } else if (ev.event === 'session-revoked') {
+    toast('This session was signed out remotely', 'error');
+    storeSessionToken('');
+    authToken = '';
+    showPinScreen();
+  } else if (ev.event === 'session-pending') {
+    // A new device passed the PIN but is locked until WE approve it.
+    // Instant modal here; the sessions list holds Approve/Deny as backstop.
+    try { if (typeof refreshSessions === 'function') refreshSessions(); } catch {}
+    try { updateSessionCupCount(); } catch {}
+    try { addSecurityAlert({ ip: ev.ip, device: `Login approval requested by ${ev.device || 'unknown device'}`, at: ev.at }); } catch {}
+    confirmDialog({
+      title: 'Approve this device?',
+      message: `${ev.device || 'Unknown device'} (${ev.ip || 'unknown IP'}) entered the correct PIN and is waiting for access. Approve it, or dismiss and Deny it in Security.`,
+      okText: 'Approve device', cancelText: 'Dismiss', danger: true,
+    }).then(async ok => {
+      if (!ok) return;
+      await approveSession(ev.id);
+    }).catch(() => {});
+  } else if (ev.event === 'pin-change-pending') {
+    // A fresh session asked to rotate the PIN. Act in this very moment:
+    // instant modal here, persistent banner in Security as backstop.
+    try { if (typeof refreshSessions === 'function') refreshSessions(); } catch {}
+    const mine = ev.requester && ev.requester === authToken;
+    if (mine) {
+      toast('PIN change pending — approve it from another signed-in tab', 'info');
+    } else {
+      const when = ev.expiresAt ? new Date(ev.expiresAt).toLocaleTimeString() : '';
+      confirmDialog({
+        title: 'Approve PIN change?',
+        message: `${ev.device || 'Unknown device'} (${ev.ip || 'unknown IP'}) wants to change the PIN${when ? ` — expires ${when}` : ''}. If this wasn't you, dismiss and Revert it in Security.`,
+        okText: 'Approve change', cancelText: 'Dismiss', danger: true,
+      }).then(async ok => {
+        if (!ok) return;
+        await approvePinChange();
+      }).catch(() => {});
+      try { addSecurityAlert({ ip: ev.ip, device: `PIN change requested by ${ev.device || 'unknown device'}`, at: Date.now() }); } catch {}
+    }
+  } else if (ev.event === 'pin-change-resolved') {
+    toast(ev.approved ? 'PIN change approved and applied' : `PIN change stopped${ev.expired ? ' (expired)' : ''}${ev.vetoed ? ' (reverted)' : ''}`, ev.approved ? 'success' : 'info');
+    try { if (typeof refreshSessions === 'function') refreshSessions(); } catch {}
+    try { updateSessionCupCount(); } catch {}
+  } else if (ev.event === 'pin-changed') {
+    const what = ev.disabled ? 'PIN protection was REMOVED' : 'PIN was changed';
+    toast(`${what} by ${ev.device || 'unknown device'} · ${ev.ip || 'unknown IP'} — re-login required`, 'error');
+    // Persistent: survives the kick to the PIN screen, shown on next unlock
+    try { addSecurityAlert({ ip: ev.ip, device: `${what} by ${ev.device || 'unknown device'}`, at: ev.at }); } catch {}
+  } else if (ev.event === 'sessions-changed') {
+    try { updateSessionCupCount(); } catch {}
+    try {
+      const sp = document.getElementById('settings-panel');
+      if (sp && sp.classList.contains('open') && typeof refreshSessions === 'function') refreshSessions();
+    } catch {}
+  }
+}
 
   ws.onerror = (e) => { console.warn('WS error:', e.type); };
 
@@ -6415,6 +6632,7 @@ function openSettings() {
     panel.classList.add('open');
     setupSettingsSections();
     updateSecurityUI();
+    try { refreshSessions(); } catch {}
     // Replay staggered card entrance on every open
     panel.classList.remove('sec-anim');
     void panel.offsetWidth;
@@ -6603,12 +6821,254 @@ async function changePin() {
   const r = await api('/api/pin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currentPin: cur, newPin: next }) });
   setBtnBusy(btn, false);
   if (!r || !r.success) { showFieldError('pin-field-error', (r && r.error) || 'Failed to update PIN'); return; }
-  // Re-auth this session with the new PIN so subsequent calls keep working
-  authToken = next || 'open';
+  // Fresh sessions need a second session's approval while others exist —
+  // the change pends instead of applying. Nothing rotated yet.
+  if (r.pending) {
+    toast('Approval needed — approve from another signed-in tab within 60s', 'warning');
+    try { refreshSessions(); } catch {}
+    return;
+  }
+  // PIN rotation revokes all session tokens server-side — log back in to
+  // mint a fresh one so subsequent calls keep working.
+  if (!next) {
+    authToken = 'open';
+    storeSessionToken('');
+  } else {
+    try {
+      const lr = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: next, device: clientDeviceLabel() })
+      }).then(r => r.json());
+      if (lr && lr.success && lr.token) {
+        authToken = lr.token;
+        storeSessionToken(lr.token);
+      } else {
+        showPinScreen();
+        toast('PIN updated — sign in again', 'info');
+        return;
+      }
+    } catch {
+      showPinScreen();
+      toast('PIN updated — sign in again', 'info');
+      return;
+    }
+  }
   curEl.value = ''; newEl.value = '';
   updateSecurityUI();
   toast(!next ? 'PIN removed — open access' : 'PIN updated', 'success');
   if (!r.persisted) toast('Active now, but .env is not writable — restart will revert (' + (r.persistError || 'write failed') + ')', 'warning');
+  try { refreshSessions(); } catch {}
+}
+
+// ── Security: active login sessions ──
+// Live session count drawn on the coffee cup itself (hidden when 0/unknown/open mode)
+async function updateSessionCupCount() {
+  const num = document.getElementById('sess-cup-num');
+  if (!num) return;
+  if (!window._appUnlocked || !authToken || authToken === 'open') { num.style.display = 'none'; return; }
+  try {
+    const r = await api('/api/auth/sessions');
+    const n = r && Array.isArray(r.sessions) ? r.sessions.length : 0;
+    if (n > 0) {
+      num.textContent = n > 9 ? '9+' : String(n);
+      num.style.display = '';
+      num.parentElement?.closest('label')?.setAttribute('title',
+        n === 1 ? 'Keep Screen Awake — 1 active login session (open Security to review)' : `Keep Screen Awake — ${n} active login sessions (open Security to review)`);
+    } else {
+      num.style.display = 'none';
+    }
+  } catch { /* leave last state on failure */ }
+}
+async function refreshSessions() {
+  try { updateSessionCupCount(); } catch {}
+  const list = document.getElementById('sessions-list');
+  const count = document.getElementById('sess-count');
+  if (!list) return;
+  const r = await api('/api/auth/sessions');
+  if (!r || !Array.isArray(r.sessions)) {
+    list.innerHTML = '<div style="font-size:11px;color:var(--fg3)">Sign in to view sessions.</div>';
+    if (count) count.textContent = '';
+    return;
+  }
+  if (count) count.textContent = r.sessions.length ? `(${r.sessions.length})` : '';
+  list.innerHTML = '';
+  // Pending PIN rotation banner (approve here if the modal was dismissed)
+  if (r.pending) {
+    const banner = document.createElement('div');
+    banner.style.cssText = 'padding:8px;border:1px solid var(--amber, #e5a50a);border-radius:var(--radius);font-size:11px;margin-bottom:6px';
+    const t = document.createElement('div');
+    t.style.cssText = 'margin-bottom:6px';
+    t.textContent = r.pending.mine
+      ? 'Your PIN change is awaiting approval from another signed-in tab.'
+      : `PIN change requested by ${r.pending.device || 'unknown device'} (${r.pending.ip || 'unknown IP'}).`;
+    banner.appendChild(t);
+    if (!r.pending.mine) {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;gap:6px';
+      const ap = document.createElement('button');
+      ap.className = 'btn btn-primary';
+      ap.style.cssText = 'height:26px;padding:0 10px;font-size:11px;flex:1';
+      ap.textContent = 'Approve';
+      ap.onclick = () => approvePinChange();
+      const ve = document.createElement('button');
+      ve.className = 'btn btn-ghost';
+      ve.style.cssText = 'height:26px;padding:0 10px;font-size:11px;flex:1';
+      ve.textContent = 'Revert & kick';
+      ve.onclick = () => vetoPinChange();
+      row.appendChild(ap); row.appendChild(ve);
+      banner.appendChild(row);
+    }
+    list.appendChild(banner);
+  }
+  if (!r.sessions.length) {
+    list.innerHTML = '<div style="font-size:11px;color:var(--fg3)">No other sessions. This device only.</div>';
+    return;
+  }
+  for (const s of r.sessions) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);font-size:11px';
+    const info = document.createElement('div');
+    info.style.cssText = 'flex:1;min-width:0';
+    const title = document.createElement('div');
+    title.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+    title.textContent = (s.device || 'Unknown device') + (s.current ? ' · this device' : '') + (s.status === 'pending' ? ' · awaiting approval' : '');
+    const sub = document.createElement('div');
+    sub.style.cssText = 'color:var(--fg3)';
+    sub.textContent = `${s.ip || 'unknown IP'} · ${s.status === 'pending' ? 'requested ' + timeAgo(s.createdAt) : 'active ' + timeAgo(s.lastSeen || s.createdAt)}`;
+    info.appendChild(title); info.appendChild(sub);
+    row.appendChild(info);
+    if (s.status === 'pending' && !s.current) {
+      const ap = document.createElement('button');
+      ap.className = 'btn btn-primary';
+      ap.style.cssText = 'height:24px;padding:0 10px;font-size:11px;flex-shrink:0';
+      ap.textContent = 'Approve';
+      ap.setAttribute('aria-label', 'Approve session ' + (s.device || s.ip || ''));
+      ap.onclick = () => approveSession(s.id);
+      row.appendChild(ap);
+      const dn = document.createElement('button');
+      dn.className = 'btn btn-ghost';
+      dn.style.cssText = 'height:24px;padding:0 10px;font-size:11px;flex-shrink:0';
+      dn.textContent = 'Deny';
+      dn.setAttribute('aria-label', 'Deny session ' + (s.device || s.ip || ''));
+      dn.onclick = () => revokeSession(s.id);
+      row.appendChild(dn);
+    } else if (!s.current) {
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-ghost';
+      btn.style.cssText = 'height:24px;padding:0 10px;font-size:11px;flex-shrink:0';
+      btn.textContent = 'Revoke';
+      btn.setAttribute('aria-label', 'Revoke session ' + (s.device || s.ip || ''));
+      btn.onclick = () => revokeSession(s.id);
+      row.appendChild(btn);
+    }
+    list.appendChild(row);
+  }
+}
+async function approveSession(id) {
+  if (!id) return;
+  const r = await api(`/api/auth/sessions/${encodeURIComponent(id)}/approve`, { method: 'POST' });
+  if (r && r.success) { toast('Device approved', 'success'); refreshSessions(); }
+  else toast((r && r.error) || 'Approve failed', 'error');
+}
+async function revokeSession(id) {
+  if (!id) return;
+  const ok = await confirmDialog({ title: 'Revoke session?', message: 'That device will be signed out immediately.', okText: 'Revoke', danger: true });
+  if (!ok) return;
+  const r = await api(`/api/auth/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (r && r.success) { toast('Session revoked', 'success'); refreshSessions(); }
+  else toast((r && r.error) || 'Revoke failed', 'error');
+}
+async function revokeOtherSessions() {
+  const r = await api('/api/auth/sessions');
+  if (!r || !Array.isArray(r.sessions)) { toast('Could not list sessions', 'error'); return; }
+  const others = r.sessions.filter(s => !s.current);
+  if (!others.length) { toast('No other sessions', 'info'); return; }
+  const ok = await confirmDialog({ title: 'Sign out others?', message: `End ${others.length} other session(s)? This device stays signed in.`, okText: 'Sign out others', danger: true });
+  if (!ok) return;
+  let done = 0;
+  for (const s of others) {
+    try { const dr = await api(`/api/auth/sessions/${encodeURIComponent(s.id)}`, { method: 'DELETE' }); if (dr && dr.success) done++; } catch {}
+  }
+  toast(`Signed out ${done} session(s)`, 'success');
+  refreshSessions();
+}
+async function approvePinChange() {
+  setBtnBusy(document.getElementById('pin-save-btn'), true);
+  try {
+    const r = await api('/api/pin/approve', { method: 'POST' });
+    if (r && r.success && r.token) {
+      authToken = r.token;
+      storeSessionToken(r.token);
+      toast('PIN change approved and applied', 'success');
+    } else {
+      toast((r && r.error) || 'Approve failed', 'error');
+    }
+  } catch {
+    toast('Approve failed', 'error');
+  }
+  setBtnBusy(document.getElementById('pin-save-btn'), false);
+  try { refreshSessions(); } catch {}
+}
+async function vetoPinChange() {
+  const ok = await confirmDialog({ title: 'Revert PIN change?', message: 'The requester will be signed out immediately.', okText: 'Revert & kick', danger: true });
+  if (!ok) return;
+  const r = await api('/api/pin/veto', { method: 'POST' });
+  if (r && r.success) toast('PIN change reverted, requester kicked', 'success');
+  else toast((r && r.error) || 'Revert failed', 'error');
+  try { refreshSessions(); } catch {}
+}
+
+// ── Persistent security alerts (unreviewed logins) ──
+// A toast vanishes; the header triangle stays until the logins are reviewed.
+function getPendingAlerts() {
+  try {
+    const v = JSON.parse(safeStorage.getItem('wt-security-alerts'));
+    return Array.isArray(v) ? v : [];
+  } catch { return []; }
+}
+function setPendingAlerts(a) {
+  try { safeStorage.setItem('wt-security-alerts', JSON.stringify(a.slice(-20))); } catch {}
+}
+function renderSecurityAlert() {
+  const btn = document.getElementById('security-alert-btn');
+  const count = document.getElementById('security-alert-count');
+  if (!btn) return;
+  const n = getPendingAlerts().length;
+  btn.style.display = n ? '' : 'none';
+  if (count) {
+    count.textContent = n > 1 ? String(n) : '';
+    count.style.display = n > 1 ? '' : 'none';
+  }
+  btn.setAttribute('aria-label', n === 1 ? 'Security alert: 1 unreviewed login' : `Security alert: ${n} unreviewed logins`);
+}
+function addSecurityAlert(ev) {
+  const list = getPendingAlerts();
+  list.push({ ip: ev.ip || '', device: ev.device || '', at: ev.at || Date.now() });
+  setPendingAlerts(list);
+  renderSecurityAlert();
+}
+// The review step: open Security, refresh the list, clear the triangle.
+function openSecurityReview() {
+  setPendingAlerts([]);
+  renderSecurityAlert();
+  const panel = document.getElementById('settings-panel');
+  if (!panel || !panel.classList.contains('open')) {
+    if (typeof openSettings === 'function') openSettings();
+    else return;
+  }
+  try { refreshSessions(); } catch {}
+  // Expand the Security section even when collapsed, then scroll to it
+  try {
+    const sec = panel.querySelector('[data-sec="security"]');
+    if (sec) {
+      sec.classList.add('open');
+      const h3 = sec.querySelector('h3');
+      if (h3) h3.setAttribute('aria-expanded', 'true');
+      try { safeStorage.setItem('wt-settings-sec-security', 'true'); } catch {}
+      if (sec.scrollIntoView) sec.scrollIntoView({ block: 'start' });
+    }
+  } catch {}
 }
 
 let tunnelList = [];
