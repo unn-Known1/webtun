@@ -741,6 +741,11 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 .doc-toolbar .icon-btn { width: 26px; height: 26px; min-width: 26px; min-height: 26px; }
 #pdf-canvas-wrap { flex: 1; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 12px; background: var(--bg3); }
 #pdf-canvas-wrap canvas { background: white; box-shadow: 0 2px 12px rgba(0,0,0,0.3); border-radius: 2px; max-width: 100%; }
+/* Selectable text layer over each PDF canvas (transparent spans) */
+#pdf-canvas-wrap .pdf-page-slot { position: relative; }
+#pdf-canvas-wrap .textLayer { position: absolute; left: 50%; top: 0; transform: translateX(-50%); overflow: hidden; line-height: 1; }
+#pdf-canvas-wrap .textLayer > span { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0% 0%; }
+#pdf-canvas-wrap .textLayer ::selection { background: rgba(0, 100, 255, 0.3); }
 #epub-wrap { flex: 1; overflow: auto; display: flex; flex-direction: column; background: white; -webkit-overflow-scrolling: touch; }
 #epub-view { flex: 1; overflow: visible; position: relative; min-height: 100%; }
 #epub-view iframe { width: 100%; height: 100%; border: none; }
@@ -5571,7 +5576,29 @@ async function pdfRenderPageInto(pageNum, myGen, doc) {
     slot.style.minHeight = '';
     slot.style.background = 'transparent';
     slot.style.padding = '0';
+    slot.style.position = 'relative';
     slot.appendChild(canvas);
+    // Selectable text layer over the canvas (transparent spans). Sized to
+    // the displayed canvas so max-width shrinking stays aligned.
+    try {
+      const lib = window.pdfjsLib;
+      if (lib && typeof lib.renderTextLayer === 'function') {
+        const textContent = await page.getTextContent();
+        if (myGen !== _pdfRenderGen || _pdfDoc !== doc || !box.isConnected) return;
+        if (textContent && textContent.items && textContent.items.length) {
+          const dispW = canvas.clientWidth || styleW;
+          const k = dispW / styleW;
+          const textViewport = page.getViewport({ scale: _pdfScale * k });
+          const layer = document.createElement('div');
+          layer.className = 'textLayer';
+          layer.style.width = dispW + 'px';
+          layer.style.height = Math.round(styleH * k) + 'px';
+          slot.appendChild(layer);
+          const task = lib.renderTextLayer({ textContent, container: layer, viewport: textViewport });
+          if (task && task.promise) await task.promise;
+        }
+      }
+    } catch {}
     slot.dataset.rendered = '1';
     try { if (typeof page.cleanup === 'function') page.cleanup(); } catch {}
   } catch (e) {
