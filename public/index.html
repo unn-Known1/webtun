@@ -488,20 +488,22 @@ svg { display: block; }
 /* ═══════════════════════════════════════════════════════
    SIDEBAR / FILE EXPLORER
    ═══════════════════════════════════════════════════════ */
-#sidebar-header { display: flex; align-items: center; gap: 4px; padding: 3px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0; min-height: var(--tab-h); background: var(--bg2); }
+#sidebar-header { display: flex; align-items: center; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0; min-height: var(--tab-h); background: var(--bg2); }
 #sidebar-header { flex-wrap: wrap; height: auto; }
-/* Segmented history nav + group separators */
-.hdr-seg { display: flex; align-items: center; gap: 1px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 1px; flex-shrink: 0; }
-.hdr-seg .icon-btn { border-radius: calc(var(--radius) - 2px); }
+/* Flat toolbar groups — same chrome as #sidebar-footer */
+.hdr-seg { display: flex; align-items: center; gap: 4px; background: none; border: none; border-radius: 0; padding: 0; flex-shrink: 0; }
+.hdr-seg .icon-btn { border-radius: var(--radius); }
+#sidebar-header .icon-btn { width: 32px; height: 32px; min-width: 32px; min-height: 32px; }
 .hdr-sep { width: 1px; height: 18px; background: var(--border); margin: 0 3px; flex-shrink: 0; }
 /* Refresh spins while the list loads */
 #refresh-btn.spinning { color: var(--accent); pointer-events: none; }
 #refresh-btn.spinning svg { transform-box: fill-box; transform-origin: center; animation: hdrSpin 0.9s linear infinite; }
 @keyframes hdrSpin { to { transform: rotate(360deg); } }
-#path-bar { display: flex; align-items: center; gap: 2px; padding: 3px 6px; border-bottom: 1px solid var(--border); flex-shrink: 0; min-height: 30px; background: var(--bg2); }
-#path-segments { flex: 1; min-width: 0; display: flex; align-items: center; gap: 0; white-space: nowrap; overflow-x: auto; line-height: 1; scrollbar-width: none; font-size: 11px; color: var(--fg2); }
+#path-bar { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0; min-height: 34px; background: var(--bg2); }
+#path-segments { flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; white-space: nowrap; overflow-x: auto; line-height: 1; scrollbar-width: none; font-size: 12px; font-family: var(--font); color: var(--fg2); }
 #path-segments::-webkit-scrollbar { display: none; }
-#path-bar input { flex: 1; min-width: 40px; height: 24px; font-size: 12px; border-radius: var(--radius-sm); }
+#path-segments > svg { color: var(--accent) !important; margin-right: 2px; }
+#path-bar input { flex: 1; min-width: 40px; height: 28px; font-size: 12px; font-family: var(--font); background: var(--bg3); border: 1px solid var(--accent); border-radius: var(--radius-sm); padding: 0 8px; color: var(--fg); }
 #file-list-wrap { flex: 1; overflow-y: auto; min-height: 0; touch-action: pan-y; -webkit-overflow-scrolling: touch; position: relative; overscroll-behavior: contain; }
 #ptr-indicator { position: absolute; top: -40px; left: 0; right: 0; height: 36px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 11px; color: var(--fg2); opacity: 0; pointer-events: none; }
 #ptr-indicator .ptr-arrow { display: inline-flex; }
@@ -519,10 +521,10 @@ svg { display: block; }
 .empty-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
 .empty-actions .btn { font-size: 12px; padding: 4px 12px; }
 #path-bar.editing #path-segments, #path-bar.editing #path-edit-btn { display: none; }
-#path-segments a { transition: background var(--transition-fast); border-radius: var(--radius-sm); padding: 2px 6px !important; display: inline-flex !important; align-items: center; height: 24px; line-height: 1; }
-#path-segments a:hover { background: var(--bg3); }
-#path-segments .path-current { color: var(--fg); font-weight: 500; display: inline-flex; align-items: center; height: 24px; padding: 2px 4px; background: none; border: none; font-size: 11px; cursor: text; border-radius: var(--radius-sm); white-space: nowrap; }
-#path-segments .path-current:hover { background: var(--bg3); }
+#path-segments a { transition: background var(--transition-fast), color var(--transition-fast); border-radius: var(--radius-sm); padding: 2px 6px !important; display: inline-flex !important; align-items: center; height: 26px; line-height: 1; font-weight: 500; }
+#path-segments a:hover { background: var(--bg3); color: var(--fg); }
+#path-segments .path-current { color: var(--fg); font-weight: 700; display: inline-flex; align-items: center; height: 26px; padding: 2px 10px; background: var(--bg3); border: 1px solid var(--border); font-size: 12px; cursor: text; border-radius: var(--radius-sm); white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
+#path-segments .path-current:hover { background: var(--bg4); border-color: var(--accent); }
 @media (pointer: coarse) {
   #path-segments .path-current { font-size: 13px; }
   #path-segments a { padding: 6px 8px !important; }
@@ -581,7 +583,7 @@ svg { display: block; }
 #sidebar[data-select-mode="true"] .file-select-check { display: flex; }
 #sidebar[data-select-mode="true"] .file-item { padding-left: 6px; }
 .file-action-btn:hover { background: var(--border); color: var(--fg); }
-#sidebar-footer { padding: 6px 8px; border-top: 1px solid var(--border); display: flex; gap: 2px; flex-shrink: 0; }
+#sidebar-footer { padding: 6px 8px; border-top: 1px solid var(--border); display: flex; gap: 4px; flex-shrink: 0; background: var(--bg2); }
 #sidebar-footer .icon-btn { width: 32px; height: 32px; min-width: 32px; min-height: 32px; }
 .sidebar-action-btn { flex: 1; min-width: 60px; height: 28px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); color: var(--fg2); font-size: 11px; display: flex; align-items: center; justify-content: center; gap: 4px; transition: all var(--transition-fast); }
 .sidebar-action-btn:hover { background: var(--bg4); color: var(--fg); border-color: var(--accent); }
@@ -907,16 +909,18 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
    BOOKMARKS
    ═══════════════════════════════════════════════════════ */
 #bookmarks-header {
-  display: flex; align-items: center; gap: 7px;
-  padding: 8px 10px 6px; font-size: 10px; color: var(--fg2);
+  display: flex; align-items: center; gap: 8px;
+  margin: 6px 6px 2px; padding: 6px 10px; font-size: 11px; font-weight: 700; color: var(--fg);
   text-transform: uppercase; letter-spacing: 0.6px; font-family: var(--font-ui);
+  background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius);
   flex-shrink: 0; cursor: pointer; user-select: none;
 }
-#bookmarks-header:hover { color: var(--fg); }
-#bookmarks-header:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius-sm); }
-#bookmarks-header .bm-head-ico { display: inline-flex; color: var(--fg3); flex-shrink: 0; }
+#bookmarks-header:hover { color: var(--fg); background: var(--bg4); border-color: var(--accent); }
+#bookmarks-header:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: var(--radius); }
+#bookmarks-header .bm-head-ico { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; min-width: 22px; border-radius: 7px; color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); flex-shrink: 0; }
 #bookmarks-header:hover .bm-head-ico { color: var(--accent); }
-#bm-count { font-size: 9px; letter-spacing: 0.3px; border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; color: var(--fg2); }
+#bm-count { font-size: 9px; font-weight: 700; letter-spacing: 0.3px; border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); border-radius: 999px; padding: 1px 7px; color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+#bm-count:empty { display: none; }
 #bookmarks-header .bm-chev { margin-left: auto; display: inline-flex; color: var(--fg3); transition: transform var(--transition-fast); flex-shrink: 0; }
 #bookmarks-header[aria-expanded="true"] .bm-chev { transform: rotate(90deg); }
 #bookmarks-list { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--transition-normal); flex-shrink: 0; }
@@ -1170,6 +1174,12 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 .sys-bar-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width var(--transition-slow); }
 .sys-bar-fill.warn { background: var(--yellow); }
 .sys-bar-fill.danger { background: var(--red); }
+/* Live system-stats header icon — twin CPU/MEM gauge (mirrors the coffee-cup count) */
+#sys-ico-cpu, #sys-ico-mem { transition: width 0.6s ease, fill 0.6s ease; }
+#system-stats-btn.sys-warn { color: var(--yellow); }
+#system-stats-btn.sys-hot { color: var(--red); }
+#system-stats-btn.sys-hot #sys-ico-cpu, #system-stats-btn.sys-hot #sys-ico-mem { animation: sysHotBlink 1.2s ease-in-out infinite; }
+@keyframes sysHotBlink { 50% { opacity: 0.45; } }
 .sys-table-wrap { max-height: 180px; overflow-y: auto; }
 .sys-table { width: 100%; border-collapse: collapse; font-size: 11px; }
 .sys-table th { text-align: left; padding: 4px 6px; color: var(--fg2); border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg2); }
@@ -1306,7 +1316,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
     </button>
     <button class="icon-btn" id="system-stats-btn" aria-label="System Stats" title="System Stats" onclick="openSystemStats()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="4" rx="1"/><rect x="2" y="10" width="20" height="4" rx="1"/><rect x="2" y="18" width="20" height="4" rx="1"/><circle cx="6" cy="4" r="1" fill="currentColor"/><circle cx="6" cy="12" r="1" fill="currentColor"/><circle cx="6" cy="20" r="1" fill="currentColor"/></svg>
+      <svg id="sys-live-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="2.5" opacity="0.4"/><rect id="sys-ico-cpu" x="4.6" y="5.6" width="0" height="2.8" rx="1.4" stroke="none" style="fill:var(--accent)"/><rect x="3" y="14" width="18" height="6" rx="2.5" opacity="0.4"/><rect id="sys-ico-mem" x="4.6" y="15.6" width="0" height="2.8" rx="1.4" stroke="none" style="fill:var(--cyan)"/></svg>
     </button>
     <button class="icon-btn" id="tilesBtn" aria-label="Tiles Mode" title="Tiles Mode" onclick="toggleTiles()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
@@ -1334,32 +1344,32 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
     <div id="sidebar" role="navigation" aria-label="File explorer">
       <div id="sidebar-header">
         <div class="hdr-seg" role="group" aria-label="History navigation">
-          <button class="icon-btn" style="width:26px;height:26px;min-width:26px;min-height:26px" aria-label="Back" title="Back" onclick="navigateBack()" id="back-btn">
+          <button class="icon-btn" style="width:32px;height:32px;min-width:32px;min-height:32px" aria-label="Back" title="Back" onclick="navigateBack()" id="back-btn">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
           </button>
-          <button class="icon-btn" style="width:26px;height:26px;min-width:26px;min-height:26px" aria-label="Forward" title="Forward" onclick="navigateForward()" id="fwd-btn">
+          <button class="icon-btn" style="width:32px;height:32px;min-width:32px;min-height:32px" aria-label="Forward" title="Forward" onclick="navigateForward()" id="fwd-btn">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </button>
         </div>
-        <button class="icon-btn" style="width:28px;height:28px;min-width:28px;min-height:28px" aria-label="Go to terminal directory" title="Go to terminal directory" onclick="goToTerminalDir()" id="term-dir-btn">
+        <button class="icon-btn" style="width:32px;height:32px;min-width:32px;min-height:32px" aria-label="Go to terminal directory" title="Go to terminal directory" onclick="goToTerminalDir()" id="term-dir-btn">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
         </button>
         <span class="hdr-sep" aria-hidden="true"></span>
-        <button class="icon-btn" style="width:28px;height:28px;min-width:28px;min-height:28px" aria-label="Go up" title="Go up" onclick="navigateUp()">
+        <button class="icon-btn" style="width:32px;height:32px;min-width:32px;min-height:32px" aria-label="Go up" title="Go up" onclick="navigateUp()">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
         </button>
-        <button class="icon-btn" style="width:28px;height:28px;min-width:28px;min-height:28px" aria-label="Refresh" title="Refresh" onclick="refreshFiles()" id="refresh-btn">
+        <button class="icon-btn" style="width:32px;height:32px;min-width:32px;min-height:32px" aria-label="Refresh" title="Refresh" onclick="refreshFiles()" id="refresh-btn">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
         </button>
         <span class="hdr-sep" aria-hidden="true"></span>
-        <button class="icon-btn" style="width:28px;height:28px;min-width:28px;min-height:28px" aria-label="Toggle select mode" title="Toggle select mode" onclick="toggleSelectMode()">
+        <button class="icon-btn" style="width:32px;height:32px;min-width:32px;min-height:32px" aria-label="Toggle select mode" title="Toggle select mode" onclick="toggleSelectMode()">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="9 12 11 14 15 10"/></svg>
         </button>
       </div>
       <div id="path-bar">
         <div id="path-segments" role="navigation" aria-label="Breadcrumb">/</div>
         <input id="path-input" type="text" placeholder="Path…" aria-label="File path" style="display:none">
-        <button class="icon-btn" id="path-edit-btn" style="width:24px;height:24px;flex-shrink:0" aria-label="Edit path" title="Edit path (type any path, Enter to go)" onclick="enterPathEdit()">
+        <button class="icon-btn" id="path-edit-btn" style="width:28px;height:28px;min-width:28px;min-height:28px;flex-shrink:0" aria-label="Edit path" title="Edit path (type any path, Enter to go)" onclick="enterPathEdit()">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>
         </button>
       </div>
@@ -1761,6 +1771,14 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
             <div class="toggle" id="s-autostart" role="switch" tabindex="0" aria-checked="false" onclick="toggleSetting('autostart')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('autostart')}"><input type="checkbox" id="s-autostart-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
           </div>
         </div>
+        <div class="settings-section" data-sec="features">
+          <h3>Features</h3>
+          <div class="setting-row">
+            <label for="s-gitEnabled-cb">Git Panel</label>
+            <div class="toggle on" id="s-gitEnabled" role="switch" tabindex="0" aria-checked="true" onclick="toggleSetting('gitEnabled')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('gitEnabled')}"><input type="checkbox" id="s-gitEnabled-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
+          </div>
+          <div style="font-size:11px;color:var(--fg3);margin-top:6px">Show the Git section in the sidebar and enable git status checks.</div>
+        </div>
         <div class="settings-section" data-sec="tunnel">
           <h3>Tunnel</h3>
           <div class="setting-row" style="flex-wrap:wrap;gap:6px">
@@ -2066,7 +2084,8 @@ let hasTmux = false;
   let settings = {
   theme: 'light', fontSize: 14, font: "'JetBrains Mono', 'SF Mono', 'Fira Code', Consolas, monospace",
   cursor: 'block', blink: true, scrollback: 5000, bell: false,
-  mobilekeys: false, confirmclose: true, datasaver: false, autostart: false, keepAwake: false, termRightClick: true
+  mobilekeys: false, confirmclose: true, datasaver: false, autostart: false, keepAwake: false, termRightClick: true,
+  gitEnabled: true
 };
 let serverPlatform = '';
 
@@ -2309,6 +2328,8 @@ async function unlockApp() {
   try { renderSecurityAlert(); } catch {}
   // Live session count on the coffee cup + slow refresh for stragglers
   try { updateSessionCupCount(); } catch {}
+  // Live CPU/MEM gauge on the system-stats icon (10s pulse, skips when hidden/datasaver)
+  try { startSysIconPulse(); } catch {}
   try {
     if (!window._sessCupTimer) {
       window._sessCupTimer = setInterval(() => {
@@ -2338,6 +2359,9 @@ async function unlockApp() {
   // Check tmux availability
   const sessInfo = await api('/api/sessions');
   hasTmux = sessInfo.tmux === true;
+
+  // About version (authed endpoint — must run after unlock when authToken is set)
+  try { refreshVersion(); } catch {}
 
   loadFiles(currentPath);
   renderBookmarks();
@@ -6513,6 +6537,7 @@ function loadSettings() {
       if (typeof s.keepAwake === 'boolean') settings.keepAwake = s.keepAwake;
       if (typeof s.screensaver === 'boolean') settings.screensaver = s.screensaver;
       if (typeof s.screensaverMin === 'number' && s.screensaverMin >= 1 && s.screensaverMin <= 120) settings.screensaverMin = s.screensaverMin;
+      if (typeof s.gitEnabled === 'boolean') settings.gitEnabled = s.gitEnabled;
     }
   } catch(e) { console.warn(e); }
   document.getElementById('s-theme').value = settings.theme;
@@ -6520,7 +6545,8 @@ function loadSettings() {
   document.getElementById('s-scrollback').value = settings.scrollback;
   document.getElementById('s-font').value = settings.font;
   document.getElementById('s-cursor').value = settings.cursor;
-  syncToggle('blink'); syncToggle('bell'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver'); syncToggle('termRightClick'); syncToggle('screensaver');
+  syncToggle('blink'); syncToggle('bell'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver'); syncToggle('termRightClick'); syncToggle('screensaver'); syncToggle('gitEnabled');
+  try { if (typeof applyGitEnabled === 'function') applyGitEnabled(); } catch {}
   syncKeepAwakeUI();
   if (settings.keepAwake && hasWakeLock) { requestWakeLock(); }
   if (isElectron) {
@@ -6538,7 +6564,7 @@ const DEFAULT_SETTINGS = {
   theme: 'light', fontSize: 14, font: "'JetBrains Mono', 'SF Mono', 'Fira Code', Consolas, monospace",
   cursor: 'block', blink: true, scrollback: 5000, bell: false,
   mobilekeys: false, confirmclose: true, datasaver: false, autostart: false, keepAwake: false, termRightClick: true,
-  screensaver: false, screensaverMin: 5
+  screensaver: false, screensaverMin: 5, gitEnabled: true
 };
 
 async function resetSettings() {
@@ -6552,7 +6578,7 @@ async function resetSettings() {
   document.getElementById('s-font').value = settings.font;
   document.getElementById('s-cursor').value = settings.cursor;
   document.getElementById('s-screensaver-min').value = settings.screensaverMin;
-  syncToggle('blink'); syncToggle('bell'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver'); syncToggle('termRightClick'); syncToggle('screensaver'); syncToggle('autostart');
+  syncToggle('blink'); syncToggle('bell'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver'); syncToggle('termRightClick'); syncToggle('screensaver'); syncToggle('gitEnabled'); syncToggle('autostart');
   // keepAwake is a header checkbox, not a settings toggle — resync it
   try { if (typeof syncKeepAwakeUI === 'function') syncKeepAwakeUI(); } catch {}
   // Clear an active auto-screensaver and the search filter (sections stay hidden otherwise)
@@ -6568,6 +6594,7 @@ async function resetSettings() {
   applyCursor(settings.cursor);
   const mk = document.getElementById('mobile-keys');
   if (mk) mk.style.display = settings.mobilekeys && window.innerWidth <= 768 ? 'flex' : 'none';
+  try { if (typeof applyGitEnabled === 'function') applyGitEnabled(); } catch {}
   toast('Settings reset', 'success');
 }
 
@@ -6615,12 +6642,28 @@ function toggleSetting(k) {
   if (k === 'datasaver') {
     if (settings.datasaver) {
       if (sysStatsTimer) { clearInterval(sysStatsTimer); sysStatsTimer = null; }
+      try { stopSysIconPulse(); resetSysIcon(); } catch {}
     } else {
+      try { startSysIconPulse(); } catch {}
       if (document.getElementById('sys-overlay').classList.contains('open')) {
         refreshSystemStats(true);
       }
     }
   }
+  if (k === 'gitEnabled') {
+    try { applyGitEnabled(); } catch {}
+  }
+}
+
+function applyGitEnabled() {
+  const section = document.getElementById('git-section');
+  if (!section) return;
+  if (settings.gitEnabled === false) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = '';
+  try { if (typeof currentPath !== 'undefined' && currentPath) refreshGitPanel(currentPath, true); } catch {}
 }
 
 function openSettings() {
@@ -6681,6 +6724,7 @@ const _secIcons = {
   terminal: '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>',
   interface: '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/><circle cx="9" cy="6" r="2.2"/><circle cx="15" cy="12" r="2.2"/><circle cx="7" cy="18" r="2.2"/>',
   tunnel: '<path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>',
+  features: '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/>',
   reset: '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>',
   about: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>'
 };
@@ -8542,6 +8586,7 @@ function toggleGitPanel() {
 async function refreshGitPanel(dir, manual) {
   const section = document.getElementById('git-section');
   if (!section) return;
+  if (typeof settings !== 'undefined' && settings.gitEnabled === false) { section.style.display = 'none'; return; }
   if (gitUnsupported || !dir) { if (gitUnsupported) section.style.display = 'none'; return; }
   // Skip background probes when the explorer is hidden; collapse overlaps
   const _sb = document.getElementById('sidebar');
@@ -9330,6 +9375,64 @@ async function renderCmdHist() {
 // ═══════════════════════════════════════════════════════
 let sysStatsTimer = null;
 
+// ── Live header icon: twin CPU/MEM gauge (same idea as the coffee-cup count) ──
+// Paints actual usage into #sys-ico-cpu / #sys-ico-mem: width = %, color =
+// base (accent/cyan) ≤50%, yellow ≤80%, red above. Tooltip carries the numbers.
+function paintSysIcon(cpuPct, memPct) {
+  const cpu = document.getElementById('sys-ico-cpu');
+  const mem = document.getElementById('sys-ico-mem');
+  const btn = document.getElementById('system-stats-btn');
+  if (!cpu || !mem || !btn) return;
+  const W = 14.8; // max inner fill width of the gauge tracks
+  const c = Math.max(0, Math.min(100, Number(cpuPct) || 0));
+  const m = Math.max(0, Math.min(100, Number(memPct) || 0));
+  cpu.setAttribute('width', (c / 100 * W).toFixed(1));
+  mem.setAttribute('width', (m / 100 * W).toFixed(1));
+  const col = (v, base) => v > 80 ? 'var(--red)' : v > 50 ? 'var(--yellow)' : base;
+  cpu.style.fill = col(c, 'var(--accent)');
+  mem.style.fill = col(m, 'var(--cyan)');
+  btn.classList.toggle('sys-warn', (c > 50 && c <= 80) || (m > 50 && m <= 80));
+  btn.classList.toggle('sys-hot', c > 80 || m > 80);
+  const label = `System Stats — CPU ${Math.round(c)}% · MEM ${Math.round(m)}%`;
+  btn.setAttribute('title', label);
+  btn.setAttribute('aria-label', label);
+}
+function resetSysIcon() {
+  const cpu = document.getElementById('sys-ico-cpu');
+  const mem = document.getElementById('sys-ico-mem');
+  const btn = document.getElementById('system-stats-btn');
+  if (!cpu || !mem || !btn) return;
+  cpu.setAttribute('width', 0);
+  mem.setAttribute('width', 0);
+  cpu.style.fill = 'var(--accent)';
+  mem.style.fill = 'var(--cyan)';
+  btn.classList.remove('sys-warn', 'sys-hot');
+  btn.setAttribute('title', 'System Stats');
+  btn.setAttribute('aria-label', 'System Stats');
+}
+async function updateSysIcon() {
+  if (!window._appUnlocked || !authToken) return;
+  if (typeof settings !== 'undefined' && settings.datasaver) return;
+  if (document.hidden) return;
+  try {
+    const s = await api('/api/system');
+    if (!s || !s.cpu || !s.memory) return;
+    paintSysIcon(s.cpu.usage, s.memory.percent);
+  } catch {}
+}
+let _sysIconTimer = null;
+function startSysIconPulse() {
+  stopSysIconPulse();
+  try { updateSysIcon(); } catch {}
+  _sysIconTimer = setInterval(() => { try { updateSysIcon(); } catch {} }, 10000);
+}
+function stopSysIconPulse() {
+  if (_sysIconTimer) { clearInterval(_sysIconTimer); _sysIconTimer = null; }
+}
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && window._appUnlocked && !settings.datasaver) { try { updateSysIcon(); } catch {} }
+});
+
 function openSystemStats() {
   openOverlay('sys-overlay');
   document.getElementById('sys-loading').style.display = 'block';
@@ -9381,6 +9484,9 @@ async function refreshSystemStats(showLoading) {
   document.getElementById('sys-mem-sub').textContent = `${formatSize(data.memory.used)} / ${formatSize(data.memory.total)}`;
   document.getElementById('sys-mem-bar').style.width = Math.min(data.memory.percent, 100) + '%';
   document.getElementById('sys-mem-bar').className = 'sys-bar-fill' + (data.memory.percent > 80 ? ' danger' : data.memory.percent > 50 ? ' warn' : '');
+
+  // Overlay already paid for this payload — mirror it onto the header gauge for free
+  try { paintSysIcon(data.cpu.usage, data.memory.percent); } catch {}
 
   if (data.disk && data.disk.length > 0) {
     const d = data.disk[0];
@@ -9536,11 +9642,13 @@ function registerSW() {
 // ═══════════════════════════════════════════════════════
 init().catch(e => console.error('Init failed:', e));
 
-// Set version in About section (authed endpoint — header included)
-fetch('/api/version', { headers: { 'x-pin-token': authToken } }).then(r => r.json()).then(d => {
-  const el = document.getElementById('about-version');
-  if (el) el.textContent = 'v' + (d.version || '');
-}).catch(() => {});
+// Set version in About section (authed — call only after unlock; api() injects the token)
+function refreshVersion() {
+  api('/api/version').then(d => {
+    const el = document.getElementById('about-version');
+    if (el && d && d.version) el.textContent = 'v' + d.version;
+  }).catch(() => {});
+}
 
 // Warn before closing if there are unsaved changes or active terminals
 window.addEventListener('beforeunload', e => {
