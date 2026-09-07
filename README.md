@@ -272,5 +272,5 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh
 ---
 
 <p align="center">
-  <sub>Built by <a href="https://github.com/unn-known1">Gaurang Patel</a> · PolyForm Noncommercial 1.0.0 (v1.5.7+; ≤v1.5.6 MIT)</sub>
+  <sub>Built by <a href="https://github.com/unn-Known1">Gaurang Patel</a> · PolyForm Noncommercial 1.0.0 (v1.5.7+; ≤v1.5.6 MIT)</sub>
 </p>
