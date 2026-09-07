@@ -6779,19 +6779,45 @@ function setupSettingsSections() {
     h3.setAttribute('tabindex', '0');
     let open = false;
     try { open = safeStorage.getItem('wt-settings-sec-' + slug) === 'true'; } catch {}
-    const apply = () => {
-      sec.classList.toggle('open', open);
-      h3.setAttribute('aria-expanded', String(open));
+    const paint = (v) => {
+      sec.classList.toggle('open', v);
+      h3.setAttribute('aria-expanded', String(v));
     };
+    const apply = () => paint(open);
     sec._secApply = apply;
     const toggle = () => {
-      open = !open;
+      if (sec._secPeeked) {
+        // Click while peeked: pin it open instead of closing
+        sec._secPeeked = false;
+        open = true;
+      } else {
+        open = !open;
+      }
       try { safeStorage.setItem('wt-settings-sec-' + slug, String(open)); } catch {}
       apply();
     };
     h3.addEventListener('click', toggle);
     h3.addEventListener('keydown', e => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    });
+    // Hover-peek (mirrors bookmarks): auto-open on hover intent, auto-close
+    // on leave. Click/Enter/Space while peeked pins the section open.
+    let _secHoverTimer = null;
+    sec.addEventListener('mouseenter', () => {
+      clearTimeout(_secHoverTimer);
+      if (sec.classList.contains('open')) return;
+      if (window.matchMedia && window.matchMedia('(hover: none)').matches) return;
+      const si = document.getElementById('settings-search');
+      if (si && si.value.trim()) return; // search owns visibility while filtering
+      _secHoverTimer = setTimeout(() => {
+        if (!sec.classList.contains('open')) { sec._secPeeked = true; paint(true); }
+      }, 110);
+    });
+    sec.addEventListener('mouseleave', () => {
+      clearTimeout(_secHoverTimer);
+      if (!sec._secPeeked) return;
+      sec._secPeeked = false;
+      apply(); // restore persisted open/closed state
     });
     apply();
   });
