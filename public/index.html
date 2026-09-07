@@ -909,17 +909,17 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
    BOOKMARKS
    ═══════════════════════════════════════════════════════ */
 #bookmarks-header {
-  display: flex; align-items: center; gap: 8px;
-  margin: 6px 6px 2px; padding: 6px 10px; font-size: 11px; font-weight: 700; color: var(--fg);
-  text-transform: uppercase; letter-spacing: 0.6px; font-family: var(--font-ui);
-  background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius);
+  display: flex; align-items: center; gap: 3px;
+  padding: 2px 6px; font-size: 10px; color: var(--fg2);
+  text-transform: uppercase; letter-spacing: 0.3px; font-family: var(--font-ui);
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0; cursor: pointer; user-select: none;
 }
-#bookmarks-header:hover { color: var(--fg); background: var(--bg4); border-color: var(--accent); }
+#bookmarks-header:hover { color: var(--fg); }
 #bookmarks-header:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: var(--radius); }
-#bookmarks-header .bm-head-ico { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; min-width: 22px; border-radius: 7px; color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); flex-shrink: 0; }
-#bookmarks-header:hover .bm-head-ico { color: var(--accent); }
-#bm-count { font-size: 9px; font-weight: 700; letter-spacing: 0.3px; border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); border-radius: 999px; padding: 1px 7px; color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+#bookmarks-header .bm-head-ico { display: inline-flex; align-items: center; justify-content: center; color: inherit; background: none; width: auto; height: auto; min-width: 0; flex-shrink: 0; }
+#bookmarks-header:hover .bm-head-ico { color: inherit; }
+#bm-count { font-size: 10px; color: var(--fg3); }
 #bm-count:empty { display: none; }
 #bookmarks-header .bm-chev { margin-left: auto; display: inline-flex; color: var(--fg3); transition: transform var(--transition-fast); flex-shrink: 0; }
 #bookmarks-header[aria-expanded="true"] .bm-chev { transform: rotate(90deg); }
@@ -1004,6 +1004,11 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 .git-stash-item button { background: none; border: none; color: var(--fg2); cursor: pointer; font-size: 10px; padding: 2px 4px; border-radius: var(--radius-sm); flex-shrink: 0; }
 .git-stash-item button:hover { background: var(--bg4); color: var(--fg); }
 .git-file button.danger:hover { color: var(--red); }
+.git-stats { flex-shrink: 0; font-size: 10px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.git-add { color: var(--green); }
+.git-del { color: var(--red); }
+.git-stats-binary, .git-stats-new { flex-shrink: 0; font-size: 10px; color: var(--fg3); white-space: nowrap; }
+#git-count { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 /* ── Diff colors (editor diff view) ── */
 .CodeMirror .diff-add { background: rgba(46,160,67,.14); color: var(--green); }
 .CodeMirror .diff-del { background: rgba(248,81,73,.13); color: var(--red); }
@@ -1765,6 +1770,10 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
           <div class="setting-row">
             <label for="s-screensaver-min">Screensaver idle (min)</label>
             <input type="number" id="s-screensaver-min" min="1" max="120" value="5" onchange="applyScreensaverMin(+this.value)">
+          </div>
+          <div class="setting-row">
+            <label for="screensaver-start-btn">Preview screensaver</label>
+            <button class="btn btn-ghost" id="screensaver-start-btn" style="height:28px;padding:0 12px;font-size:12px;flex-shrink:0" onclick="startScreensaverNow()">Start now</button>
           </div>
           <div class="setting-row electron-only" style="display:none">
             <label for="s-autostart-cb">Start on Login</label>
@@ -3160,6 +3169,12 @@ function unpinLaunchpad() {
   lpAuto = false;
   const hb = document.getElementById('home-btn');
   if (hb) { hb.classList.remove('active'); hb.setAttribute('aria-pressed', 'false'); }
+  updateLaunchpad();
+}
+// Manual preview from Settings → Interface → Preview screensaver.
+// Works even when the auto-screensaver toggle is off.
+function startScreensaverNow() {
+  lpAuto = true;
   updateLaunchpad();
 }
 let lpPulseTimer = null;
@@ -8641,7 +8656,7 @@ async function _refreshGitPanelInner(section, dir, manual) {
   if (st.upstream) document.getElementById('git-sync').title = 'upstream ' + st.upstream;
   else document.getElementById('git-sync').removeAttribute('title');
   const total = st.staged.length + st.unstaged.length + st.untracked.length + st.unmerged.length;
-  document.getElementById('git-count').textContent = total ? String(total) : '';
+  renderGitCount(total, st.totalAdded, st.totalDeleted);
   if (!gitOpen) return; // collapsed: header numbers set, skip detail fetches
   renderGitFiles(st);
   try {
@@ -8781,6 +8796,80 @@ function gitViewUntracked(rel) {
   if (/[/\\]$/.test(rel)) loadFiles(abs);
   else openFileEditor(abs);
 }
+function gitStatsText(e) {
+  if (e && e.binary) return null;
+  if (e && typeof e.added === 'number' && typeof e.deleted === 'number') return { added: e.added, deleted: e.deleted };
+  if (e && typeof e.added === 'number') return { added: e.added, deleted: 0 };
+  return null;
+}
+function gitStatsEl(e, cls) {
+  if (e && e.binary) {
+    const b = document.createElement('span');
+    b.className = 'git-stats-binary';
+    b.textContent = 'binary';
+    b.title = 'Binary file — line count unavailable';
+    return b;
+  }
+  const s = gitStatsText(e);
+  if (!s) {
+    if (cls === 'untracked') {
+      const n = document.createElement('span');
+      n.className = 'git-stats-new';
+      n.textContent = 'new';
+      return n;
+    }
+    return null;
+  }
+  const w = document.createElement('span');
+  w.className = 'git-stats';
+  w.title = s.added + ' additions, ' + s.deleted + ' deletions';
+  const a = document.createElement('span');
+  a.className = 'git-add';
+  a.textContent = '+' + s.added;
+  w.appendChild(a);
+  w.appendChild(document.createTextNode(' '));
+  const d = document.createElement('span');
+  d.className = 'git-del';
+  d.textContent = '−' + s.deleted;
+  w.appendChild(d);
+  return w;
+}
+function gitGroupStats(list) {
+  let a = 0, d = 0, known = false;
+  for (const e of (list || [])) {
+    if (e && e.binary) { known = true; continue; }
+    if (e && typeof e.added === 'number') { a += e.added; known = true; }
+    if (e && typeof e.deleted === 'number') { d += e.deleted; known = true; }
+  }
+  return known ? { added: a, deleted: d } : null;
+}
+function renderGitCount(total, added, deleted) {
+  const el = document.getElementById('git-count');
+  if (!el) return;
+  el.innerHTML = '';
+  if (!total) return;
+  const n = document.createElement('span');
+  n.textContent = total + (total === 1 ? ' file' : ' files');
+  el.appendChild(n);
+  if (typeof added === 'number' && typeof deleted === 'number' && (added > 0 || deleted > 0)) {
+    const w = document.createElement('span');
+    w.className = 'git-stats';
+    w.title = added + ' additions, ' + deleted + ' deletions';
+    const a = document.createElement('span');
+    a.className = 'git-add';
+    a.textContent = '+' + added;
+    w.appendChild(a);
+    w.appendChild(document.createTextNode(' '));
+    const d = document.createElement('span');
+    d.className = 'git-del';
+    d.textContent = '−' + deleted;
+    w.appendChild(d);
+    el.appendChild(w);
+    el.title = added + ' additions, ' + deleted + ' deletions';
+  } else {
+    el.removeAttribute('title');
+  }
+}
 function gitFileRow(e, cls) {
   const row = document.createElement('div');
   row.className = 'git-file ' + cls;
@@ -8793,6 +8882,8 @@ function gitFileRow(e, cls) {
   nm.textContent = e.path;
   nm.title = e.path;
   row.appendChild(nm);
+  const stats = gitStatsEl(e, cls);
+  if (stats) row.appendChild(stats);
   const addBtn = (label, title, fn, danger) => {
     const b = document.createElement('button');
     b.textContent = label; b.title = title;
@@ -8832,6 +8923,23 @@ function renderGitFiles(st) {
     const h = document.createElement('div');
     h.className = 'git-group-label';
     h.textContent = label + ' (' + list.length + ')';
+    const gs = gitGroupStats(list);
+    if (gs && (gs.added > 0 || gs.deleted > 0)) {
+      const w = document.createElement('span');
+      w.className = 'git-stats';
+      w.style.marginLeft = '6px';
+      w.title = gs.added + ' additions, ' + gs.deleted + ' deletions';
+      const a = document.createElement('span');
+      a.className = 'git-add';
+      a.textContent = '+' + gs.added;
+      w.appendChild(a);
+      w.appendChild(document.createTextNode(' '));
+      const d = document.createElement('span');
+      d.className = 'git-del';
+      d.textContent = '−' + gs.deleted;
+      w.appendChild(d);
+      h.appendChild(w);
+    }
     box.appendChild(h);
     for (const e of list) box.appendChild(gitFileRow(e, cls));
   }

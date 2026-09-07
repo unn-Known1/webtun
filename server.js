@@ -2180,6 +2180,51 @@ function gitUnquote(s) {
   return s;
 }
 
+function parseGitNumstat(raw) {
+  // `git diff --numstat` lines: "<added>\t<deleted>\t<path>"
+  // Binary files show "-\t-\t<path>". Renames show "old => new".
+  const map = new Map();
+  for (const line of (raw || '').split('\n')) {
+    if (!line) continue;
+    const parts = line.split('\t');
+    if (parts.length < 3) continue;
+    const aRaw = parts[0].trim(), dRaw = parts[1].trim();
+    let p = gitUnquote(parts.slice(2).join('\t'));
+    // Rename format: "old => new" or "{a/b => c/d}/file" — take new side
+    const arrow = p.indexOf(' => ');
+    if (arrow !== -1) p = p.slice(arrow + 4).replace(/^[{}]/, '').replace(/[{}]$/, '');
+    if (!p) continue;
+    if (aRaw === '-' || dRaw === '-') { map.set(p, { binary: true }); continue; }
+    const added = parseInt(aRaw, 10), deleted = parseInt(dRaw, 10);
+    if (isNaN(added) || isNaN(deleted)) continue;
+    const prev = map.get(p);
+    if (prev && !prev.binary) map.set(p, { added: prev.added + added, deleted: prev.deleted + deleted });
+    else map.set(p, { added, deleted });
+  }
+  return map;
+}
+
+// Line-count untracked files so new files show as "+N" like GitHub.
+// Capped: max 100 files, skip dirs / files >1MB / unreadable / likely binary.
+async function countUntrackedLines(root, files) {
+  const out = new Map();
+  const capped = (files || []).slice(0, 100);
+  await Promise.all(capped.map(async (f) => {
+    try {
+      if (!f || /[/\\]$/.test(f)) return;
+      const abs = path.resolve(root, f);
+      if (!pathContained(root, abs)) return;
+      const st = await fsPromises.stat(abs);
+      if (!st.isFile() || st.size > 1024 * 1024) return;
+      const buf = await fsPromises.readFile(abs);
+      if (buf.includes(0)) return; // binary
+      const text = buf.toString('utf8');
+      const lines = text ? text.split('\n').length - (text.endsWith('\n') ? 1 : 0) : 0;
+      out.set(f, lines);
+    } catch {}
+  }));
+  return out;
+}
 function parseGitStatus(raw) {
   const lines = (raw || '').split('\n');
   const head = lines[0] || '';
@@ -2224,6 +2269,39 @@ app.get('/api/git/status', rateLimiter, checkPin, async (req, res) => {
     }
     const raw = await spawnRead('git', ['-C', root, 'status', '--porcelain=v1', '-b']);
     const st = parseGitStatus(raw);
+    // Per-file line stats (GitHub-style +added/-removed) via numstat.
+    // Best-effort: never fail the whole status when numstat fails.
+    try {
+      const [unstagedRaw, stagedRaw] = await Promise.all([
+        spawnRead('git', ['-C', root, 'diff', '--numstat']).catch(() => ''),
+        spawnRead('git', ['-C', root, 'diff', '--cached', '--numstat']).catch(() => ''),
+      ]);
+      const unstagedMap = parseGitNumstat(unstagedRaw);
+      const stagedMap = parseGitNumstat(stagedRaw);
+      for (const e of st.unstaged) {
+        const s = unstagedMap.get(e.path);
+        if (s && s.binary) e.binary = true;
+        else if (s) { e.added = s.added; e.deleted = s.deleted; }
+      }
+      for (const e of st.staged) {
+        const s = stagedMap.get(e.path);
+        if (s && s.binary) e.binary = true;
+        else if (s) { e.added = s.added; e.deleted = s.deleted; }
+      }
+    } catch {}
+    try {
+      const lineCounts = await countUntrackedLines(root, st.untracked.map(e => e.path));
+      for (const e of st.untracked) {
+        if (lineCounts.has(e.path)) { e.added = lineCounts.get(e.path); e.deleted = 0; }
+      }
+    } catch {}
+    // Totals across staged + unstaged + untracked (unmerged excluded)
+    let totalAdded = 0, totalDeleted = 0;
+    for (const e of [...st.staged, ...st.unstaged, ...st.untracked]) {
+      if (typeof e.added === 'number') totalAdded += e.added;
+      if (typeof e.deleted === 'number') totalDeleted += e.deleted;
+    }
+    st.totalAdded = totalAdded; st.totalDeleted = totalDeleted;
     if (st.detached) {
       try { st.branch = (await spawnRead('git', ['-C', root, 'rev-parse', '--short', 'HEAD'])).trim() + ' (detached)'; } catch {}
     }
