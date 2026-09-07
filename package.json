@@ -102,11 +102,13 @@
     "yauzl": "^3.4.0"
   },
   "devDependencies": {
-    "electron": "^42.2.0",
-    "electron-builder": "^26.8.1",
+    "electron": "^44.2.0",
+    "electron-builder": "^26.16.0",
     "nodemon": "^3.1.14"
   },
   "overrides": {
+    "@electron/asar": "^4.3.0",
+    "@electron/get": "^5.1.0",
     "array-flatten": "npm:@socketregistry/array-flatten@^1",
     "define-properties": "npm:@socketregistry/define-properties@^1",
     "es-define-property": "npm:@socketregistry/es-define-property@^1",
@@ -129,6 +131,8 @@
     "ws": "^8.21.0"
   },
   "resolutions": {
+    "@electron/asar": "^4.3.0",
+    "@electron/get": "^5.1.0",
     "array-flatten": "npm:@socketregistry/array-flatten@^1",
     "define-properties": "npm:@socketregistry/define-properties@^1",
     "es-define-property": "npm:@socketregistry/es-define-property@^1",
