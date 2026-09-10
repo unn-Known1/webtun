@@ -974,7 +974,31 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 #git-commit-row input { flex: 1; min-width: 0; height: 28px; font-size: 12px; }
 #git-commit-row .sidebar-action-btn { flex-shrink: 0; min-width: 0; padding: 0 10px; }
 #git-all-row { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--fg2); padding: 2px 8px; cursor: pointer; }
-#git-actions-row { display: flex; gap: 4px; padding: 4px 6px; }
+#git-actions-row { display: flex; gap: 4px; padding: 4px 6px; flex-wrap: wrap; align-items: center; }
+#git-actions-row select { height: 26px; font-size: 11px; background: var(--bg3); color: var(--fg2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+#git-identity-row { display: flex; gap: 4px; padding: 4px 6px; flex-wrap: wrap; }
+#git-identity-row input { flex: 1; min-width: 90px; height: 26px; font-size: 11px; }
+#git-reset-row { display: flex; gap: 4px; padding: 4px 6px; align-items: center; }
+#git-reset-row select, #git-reset-row input { height: 26px; font-size: 11px; }
+#git-reset-row select { background: var(--bg3); color: var(--fg2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+#git-reset-row input { width: 90px; }
+#git-tags-row { display: flex; gap: 4px; padding: 4px 6px; }
+#git-tags-row input { height: 26px; font-size: 11px; }
+#git-tag-input { width: 90px; flex-shrink: 0; }
+#git-tag-msg { flex: 1; min-width: 0; }
+.git-tag-item { display: flex; align-items: center; gap: 6px; padding: 1px 6px 1px 10px; font-size: 11px; font-family: var(--font); }
+.git-tag-item:hover { background: var(--bg3); }
+.git-tag-item .git-tag-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); }
+.git-tag-item button { background: none; border: none; color: var(--fg2); cursor: pointer; font-size: 10px; padding: 2px 4px; border-radius: var(--radius-sm); flex-shrink: 0; }
+.git-tag-item button:hover { background: var(--bg4); color: var(--fg); }
+.git-tag-item button.danger:hover { color: var(--red); }
+.git-hunks { flex-basis: 100%; margin: 2px 0 4px 22px; border-left: 2px solid var(--border); padding-left: 6px; }
+.git-hunk { margin-bottom: 6px; }
+.git-hunk-head { font-size: 10px; color: var(--accent); font-family: var(--font); }
+.git-hunk-body { font-size: 10px; font-family: var(--font); white-space: pre-wrap; word-break: break-all; background: var(--bg); border-radius: var(--radius-sm); padding: 4px 6px; margin: 2px 0; max-height: 160px; overflow-y: auto; }
+.git-hunk-body .ha { color: var(--green); }
+.git-hunk-body .hd { color: var(--red); }
+.git-hunk-body .hh { color: var(--accent); }
 #git-log { border-top: 1px solid var(--border); }
 .git-log-item { padding: 3px 10px; font-size: 10px; border-bottom: 1px solid transparent; }
 .git-log-item:hover { background: var(--bg3); }
@@ -1408,9 +1432,16 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
         </div>
         <div id="git-panel">
           <div id="git-files"></div>
+          <div id="git-identity-row" style="display:none">
+            <input id="git-id-name" type="text" placeholder="Your name" aria-label="Git author name" maxlength="100">
+            <input id="git-id-email" type="email" placeholder="you@example.com" aria-label="Git author email" maxlength="100">
+            <button class="sidebar-action-btn" onclick="gitSaveIdentity()" title="Save author identity for this repo">Save</button>
+          </div>
+          <div class="field-error" id="git-identity-error" role="alert" style="padding:0 8px"></div>
           <div id="git-commit-row">
             <input id="git-msg" type="text" placeholder="Commit message…" aria-label="Commit message" maxlength="1000" oninput="clearFieldError('git-msg-error')">
             <button class="sidebar-action-btn" id="git-commit-btn" onclick="gitCommit()" title="Commit staged changes">Commit</button>
+            <button class="sidebar-action-btn" id="git-amend-btn" onclick="gitAmend()" title="Amend last commit with staged changes">Amend</button>
           </div>
           <div class="field-error" id="git-msg-error" role="alert" style="padding:0 8px"></div>
           <label id="git-all-row"><input type="checkbox" id="git-all-cb"> Stage all + commit</label>
@@ -1420,10 +1451,33 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
           </div>
           <div id="git-stash-list"></div>
           <div id="git-actions-row">
+            <select id="git-pull-mode" title="Pull strategy" aria-label="Pull strategy">
+              <option value="merge">merge</option>
+              <option value="rebase">rebase</option>
+              <option value="ff-only">ff-only</option>
+            </select>
             <button class="sidebar-action-btn" id="git-pull-btn" onclick="gitPull()" title="git pull">Pull</button>
             <button class="sidebar-action-btn" id="git-push-btn" onclick="gitPush()" title="git push">Push</button>
+            <button class="sidebar-action-btn" id="git-fetch-btn" onclick="gitFetch()" title="git fetch --all">Fetch</button>
             <button class="sidebar-action-btn" onclick="refreshGitPanel(currentPath, true)" title="Refresh git status">Refresh</button>
           </div>
+          <div id="git-reset-row">
+            <select id="git-reset-mode" title="Reset mode" aria-label="Reset mode">
+              <option value="mixed">mixed</option>
+              <option value="soft">soft</option>
+              <option value="hard">hard</option>
+            </select>
+            <input id="git-reset-ref" type="text" value="HEAD" aria-label="Reset target" spellcheck="false">
+            <button class="sidebar-action-btn" onclick="gitReset()" title="Reset to ref">Reset</button>
+          </div>
+          <div class="field-error" id="git-reset-error" role="alert" style="padding:0 8px"></div>
+          <div id="git-tags-row">
+            <input id="git-tag-input" type="text" placeholder="v1.0.0" aria-label="New tag name" maxlength="200">
+            <input id="git-tag-msg" type="text" placeholder="message (optional)" aria-label="Tag message" maxlength="500">
+            <button class="sidebar-action-btn" onclick="gitTagCreate()" title="Create tag">Tag</button>
+          </div>
+          <div class="field-error" id="git-tag-error" role="alert" style="padding:0 8px"></div>
+          <div id="git-tags-list"></div>
           <div id="git-log"></div>
         </div>
       </div>
@@ -8689,6 +8743,12 @@ async function _refreshGitPanelInner(section, dir, manual) {
     if (manual) toast('git is not installed on the server', 'warning');
     return;
   }
+  // Transient failure (rate limit, timeout, 500) — keep previous state.
+  // Only an explicit isRepo:false means "not a repository".
+  if (st.error) {
+    if (manual) toast(st.error, 'warning');
+    return;
+  }
   if (!st.isRepo) {
     // Slim init affordance instead of hiding the section entirely
     gitRepo = false; gitRoot = null;
@@ -8720,8 +8780,10 @@ async function _refreshGitPanelInner(section, dir, manual) {
     if (myReq !== _gitReq) return;
     renderGitBranches((b && b.branches) || [], st);
   } catch {}
-  refreshGitStash();
-  refreshGitLog();
+  refreshGitStash(myReq);
+  refreshGitLog(myReq);
+  refreshGitIdentity();
+  refreshGitTags();
 }
 function renderGitBranches(branches, st) {
   const sel = document.getElementById('git-branch-sel');
@@ -8793,18 +8855,21 @@ async function gitStash() {
   toast('Stashed', 'success');
   refreshGitPanel(currentPath);
 }
-async function gitStashPop() {
+async function gitStashPop(ref) {
   if (!gitRoot) return;
-  const r = await api('/api/git/stash/pop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: gitRoot }) });
+  const body = { path: gitRoot };
+  if (ref) body.ref = ref;
+  const r = await api('/api/git/stash/pop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!r || r.error) { toast((r && r.error) || 'Pop failed', 'error'); return; }
   toast('Stash restored', 'success');
   refreshGitPanel(currentPath);
 }
-async function refreshGitStash() {
+async function refreshGitStash(myReq) {
   const box = document.getElementById('git-stash-list');
   const cnt = document.getElementById('git-stash-count');
   if (!box || !gitRoot) return;
   const r = await api(`/api/git/stash?path=${encodeURIComponent(gitRoot)}`);
+  if (myReq !== undefined && myReq !== _gitReq) return;
   const list = ((r && r.stashes) || []).slice(0, 10);
   box.innerHTML = '';
   cnt.textContent = list.length ? list.length + (list.length === 1 ? ' stash' : ' stashes') : '';
@@ -8819,7 +8884,7 @@ async function refreshGitStash() {
     const b = document.createElement('button');
     b.textContent = 'Pop';
     b.title = 'Restore ' + (s.ref || 'stash');
-    b.addEventListener('click', gitStashPop);
+    b.addEventListener('click', () => gitStashPop(s.ref));
     d.appendChild(b);
     box.appendChild(d);
   }
@@ -8845,6 +8910,7 @@ async function gitDeleteUntracked(rel) {
   if (!r || r.error) { toast((r && r.error) || 'Delete failed', 'error'); return; }
   toast('Deleted ' + rel, 'success');
   loadFiles(currentPath);
+  refreshGitPanel(currentPath);
 }
 function gitViewUntracked(rel) {
   if (!gitRoot) return;
@@ -8944,22 +9010,25 @@ function gitFileRow(e, cls) {
     const b = document.createElement('button');
     b.textContent = label; b.title = title;
     if (danger) b.classList.add('danger');
-    b.addEventListener('click', ev => { ev.stopPropagation(); fn(); });
+    b.addEventListener('click', ev => { ev.stopPropagation(); fn(b); });
     row.appendChild(b);
   };
   if (cls === 'staged') {
     addBtn('Unstage', 'git restore --staged', () => gitStageOp('unstage', [e.path]));
     addBtn('Diff', 'staged diff', () => openGitDiff(e.path, true));
+    addBtn('Hunks', 'per-hunk unstage', b => toggleHunks(b, e.path, true));
   } else if (cls === 'unstaged') {
     addBtn('Stage', 'git add', () => gitStageOp('stage', [e.path]));
     addBtn('Diff', 'unstaged diff', () => openGitDiff(e.path, false));
+    addBtn('Hunks', 'per-hunk stage', b => toggleHunks(b, e.path, false));
     addBtn('Discard', 'revert worktree to HEAD', () => gitDiscardFile(e.path), true);
   } else if (cls === 'untracked') {
     addBtn('Stage', 'git add', () => gitStageOp('stage', [e.path]));
     addBtn('View', 'open file', () => gitViewUntracked(e.path));
     addBtn('Delete', 'permanently delete', () => gitDeleteUntracked(e.path), true);
   } else if (cls === 'unmerged') {
-    addBtn('Diff', 'diff', () => openGitDiff(e.path, false));
+    // Plain `git diff` is empty for unmerged paths — diff against HEAD instead
+    addBtn('Diff', 'conflict diff vs HEAD', () => openGitDiff(e.path, false, true));
   }
   return row;
 }
@@ -9026,28 +9095,46 @@ async function gitCommit() {
   setBtnBusy(btn, true);
   const r = await api('/api/git/commit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: gitRoot, message: msg, all: document.getElementById('git-all-cb').checked }) });
   setBtnBusy(btn, false);
-  if (!r || r.error) { showFieldError('git-msg-error', (r && r.error) || 'Commit failed'); return; }
+  if (!r || r.error) {
+    const msg_ = (r && r.error) || 'Commit failed';
+    if (gitIdentityError(msg_)) { refreshGitIdentity(true); toast('Set your author identity first', 'warning'); }
+    else showFieldError('git-msg-error', msg_);
+    return;
+  }
   input.value = '';
   document.getElementById('git-all-cb').checked = false;
   toast('Committed' + (r.hash ? ' ' + r.hash : ''), 'success');
   refreshGitPanel(currentPath);
 }
-async function gitPushPull(op) {
+async function gitPushPull(op, extraBody) {
   if (!gitRoot) return;
-  // Raw fetch with 90s timeout — api() caps at 30s, too short for big push/pull
-  const btn = document.getElementById(op === 'push' ? 'git-push-btn' : 'git-pull-btn');
+  // Raw fetch with 90s timeout — api() caps at 30s, too short for big push/pull/fetch
+  const btnId = op === 'push' ? 'git-push-btn' : op === 'pull' ? 'git-pull-btn' : 'git-fetch-btn';
+  const btn = document.getElementById(btnId);
   setBtnBusy(btn, true);
   try {
+    const body = { path: gitRoot, ...(extraBody || {}) };
+    if (op === 'pull' && !body.mode) {
+      const sel = document.getElementById('git-pull-mode');
+      if (sel && ['merge', 'rebase', 'ff-only'].includes(sel.value)) body.mode = sel.value;
+    }
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 90000);
-    const resp = await fetch(`/api/git/${op}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-pin-token': authToken }, body: JSON.stringify({ path: gitRoot }), signal: ctrl.signal });
+    const resp = await fetch(`/api/git/${op}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-pin-token': authToken }, body: JSON.stringify(body), signal: ctrl.signal });
     clearTimeout(t);
     const j = await resp.json().catch(() => ({}));
     if (!resp.ok || j.error) {
-      toast((j && j.error) || (op + ' failed'), 'error');
+      const msg = (j && j.error) || (op + ' failed');
+      // First push on a branch without upstream: offer to set it (explicit consent)
+      if (op === 'push' && !(extraBody && extraBody.upstream) && /upstream|set-upstream|no upstream/i.test(msg)) {
+        const ok = await confirmDialog({ title: 'No upstream branch', message: 'This branch has no upstream. Push and set upstream to origin?', okText: 'Push + set upstream' });
+        if (ok) { setBtnBusy(btn, false); gitPushPull('push', { upstream: true }); return; }
+      }
+      toast(msg, 'error');
     } else {
       const tail = (j.output || '').trim().split('\n').pop() || '';
-      toast((op === 'push' ? 'Pushed' : 'Pulled') + (tail ? ': ' + tail : ''), 'success');
+      const label = op === 'push' ? 'Pushed' : op === 'pull' ? 'Pulled' : 'Fetched';
+      toast(label + (tail ? ': ' + tail : ''), 'success');
     }
   } catch (e) {
     toast(op + ' failed: ' + e.message, 'error');
@@ -9057,16 +9144,183 @@ async function gitPushPull(op) {
 }
 function gitPush() { gitPushPull('push'); }
 function gitPull() { gitPushPull('pull'); }
-async function refreshGitLog() {
+function gitFetch() { gitPushPull('fetch'); }
+function gitIdentityError(msg) {
+  return /identity|user\.name|user\.email|Author identity|empty ident/i.test(msg || '');
+}
+async function refreshGitIdentity(force) {
+  const row = document.getElementById('git-identity-row');
+  if (!row || !gitRoot) return;
+  const r = await api(`/api/git/identity?path=${encodeURIComponent(gitRoot)}`);
+  const missing = !r || r.error || !r.name || !r.email;
+  if (missing || force) {
+    row.style.display = 'flex';
+    if (r && !r.error) {
+      const n = document.getElementById('git-id-name');
+      const e = document.getElementById('git-id-email');
+      if (n && !n.value && r.name) n.value = r.name;
+      if (e && !e.value && r.email) e.value = r.email;
+    }
+  } else {
+    row.style.display = 'none';
+  }
+}
+async function gitSaveIdentity() {
+  if (!gitRoot) return;
+  clearFieldError('git-identity-error');
+  const name = (document.getElementById('git-id-name').value || '').trim();
+  const email = (document.getElementById('git-id-email').value || '').trim();
+  if (!name || !email) { showFieldError('git-identity-error', 'Name and email are required'); return; }
+  const r = await api('/api/git/identity', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: gitRoot, name, email }) });
+  if (!r || r.error) { showFieldError('git-identity-error', (r && r.error) || 'Save failed'); return; }
+  document.getElementById('git-identity-row').style.display = 'none';
+  toast('Author identity saved', 'success');
+}
+async function gitAmend() {
+  if (!gitRoot) return;
+  clearFieldError('git-msg-error');
+  const input = document.getElementById('git-msg');
+  const msg = (input.value || '').trim();
+  const ok = await confirmDialog({ title: 'Amend last commit?', message: msg ? 'Fold staged changes into HEAD with a new message?' : 'Fold staged changes into HEAD (keep the message)?', okText: 'Amend' });
+  if (!ok) return;
+  const btn = document.getElementById('git-amend-btn');
+  setBtnBusy(btn, true);
+  const r = await api('/api/git/amend', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: gitRoot, message: msg }) });
+  setBtnBusy(btn, false);
+  if (!r || r.error) {
+    const msg_ = (r && r.error) || 'Amend failed';
+    if (gitIdentityError(msg_)) { refreshGitIdentity(true); toast('Set your author identity first', 'warning'); }
+    else showFieldError('git-msg-error', msg_);
+    return;
+  }
+  input.value = '';
+  toast('Amended' + (r.hash ? ' ' + r.hash : ''), 'success');
+  refreshGitPanel(currentPath);
+}
+async function gitReset() {
+  if (!gitRoot) return;
+  clearFieldError('git-reset-error');
+  const mode = document.getElementById('git-reset-mode').value || 'mixed';
+  const ref = (document.getElementById('git-reset-ref').value || '').trim() || 'HEAD';
+  if (mode === 'hard') {
+    const ok = await confirmDialog({ title: 'Hard reset?', message: 'Reset to "' + ref + '" and DISCARD all worktree + staged changes. This cannot be undone.', okText: 'Reset (hard)', danger: true });
+    if (!ok) return;
+  }
+  const r = await api('/api/git/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: gitRoot, mode, ref }) });
+  if (!r || r.error) { showFieldError('git-reset-error', (r && r.error) || 'Reset failed'); return; }
+  toast('Reset (' + r.mode + ') to ' + r.hash, 'success');
+  refreshGitPanel(currentPath);
+}
+async function refreshGitTags() {
+  const box = document.getElementById('git-tags-list');
+  if (!box || !gitRoot) return;
+  const r = await api(`/api/git/tags?path=${encodeURIComponent(gitRoot)}`);
+  box.innerHTML = '';
+  const tags = ((r && r.tags) || []).slice(0, 10);
+  for (const name of tags) {
+    const d = document.createElement('div');
+    d.className = 'git-tag-item';
+    d.title = name;
+    const n = document.createElement('span');
+    n.className = 'git-tag-name';
+    n.textContent = name;
+    d.appendChild(n);
+    const b = document.createElement('button');
+    b.textContent = 'Delete';
+    b.className = 'danger';
+    b.title = 'Delete tag ' + name;
+    b.addEventListener('click', () => gitUntag(name));
+    d.appendChild(b);
+    box.appendChild(d);
+  }
+}
+async function gitTagCreate() {
+  if (!gitRoot) return;
+  clearFieldError('git-tag-error');
+  const name = (document.getElementById('git-tag-input').value || '').trim();
+  const msg = (document.getElementById('git-tag-msg').value || '').trim();
+  if (!name) { showFieldError('git-tag-error', 'Enter a tag name'); return; }
+  const r = await api('/api/git/tag', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: gitRoot, name, message: msg }) });
+  if (!r || r.error) { showFieldError('git-tag-error', (r && r.error) || 'Tag failed'); return; }
+  document.getElementById('git-tag-input').value = '';
+  document.getElementById('git-tag-msg').value = '';
+  toast('Tagged ' + r.name, 'success');
+  refreshGitPanel(currentPath);
+}
+async function gitUntag(name) {
+  if (!gitRoot || !name) return;
+  const ok = await confirmDialog({ title: 'Delete tag?', message: 'Delete tag "' + name + '"? (The commits stay.)', okText: 'Delete', danger: true });
+  if (!ok) return;
+  const r = await api('/api/git/untag', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: gitRoot, name }) });
+  if (!r || r.error) { toast((r && r.error) || 'Delete tag failed', 'error'); return; }
+  toast('Deleted tag ' + name, 'success');
+  refreshGitPanel(currentPath);
+}
+async function toggleHunks(btn, file, cached) {
+  const row = btn.closest('.git-file');
+  if (!row) return;
+  const old = row.querySelector('.git-hunks');
+  if (old) { old.remove(); btn.textContent = 'Hunks'; return; }
+  btn.textContent = '…';
+  const r = await api(`/api/git/hunks?path=${encodeURIComponent(gitRoot)}&file=${encodeURIComponent(file)}${cached ? '&cached=1' : ''}`);
+  btn.textContent = 'Hunks';
+  if (!r || r.error) { toast((r && r.error) || 'Hunks failed', 'error'); return; }
+  if (!r.hunks || !r.hunks.length) { toast('No hunks', 'info'); return; }
+  const wrap = document.createElement('div');
+  wrap.className = 'git-hunks';
+  r.hunks.forEach((h, i) => {
+    const hd = document.createElement('div');
+    hd.className = 'git-hunk';
+    const hh = document.createElement('div');
+    hh.className = 'git-hunk-head';
+    hh.textContent = 'hunk ' + (i + 1) + ' · +' + (h.added || 0) + ' −' + (h.deleted || 0) + (h.truncated ? ' · (preview truncated)' : '');
+    hd.appendChild(hh);
+    const pre = document.createElement('pre');
+    pre.className = 'git-hunk-body';
+    for (const line of (h.lines || [])) {
+      const s = document.createElement('span');
+      if (line.startsWith('+++') || line.startsWith('---') || line.startsWith('@@')) s.className = 'hh';
+      else if (line[0] === '+') s.className = 'ha';
+      else if (line[0] === '-') s.className = 'hd';
+      s.textContent = line + '\n';
+      pre.appendChild(s);
+    }
+    hd.appendChild(pre);
+    const b = document.createElement('button');
+    b.className = 'sidebar-action-btn';
+    b.style.marginTop = '2px';
+    b.textContent = cached ? 'Unstage hunk' : 'Stage hunk';
+    b.addEventListener('click', () => hunkOp(file, h.index, cached));
+    hd.appendChild(b);
+    wrap.appendChild(hd);
+  });
+  row.appendChild(wrap);
+}
+async function hunkOp(file, index, cached) {
+  if (!gitRoot) return;
+  const r = await api(cached ? '/api/git/unstage-hunk' : '/api/git/stage-hunk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: gitRoot, file, index }) });
+  if (!r || r.error) { toast((r && r.error) || 'Hunk failed', 'error'); return; }
+  toast(cached ? 'Hunk unstaged' : 'Hunk staged', 'success');
+  refreshGitPanel(currentPath);
+}
+let gitLogFull = false;
+async function refreshGitLog(myReq) {
   const box = document.getElementById('git-log');
   if (!box || !gitRoot) return;
-  const r = await api(`/api/git/log?path=${encodeURIComponent(gitRoot)}&n=5`);
+  const n = gitLogFull ? 20 : 5;
+  const r = await api(`/api/git/log?path=${encodeURIComponent(gitRoot)}&n=${n}`);
+  if (myReq !== undefined && myReq !== _gitReq) return;
   box.innerHTML = '';
   if (!r || !r.commits || !r.commits.length) return;
   for (const c of r.commits) {
     const d = document.createElement('div');
     d.className = 'git-log-item';
-    d.title = (c.hash || '') + '\n' + (c.author || '') + ' • ' + (c.date || '');
+    d.title = (c.hash || '') + '\n' + (c.author || '') + ' • ' + (c.date || '') + '\nClick for details';
+    d.setAttribute('role', 'button');
+    d.setAttribute('tabindex', '0');
+    const open = () => openGitShow(c.hash);
+    d.addEventListener('click', open);
+    d.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
     const subj = document.createElement('span');
     subj.className = 'git-subject';
     const h = document.createElement('span');
@@ -9081,14 +9335,32 @@ async function refreshGitLog() {
     d.appendChild(meta);
     box.appendChild(d);
   }
+  if (!gitLogFull && r.commits.length >= 5) {
+    const more = document.createElement('button');
+    more.className = 'sidebar-action-btn';
+    more.textContent = 'Show more';
+    more.addEventListener('click', () => { gitLogFull = true; refreshGitLog(); });
+    box.appendChild(more);
+  }
 }
-async function openGitDiff(file, cached) {
+async function openGitShow(hash) {
+  if (!gitRoot || !hash) return;
+  const r = await api(`/api/git/show?path=${encodeURIComponent(gitRoot)}&ref=${encodeURIComponent(hash)}`);
+  if (!r || r.error) { toast((r && r.error) || 'Show failed', 'error'); return; }
+  const name = String(hash).slice(0, 7);
+  const content = r.diff ? (r.truncated ? r.diff + '\n…(truncated at 200KB)' : r.diff) : '(empty commit)';
+  openGitReadonly(name + ' (commit)  /  ' + gitRoot, content, r.binary ? 'binary commit' : 'read-only • git show');
+}
+async function openGitDiff(file, cached, head) {
   if (!gitRoot) return;
-  const r = await api(`/api/git/diff?path=${encodeURIComponent(gitRoot)}&file=${encodeURIComponent(file)}${cached ? '&cached=1' : ''}`);
+  const r = await api(`/api/git/diff?path=${encodeURIComponent(gitRoot)}&file=${encodeURIComponent(file)}${cached ? '&cached=1' : ''}${head ? '&head=1' : ''}`);
   if (!r || r.error) { toast((r && r.error) || 'Diff failed', 'error'); return; }
   const name = (String(file).split(/[\\/]/).pop() || file);
   const content = r.diff ? (r.truncated ? r.diff + '\n…(truncated at 200KB)' : r.diff) : '(no changes)';
   // Read-only diff in the editor tab (editorPath stays empty so Save is a no-op)
+  openGitReadonly(name + (cached ? ' (staged diff)' : head ? ' (conflict diff)' : ' (diff)') + '  /  ' + gitRoot, content, r.binary ? 'binary file' : 'read-only • git diff');
+}
+function openGitReadonly(title, content, status) {
   cleanupDocViewers();
   editorPath = '';
   editorOriginalContent = content;
@@ -9121,14 +9393,19 @@ async function openGitDiff(file, cached) {
   if (mdContent) { mdContent.style.display = 'none'; mdContent.innerHTML = ''; }
   mdPreviewActive = false;
   clearPreviewLiveReload();
-  document.getElementById('editor-filename').textContent = name + (cached ? ' (staged diff)' : ' (diff)') + '  /  ' + gitRoot;
-  document.getElementById('editor-status').textContent = r.binary ? 'binary file' : 'read-only • git diff';
+  document.getElementById('editor-filename').textContent = title;
+  document.getElementById('editor-status').textContent = status;
   if (window.innerWidth > 768) document.getElementById('content').classList.add('editor-open');
   document.getElementById('editor-view').classList.add('open');
   requestAnimationFrame(() => { tabs.forEach(tab => { try { fitTerm(tab); } catch (e) {} }); });
 }
 document.getElementById('git-msg').addEventListener('keydown', e => { if (e.key === 'Enter') gitCommit(); });
 document.getElementById('git-newbranch-input').addEventListener('keydown', e => { if (e.key === 'Enter') gitBranchCreate(); });
+document.getElementById('git-tag-input').addEventListener('keydown', e => { if (e.key === 'Enter') gitTagCreate(); });
+document.getElementById('git-tag-msg').addEventListener('keydown', e => { if (e.key === 'Enter') gitTagCreate(); });
+document.getElementById('git-id-email').addEventListener('keydown', e => { if (e.key === 'Enter') gitSaveIdentity(); });
+document.getElementById('git-id-name').addEventListener('keydown', e => { if (e.key === 'Enter') gitSaveIdentity(); });
+document.getElementById('git-reset-ref').addEventListener('keydown', e => { if (e.key === 'Enter') gitReset(); });
 
 // ═══════════════════════════════════════════════════════
 // FUZZY FINDER (Ctrl+P)

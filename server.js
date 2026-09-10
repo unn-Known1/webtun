@@ -2164,9 +2164,18 @@ function parseGitNumstat(raw) {
     if (parts.length < 3) continue;
     const aRaw = parts[0].trim(), dRaw = parts[1].trim();
     let p = gitUnquote(parts.slice(2).join('\t'));
-    // Rename format: "old => new" or "{a/b => c/d}/file" — take new side
+    // Rename format: "old => new" or "{a/b => c/d}/file" — take new side.
+    // Brace form splits as "{a => b}/tail": new part is between ' => ' and '}'.
     const arrow = p.indexOf(' => ');
-    if (arrow !== -1) p = p.slice(arrow + 4).replace(/^[{}]/, '').replace(/[{}]$/, '');
+    if (arrow !== -1) {
+      const after = p.slice(arrow + 4);
+      if (p[0] === '{') {
+        const close = after.indexOf('}');
+        p = close !== -1 ? after.slice(0, close) + after.slice(close + 1) : after;
+      } else {
+        p = after;
+      }
+    }
     if (!p) continue;
     if (aRaw === '-' || dRaw === '-') { map.set(p, { binary: true }); continue; }
     const added = parseInt(aRaw, 10), deleted = parseInt(dRaw, 10);
@@ -2241,14 +2250,14 @@ app.get('/api/git/status', rateLimiter, checkPin, async (req, res) => {
       if (e.status === 404) return res.json({ git: true, isRepo: false });
       throw e;
     }
-    const raw = await spawnRead('git', ['-C', root, 'status', '--porcelain=v1', '-b']);
+    const raw = await spawnRead('git', ['-C', root, 'status', '--porcelain=v1', '-b'], { timeout: 20000 });
     const st = parseGitStatus(raw);
     // Per-file line stats (GitHub-style +added/-removed) via numstat.
     // Best-effort: never fail the whole status when numstat fails.
     try {
       const [unstagedRaw, stagedRaw] = await Promise.all([
-        spawnRead('git', ['-C', root, 'diff', '--numstat']).catch(() => ''),
-        spawnRead('git', ['-C', root, 'diff', '--cached', '--numstat']).catch(() => ''),
+        spawnRead('git', ['-C', root, 'diff', '--numstat'], { timeout: 20000 }).catch(() => ''),
+        spawnRead('git', ['-C', root, 'diff', '--cached', '--numstat'], { timeout: 20000 }).catch(() => ''),
       ]);
       const unstagedMap = parseGitNumstat(unstagedRaw);
       const stagedMap = parseGitNumstat(stagedRaw);
@@ -2302,6 +2311,8 @@ app.get('/api/git/diff', rateLimiter, checkPin, async (req, res) => {
     const rel = path.relative(root, abs) || '.';
     const args = ['-C', root, 'diff', '--no-color'];
     if (req.query.cached === '1') args.push('--cached');
+    // head=1 diffs against HEAD — the only view that shows unmerged/conflicted files
+    if (req.query.head === '1') args.push('HEAD');
     args.push('--', rel);
     let diff = await spawnRead('git', args);
     const binary = diff.includes('Binary files');
@@ -2339,11 +2350,14 @@ function gitFileArgs(root, files) {
     if (typeof f !== 'string' || !f || f.includes('\0')) { const e = new Error('invalid file path'); e.status = 400; throw e; }
     const abs = path.resolve(root, f);
     if (!pathContained(root, abs)) { const e = new Error('file outside repo: ' + f); e.status = 400; throw e; }
-    return path.relative(root, abs) || '.';
+    const rel = path.relative(root, abs) || '.';
+    // Never allow the repo root itself ('sub/..' tricks) — that would stage/discard everything
+    if (rel === '.' || rel === '..' || rel.startsWith('..' + path.sep)) { const e = new Error('invalid file path: ' + f); e.status = 400; throw e; }
+    return rel;
   });
 }
 
-app.post('/api/git/stage', checkPin, async (req, res) => {
+app.post('/api/git/stage', rateLimiter, checkPin, async (req, res) => {
   try {
     if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
@@ -2355,7 +2369,7 @@ app.post('/api/git/stage', checkPin, async (req, res) => {
   }
 });
 
-app.post('/api/git/unstage', checkPin, async (req, res) => {
+app.post('/api/git/unstage', rateLimiter, checkPin, async (req, res) => {
   try {
     if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
@@ -2367,7 +2381,7 @@ app.post('/api/git/unstage', checkPin, async (req, res) => {
   }
 });
 
-app.post('/api/git/commit', checkPin, async (req, res) => {
+app.post('/api/git/commit', rateLimiter, checkPin, async (req, res) => {
   try {
     if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
@@ -2388,12 +2402,14 @@ app.post('/api/git/commit', checkPin, async (req, res) => {
   }
 });
 
-app.post('/api/git/pull', checkPin, async (req, res) => {
+app.post('/api/git/pull', rateLimiter, checkPin, async (req, res) => {
   try {
     if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
+    const mode = req.body && req.body.mode;
+    const flag = mode === 'rebase' ? '--rebase' : mode === 'ff-only' ? '--ff-only' : '--no-rebase';
     let out = '';
-    try { out = await spawnRead('git', ['-C', root, 'pull', '--no-rebase'], { timeout: 60000 }); }
+    try { out = await spawnRead('git', ['-C', root, 'pull', flag], { timeout: 60000 }); }
     catch (e) { return res.status(400).json({ error: (e.message || 'pull failed').trim().slice(0, 1000) || 'pull failed' }); }
     res.json({ success: true, output: out.slice(-5000) });
   } catch (e) {
@@ -2401,12 +2417,16 @@ app.post('/api/git/pull', checkPin, async (req, res) => {
   }
 });
 
-app.post('/api/git/push', checkPin, async (req, res) => {
+app.post('/api/git/push', rateLimiter, checkPin, async (req, res) => {
   try {
     if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
+    // upstream:true runs `git push -u origin HEAD` (explicit user consent —
+    // offered by the client when push fails with "no upstream branch").
+    const args = ['-C', root, 'push'];
+    if (req.body && req.body.upstream) args.push('-u', 'origin', 'HEAD');
     let out = '';
-    try { out = await spawnRead('git', ['-C', root, 'push'], { timeout: 60000 }); }
+    try { out = await spawnRead('git', args, { timeout: 60000 }); }
     catch (e) { return res.status(400).json({ error: (e.message || 'push failed').trim().slice(0, 1000) || 'push failed' }); }
     res.json({ success: true, output: out.slice(-5000) });
   } catch (e) {
@@ -2442,7 +2462,7 @@ app.get('/api/git/branches', rateLimiter, checkPin, async (req, res) => {
   }
 });
 
-app.post('/api/git/switch', checkPin, async (req, res) => {
+app.post('/api/git/switch', rateLimiter, checkPin, async (req, res) => {
   try {
     if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
@@ -2455,7 +2475,7 @@ app.post('/api/git/switch', checkPin, async (req, res) => {
   }
 });
 
-app.post('/api/git/branch', checkPin, async (req, res) => {
+app.post('/api/git/branch', rateLimiter, checkPin, async (req, res) => {
   try {
     if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
@@ -2483,7 +2503,7 @@ app.get('/api/git/stash', rateLimiter, checkPin, async (req, res) => {
   }
 });
 
-app.post('/api/git/stash', checkPin, async (req, res) => {
+app.post('/api/git/stash', rateLimiter, checkPin, async (req, res) => {
   try {
     if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
@@ -2499,11 +2519,19 @@ app.post('/api/git/stash', checkPin, async (req, res) => {
   }
 });
 
-app.post('/api/git/stash/pop', checkPin, async (req, res) => {
+app.post('/api/git/stash/pop', rateLimiter, checkPin, async (req, res) => {
   try {
     if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
-    try { await spawnRead('git', ['-C', root, 'stash', 'pop']); }
+    const ref = req.body && req.body.ref;
+    const args = ['-C', root, 'stash', 'pop'];
+    if (ref !== undefined && ref !== null && ref !== '') {
+      if (typeof ref !== 'string' || !/^stash@\{\d+\}$/.test(ref)) {
+        return res.status(400).json({ error: 'invalid stash ref' });
+      }
+      args.push(ref);
+    }
+    try { await spawnRead('git', args); }
     catch (e) { return res.status(400).json({ error: (e.message || 'pop failed').trim().slice(0, 500) || 'pop failed' }); }
     res.json({ success: true });
   } catch (e) {
@@ -2513,7 +2541,7 @@ app.post('/api/git/stash/pop', checkPin, async (req, res) => {
 
 // Discard unstaged worktree changes (VS Code "discard" semantics:
 // restores worktree from the index, staged entries untouched).
-app.post('/api/git/discard', checkPin, async (req, res) => {
+app.post('/api/git/discard', rateLimiter, checkPin, async (req, res) => {
   try {
     if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
@@ -2525,7 +2553,7 @@ app.post('/api/git/discard', checkPin, async (req, res) => {
   }
 });
 
-app.post('/api/git/init', checkPin, async (req, res) => {
+app.post('/api/git/init', rateLimiter, checkPin, async (req, res) => {
   try {
     if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
     const dir = resolvePath(req.body && req.body.path);
@@ -2535,6 +2563,288 @@ app.post('/api/git/init', checkPin, async (req, res) => {
     try { await spawnRead('git', ['-C', dir, 'rev-parse', '--show-toplevel']); }
     catch { await spawnRead('git', ['-C', dir, 'init']); return res.json({ success: true }); }
     res.json({ success: true, already: true });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+// ── Git identity (commit author) ────────────────────────────────────
+async function gitIdentityFor(root) {
+  let name = '', email = '';
+  try { name = (await spawnRead('git', ['-C', root, 'config', 'user.name'])).trim(); } catch {}
+  try { email = (await spawnRead('git', ['-C', root, 'config', 'user.email'])).trim(); } catch {}
+  return { name, email };
+}
+
+app.get('/api/git/identity', rateLimiter, checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    const root = await gitRootFor(req.query.path);
+    res.json({ success: true, ...(await gitIdentityFor(root)) });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+app.post('/api/git/identity', rateLimiter, checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    const root = await gitRootFor(req.body && req.body.path);
+    const clean = v => {
+      if (typeof v !== 'string') return '';
+      const t = v.trim().slice(0, 100);
+      if (!t || /[\x00-\x1f\x7f]/.test(t)) { const e = new Error('invalid identity value'); e.status = 400; throw e; }
+      return t;
+    };
+    const name = clean(req.body && req.body.name);
+    const email = clean(req.body && req.body.email);
+    if (!name || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'name and a valid email are required' });
+    }
+    await spawnRead('git', ['-C', root, 'config', 'user.name', name]);
+    await spawnRead('git', ['-C', root, 'config', 'user.email', email]);
+    res.json({ success: true, name, email });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+// ── Git fetch / amend / reset ───────────────────────────────────────
+app.post('/api/git/fetch', rateLimiter, checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    const root = await gitRootFor(req.body && req.body.path);
+    let out = '';
+    try { out = await spawnRead('git', ['-C', root, 'fetch', '--all'], { timeout: 60000 }); }
+    catch (e) { return res.status(400).json({ error: (e.message || 'fetch failed').trim().slice(0, 1000) || 'fetch failed' }); }
+    res.json({ success: true, output: out.slice(-5000) });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+app.post('/api/git/amend', rateLimiter, checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    const root = await gitRootFor(req.body && req.body.path);
+    try { await spawnRead('git', ['-C', root, 'rev-parse', '--verify', 'HEAD']); }
+    catch { return res.status(400).json({ error: 'nothing to amend (no commits yet)' }); }
+    const raw = req.body && req.body.message;
+    const args = ['-C', root, 'commit', '--amend'];
+    if (typeof raw === 'string' && raw.trim()) args.push('-m', raw.trim().slice(0, 1000));
+    else args.push('--no-edit');
+    try {
+      await spawnRead('git', args);
+    } catch (e) { return res.status(400).json({ error: (e.message || 'amend failed').trim().slice(0, 500) || 'amend failed' }); }
+    let hash = '';
+    try { hash = (await spawnRead('git', ['-C', root, 'rev-parse', '--short', 'HEAD'])).trim(); } catch {}
+    res.json({ success: true, hash });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+// Verify a reset/show target resolves to a commit (returns full hash).
+// Accepts HEAD family + full/short hex. Arg-array only — no shell involved.
+async function assertCommitRef(root, ref) {
+  const r = typeof ref === 'string' ? ref.trim() : '';
+  if (!r || r.length > 100 || (!/^[0-9a-f]{4,40}$/i.test(r) && !/^HEAD([~^]\d*)*$/.test(r))) {
+    const e = new Error('invalid ref'); e.status = 400; throw e;
+  }
+  try {
+    const hash = (await spawnRead('git', ['-C', root, 'rev-parse', '--verify', r + '^{commit}'])).trim();
+    if (!/^[0-9a-f]{40}$/i.test(hash)) throw new Error('bad ref');
+    return hash;
+  } catch {
+    const e = new Error('ref does not resolve to a commit'); e.status = 400; throw e;
+  }
+}
+
+app.post('/api/git/reset', rateLimiter, checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    const root = await gitRootFor(req.body && req.body.path);
+    const mode = req.body && req.body.mode;
+    if (!['mixed', 'soft', 'hard'].includes(mode)) return res.status(400).json({ error: 'mode must be mixed, soft or hard' });
+    const hash = await assertCommitRef(root, (req.body && req.body.ref) || 'HEAD');
+    try {
+      await spawnRead('git', ['-C', root, 'reset', '--' + mode, hash]);
+    } catch (e) { return res.status(400).json({ error: (e.message || 'reset failed').trim().slice(0, 500) || 'reset failed' }); }
+    res.json({ success: true, mode, hash: hash.slice(0, 7) });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+// ── Git tags ────────────────────────────────────────────────────────
+async function assertSafeTag(root, name) {
+  if (typeof name !== 'string' || !name.trim() || name.trim().length > 200 || name.trim().startsWith('-')) {
+    const e = new Error('invalid tag name'); e.status = 400; throw e;
+  }
+  try {
+    await spawnRead('git', ['-C', root, 'check-ref-format', 'refs/tags/' + name.trim()]);
+  } catch {
+    const e = new Error('invalid tag name'); e.status = 400; throw e;
+  }
+  return name.trim();
+}
+
+app.get('/api/git/tags', rateLimiter, checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    const root = await gitRootFor(req.query.path);
+    const raw = await spawnRead('git', ['-C', root, 'tag', '--list', '--sort=-creatordate']);
+    res.json({ success: true, tags: raw.split('\n').map(t => t.trim()).filter(Boolean).slice(0, 50) });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+app.post('/api/git/tag', rateLimiter, checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    const root = await gitRootFor(req.body && req.body.path);
+    const name = await assertSafeTag(root, req.body && req.body.name);
+    const msg = req.body && req.body.message;
+    const args = ['-C', root, 'tag'];
+    if (typeof msg === 'string' && msg.trim()) args.push('-a', '-m', msg.trim().slice(0, 500));
+    args.push(name);
+    try {
+      await spawnRead('git', args);
+    } catch (e) { return res.status(400).json({ error: (e.message || 'tag failed').trim().slice(0, 500) || 'tag failed' }); }
+    res.json({ success: true, name });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+app.post('/api/git/untag', rateLimiter, checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    const root = await gitRootFor(req.body && req.body.path);
+    const name = await assertSafeTag(root, req.body && req.body.name);
+    try {
+      await spawnRead('git', ['-C', root, 'tag', '-d', name]);
+    } catch (e) { return res.status(400).json({ error: (e.message || 'delete tag failed').trim().slice(0, 500) || 'delete tag failed' }); }
+    res.json({ success: true, name });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+// ── Git show (commit detail) ────────────────────────────────────────
+app.get('/api/git/show', rateLimiter, checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    const root = await gitRootFor(req.query.path);
+    const hash = await assertCommitRef(root, req.query.ref);
+    let out = await spawnRead('git', ['-C', root, 'show', '--no-color', '--find-renames', '--format=fuller', hash], { timeout: 15000 });
+    const binary = out.includes('Binary files');
+    const truncated = out.length > 200000;
+    if (truncated) out = out.slice(0, 200000);
+    res.json({ success: true, hash, diff: out, binary, truncated });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+// ── Git hunks (per-hunk stage / unstage) ────────────────────────────
+// The client only ever sends a hunk *index*; the server re-derives the patch
+// from a fresh diff, so forged patch content can never be applied.
+const HUNK_HEAD_RE = /^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@/;
+function splitDiffHunks(raw) {
+  const lines = (raw || '').split('\n');
+  const header = [];
+  const hunks = [];
+  let cur = null;
+  for (const line of lines) {
+    if (HUNK_HEAD_RE.test(line) && line.startsWith('@@')) {
+      cur = { header: line, lines: [] };
+      hunks.push(cur);
+    } else if (cur) cur.lines.push(line);
+    else header.push(line);
+  }
+  return { header, hunks };
+}
+function hunkPatchText(headerLines, hunk) {
+  return headerLines.join('\n') + '\n' + hunk.header + '\n' + hunk.lines.join('\n');
+}
+async function gitHunksFor(root, file, cached) {
+  const abs = path.resolve(root, file);
+  if (!pathContained(root, abs)) { const e = new Error('file outside repo'); e.status = 400; throw e; }
+  const rel = path.relative(root, abs) || '.';
+  if (rel === '.' || rel === '..' || rel.startsWith('..' + path.sep)) { const e = new Error('invalid file path'); e.status = 400; throw e; }
+  const args = ['-C', root, 'diff', '--no-color', '-U3'];
+  if (cached) args.push('--cached');
+  args.push('--', rel);
+  const raw = await spawnRead('git', args, { timeout: 15000 });
+  if (!raw.trim()) { const e = new Error(cached ? 'no staged changes for this file' : 'no unstaged changes for this file (untracked files must be staged whole)'); e.status = 400; throw e; }
+  if (raw.length > 200000) { const e = new Error('diff too large for hunk view — use the full file diff'); e.status = 400; throw e; }
+  const { header, hunks } = splitDiffHunks(raw);
+  if (!hunks.length) { const e = new Error('no hunks found (binary file?)'); e.status = 400; throw e; }
+  if (hunks.length > 200) { const e = new Error('too many hunks for hunk view — use the full file diff'); e.status = 400; throw e; }
+  return { header, hunks };
+}
+
+app.get('/api/git/hunks', rateLimiter, checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    const root = await gitRootFor(req.query.path);
+    const file = req.query.file;
+    if (!file || typeof file !== 'string' || Array.isArray(file)) return res.status(400).json({ error: 'file is required' });
+    const { hunks } = await gitHunksFor(root, file, req.query.cached === '1');
+    res.json({
+      success: true,
+      hunks: hunks.map((h, i) => {
+        let added = 0, deleted = 0;
+        for (const l of h.lines) {
+          if (l.startsWith('+') && !l.startsWith('+++')) added++;
+          else if (l.startsWith('-') && !l.startsWith('---')) deleted++;
+        }
+        const preview = h.lines.slice(0, 120);
+        return { index: i, header: h.header, added, deleted, lines: preview, truncated: h.lines.length > preview.length };
+      })
+    });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+async function applyHunk(root, file, index, unstage) {
+  const { header, hunks } = await gitHunksFor(root, file, unstage);
+  const i = Number(index);
+  if (!Number.isInteger(i) || i < 0 || i >= hunks.length) { const e = new Error('invalid hunk index'); e.status = 400; throw e; }
+  const patch = hunkPatchText(header, hunks[i]);
+  const args = ['-C', root, 'apply', '--cached'];
+  if (unstage) args.push('--reverse');
+  args.push('-');
+  try {
+    await spawnRead('git', args, { input: patch });
+  } catch (e) {
+    const msg = (e.message || '').trim().slice(0, 500);
+    throw Object.assign(new Error(msg.includes('patch does not apply') || !msg ? 'hunk no longer applies — refresh and retry' : msg), { status: 400 });
+  }
+}
+
+app.post('/api/git/stage-hunk', rateLimiter, checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    const root = await gitRootFor(req.body && req.body.path);
+    if (!req.body || typeof req.body.file !== 'string') return res.status(400).json({ error: 'file is required' });
+    await applyHunk(root, req.body.file, req.body.index, false);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+
+app.post('/api/git/unstage-hunk', rateLimiter, checkPin, async (req, res) => {
+  try {
+    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    const root = await gitRootFor(req.body && req.body.path);
+    if (!req.body || typeof req.body.file !== 'string') return res.status(400).json({ error: 'file is required' });
+    await applyHunk(root, req.body.file, req.body.index, true);
+    res.json({ success: true });
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message });
   }
@@ -2963,7 +3273,7 @@ app.get('/api/search', rateLimiter, checkPin, async (req, res) => {
 
 function spawnRead(cmd, args, opts = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], timeout: opts.timeout || 5000 });
+    const child = spawn(cmd, args, { stdio: [opts.input !== undefined ? 'pipe' : 'ignore', 'pipe', 'pipe'], timeout: opts.timeout || 5000 });
     // Cap buffered output so a huge repo can't OOM the server (diff/log/status)
     const maxBuffer = opts.maxBuffer || 2 * 1024 * 1024;
     let stdout = '', stderr = '', outLen = 0, killed = false;
@@ -2980,6 +3290,10 @@ function spawnRead(cmd, args, opts = {}) {
     };
     child.stdout.on('data', onData(0));
     child.stderr.on('data', onData(1));
+    if (opts.input !== undefined && child.stdin) {
+      child.stdin.on('error', () => {});
+      try { child.stdin.end(opts.input); } catch {}
+    }
     child.on('close', code => code === 0 ? resolve(stdout) : reject(new Error(stderr)));
     child.on('error', reject);
   });
