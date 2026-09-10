@@ -913,33 +913,7 @@ function extractZip(zipPath, destDir) {
   });
 }
 
-function findCloudflared() {
-  const isWin = os.platform() === 'win32';
-  const name = isWin ? 'cloudflared.exe' : 'cloudflared';
-  const candidates = [
-    path.join(__dirname, name),
-    path.join(process.cwd(), name),
-  ];
-  if (isWin) {
-    const localApp = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
-    candidates.push(path.join(localApp, 'cloudflared', name));
-    const pf = process.env.ProgramW6432 || process.env.ProgramFiles;
-    if (pf) candidates.push(path.join(pf, 'cloudflared', name));
-  } else {
-    candidates.push(path.join(os.homedir(), '.local', 'bin', name));
-    candidates.push('/usr/local/bin/' + name);
-    candidates.push('/usr/bin/' + name);
-  }
-  for (const c of candidates) {
-    try { if (fs.existsSync(c) && fs.statSync(c).isFile()) return c; } catch {}
-  }
-  try {
-    const cmd = isWin ? 'where cloudflared' : 'command -v cloudflared';
-    const out = execSync(cmd, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().split(/\r?\n/)[0];
-    if (out && fs.existsSync(out)) return out;
-  } catch {}
-  return null;
-}
+const { findCloudflared, ensureCloudflared } = require('./lib/cloudflared');
 
 function killPid(pid, signal = 'SIGTERM') {
   if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0) return;
@@ -3392,8 +3366,14 @@ app.post('/api/tunnel', checkPin, async (req, res) => {
     return res.status(400).json({ error: 'invalid url' });
   }
 
+  // cloudflared is fetched on demand (first explicit tunnel request), never at
+  // install time. Kick off a single-flight background download and tell the
+  // client to retry — the 30s api() cap can't cover a binary download.
   if (!findCloudflared()) {
-    return res.status(500).json({ error: 'cloudflared not installed' });
+    ensureCloudflared(msg => console.log('  ' + msg)).catch(e => {
+      console.log('  cloudflared on-demand install failed: ' + e.message);
+    });
+    return res.status(503).json({ error: 'Downloading cloudflared (one-time setup)… please retry in a few seconds.', downloading: true });
   }
 
   let proc;

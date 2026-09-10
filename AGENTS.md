@@ -33,7 +33,8 @@ Optional env vars:
 PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means no auth. Quoted values in `.env` are stripped (e.g., `PIN="secret"` works).
 
 ## Key Details
-- **`postinstall.js`** auto-downloads `cloudflared` to `/usr/local/bin/cloudflared` if missing.
+- **`postinstall.js`** rebuilds `node-pty` if its native binding is missing. It never downloads anything (install-time remote-binary fetch was removed for supply-chain hygiene).
+- **cloudflared on demand** (`lib/cloudflared.js`): the binary is fetched on first tunnel use only (tunnel API / `webtun --tunnel`), HTTPS-only from official Cloudflare releases, with tar-slip + HTML-page validation. `findCloudflared()` is re-exported by `server.js` for back-compat.
 - **Tunnel cleanup** after server restart: `kill $(pgrep -f 'cloudflared tunnel')`
 - **Build output**: `dist/` (AppImage, deb, dmg, exe, zip), `release/`. Git-ignored.
 - **CI**: GitHub Actions builds Electron packages on `v*` tag push (Linux, macOS, Windows). Release job uploads explicit asset globs (`*.exe`, `*.AppImage`, `*.deb`, `*.dmg`, `*.zip`), fails on missing files.

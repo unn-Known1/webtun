@@ -85,16 +85,21 @@ function parseArgs(argv) {
   return opts;
 }
 
-function startTunnel(port) {
+async function startTunnel(port) {
   const { spawn } = require('child_process');
-  const { findCloudflared } = require('../server');
+  const { findCloudflared, ensureCloudflared } = require('../lib/cloudflared');
 
-  const bin = findCloudflared();
+  let bin = findCloudflared();
   if (!bin) {
-    console.error('\n  Error: cloudflared is not installed.');
-    console.error('  Install it from: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/');
-    console.error('  Or re-run: npm install webtun  (postinstall downloads it)');
-    return;
+    // Explicit --tunnel request = user-initiated: fetch on demand (one-time).
+    console.log('  cloudflared not found — downloading (one-time setup)…');
+    try {
+      bin = await ensureCloudflared(msg => console.log('  ' + msg));
+    } catch (e) {
+      console.error('\n  Error: cloudflared is not installed (' + e.message + ').');
+      console.error('  Install it from: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/');
+      return;
+    }
   }
 
   console.log('  Starting Cloudflare Tunnel...');

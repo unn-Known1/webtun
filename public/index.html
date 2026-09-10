@@ -3405,9 +3405,15 @@ function initTerminal(tab) {
   }
 
   // Intercept paste events to use bracketed paste mode (required for TUI apps like vim, nano, mc) — chunk 60KB with loop
+  // NOTE: xterm.js also listens for 'paste' on the same textarea and re-emits
+  // it via onData. Without stopping propagation our bracketed send + xterm's
+  // send fire together, pasting everything twice (notably with the native
+  // browser context menu when the custom right-click menu is disabled).
   if (tab.textarea) {
     tab.textarea.addEventListener('paste', e => {
       e.preventDefault();
+      e.stopImmediatePropagation();
+      e.stopPropagation();
       const text = (e.clipboardData || window.clipboardData)?.getData('text');
       if (!text || !tab.ws || tab.ws.readyState !== WebSocket.OPEN) return;
       tab._lastPasteText = text;
@@ -3499,7 +3505,15 @@ function initTerminal(tab) {
     top = Math.max(0, Math.min(top, vh - mh));
     menu.style.left = left + 'px';
     menu.style.top = top + 'px';
-    menu.querySelector('.ctx-item')?.focus();
+    // Keep typing focus in the terminal for mouse right-clicks so the cursor
+    // stays active. Only move focus into the menu for keyboard-invoked
+    // context menus (Shift+F10 / Menu key reports 0,0) where keyboard nav is
+    // needed. Focus is restored to the terminal on dismiss (see hideTermCtxMenu).
+    if (e.clientX === 0 && e.clientY === 0) {
+      menu.querySelector('.ctx-item')?.focus();
+    } else {
+      term.focus();
+    }
   });
 
   // Touch-to-mouse translation for TUI apps (mobile)
@@ -4512,9 +4526,17 @@ document.getElementById('path-input').addEventListener('blur', () => exitPathEdi
 let fsClipboard = null;
 
 // Terminal context menu actions (registered once)
-function hideTermCtxMenu() {
-  document.getElementById('term-ctx-menu').style.display = 'none';
+function hideTermCtxMenu(restoreFocus = true) {
+  const menu = document.getElementById('term-ctx-menu');
+  // Only pull focus back when it was inside the menu (keyboard nav or a menu
+  // click). Otherwise leave focus alone so dismissing via a click into the
+  // file explorer / editor doesn't get stolen back to the terminal.
+  const hadFocus = !!(menu && menu.contains(document.activeElement));
+  if (menu) menu.style.display = 'none';
   document.querySelectorAll('#term-ctx-menu .ctx-submenu-wrap.open').forEach(el => el.classList.remove('open'));
+  if (restoreFocus && hadFocus) {
+    try { getActiveTab()?.term?.focus(); } catch {}
+  }
 }
 document.getElementById('term-ctx-copy').addEventListener('click', () => {
   const t = getActiveTab();
@@ -4725,8 +4747,7 @@ function showCtxMenu(e, file) {
 
 document.addEventListener('click', () => {
   document.getElementById('ctx-menu').classList.remove('open');
-  const termMenu = document.getElementById('term-ctx-menu');
-  if (termMenu) termMenu.style.display = 'none';
+  hideTermCtxMenu();
 });
 
 document.getElementById('ctx-open').onclick = () => {
@@ -7244,11 +7265,20 @@ async function createTunnel() {
   clearFieldError('tunnel-field-error');
   setBtnBusy(btn, true);
   document.getElementById('tunnel-status').textContent = 'Creating tunnel…';
-  const r = await api('/api/tunnel', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url })
-  });
+  // First tunnel use may trigger a one-time cloudflared download on the
+  // server (503 + downloading:true). Poll within the 30s api() cap.
+  let r;
+  for (let attempt = 0; ; attempt++) {
+    r = await api('/api/tunnel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url })
+    });
+    if (!r.downloading || attempt >= 23) break;
+    document.getElementById('tunnel-status').textContent =
+      'Downloading cloudflared (one-time setup)… retrying (' + (attempt + 1) + '/24)';
+    await new Promise(res => setTimeout(res, 5000));
+  }
   setBtnBusy(btn, false);
   if (r.success) {
     tunnelList.push({ id: r.id, tunnelUrl: r.url, localUrl: url, alive: true, createdAt: Date.now() });
