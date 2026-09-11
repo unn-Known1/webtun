@@ -3781,10 +3781,9 @@ function checkPreviewAuth(req, res, next) {
   const raw = req.headers['x-pin-token'] || (req.query && req.query.token) || parsePreviewCookie(req);
   const token = typeof raw === 'string' ? raw.trim() : '';
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  // Preview proxy bypasses rawPinAllowed() — iframe can't maintain session,
+  // user already authenticated to open the preview tab. Proxy is protected by PIN.
   if (constantTimeEqual(token, PIN)) {
-    if (!rawPinAllowed(req)) {
-      return res.status(403).json({ error: 'Approval required', approvalRequired: true });
-    }
     req.authToken = token; req.authSession = null; return next();
   }
   const s = getSession(token);
@@ -3828,7 +3827,7 @@ function handlePreviewProxy(req, res) {
     if (HOP_HEADERS.has(lk) || lk === 'host' || lk === 'x-pin-token' || lk === 'cookie') continue;
     fwd[k] = v;
   }
-  fwd['Host'] = `127.0.0.1:${targetPort}`;
+  fwd['Host'] = `localhost:${targetPort}`;
   fwd['Accept-Encoding'] = 'identity'; // allow <base> injection without gunzip
   fwd['Referrer-Policy'] = 'no-referrer';
   // Forward browser cookies except our preview token (never leak it upstream).
@@ -3841,7 +3840,7 @@ function handlePreviewProxy(req, res) {
   } catch {}
   let upReq;
   try {
-    upReq = http.request({ host: '127.0.0.1', port: targetPort, method: req.method, path: suffix, headers: fwd, timeout: 10000, agent: previewAgent }, upRes => {
+    upReq = http.request({ host: 'localhost', port: targetPort, method: req.method, path: suffix, headers: fwd, timeout: 10000, agent: previewAgent }, upRes => {
       // Same-origin framing: override global DENY, strip upstream framers only.
       res.setHeader('X-Frame-Options', 'SAMEORIGIN');
       res.statusCode = upRes.statusCode || 502;
@@ -3953,9 +3952,7 @@ function previewUpgradeAuth(req, params) {
   if (!PIN) return true;
   const t = typeof params.get('token') === 'string' ? params.get('token').trim() : parsePreviewCookie(req);
   if (!t) return false;
-  if (constantTimeEqual(t, PIN)) {
-    try { return rawPinAllowed({ ip: req.socket && req.socket.remoteAddress, socket: req.socket, headers: req.headers }); } catch { return true; }
-  }
+  if (constantTimeEqual(t, PIN)) return true; // bypass rawPinAllowed for iframe WS
   const s = getSession(t);
   return !!(s && s.status === 'active');
 }
@@ -3978,7 +3975,7 @@ server.on('upgrade', (req, socket, head) => {
     let upstream;
     try {
       const proto = req.headers['sec-websocket-protocol'];
-      upstream = new WebSocket(`ws://127.0.0.1:${targetPort}${targetPath}`, proto || undefined);
+      upstream = new WebSocket(`ws://localhost:${targetPort}${targetPath}`, proto || undefined);
     } catch { try { clientWs.close(1011, 'bad target'); } catch {} return; }
     const closeBoth = (code, reason) => {
       try { clientWs.close(code || 1000, reason || ''); } catch {}
