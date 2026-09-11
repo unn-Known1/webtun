@@ -141,7 +141,7 @@ setInterval(() => {
 const app = express();
 app.disable('x-powered-by'); // don't advertise the stack
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server, path: '/ws' });
+const wss = new WebSocket.Server({ noServer: true });
 
 const PORT = process.env.PORT || 3000;
 // Mutable at runtime via POST /api/pin (persisted to __dirname/.env).
@@ -3754,6 +3754,249 @@ app.delete('/api/tunnel', checkPin, (req, res) => {
   tunnels.delete(id);
   saveTunnels();
   res.json({ success: true });
+});
+
+// ── App preview (loopback reverse-proxy) ─────────────────────────────
+// Renders `localhost:PORT` apps inside a WebTun tab via same-origin iframe:
+//   iframe src=/api/preview/5173/?token=… → http.request 127.0.0.1:5173/
+// Loopback only (no DNS → no SSRF/rebind). Authed like everything else.
+const PREVIEW_COOKIE = 'wt-preview';
+const previewAgent = new http.Agent({ keepAlive: true, maxSockets: 32 });
+function parsePreviewCookie(req) {
+  try {
+    const h = req.headers && req.headers.cookie;
+    if (!h || typeof h !== 'string') return '';
+    for (const part of h.split(';')) {
+      const i = part.indexOf('=');
+      if (i === -1) continue;
+      if (part.slice(0, i).trim() === PREVIEW_COOKIE) return decodeURIComponent(part.slice(i + 1).trim());
+    }
+  } catch {}
+  return '';
+}
+// Same gate as checkPin, but also accepts the short-lived preview cookie
+// (subresources inside the iframe can't send ?token= on every fetch).
+function checkPreviewAuth(req, res, next) {
+  if (!PIN) return next();
+  const raw = req.headers['x-pin-token'] || (req.query && req.query.token) || parsePreviewCookie(req);
+  const token = typeof raw === 'string' ? raw.trim() : '';
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  if (constantTimeEqual(token, PIN)) {
+    if (!rawPinAllowed(req)) {
+      return res.status(403).json({ error: 'Approval required', approvalRequired: true });
+    }
+    req.authToken = token; req.authSession = null; return next();
+  }
+  const s = getSession(token);
+  if (!s || s.status !== 'active') return res.status(401).json({ error: 'Unauthorized' });
+  req.authToken = token; req.authSession = s; return next();
+}
+function validPreviewPort(p) {
+  const n = Number(p);
+  return Number.isInteger(n) && n >= 1024 && n <= 65535 && n !== (Number(PORT) || 3000);
+}
+const HOP_HEADERS = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade', 'content-length']);
+function previewError(res, port, msg) {
+  res.status(502).setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.end(`<!DOCTYPE html><html><body style="font-family:sans-serif;padding:24px;background:#1a1b26;color:#c0caf5"><h3>Preview :${port} unreachable</h3><p style="color:#787c99">${msg}. Is the app listening on 127.0.0.1:${port}?</p></body></html>`);
+}
+function handlePreviewProxy(req, res) {
+  const port = req.params.port;
+  if (!validPreviewPort(port)) return res.status(400).json({ error: 'invalid port (1024-65535, not WebTun itself)' });
+  const targetPort = Number(port);
+  // Strip prefix /api/preview/<port>, keep trailing path + query.
+  let suffix = '';
+  try {
+    const u = new URL(req.originalUrl, 'http://x');
+    suffix = u.pathname.replace(new RegExp(`^/api/preview/${targetPort}`), '') || '/';
+    suffix += u.search || '';
+  } catch { suffix = '/'; }
+  if (suffix.includes('\0')) return res.status(400).json({ error: 'bad path' });
+  // Mint preview cookie on first authed hit so subresources pass auth.
+  try {
+    const q = (req.query && req.query.token) || req.headers['x-pin-token'];
+    if (PIN && typeof q === 'string' && q.trim() && !parsePreviewCookie(req)) {
+      res.setHeader('Set-Cookie', `${PREVIEW_COOKIE}=${encodeURIComponent(q.trim())}; Path=/api/preview/; Max-Age=86400; HttpOnly; SameSite=Lax`);
+    } else if (!PIN && !parsePreviewCookie(req)) {
+      res.setHeader('Set-Cookie', `${PREVIEW_COOKIE}=open; Path=/api/preview/; Max-Age=86400; HttpOnly; SameSite=Lax`);
+    }
+  } catch {}
+  const fwd = {};
+  for (const [k, v] of Object.entries(req.headers)) {
+    const lk = k.toLowerCase();
+    if (HOP_HEADERS.has(lk) || lk === 'host' || lk === 'x-pin-token' || lk === 'cookie') continue;
+    fwd[k] = v;
+  }
+  fwd['Host'] = `127.0.0.1:${targetPort}`;
+  fwd['Accept-Encoding'] = 'identity'; // allow <base> injection without gunzip
+  fwd['Referrer-Policy'] = 'no-referrer';
+  // Forward browser cookies except our preview token (never leak it upstream).
+  try {
+    const h = req.headers.cookie;
+    if (h && typeof h === 'string') {
+      const kept = h.split(';').filter(p => p.slice(0, p.indexOf('=')).trim() !== PREVIEW_COOKIE).join(';').trim();
+      if (kept) fwd['Cookie'] = kept;
+    }
+  } catch {}
+  let upReq;
+  try {
+    upReq = http.request({ host: '127.0.0.1', port: targetPort, method: req.method, path: suffix, headers: fwd, timeout: 10000, agent: previewAgent }, upRes => {
+      // Same-origin framing: override global DENY, strip upstream framers only.
+      res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+      res.statusCode = upRes.statusCode || 502;
+      for (const [k, v] of Object.entries(upRes.headers)) {
+        const lk = k.toLowerCase();
+        if (HOP_HEADERS.has(lk) || lk === 'x-frame-options' || lk === 'content-security-policy' || lk === 'content-security-policy-report-only') continue;
+        if (lk === 'location' && typeof v === 'string') {
+          // /x → /api/preview/<port>/x ; absolute loopback → same
+          let nv = v.replace(/^(https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?)(\/.*)?$/i, (m, _o, _h, _p, pth) => `/api/preview/${targetPort}${pth || '/'}`);
+          if (nv.startsWith('/') && !nv.startsWith(`/api/preview/${targetPort}`)) nv = `/api/preview/${targetPort}${nv}`;
+          try { res.setHeader(k, nv); } catch {}
+          continue;
+        }
+        if (lk === 'set-cookie') {
+          const arr = Array.isArray(v) ? v : [v];
+          const out = arr.map(c => String(c).replace(/;\s*Path=[^;]*/i, `; Path=/api/preview/${targetPort}/`));
+          try { res.setHeader(k, out); } catch {}
+          continue;
+        }
+        try { res.setHeader(k, v); } catch {}
+      }
+      // Preserve upstream CSP minus framing (don't blindly drop script-src).
+      try {
+        const csp = upRes.headers['content-security-policy'];
+        if (typeof csp === 'string' && csp) {
+          const cleaned = csp.split(';').map(s => s.trim()).filter(s => s && !/^frame-ancestors/i.test(s)).join('; ');
+          res.setHeader('Content-Security-Policy', (cleaned ? cleaned + '; ' : '') + "frame-ancestors 'self'");
+        } else {
+          res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
+        }
+      } catch {}
+      const ctype = (upRes.headers['content-type'] || '').toString().toLowerCase();
+      if (ctype.includes('text/html') && req.method === 'GET') {
+        const chunks = [];
+        let bytes = 0;
+        const MAX_REWRITE = 2 * 1024 * 1024;
+        let tooBig = false;
+        upRes.on('data', c => {
+          if (tooBig) { try { res.write(c); } catch {} return; }
+          bytes += c.length;
+          if (bytes > MAX_REWRITE) { tooBig = true; try { res.write(Buffer.concat(chunks)); } catch {} chunks.length = 0; try { res.write(c); } catch {} return; }
+          chunks.push(c);
+        });
+        upRes.on('end', () => {
+          if (tooBig) { try { res.end(); } catch {} return; }
+          try {
+            let html = Buffer.concat(chunks).toString('utf8');
+            if (!/<base\s/i.test(html)) {
+              html = html.replace(/<head[^>]*>/i, m => `${m}<base href="/api/preview/${targetPort}/">`);
+            }
+            res.removeHeader('Content-Length');
+            res.end(html);
+          } catch { try { res.end(Buffer.concat(chunks)); } catch {} }
+        });
+        upRes.on('error', () => { try { res.end(); } catch {} });
+      } else {
+        upRes.pipe(res);
+      }
+    });
+  } catch (e) { return previewError(res, targetPort, 'proxy error'); }
+  upReq.on('timeout', () => { try { upReq.destroy(); } catch {} if (!res.headersSent) previewError(res, targetPort, 'connection timed out'); else try { res.end(); } catch {} });
+  upReq.on('error', () => { if (!res.headersSent) previewError(res, targetPort, 'connection refused'); else try { res.end(); } catch {} });
+  req.pipe(upReq);
+}
+app.all('/api/preview/:port', rateLimiter, checkPreviewAuth, handlePreviewProxy);
+app.all('/api/preview/:port/*', rateLimiter, checkPreviewAuth, handlePreviewProxy);
+
+// Loopback listeners for the preview address-bar autocomplete (best-effort).
+app.get('/api/ports', checkPin, (req, res) => {
+  const found = new Map();
+  const add = (addr, port) => {
+    const p = Number(port);
+    if (!Number.isInteger(p) || p < 1 || p > 65535) return;
+    if (addr && addr !== '127.0.0.1' && addr !== '::1' && addr !== '0.0.0.0' && addr !== '::') return;
+    if (!found.has(p)) found.set(p, { port: p, loopback: true });
+  };
+  try {
+    let out = '';
+    if (os.platform() === 'win32') {
+      out = execSync('netstat -ano -p tcp', { encoding: 'utf8', timeout: 5000 }).toString();
+      for (const line of out.split('\n')) {
+        const m = line.match(/TCP\s+(\S+):(\d+)\s+\S+\s+LISTENING/i);
+        if (m) add(m[1], m[2]);
+      }
+    } else {
+      try {
+        out = execSync('ss -tln', { encoding: 'utf8', timeout: 5000 }).toString();
+        for (const line of out.split('\n')) {
+          const m = line.match(/(?:127\.0\.0\.1|::1|0\.0\.0\.0|\*):(\d+)/);
+          if (m && /LISTEN/i.test(line)) add('127.0.0.1', m[1]);
+        }
+      } catch {
+        out = execSync('netstat -an -p tcp', { encoding: 'utf8', timeout: 5000 }).toString();
+        for (const line of out.split('\n')) {
+          const m = line.match(/(127\.0\.0\.1|0\.0\.0\.0)\.(\d+).*LISTEN/i) || line.match(/tcp\d?\s+\S+\s+(\S+)[.:](\d+).*LISTEN/i);
+          if (m) add(m[1] && m[1].includes('.') ? m[1] : '127.0.0.1', m[2]);
+        }
+      }
+    }
+  } catch {}
+  // Never advertise WebTun's own port as a preview target.
+  try { found.delete(Number(PORT) || 3000); } catch {}
+  res.json({ ports: Array.from(found.values()).sort((a, b) => a.port - b.port).slice(0, 100) });
+});
+
+// WS proxy for HMR/live-reload: /api/preview/:port/<path> upgrade → ws://127.0.0.1:port/<path>
+const previewWSS = new WebSocket.Server({ noServer: true });
+function previewUpgradeAuth(req, params) {
+  if (!PIN) return true;
+  const t = typeof params.get('token') === 'string' ? params.get('token').trim() : parsePreviewCookie(req);
+  if (!t) return false;
+  if (constantTimeEqual(t, PIN)) {
+    try { return rawPinAllowed({ ip: req.socket && req.socket.remoteAddress, socket: req.socket, headers: req.headers }); } catch { return true; }
+  }
+  const s = getSession(t);
+  return !!(s && s.status === 'active');
+}
+// Single upgrade dispatcher (wss is noServer so the terminal /ws handler
+// doesn't 400 preview upgrades — ws rejects non-matching paths first).
+server.on('upgrade', (req, socket, head) => {
+  let u;
+  try { u = new URL(req.url, 'http://x'); } catch { try { socket.destroy(); } catch {} return; }
+  if (u.pathname === '/ws') {
+    wss.handleUpgrade(req, socket, head, ws => wss.emit('connection', ws, req));
+    return;
+  }
+  const m = u.pathname.match(/^\/api\/preview\/(\d+)(\/.*)?$/);
+  if (!m) { try { socket.destroy(); } catch {} return; }
+  const targetPort = Number(m[1]);
+  if (!validPreviewPort(targetPort)) { try { socket.destroy(); } catch {} return; }
+  if (!previewUpgradeAuth(req, u.searchParams)) { try { socket.destroy(); } catch {} return; }
+  const targetPath = (m[2] || '/') + (u.search || '');
+  previewWSS.handleUpgrade(req, socket, head, clientWs => {
+    let upstream;
+    try {
+      const proto = req.headers['sec-websocket-protocol'];
+      upstream = new WebSocket(`ws://127.0.0.1:${targetPort}${targetPath}`, proto || undefined);
+    } catch { try { clientWs.close(1011, 'bad target'); } catch {} return; }
+    const closeBoth = (code, reason) => {
+      try { clientWs.close(code || 1000, reason || ''); } catch {}
+      try { upstream.close(code || 1000, reason || ''); } catch {}
+    };
+    upstream.on('open', () => {
+      clientWs.on('message', d => { try { if (upstream.readyState === WebSocket.OPEN) upstream.send(d); } catch {} });
+      upstream.on('message', d => { try { if (clientWs.readyState === WebSocket.OPEN) clientWs.send(d); } catch {} });
+    });
+    upstream.on('close', (c, r) => { try { if (clientWs.readyState === WebSocket.OPEN) clientWs.close(c, r); } catch {} });
+    upstream.on('error', () => { try { if (clientWs.readyState === WebSocket.OPEN) clientWs.close(1011, 'upstream error'); } catch {} });
+    clientWs.on('close', () => { try { upstream.close(); } catch {} });
+    clientWs.on('error', () => { try { upstream.close(); } catch {} });
+    // If upstream never opens, don't hang forever.
+    setTimeout(() => {
+      try { if (upstream.readyState === WebSocket.CONNECTING) { upstream.terminate(); if (clientWs.readyState === WebSocket.OPEN) clientWs.close(1011, 'upstream timeout'); } } catch {}
+    }, 10000).unref?.();
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────

@@ -232,6 +232,22 @@ svg { display: block; }
   animation: reconnectSpin 0.8s linear infinite;
 }
 .term-loading.hidden { display: none; }
+/* App preview tabs: toolbar + iframe share the .term-wrapper shell */
+.preview-bar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: var(--bg2); border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap; }
+.preview-bar input { height: 28px; font-size: 12px; font-family: var(--font); background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 8px; color: var(--fg); }
+.preview-bar input:focus { border-color: var(--accent); }
+#preview-port-input, .preview-port-input { width: 90px; flex-shrink: 0; }
+#preview-path-input, .preview-path-input { flex: 1; min-width: 80px; }
+.preview-bar .btn { height: 28px; padding: 0 12px; font-size: 12px; }
+.preview-frame { flex: 1; width: 100%; min-height: 0; border: none; background: var(--bg); border-radius: var(--radius); }
+.preview-loading { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: var(--bg); color: var(--fg2); font-size: 12px; font-family: var(--font-ui); pointer-events: none; }
+.preview-loading.hidden { display: none; }
+.preview-loading .tl-spinner { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--bg4); border-top-color: var(--accent); animation: reconnectSpin 0.8s linear infinite; }
+.preview-error { display: none; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px; color: var(--fg2); font-size: 12px; text-align: center; }
+.preview-error.show { display: flex; }
+.tab.preview-tab .tab-title { color: var(--cyan); }
+.tab.preview-tab.active .tab-title { color: var(--accent); }
+@media (pointer: coarse) { .preview-bar input { font-size: 16px; height: 32px; } .preview-bar .btn { height: 32px; } }
 
 /* ═══════════════════════════════════════════════════════
    LAUNCHPAD (zero-tab home)
@@ -581,6 +597,7 @@ svg { display: block; }
 .file-select-check { display: none; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--fg2); flex-shrink: 0; align-items: center; justify-content: center; font-size: 10px; color: var(--bg2); cursor: pointer; }
 .file-select-check.on { background: var(--accent); border-color: var(--accent); }
 #sidebar[data-select-mode="true"] .file-select-check { display: flex; }
+#sidebar[data-select-mode="true"] .file-item.is-parent .file-select-check { display: none; }
 #sidebar[data-select-mode="true"] .file-item { padding-left: 6px; }
 .file-action-btn:hover { background: var(--border); color: var(--fg); }
 #sidebar-footer { padding: 6px 8px; border-top: 1px solid var(--border); display: flex; gap: 4px; flex-shrink: 0; background: var(--bg2); }
@@ -1359,6 +1376,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
     <div id="more-menu" role="menu">
       <button class="mm-item" role="menuitem" onclick="closeMoreMenu();openSystemStats()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="4" rx="1"/><rect x="2" y="10" width="20" height="4" rx="1"/><rect x="2" y="18" width="20" height="4" rx="1"/><circle cx="6" cy="4" r="1" fill="currentColor"/><circle cx="6" cy="12" r="1" fill="currentColor"/><circle cx="6" cy="20" r="1" fill="currentColor"/></svg> System Stats</button>
       <button class="mm-item" role="menuitem" onclick="closeMoreMenu();toggleTiles()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> Tiles Mode</button>
+      <button class="mm-item" role="menuitem" onclick="closeMoreMenu();newPreviewPrompt()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> New Preview</button>
       <button class="mm-item" role="menuitem" onclick="closeMoreMenu();toggleCmdLib()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> Command Library</button>
       <button class="mm-item" role="menuitem" onclick="closeMoreMenu();toggleSearch()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg> Search</button>
       <button class="mm-item" role="menuitem" onclick="closeMoreMenu();openShortcuts()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 8h6M12 8v8"/><path d="m7 12 10-4"/><path d="m7 12 10 4"/></svg> Keyboard Shortcuts</button>
@@ -1510,6 +1528,9 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
         <div id="tab-scroll">
           <button id="new-tab-btn" onclick="newTab()" title="New terminal" aria-label="New terminal">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <button id="new-preview-btn" onclick="newPreviewPrompt()" title="New app preview" aria-label="New app preview" style="width:28px;height:28px;min-width:28px;min-height:28px;display:flex;align-items:center;justify-content:center;border-radius:var(--radius);color:var(--fg2);flex-shrink:0;background:var(--bg2);border:1px solid var(--border);margin-left:4px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
           </button>
         </div>
       </div>
@@ -1847,7 +1868,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
           <div class="setting-row" style="flex-wrap:wrap;gap:6px">
             <label for="tunnel-url" style="flex:0 0 auto">Local URL</label>
             <div style="display:flex;flex:1;gap:6px;min-width:0">
-              <input type="text" id="tunnel-url" value="http://localhost:3000" placeholder="http://localhost:PORT" style="flex:1;min-width:0" oninput="clearFieldError('tunnel-field-error')">
+              <input type="text" id="tunnel-url" value="http://localhost:3000" placeholder="http://localhost:PORT" style="flex:1;min-width:0" oninput="clearFieldError('tunnel-field-error')" onkeydown="if(event.key==='Enter'){event.preventDefault();createTunnel()}">
               <button class="btn btn-primary" id="tunnel-create-btn" style="height:28px;padding:0 12px;font-size:12px;flex-shrink:0" onclick="createTunnel()">Create</button>
             </div>
           </div>
@@ -2181,7 +2202,7 @@ function preventDoubleTap(el, fn, delay = 1000) {
 }
 
 function saveTabState() {
-  const state = tabs.map(t => ({ id: t.id, sessionId: t.sessionId, title: t.title }));
+  const state = tabs.map(t => ({ id: t.id, sessionId: t.sessionId, title: t.title, type: t.type || 'term', port: t.port || null, path: t.previewPath || '/' }));
   try { safeStorage.setItem('wt-tabs', JSON.stringify(state)); } catch(e) { console.warn('Failed to save tabs:', e); }
 }
 
@@ -2483,7 +2504,10 @@ async function unlockApp() {
     (async () => {
       for (const s of saved) {
         await new Promise(resolve => setTimeout(resolve, 100));
-        try { newTab(s.title, s.sessionId); } catch (e) { console.warn('Tab restore failed:', e); }
+        try {
+          if (s.type === 'preview' && s.port) newPreviewTab(s.port, s.path || '/');
+          else newTab(s.title, s.sessionId);
+        } catch (e) { console.warn('Tab restore failed:', e); }
       }
     })();
   } else {
@@ -2701,7 +2725,12 @@ function createTabButton(tab) {
   const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   icon.setAttribute('width', '12'); icon.setAttribute('height', '12'); icon.setAttribute('viewBox', '0 0 24 24');
   icon.setAttribute('fill', 'none'); icon.setAttribute('stroke', 'currentColor'); icon.setAttribute('stroke-width', '2');
-  icon.innerHTML = '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>';
+  if (tab.type === 'preview') {
+    tabEl.classList.add('preview-tab');
+    icon.innerHTML = '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>';
+  } else {
+    icon.innerHTML = '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>';
+  }
   tabEl.appendChild(icon);
 
   const titleSpan = document.createElement('span');
@@ -2754,7 +2783,7 @@ function hideTermLoading(tab) {
 function newTab(title, sessionId, dir) {
   const id = ++tabCounter;
   const sid = sessionId || uuid();
-  const tab = { id, sessionId: sid, title: title || `Term ${nextTermNumber()}`, term: null, fitAddon: null, searchAddon: null, ws: null, el: null, wrapper: null, closed: false, reconnectDelay: 1000, dataDisposable: null, resizeDisposable: null, resizeObserver: null, cwd: dir || currentPath };
+  const tab = { id, type: 'term', sessionId: sid, title: title || `Term ${nextTermNumber()}`, term: null, fitAddon: null, searchAddon: null, ws: null, el: null, wrapper: null, closed: false, reconnectDelay: 1000, dataDisposable: null, resizeDisposable: null, resizeObserver: null, cwd: dir || currentPath };
   tabs.push(tab);
   createTabButton(tab);
   createTerminalWrapper(tab);
@@ -2775,6 +2804,162 @@ function activateTab(id) {
   });
   const tab = tabs.find(t => t.id === id);
   if (tab?.fitAddon) setTimeout(() => fitTerm(tab), 60);
+  // Mobile key bar is terminal-only — hide it for preview tabs.
+  try {
+    const mk = document.getElementById('mobile-keys');
+    const selRow = document.getElementById('mkey-sel-row');
+    if (mk) {
+      const isPreview = tab && tab.type === 'preview';
+      mk.style.display = (!isPreview && settings.mobilekeys && window.innerWidth <= 768) ? 'flex' : 'none';
+      if (isPreview && selRow) selRow.style.display = 'none';
+    }
+  } catch {}
+}
+
+// ── App preview tabs (loopback reverse-proxy) ──
+// Same tab bar as terminals, but the body is a toolbar + sandboxed iframe
+// pointed at /api/preview/:port/ instead of xterm + /ws.
+function previewBuildUrl(port, pth) {
+  let p = String(pth || '/');
+  if (!p.startsWith('/')) p = '/' + p;
+  return `/api/preview/${port}${p}?token=${encodeURIComponent(authToken)}`;
+}
+function createPreviewWrapper(tab) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'term-wrapper';
+  wrapper.dataset.id = tab.id;
+  wrapper.style.flexDirection = 'column';
+  const bar = document.createElement('div');
+  bar.className = 'preview-bar';
+  bar.innerHTML = '<input class="preview-port-input" inputmode="numeric" pattern="[0-9]*" aria-label="Port" title="Local port" placeholder="port">'
+    + '<input class="preview-path-input" aria-label="Path" title="Path" placeholder="/  (e.g. /docs) — Enter opens">'
+    + '<button class="btn btn-primary preview-go" type="button">Go</button>'
+    + '<button class="btn btn-ghost preview-reload" type="button" title="Reload">Reload</button>'
+    + '<button class="btn btn-ghost preview-copy" type="button" title="Copy preview URL">Copy URL</button>';
+  const loading = document.createElement('div');
+  loading.className = 'preview-loading';
+  loading.innerHTML = '<span class="tl-spinner"></span><span>Loading preview…</span>';
+  const frame = document.createElement('iframe');
+  frame.className = 'preview-frame';
+  frame.setAttribute('title', `Preview :${tab.port}`);
+  frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-popups');
+  frame.setAttribute('referrerpolicy', 'no-referrer');
+  wrapper.appendChild(bar);
+  wrapper.appendChild(loading);
+  wrapper.appendChild(frame);
+  document.getElementById('terminals').appendChild(wrapper);
+  tab.wrapper = wrapper;
+  tab.loadingEl = loading;
+  tab.iframe = frame;
+  tab.portInput = bar.querySelector('.preview-port-input');
+  tab.pathInput = bar.querySelector('.preview-path-input');
+  tab.portInput.value = tab.port;
+  tab.pathInput.value = tab.previewPath || '/';
+  const go = () => previewNavigate(tab, tab.portInput.value, tab.pathInput.value);
+  bar.querySelector('.preview-go').addEventListener('click', go);
+  bar.querySelector('.preview-reload').addEventListener('click', () => previewReload(tab));
+  bar.querySelector('.preview-copy').addEventListener('click', () => {
+    try { copyText(location.origin + previewBuildUrl(tab.port, tab.previewPath || '/')); toast('Preview URL copied', 'success'); } catch { toast('Copy failed', 'error'); }
+  });
+  const keyGo = e => { if (e.key === 'Enter') { e.preventDefault(); go(); } };
+  tab.portInput.addEventListener('keydown', keyGo);
+  tab.pathInput.addEventListener('keydown', keyGo);
+  frame.addEventListener('load', () => { try { loading.classList.add('hidden'); } catch {} });
+  frame.addEventListener('error', () => { try { loading.classList.add('hidden'); } catch {} });
+}
+function previewNavigate(tab, port, pth) {
+  const n = parseInt(String(port).trim(), 10);
+  if (!Number.isInteger(n) || n < 1024 || n > 65535) { toast('Port must be 1024–65535', 'error'); return; }
+  let p = String(pth == null ? (tab.previewPath || '/') : pth).trim() || '/';
+  if (!p.startsWith('/')) p = '/' + p;
+  tab.port = n;
+  tab.previewPath = p;
+  tab.title = `App:${n}`;
+  try { tab.el.querySelector('.tab-title').textContent = tab.title; } catch {}
+  try { tab.iframe.setAttribute('title', `Preview :${n}`); } catch {}
+  try { tab.loadingEl.classList.remove('hidden'); } catch {}
+  // Cache-bust so Reload/Go always hits the live app, then hide spinner on load.
+  try { tab.iframe.src = previewBuildUrl(n, p) + (previewBuildUrl(n, p).includes('?') ? '&' : '?') + '_t=' + Date.now(); } catch {}
+  try { if (tab.portInput) tab.portInput.value = n; if (tab.pathInput) tab.pathInput.value = p; } catch {}
+  saveTabState();
+}
+function previewReload(tab) {
+  if (!tab || tab.type !== 'preview' || !tab.iframe) return;
+  try { tab.loadingEl.classList.remove('hidden'); } catch {}
+  try { tab.iframe.src = previewBuildUrl(tab.port, tab.previewPath || '/') + '&_t=' + Date.now(); } catch {}
+}
+function newPreviewTab(port, pth) {
+  const n = parseInt(port, 10);
+  const initialPort = Number.isInteger(n) && n >= 1024 && n <= 65535 ? n : 8000;
+  let p = String(pth || '/');
+  if (!p.startsWith('/')) p = '/' + p;
+  const id = ++tabCounter;
+  const tab = { id, type: 'preview', port: initialPort, previewPath: p, title: `App:${initialPort}`, el: null, wrapper: null, iframe: null, closed: false, cwd: currentPath };
+  tabs.push(tab);
+  createTabButton(tab);
+  createPreviewWrapper(tab);
+  activateTab(id);
+  previewNavigate(tab, initialPort, p);
+  unpinLaunchpad();
+  updateLaunchpad();
+  return tab;
+}
+function newPreviewPrompt() {
+  const raw = prompt('Preview local port (1024–65535):', '8000');
+  if (raw == null) return;
+  const n = parseInt(String(raw).trim(), 10);
+  if (!Number.isInteger(n) || n < 1024 || n > 65535) { toast('Port must be 1024–65535', 'error'); return; }
+  newPreviewTab(n, '/');
+}
+let _portsCache = null, _portsCacheAt = 0;
+async function refreshPortsCache(force) {
+  if (!force && _portsCache && Date.now() - _portsCacheAt < 15000) return _portsCache;
+  try {
+    const r = await api('/api/ports');
+    if (r && Array.isArray(r.ports)) { _portsCache = r.ports; _portsCacheAt = Date.now(); return _portsCache; }
+  } catch {}
+  return _portsCache || [];
+}
+// Terminal-output scan: suggest "Open preview" when a loopback URL appears.
+// Debounced per tab+port (60s), suggestions only — never auto-opens.
+const _previewHintSeen = new Map();
+function scanPreviewHint(tab, text) {
+  if (!text || tab.type !== 'term') return;
+  let m = String(text).match(/(?:https?:\/\/)?(?:localhost|127\.0\.0\.1):(\d{2,5})(\/\S*)?/i);
+  if (!m) {
+    const b = String(text).match(/(?:listening|running|started|ready|port|local:?)\D{0,20}:(\d{4,5})/i);
+    if (!b) return;
+    m = [b[0], b[1], '/'];
+  }
+  const port = parseInt(m[1], 10);
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) return;
+  let pth = '/';
+  try { pth = (m[2] || '/').replace(/["'\),;\]]+$/, '') || '/'; if (!pth.startsWith('/')) pth = '/'; } catch { pth = '/'; }
+  const key = `${tab.id}:${port}`;
+  if (_previewHintSeen.has(key) && Date.now() - _previewHintSeen.get(key) < 60000) return;
+  _previewHintSeen.set(key, Date.now());
+  previewSuggestToast(port, pth);
+}
+function previewSuggestToast(port, pth) {
+  try {
+    const container = document.getElementById('toast-container');
+    if (!container) { toast(`App detected on :${port}`, 'info'); return; }
+    while (container.children.length >= 4) container.firstChild.remove();
+    const el = document.createElement('div');
+    el.className = 'toast info';
+    const label = document.createElement('span');
+    label.textContent = `App detected on :${port} — open preview?`;
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-primary';
+    btn.style.cssText = 'height:26px;padding:0 12px;font-size:12px;margin-left:8px;flex-shrink:0';
+    btn.textContent = 'Open preview';
+    btn.addEventListener('click', () => { try { el.remove(); } catch {} newPreviewTab(port, pth || '/'); });
+    el.appendChild(label);
+    el.appendChild(btn);
+    el.style.cursor = 'default';
+    container.appendChild(el);
+    setTimeout(() => { try { el.remove(); } catch {} }, 8000);
+  } catch { toast(`App detected on :${port}`, 'info'); }
 }
 
 function cleanupWebSocket(tab) {
@@ -2967,7 +3152,10 @@ function connectWebSocket(tab, isReconnect = false) {
       out += str[i];
       i++;
     }
-    if (out) tab.term.write(out);
+    if (out) {
+      tab.term.write(out);
+      try { scanPreviewHint(tab, out.slice(-2000)); } catch {}
+    }
   }
 
   ws.onmessage = e => {
@@ -3113,7 +3301,9 @@ function manualReconnect() {
 async function closeTab(e, id) {
   e.stopPropagation();
   if (settings.confirmclose) {
-    const ok = await confirmDialog({ title: 'Close terminal', message: tabs.length === 1 ? 'Close last terminal?' : 'Close terminal?', okText: 'Close', cancelText: 'Cancel' });
+    const isPrev = tabs.find(t => t.id === id)?.type === 'preview';
+    const kind = isPrev ? 'preview' : 'terminal';
+    const ok = await confirmDialog({ title: isPrev ? 'Close preview' : 'Close terminal', message: tabs.length === 1 ? `Close last ${kind}?` : `Close ${kind}?`, okText: 'Close', cancelText: 'Cancel' });
     if (!ok) return;
   }
 
@@ -3127,9 +3317,10 @@ async function closeTab(e, id) {
 
   const tab = tabs.find(t => t.id === id);
   if (!tab) return;
+  const isPreview = tab.type === 'preview';
   tab.closed = true;
   clearTimeout(tab.reconnectTimer);
-  cleanupWebSocket(tab);
+  if (!isPreview) cleanupWebSocket(tab);
   // Clean up selection/scroll mode state
   if (termSelectMode) {
     const ta = tab.textarea || tab.term?.textarea || tab.term?.element?.querySelector('.xterm-textarea, textarea');
@@ -3138,10 +3329,11 @@ async function closeTab(e, id) {
   }
   tab.resizeObserver?.disconnect();
   tab.term?.dispose();
+  try { if (tab.iframe) tab.iframe.src = 'about:blank'; } catch {}
   tab.el?.remove();
   tab.wrapper?.remove();
-  // Kill the backing session (tmux or in-memory) so it doesn't pile up
-  if (tab.sessionId) api(`/api/sessions/${tab.sessionId}`, { method: 'DELETE' });
+  // Kill the backing session (tmux or in-memory) so it doesn't pile up (terminals only)
+  if (tab.type !== 'preview' && tab.sessionId) api(`/api/sessions/${tab.sessionId}`, { method: 'DELETE' });
   tabs = tabs.filter(t => t.id !== id);
   saveTabState();
   if (activeTabId === id && tabs.length > 0) activateTab(tabs[tabs.length - 1].id);
@@ -4046,7 +4238,10 @@ async function _loadFilesInner(dir) {
   if (data.parent && data.parent !== dir) {
     const folderSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>';
     if (dirCount > 0) { addGroupDivider('Folders', dirCount); dirsHeaderDone = true; }
-    addItem(data.parent, () => makeFileItem('..', true, data.parent, { icon: folderSvg, meta: 'Parent directory', kind: 'dir' }));
+    const parentRow = addItem(data.parent, () => makeFileItem('..', true, data.parent, { icon: folderSvg, meta: 'Parent directory', kind: 'dir' }));
+    // Flag the ".." row so its checkbox stays hidden and it can't be selected
+    parentRow.classList.add('is-parent');
+    parentRow.dataset.isParent = 'true';
   }
 
   let filesHeaderDone = false;
@@ -4070,6 +4265,9 @@ async function _loadFilesInner(dir) {
 
     const existing = oldMap.get(key);
     if (existing) {
+      // A reused node is a regular entry, never the ".." parent row
+      existing.classList.remove('is-parent');
+      delete existing.dataset.isParent;
       // Update name/meta/icon if changed (without recreating DOM)
       const nameEl = existing.querySelector('.file-name');
       if (nameEl && nameEl.textContent !== f.name) {
@@ -4297,15 +4495,20 @@ function setupFileListClicks() {
     const row = e.target.closest('.file-item');
     if (!row || !row.dataset.path) return;
     const { curPath, curIsDir } = rowInfo(row);
+    const isParentRow = row.classList.contains('is-parent') || curPath === currentParent;
     if (e.target.closest('.file-select-check')) {
+      if (isParentRow) return;
       toggleFileSelection(curPath, row);
       if (selectedFiles.length > 0) document.getElementById('select-actions').style.display = 'flex';
       return;
     }
     if (e.target.closest('.file-quick')) { downloadFile(curPath); return; }
     const ell = e.target.closest('.file-ellipsis');
-    if (ell) { openMenuFor(row, ell); return; }
-    if (selectMode) { toggleFileSelection(curPath, row); return; }
+    if (ell) { e.preventDefault(); e.stopPropagation(); openMenuFor(row, ell); return; }
+    if (selectMode) {
+      if (isParentRow) { loadFiles(curPath); return; }
+      toggleFileSelection(curPath, row); return;
+    }
     if (curIsDir) loadFiles(curPath);
     else openFileEditor(curPath);
   });
@@ -4313,6 +4516,7 @@ function setupFileListClicks() {
     if ((e.key === 'Enter' || e.key === ' ') && e.target.closest && e.target.closest('.file-ellipsis')) {
       e.preventDefault();
       e.stopPropagation();
+      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
       const row = e.target.closest('.file-item');
       if (row) openMenuFor(row, e.target.closest('.file-ellipsis'));
     }
@@ -5044,6 +5248,8 @@ function toggleSelectMode() {
 }
 
 function toggleFileSelection(path, el) {
+  // The ".." parent entry is navigational, never selectable
+  if (!path || path === currentParent || (el && el.classList && el.classList.contains('is-parent'))) return;
   const idx = selectedFiles.indexOf(path);
   if (idx > -1) {
     selectedFiles.splice(idx, 1);
