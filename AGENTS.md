@@ -42,7 +42,7 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
 - **Systemd**: `setup.sh` optionally creates `/etc/systemd/system/webtun.service`.
 - **CSP** in `server.js` allows CDN scripts from `cdn.jsdelivr.net`.
 - **File API** workspace root: `WORKSPACE_ROOT` env var, falls back to `os.homedir()`.
-- `public/sw.js` enables PWA installability. Cache `webtun-v4`; client `registerSW()` toasts on `updatefound` + `skipWaiting` (no auto-reload — live terminal).
+- `public/sw.js` enables PWA installability. Cache `webtun-v5`; client `registerSW()` toasts on `updatefound` + `skipWaiting` (no auto-reload — live terminal).
 - **Favicon/Icons**: `public/favicon.png` (32px), `public/icon-192.png` (192px), `public/icon-512.png` (512px), `public/icon.svg` — all generated from the same terminal SVG logo.
 - **Safe localStorage** (`public/index.html:979`): `safeStorage` wrapper catches errors when Edge Tracking Prevention blocks storage on Cloudflare tunnel domains. All `localStorage` calls go through this wrapper.
 

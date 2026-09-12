@@ -725,24 +725,28 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 /* ═══════════════════════════════════════════════════════
    PIN SCREEN
    ═══════════════════════════════════════════════════════ */
-#pin-screen { position: fixed; inset: 0; background: var(--bg); z-index: 200; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-#pin-screen.hidden { display: none; }
-#pin-screen::before { content: ''; position: absolute; width: min(560px, 92vw); height: min(560px, 92vw); background: radial-gradient(circle, var(--accent) 0%, transparent 65%); opacity: .13; filter: blur(12px); animation: pinAura 7s ease-in-out infinite; pointer-events: none; }
-#pin-screen::after { content: ''; position: absolute; inset: 0; background-image: radial-gradient(var(--border) 1px, transparent 1.2px); background-size: 22px 22px; opacity: .55; -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 45%, black 25%, transparent 75%); mask-image: radial-gradient(ellipse 70% 60% at 50% 45%, black 25%, transparent 75%); pointer-events: none; }
+#pin-screen, #offline-screen { position: fixed; inset: 0; background: var(--bg); z-index: 200; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+#offline-screen { z-index: 300; }
+#pin-screen.hidden, #offline-screen.hidden { display: none; }
+#pin-screen::before, #offline-screen::before { content: ''; position: absolute; width: min(560px, 92vw); height: min(560px, 92vw); background: radial-gradient(circle, var(--accent) 0%, transparent 65%); opacity: .13; filter: blur(12px); animation: pinAura 7s ease-in-out infinite; pointer-events: none; }
+#pin-screen::after, #offline-screen::after { content: ''; position: absolute; inset: 0; background-image: radial-gradient(var(--border) 1px, transparent 1.2px); background-size: 22px 22px; opacity: .55; -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 45%, black 25%, transparent 75%); mask-image: radial-gradient(ellipse 70% 60% at 50% 45%, black 25%, transparent 75%); pointer-events: none; }
 @keyframes pinAura { 0%, 100% { transform: scale(1); opacity: .10; } 50% { transform: scale(1.12); opacity: .16; } }
-#pin-box { position: relative; z-index: 1; text-align: center; padding: 34px 34px 26px; max-width: 340px; width: calc(100% - 48px); background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: 0 24px 64px var(--shadow-color); animation: pinIn .38s cubic-bezier(.2,.9,.3,1.15); }
+#pin-box, #offline-box { position: relative; z-index: 1; text-align: center; padding: 34px 34px 26px; max-width: 340px; width: calc(100% - 48px); background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: 0 24px 64px var(--shadow-color); animation: pinIn .38s cubic-bezier(.2,.9,.3,1.15); }
 @keyframes pinIn { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
 #pin-box.shake { animation: pinShake .4s ease; border-color: var(--red); }
 @keyframes pinShake { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-9px); } 40% { transform: translateX(8px); } 60% { transform: translateX(-5px); } 80% { transform: translateX(4px); } }
 .pin-eyebrow { font-size: 10px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--fg3); font-family: var(--font-ui); margin-bottom: 10px; }
 #pin-box h1 { font-size: 36px; color: var(--accent); margin-bottom: 8px; }
+#offline-box h2 { font-size: 24px; color: var(--accent); margin-bottom: 8px; font-family: var(--font-ui); }
 #pin-box h1 svg { filter: drop-shadow(0 0 9px var(--accent)); }
-#pin-box p { color: var(--fg2); margin-bottom: 16px; font-size: 14px; }
+#pin-box p, #offline-box p { color: var(--fg2); margin-bottom: 16px; font-size: 14px; }
 #pin-input { text-align: center; font-size: 28px; letter-spacing: 8px; width: 200px; height: 44px; border: 2px solid var(--border); border-radius: var(--radius); background: var(--bg3); color: var(--fg); outline: none; font-family: var(--font); margin-bottom: 12px; transition: border-color var(--transition-fast), box-shadow var(--transition-fast); }
 @media (max-width: 360px) { #pin-input { width: 100%; letter-spacing: 4px; font-size: 22px; } }
 #pin-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
 #pin-error { color: var(--red); font-size: 12px; min-height: 18px; }
-#pin-box .btn { width: 100%; height: 40px; font-size: 14px; }
+#pin-box .btn, #offline-box .btn { width: 100%; height: 40px; font-size: 14px; }
+#offline-box .btn + .btn { margin-top: 8px; }
+#offline-last { font-family: var(--font); font-size: 11px; color: var(--fg3); word-break: break-all; margin: -8px 0 16px; }
 .pin-hint { margin-top: 14px; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--fg3); font-family: var(--font-ui); }
 
 /* ═══════════════════════════════════════════════════════
@@ -1331,6 +1335,20 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
       <button class="btn btn-primary" id="pin-unlock-btn" onclick="submitPin()">Unlock</button>
     </div>
     <div class="pin-hint">Protected by PIN • WebTun</div>
+  </div>
+</div>
+
+<div id="offline-screen" class="hidden">
+  <div id="offline-box" role="alert" aria-labelledby="offline-title">
+    <div class="pin-eyebrow">Connection</div>
+    <h2 id="offline-title">Server offline</h2>
+    <p id="offline-detail">Can't reach the WebTun server. It may be starting up or stopped.</p>
+    <div id="offline-last"></div>
+    <div>
+      <button class="btn btn-primary" onclick="retryServerNow()">Retry now</button>
+      <button class="btn" id="offline-open-last" onclick="openLastServer()" style="display:none">Open last known server</button>
+    </div>
+    <div class="pin-hint">Retrying automatically • WebTun</div>
   </div>
 </div>
 
@@ -2231,13 +2249,90 @@ function handlePinKeydown(e) {
   if (e.key === 'Enter') submitPin();
 }
 
+// ── Last-known server place ─────────────────────────────
+// Remembers where this app last reached a server (origin + path, never the
+// ?token= credential) so a saved PWA launched while offline can show what it
+// last knew and jump straight back there.
+let _lastPlaceSaved = '';
+function rememberServerPlace() {
+  try {
+    const u = new URL(location.href);
+    u.searchParams.delete('token');
+    const key = u.origin + u.pathname + u.search;
+    if (key === _lastPlaceSaved) return;
+    _lastPlaceSaved = key;
+    safeStorage.setItem('wt-last-server', JSON.stringify({
+      origin: u.origin, path: u.pathname + u.search, ts: Date.now()
+    }));
+  } catch {}
+}
+function loadLastServer() {
+  try {
+    const o = JSON.parse(safeStorage.getItem('wt-last-server') || 'null');
+    if (!o || typeof o.origin !== 'string' || !/^https?:\/\//.test(o.origin)) return null;
+    return o;
+  } catch { return null; }
+}
+function lastSeenAgo(ts) {
+  if (!ts) return '';
+  const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (s < 60) return 'just now';
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + 'm ago';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h ago';
+  return Math.floor(h / 24) + 'd ago';
+}
+
+// ── Offline screen (saved-PWA launch while server is down) ──
+let _offlineTimer = null;
+let _initAttempts = 0;
+function showOfflineScreen() {
+  const last = loadLastServer();
+  const detail = document.getElementById('offline-detail');
+  const lastEl = document.getElementById('offline-last');
+  const openBtn = document.getElementById('offline-open-last');
+  if (last && last.origin !== location.origin) {
+    detail.textContent = "Can't reach this address. The server may have moved (tunnel URLs change on restart).";
+    lastEl.textContent = 'Last seen ' + lastSeenAgo(last.ts) + ' at ' + last.origin;
+    openBtn.style.display = '';
+  } else if (last) {
+    detail.textContent = "Can't reach the WebTun server. It may be starting up or stopped.";
+    lastEl.textContent = 'Last connected ' + lastSeenAgo(last.ts);
+    openBtn.style.display = 'none';
+  } else {
+    detail.textContent = "Can't reach the WebTun server. It may be starting up or stopped.";
+    lastEl.textContent = '';
+    openBtn.style.display = 'none';
+  }
+  document.getElementById('offline-screen').classList.remove('hidden');
+  if (!_offlineTimer) {
+    _offlineTimer = setInterval(() => {
+      if (!window._appUnlocked && !document.hidden) init();
+    }, 15000);
+  }
+}
+function hideOfflineScreen() {
+  document.getElementById('offline-screen').classList.add('hidden');
+  if (_offlineTimer) { clearInterval(_offlineTimer); _offlineTimer = null; }
+}
+function retryServerNow() {
+  document.getElementById('pin-error').textContent = '';
+  init();
+}
+function openLastServer() {
+  const last = loadLastServer();
+  if (last) location.href = last.origin + (last.path || '/');
+}
+
 async function init() {
   loadSettings();
   applyTheme(settings.theme, false);
 
   const r = await api('/api/auth/required');
   if (r && r.required !== undefined) {
-    document.getElementById('pin-error').textContent = '';
+    _initAttempts = 0;
+    hideOfflineScreen();
     if (r.required) {
       // Trusted device? A stored session token skips the PIN screen.
       if (await tryResumeSession()) return;
@@ -2250,14 +2345,15 @@ async function init() {
       unlockApp();
     }
   } else {
-    const retries = parseInt(sessionStorage.getItem('wt-init-retries') || '0');
-    if (retries >= 10) {
-      document.getElementById('pin-error').textContent = 'Server unreachable. Refresh to try again.';
+    _initAttempts++;
+    if (_initAttempts >= 2) {
+      // Saved app launched while the server is down: show the offline
+      // screen (keeps retrying in the background) instead of dying quietly.
+      showOfflineScreen();
       return;
     }
-    sessionStorage.setItem('wt-init-retries', String(retries + 1));
     document.getElementById('pin-error').textContent = 'Server connection failed. Retrying...';
-    setTimeout(() => { if (!window._appUnlocked) init(); }, Math.min(3000 * (retries + 1), 30000));
+    setTimeout(() => { if (!window._appUnlocked) init(); }, 3000);
   }
 }
 
@@ -2552,6 +2648,7 @@ async function api(url, opts = {}) {
   try {
     const r = await fetch(url, opts);
     clearTimeout(timeoutId);
+    try { rememberServerPlace(); } catch {}
     // 401 must surface as an error object (never {}) so callers like
     // changePin() can't mistake rejection for success.
     if (!r.ok && r.status === 401) { showPinScreen(); return { error: 'Unauthorized' }; }
