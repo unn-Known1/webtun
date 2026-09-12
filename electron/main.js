@@ -56,7 +56,7 @@ function startServer() {
 
     serverProcess = fork(serverPath, [], {
       env,
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe', 'ipc']
     });
 
     serverProcess.stdout.on('data', d => console.log('[server]', d.toString().trim()));
