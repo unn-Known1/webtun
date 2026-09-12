@@ -7,7 +7,7 @@
     "email": "ptelgm.yt@gmail.com"
   },
   "license": "PolyForm-Noncommercial-1.0.0",
-  "main": "server.js",
+  "main": "electron/main.js",
   "bin": {
     "webtun": "bin/webtun.js"
   },
@@ -54,6 +54,7 @@
   "build": {
     "appId": "com.webtun.app",
     "productName": "WebTun",
+    "asar": true,
     "files": [
       "electron/**/*",
       "server.js",
@@ -62,14 +63,8 @@
       "LICENSE",
       "package.json"
     ],
-    "extraResources": [
-      {
-        "from": "node_modules",
-        "to": "node_modules",
-        "filter": [
-          "**/*"
-        ]
-      }
+    "asarUnpack": [
+      "node_modules/node-pty/**/*"
     ],
     "win": {
       "target": [

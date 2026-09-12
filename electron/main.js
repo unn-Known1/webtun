@@ -16,15 +16,20 @@ if (PIN && typeof PIN !== 'string') {
 }
 
 function resolveNodeModules() {
-  // Packaged app: resources/node_modules or app.asar.unpacked/node_modules
+  // Packaged app: deps live inside app.asar (native bindings under
+  // app.asar.unpacked via asarUnpack). Plain `require` from the forked
+  // server already finds them; NODE_PATH is just a fallback.
   if (app.isPackaged) {
     const candidates = [
-      path.join(process.resourcesPath, 'node_modules'),
+      path.join(app.getAppPath(), 'node_modules'),
       path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules'),
+      path.join(process.resourcesPath, 'node_modules'),
       path.join(path.dirname(app.getAppPath()), 'node_modules'),
     ];
     for (const c of candidates) {
-      if (fs.existsSync(c)) return c;
+      try {
+        if (fs.existsSync(c)) return c;
+      } catch {}
     }
   }
   return path.join(__dirname, '..', 'node_modules');
