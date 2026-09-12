@@ -1,6 +1,7 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain } = require('electron');
 const { fork } = require('child_process');
 const path = require('path');
+const os = require('os');
 const http = require('http');
 const fs = require('fs');
 
@@ -35,6 +36,14 @@ function resolveNodeModules() {
   return path.join(__dirname, '..', 'node_modules');
 }
 
+function serverLogPath() {
+  try {
+    return path.join(app.getPath('userData'), 'webtun-server.log');
+  } catch {
+    return path.join(os.tmpdir(), 'webtun-server.log');
+  }
+}
+
 function startServer() {
   return new Promise((resolve, reject) => {
     const serverPath = path.join(__dirname, '..', 'server.js');
@@ -56,17 +65,42 @@ function startServer() {
 
     serverProcess = fork(serverPath, [], {
       env,
-      stdio: ['ignore', 'pipe', 'pipe', 'ipc']
+      stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+      silent: true
     });
 
-    serverProcess.stdout.on('data', d => console.log('[server]', d.toString().trim()));
-    serverProcess.stderr.on('data', d => console.error('[server]', d.toString().trim()));
+    // Keep the tail of server output so startup failures show the real
+    // error (not just an exit code). Also mirrored to a log file.
+    const serverLog = [];
+    const pushLog = (chunk, tag) => {
+      const text = chunk.toString();
+      try { console.log(tag, text.trim()); } catch {}
+      serverLog.push(text);
+      // Bound memory: keep ~last 64KB
+      let total = 0;
+      for (let i = serverLog.length - 1; i >= 0; i--) {
+        total += serverLog[i].length;
+        if (total > 65536) { serverLog.splice(0, i); break; }
+      }
+      try {
+        fs.appendFileSync(serverLogPath(), text);
+      } catch {}
+    };
+    serverProcess.stdout.on('data', d => pushLog(d, '[server]'));
+    serverProcess.stderr.on('data', d => pushLog(d, '[server:err]'));
 
     let settled = false;
+    const serverOutputTail = () => {
+      const tail = serverLog.join('').trim().split(/\r?\n/).slice(-15).join('\n');
+      return tail ? `\n\nServer output:\n${tail}` : '';
+    };
     const fail = (msg) => {
       if (settled) return;
       settled = true;
-      reject(new Error(msg));
+      try {
+        fs.appendFileSync(serverLogPath(), `\n[webtun] ${msg}\n`);
+      } catch {}
+      reject(new Error(msg + serverOutputTail() + `\n\nFull log: ${serverLogPath()}`));
     };
 
     serverProcess.on('exit', code => {

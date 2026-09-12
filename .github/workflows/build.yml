@@ -59,6 +59,12 @@ jobs:
           exit 1
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Optional Authenticode signing — removes the Windows "Unknown
+          # publisher" warning. Absent/empty = build proceeds unsigned.
+          # Setup: base64-encoded .pfx in WIN_CSC_LINK + its password in
+          # WIN_CSC_KEY_PASSWORD (repo Settings → Secrets → Actions).
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
       - uses: actions/upload-artifact@v7
         if: success()

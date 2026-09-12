@@ -107,6 +107,7 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh
 - Native window with system tray and file dialogs
 - Build: `npm run dist:linux` / `npm run dist:win` / `npm run dist:mac`
 - [Download latest release](https://github.com/unn-known1/webtun/releases/latest)
+- **Windows "Unknown publisher" warning**: the exe is unsigned by default. To ship signed builds, get an Authenticode code-signing certificate (OV), export it as `.pfx`, and add two repo secrets (Settings → Secrets → Actions): `WIN_CSC_LINK` = base64 of the `.pfx`, `WIN_CSC_KEY_PASSWORD` = its password. The Windows CI build picks these up automatically (`CSC_LINK`/`CSC_KEY_PASSWORD`); without them it builds unsigned. Note: even signed, SmartScreen reputation takes time/downloads to build.
 
 ### PWA
 - Install to iOS/Android home screen
@@ -176,6 +177,7 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh
 | Shell permission denied | `chsh -s /bin/bash` |
 | Behind reverse proxy | Set `TRUST_PROXY=true` in `.env` |
 | Windows shell wrong | Set `WEBTUN_SHELL=/usr/bin/bash` in `.env` |
+| Windows "Unknown publisher" | Unsigned build — see Desktop (Electron) signing setup |
 | Tunnel persists after restart | `kill $(pgrep -f 'cloudflared tunnel')` |
 
 ---

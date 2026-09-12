@@ -60,7 +60,25 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { execSync, execFileSync, spawn } = require('child_process');
-const { ZipArchive } = require('archiver');
+// archiver v8 is ESM-only. Top-level require() of ESM works on modern plain
+// Node but can fail under the packaged Electron loader (asar), crashing the
+// server at startup — so load it lazily, only when zipping is requested.
+let _ZipArchive = null;
+function getZipArchive() {
+  if (!_ZipArchive) {
+    let mod;
+    try {
+      mod = require('archiver');
+    } catch (e) {
+      throw new Error('Zip support unavailable: failed to load archiver module (' + e.message + ')');
+    }
+    _ZipArchive = mod.ZipArchive || (mod.default && mod.default.ZipArchive) || mod.default || mod;
+    if (typeof _ZipArchive !== 'function') {
+      throw new Error('Zip support unavailable: unexpected archiver exports');
+    }
+  }
+  return _ZipArchive;
+}
 const yauzl = require('yauzl');
 const https = require('https');
 const http = require('http');
@@ -817,6 +835,8 @@ function createZipArchive(entries, zipPath) {
         }
       }
       const output = fs.createWriteStream(zipPath);
+      let ZipArchive;
+      try { ZipArchive = getZipArchive(); } catch (e) { return reject(e); }
       const archive = new ZipArchive({ zlib: { level: 6 } });
       output.on('close', () => resolve());
       output.on('error', reject);
@@ -840,6 +860,7 @@ function createZipArchive(entries, zipPath) {
 }
 
 function streamZipDirectory(dirPath, res) {
+  const ZipArchive = getZipArchive(); // throws → caller try/catch answers 500
   const archive = new ZipArchive({ zlib: { level: 6 } });
   archive.on('error', err => {
     if (!res.headersSent) res.status(500).json({ error: err.message });
