@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WebTun Docs — Self-Hosted Web Terminal, Files, Git &amp; Remote Access</title>
 <meta name="description" content="The visual user guide for WebTun, the self-hosted web terminal and browser-based SSH alternative. Terminal tabs, editor, file manager, git panel, Cloudflare tunnels, sessions and shortcuts — 5 minutes cover to cover.">
-<meta name="theme-color" content="#f4f6fb">
+<meta name="theme-color" content="#0b0d10">
 <link rel="canonical" href="https://unn-known1.github.io/webtun/public/docs.html">
 <meta property="og:type" content="article">
 <meta property="og:site_name" content="WebTun">
@@ -28,71 +28,19 @@
       "url": "https://unn-known1.github.io/webtun/public/docs.html",
       "applicationCategory": "DeveloperApplication",
       "operatingSystem": "Any",
-      "offers": {
-        "@type": "Offer",
-        "price": "0"
-      },
+      "offers": { "@type": "Offer", "price": "0" },
       "description": "Visual user guide for WebTun, the self-hosted web terminal: terminal tabs, editor, file manager, git panel, Cloudflare tunnels, sessions and shortcuts."
     },
     {
       "@type": "FAQPage",
       "mainEntity": [
-        {
-          "@type": "Question",
-          "name": "Port 3000 is already in use",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Start the server with a different port (PORT=4000 npm start, or webtun --port 4000). The desktop app does this by itself — it probes upward until it finds a free port."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Tunnel won't connect or the URL died",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "WebTun restarts a dead tunnel by itself, waiting longer each time (30s, 1m, 2m, 4m, 5m) and giving up after 5 attempts — at that point the tunnel is marked dead and stops retrying. If it still fails, check the server log: the connector binary downloads on first use and needs outbound HTTPS. You can also delete the tunnel from Settings → Tunnel and create a fresh one. Stale entries after a crash can be cleared with kill $(pgrep -f 'cloudflared tunnel')."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "My new device is stuck on \"pending\"",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Pending approvals expire after 5 minutes and must be accepted from a different, already-active session. Approve from your main device, then sign in again on the new one."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "I changed the PIN and got logged out everywhere",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "That's by design — a PIN change revokes every session for safety. Sign back in with the new PIN on each device."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "I forgot my PIN entirely",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "The PIN lives in the .env file — next to the server, or ~/.config/webtun/.env for global installs. If you can read that file you own the machine: edit the PIN= line and restart the server. If you can't, that's the security working as intended."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Terminal shows old sessions after a server restart",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Sessions live only while the server runs. On boot the server cleans up orphaned sessions automatically — just open a fresh tab."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "The installed (PWA) app looks outdated",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "You'll get an update toast when a new version is ready — tap it to refresh. Your terminals stay alive because the app never force-reloads mid-session."
-          }
-        }
+        { "@type": "Question", "name": "Port 3000 is already in use", "acceptedAnswer": { "@type": "Answer", "text": "Start the server with a different port (PORT=4000 npm start, or webtun --port 4000). The desktop app does this by itself — it probes upward until it finds a free port." } },
+        { "@type": "Question", "name": "Tunnel won't connect or the URL died", "acceptedAnswer": { "@type": "Answer", "text": "WebTun restarts a dead tunnel by itself, waiting longer each time (30s, 1m, 2m, 4m, 5m) and giving up after 5 attempts — at that point the tunnel is marked dead and stops retrying. If it still fails, check the server log: the connector binary downloads on first use and needs outbound HTTPS. You can also delete the tunnel from Settings → Tunnel and create a fresh one. Stale entries after a crash can be cleared with kill $(pgrep -f 'cloudflared tunnel')." } },
+        { "@type": "Question", "name": "My new device is stuck on \"pending\"", "acceptedAnswer": { "@type": "Answer", "text": "Pending approvals expire after 5 minutes and must be accepted from a different, already-active session. Approve from your main device, then sign in again on the new one." } },
+        { "@type": "Question", "name": "I changed the PIN and got logged out everywhere", "acceptedAnswer": { "@type": "Answer", "text": "That's by design — a PIN change revokes every session for safety. Sign back in with the new PIN on each device." } },
+        { "@type": "Question", "name": "I forgot my PIN entirely", "acceptedAnswer": { "@type": "Answer", "text": "The PIN lives in the .env file — next to the server, or ~/.config/webtun/.env for global installs. If you can read that file you own the machine: edit the PIN= line and restart the server. If you can't, that's the security working as intended." } },
+        { "@type": "Question", "name": "Terminal shows old sessions after a server restart", "acceptedAnswer": { "@type": "Answer", "text": "Sessions live only while the server runs. On boot the server cleans up orphaned sessions automatically — just open a fresh tab." } },
+        { "@type": "Question", "name": "The installed (PWA) app looks outdated", "acceptedAnswer": { "@type": "Answer", "text": "You'll get an update toast when a new version is ready — tap it to refresh. Your terminals stay alive because the app never force-reloads mid-session." } }
       ]
     }
   ]
@@ -102,130 +50,153 @@
 /* ═══════════════ TOKENS ═══════════════ */
 :root{
   color-scheme: dark;
-  --bg0:#05080f; --bg1:#0a0f1e;
-  --panel:rgba(148,163,255,.055); --panel2:rgba(148,163,255,.09);
-  --line:rgba(148,163,255,.15); --line2:rgba(148,163,255,.26);
-  --ink:#e9eef9; --mut:#9facc9; --dim:#646f8d;
-  --cy:#67e8f9; --vi:#a78bfa; --gn:#6ee7a8; --am:#fbbf24; --rd:#fb7185;
-  --grad:linear-gradient(120deg,var(--cy),var(--vi));
+  --bg0:#0a0c10; --bg1:#0e1115;
+  --panel:rgba(245,166,35,.05); --panel2:rgba(245,166,35,.09);
+  --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.15);
+  --ink:#eef1f6; --mut:#98a1b3; --dim:#5b6376;
+  --am:#f5a623; --tl:#2dd4bf; --vi:#a78bfa; --gn:#6ee7a8; --rd:#fb7185; --ye:#facc15;
+  --grad:linear-gradient(120deg,var(--am),var(--tl));
   --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,"Helvetica Neue",Arial,sans-serif;
   --mono:ui-monospace,"SF Mono","Cascadia Code","JetBrains Mono",Menlo,Consolas,monospace;
-  --rad:14px; --rad-s:10px;
-  --shadow:0 20px 60px -20px rgba(0,0,0,.65);
-  --side-w:264px;
+  --rad:16px; --rad-s:10px;
+  --shadow:0 24px 70px -24px rgba(0,0,0,.7);
+  --side-w:272px;
+  --ease:cubic-bezier(.19,1,.22,1);
 }
 [data-theme="light"]{
   color-scheme: light;
-  --bg0:#f4f6fb; --bg1:#eef1f8;
-  --panel:rgba(30,45,90,.045); --panel2:rgba(30,45,90,.08);
-  --line:rgba(30,45,90,.14); --line2:rgba(30,45,90,.24);
-  --ink:#131a2c; --mut:#4c5878; --dim:#8a94ad;
-  --cy:#0891b2; --vi:#7c3aed;
-  --shadow:0 20px 50px -24px rgba(30,45,120,.35);
+  --bg0:#f3f5fa; --bg1:#eceff7;
+  --panel:rgba(20,30,60,.04); --panel2:rgba(20,30,60,.075);
+  --line:rgba(20,30,60,.12); --line2:rgba(20,30,60,.2);
+  --ink:#12172a; --mut:#4c5570; --dim:#8d94a8;
+  --am:#c4770a; --tl:#0f8f82;
+  --shadow:0 24px 60px -28px rgba(20,30,80,.28);
 }
 /* ═══════════════ BASE ═══════════════ */
 *{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
 body{
   font-family:var(--sans);background:var(--bg0);color:var(--ink);
-  font-size:15.5px;line-height:1.65;-webkit-font-smoothing:antialiased;
+  font-size:15.5px;line-height:1.66;-webkit-font-smoothing:antialiased;
   overflow-x:hidden;
 }
-::selection{background:rgba(167,139,250,.35)}
-a{color:var(--cy)}
-:focus-visible{outline:2px solid var(--vi);outline-offset:2px;border-radius:6px}
-.skip{position:fixed;top:-60px;left:16px;z-index:200;background:var(--grad);color:#05080f;
+::selection{background:rgba(245,166,35,.32)}
+a{color:var(--am)}
+:focus-visible{outline:2px solid var(--tl);outline-offset:2px;border-radius:6px}
+.skip{position:fixed;top:-60px;left:16px;z-index:200;background:var(--grad);color:#0a0c10;
   font-weight:700;padding:10px 18px;border-radius:10px;transition:top .2s;text-decoration:none}
 .skip:focus{top:12px}
-/* aurora background */
+/* mesh background, mouse-parallax on the hero only */
 .aurora{position:fixed;inset:0;z-index:-1;overflow:hidden;background:
-  radial-gradient(1100px 500px at 85% -5%,rgba(167,139,250,.14),transparent 60%),
-  radial-gradient(900px 480px at 8% 12%,rgba(103,232,249,.10),transparent 60%),
-  radial-gradient(800px 600px at 50% 110%,rgba(103,232,249,.06),transparent 60%),
+  radial-gradient(1100px 520px at 82% -8%,rgba(245,166,35,.15),transparent 60%),
+  radial-gradient(900px 480px at 6% 8%,rgba(45,212,191,.11),transparent 60%),
+  radial-gradient(800px 620px at 46% 112%,rgba(167,139,250,.08),transparent 60%),
   var(--bg0)}
-.orb{position:absolute;border-radius:50%;filter:blur(90px);opacity:.5;animation:drift 22s ease-in-out infinite alternate}
-.orb.o1{width:420px;height:420px;left:-140px;top:-120px;background:rgba(103,232,249,.16)}
-.orb.o2{width:480px;height:480px;right:-160px;top:6%;background:rgba(167,139,250,.18);animation-delay:-8s}
-.orb.o3{width:380px;height:380px;left:32%;bottom:-180px;background:rgba(110,231,168,.10);animation-delay:-14s}
-@keyframes drift{to{transform:translate(50px,36px) scale(1.08)}}
-[data-theme="light"] .orb{opacity:.35}
+.orb{position:absolute;border-radius:50%;filter:blur(95px);opacity:.55;will-change:transform;
+  transition:transform 1.1s var(--ease)}
+.orb.o1{width:440px;height:440px;left:-150px;top:-130px;background:rgba(245,166,35,.16)}
+.orb.o2{width:500px;height:500px;right:-170px;top:4%;background:rgba(45,212,191,.16)}
+.orb.o3{width:400px;height:400px;left:30%;bottom:-190px;background:rgba(167,139,250,.10)}
+[data-theme="light"] .orb{opacity:.3}
+.grain{position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.035;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
 /* progress */
-#progress{position:fixed;top:0;left:0;height:3px;width:0;background:var(--grad);z-index:120;border-radius:0 3px 3px 0}
+#progress{position:fixed;top:0;left:0;height:3px;width:0;background:var(--grad);z-index:120;
+  border-radius:0 3px 3px 0;box-shadow:0 0 12px rgba(245,166,35,.5)}
 /* ═══════════════ LAYOUT ═══════════════ */
 .layout{display:flex;min-height:100vh}
 /* ── sidebar ── */
 .side{width:var(--side-w);flex-shrink:0;position:sticky;top:0;height:100vh;overflow-y:auto;
-  border-right:1px solid var(--line);background:rgba(5,8,15,.55);backdrop-filter:blur(14px);
+  border-right:1px solid var(--line);background:rgba(10,12,16,.6);backdrop-filter:blur(16px);
   padding:22px 16px 20px;display:flex;flex-direction:column;gap:16px}
-[data-theme="light"] .side{background:rgba(244,246,251,.7)}
+[data-theme="light"] .side{background:rgba(243,245,250,.75)}
 .brand{display:flex;align-items:center;gap:11px;text-decoration:none;color:var(--ink);padding:2px 6px}
-.brand-mark{width:36px;height:36px;border-radius:11px;background:#0b1120;border:1px solid var(--line2);
-  display:grid;place-items:center;flex-shrink:0;box-shadow:0 6px 20px -6px rgba(0,0,0,.5)}
+.brand-mark{width:37px;height:37px;border-radius:11px;background:linear-gradient(155deg,#171a20,#0b0d10);
+  border:1px solid var(--line2);display:grid;place-items:center;flex-shrink:0;
+  box-shadow:0 6px 20px -6px rgba(0,0,0,.55),inset 0 0 0 1px rgba(245,166,35,.08);position:relative;overflow:hidden}
+.brand-mark::after{content:"";position:absolute;inset:0;background:var(--grad);opacity:.16}
 .brand b{font-size:15.5px;letter-spacing:-.01em;display:block;line-height:1.2}
-.brand span{font-size:11px;color:var(--dim);letter-spacing:.14em;text-transform:uppercase}
-.search{position:relative}
-.search svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);opacity:.55}
-#q{width:100%;background:var(--panel);border:1px solid var(--line);border-radius:10px;color:var(--ink);
-  font:13.5px var(--sans);padding:9px 30px 9px 34px;transition:border-color .15s,box-shadow .15s}
-#q::placeholder{color:var(--dim)}
-#q:focus{outline:none;border-color:var(--vi);box-shadow:0 0 0 3px rgba(167,139,250,.18)}
-#q-clear{position:absolute;right:7px;top:50%;transform:translateY(-50%);display:none;border:0;background:none;
-  color:var(--dim);cursor:pointer;font-size:15px;line-height:1;padding:4px}
-.nav{display:flex;flex-direction:column;gap:2px;font-size:13.5px}
-.nav .grp{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);
-  padding:12px 10px 5px;font-weight:700}
+.brand span{font:600 10.5px var(--mono);color:var(--dim);letter-spacing:.1em;text-transform:uppercase}
+/* palette-style search trigger, mirrors the app's own Ctrl+P finder */
+.search-trigger{display:flex;align-items:center;gap:9px;width:100%;background:var(--panel);
+  border:1px solid var(--line);border-radius:11px;color:var(--dim);font:13px var(--sans);
+  padding:9px 11px;cursor:pointer;transition:border-color .15s,background .15s}
+.search-trigger:hover{border-color:var(--line2);background:var(--panel2);color:var(--mut)}
+.search-trigger kbd{margin-left:auto;font:600 10.5px var(--mono);background:var(--panel2);
+  border:1px solid var(--line2);border-radius:5px;padding:2px 6px;color:var(--mut)}
+.nav{display:flex;flex-direction:column;gap:1px;font-size:13.5px;position:relative}
+.nav .grp{font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);
+  padding:13px 10px 5px;font-weight:700;font-family:var(--mono)}
 .nav a{display:flex;align-items:center;gap:9px;color:var(--mut);text-decoration:none;
-  padding:7px 10px;border-radius:9px;border-left:2px solid transparent;transition:all .15s}
-.nav a svg{flex-shrink:0;opacity:.7}
-.nav a:hover{color:var(--ink);background:var(--panel)}
-.nav a.active{color:var(--ink);background:var(--panel2);border-left-color:var(--cy)}
+  padding:7px 10px;border-radius:9px;position:relative;z-index:1;transition:color .15s}
+.nav a svg{flex-shrink:0;opacity:.65;transition:opacity .15s}
+.nav a:hover{color:var(--ink)}
+.nav a:hover svg{opacity:1}
+.nav a.active{color:var(--ink)}
+.nav a.active svg{opacity:1}
 .nav a.hide{display:none}
+/* sliding highlight pill, follows the active link */
+#navglow{position:absolute;left:0;width:100%;height:0;border-radius:9px;background:var(--panel2);
+  box-shadow:inset 2px 0 0 var(--am);opacity:0;transition:transform .32s var(--ease),height .32s var(--ease),opacity .2s;
+  pointer-events:none;z-index:0}
 #no-res{display:none;font-size:13px;color:var(--dim);padding:8px 10px}
 .side-foot{margin-top:auto;position:sticky;bottom:0;z-index:5;display:flex;flex-direction:column;gap:9px;
   margin-left:-16px;margin-right:-16px;padding:14px 16px 20px;border-top:1px solid var(--line);
-  background:rgba(5,8,15,.92);backdrop-filter:blur(14px)}
-[data-theme="light"] .side-foot{background:rgba(244,246,251,.94)}
+  background:rgba(10,12,16,.94);backdrop-filter:blur(16px)}
+[data-theme="light"] .side-foot{background:rgba(243,245,250,.95)}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font:600 13.5px var(--sans);
   padding:10px 14px;border-radius:11px;border:1px solid var(--line2);cursor:pointer;text-decoration:none;
-  transition:transform .15s,box-shadow .15s,background .15s}
+  transition:transform .18s var(--ease),box-shadow .18s,background .18s;position:relative}
 .btn:hover{transform:translateY(-1px)}
-.btn-pri{background:var(--grad);color:#05080f;border:0;box-shadow:0 8px 24px -8px rgba(103,232,249,.5)}
+.btn:active{transform:translateY(0) scale(.98)}
+.btn-pri{background:var(--grad);color:#0a0c10;border:0;box-shadow:0 10px 26px -10px rgba(245,166,35,.55);font-weight:700}
 .btn-ghost{background:var(--panel);color:var(--ink)}
-/* light/dark segmented switch */
 .theme-switch{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:3px;gap:3px}
 .theme-switch button{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:7px;
   font:600 12.5px var(--sans);color:var(--mut);background:transparent;border:0;border-radius:9px;
   padding:8px 4px;cursor:pointer;transition:all .18s}
 .theme-switch button:hover{color:var(--ink)}
-.theme-switch button[aria-pressed="true"]{background:var(--panel2);color:var(--ink);
-  box-shadow:inset 0 0 0 1px var(--line2)}
+.theme-switch button[aria-pressed="true"]{background:var(--panel2);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line2)}
 .ver{font:11px var(--mono);color:var(--dim);text-align:center}
+/* ── mobile topbar ── */
+.topbar{display:none}
+.burger{display:none;width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:var(--panel);
+  align-items:center;justify-content:center;flex-shrink:0;cursor:pointer}
+.burger span,.burger span::before,.burger span::after{content:"";display:block;width:16px;height:2px;background:var(--ink);
+  border-radius:2px;position:relative;transition:transform .2s,opacity .2s}
+.burger span::before{position:absolute;top:-5px}
+.burger span::after{position:absolute;top:5px}
+body.nav-open .burger span{background:transparent}
+body.nav-open .burger span::before{transform:translateY(5px) rotate(45deg)}
+body.nav-open .burger span::after{transform:translateY(-5px) rotate(-45deg)}
+.scrim{display:none}
 /* ── main ── */
 .main{flex:1;min-width:0;padding:0 0 90px}
-.wrap{max-width:900px;margin:0 auto;padding:0 34px}
-.topbar{display:none}
+.wrap{max-width:920px;margin:0 auto;padding:0 34px}
 /* ═══════════════ HERO ═══════════════ */
-.hero{padding:74px 0 10px;position:relative}
-.eyebrow{display:inline-flex;align-items:center;gap:8px;font:700 11.5px var(--sans);letter-spacing:.16em;
-  text-transform:uppercase;color:var(--cy);background:rgba(103,232,249,.09);
-  border:1px solid rgba(103,232,249,.28);padding:7px 14px;border-radius:100px;margin-bottom:20px}
+.hero{padding:76px 0 10px;position:relative}
+.eyebrow{display:inline-flex;align-items:center;gap:8px;font:600 12px var(--mono);letter-spacing:.02em;
+  color:var(--am);background:rgba(245,166,35,.09);border:1px solid rgba(245,166,35,.28);
+  padding:7px 14px;border-radius:100px;margin-bottom:22px}
 .pulse{width:7px;height:7px;border-radius:50%;background:var(--gn);box-shadow:0 0 0 0 rgba(110,231,168,.6);animation:pulse 2s infinite}
 @keyframes pulse{70%{box-shadow:0 0 0 9px rgba(110,231,168,0)}100%{box-shadow:0 0 0 0 rgba(110,231,168,0)}}
-h1{font-size:clamp(34px,5.4vw,58px);line-height:1.06;letter-spacing:-.03em;font-weight:800;max-width:16ch}
+h1{font-size:clamp(36px,5.6vw,60px);line-height:1.04;letter-spacing:-.03em;font-weight:800;max-width:17ch}
 h1 .grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
-.lede{color:var(--mut);font-size:17px;max-width:60ch;margin:18px 0 26px}
+.lede{color:var(--mut);font-size:17.5px;max-width:58ch;margin:20px 0 28px}
 .lede b{color:var(--ink)}
-.cta-row{display:flex;flex-wrap:wrap;gap:11px;margin-bottom:14px}
-.meta-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:38px}
+.cta-row{display:flex;flex-wrap:wrap;gap:11px;margin-bottom:16px}
+.meta-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:40px}
 .chip{display:inline-flex;align-items:center;gap:7px;font:600 12px var(--sans);color:var(--mut);
   background:var(--panel);border:1px solid var(--line);padding:6px 12px;border-radius:100px}
 .chip svg{opacity:.8}
 .chip b{color:var(--ink)}
 /* mock terminal */
-.term{background:rgba(3,6,12,.86);border:1px solid var(--line2);border-radius:16px;overflow:hidden;
-  box-shadow:var(--shadow);margin-bottom:44px}
-[data-theme="light"] .term{background:#0a0f1e;border-color:#0a0f1e}
-.term-bar{display:flex;align-items:center;gap:8px;padding:12px 15px;border-bottom:1px solid rgba(148,163,255,.14)}
+.term{background:rgba(4,5,8,.9);border:1px solid var(--line2);border-radius:16px;overflow:hidden;
+  box-shadow:var(--shadow);margin-bottom:48px;position:relative}
+.term::before{content:"";position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(
+  to bottom,rgba(255,255,255,.014) 0px,rgba(255,255,255,.014) 1px,transparent 1px,transparent 3px)}
+[data-theme="light"] .term{background:#0c0f14;border-color:#0c0f14}
+.term-bar{display:flex;align-items:center;gap:8px;padding:12px 15px;border-bottom:1px solid rgba(255,255,255,.08)}
 .dot{width:11px;height:11px;border-radius:50%}
 .term-title{margin-left:6px;font:12px var(--mono);color:#8b96b5;display:flex;align-items:center;gap:7px}
 .term-live{margin-left:auto;font:700 10px var(--sans);letter-spacing:.1em;color:var(--gn);
@@ -233,187 +204,211 @@ h1 .grad{background:var(--grad);-webkit-background-clip:text;background-clip:tex
 .term-live i{width:6px;height:6px;border-radius:50%;background:var(--gn);animation:blink 1.4s infinite}
 @keyframes blink{50%{opacity:.25}}
 .term-body{padding:18px 20px 22px;font:13.5px/1.75 var(--mono);min-height:236px;color:#c9d4ee}
-.t-dim{color:#5b6480}.t-p{color:var(--cy)}.t-g{color:var(--gn)}.t-v{color:var(--vi)}.t-a{color:var(--am)}
-.caret{display:inline-block;width:8px;height:17px;background:var(--cy);vertical-align:-3px;animation:blink 1s steps(1) infinite}
-/* ═══════════════ CONTENT ═══════════════ */
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(195px,1fr));gap:13px;margin-bottom:56px}
-.card{display:block;background:var(--panel);border:1px solid var(--line);border-radius:var(--rad);
-  padding:19px 18px;text-decoration:none;color:var(--ink);transition:all .2s;position:relative;overflow:hidden}
-.card::after{content:"";position:absolute;inset:0 0 auto 0;height:2px;background:var(--grad);
-  opacity:0;transition:opacity .2s}
-.card:hover{transform:translateY(-3px);background:var(--panel2);border-color:var(--line2);box-shadow:var(--shadow)}
-.card:hover::after{opacity:1}
-.card .ic{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;margin-bottom:12px;background:rgba(103,232,249,.1);border:1px solid rgba(103,232,249,.25)}
-.card h3{font-size:15px;margin-bottom:4px;letter-spacing:-.01em}
-.card p{font-size:13px;color:var(--mut);line-height:1.55}
-.card .go{font-size:12.5px;font-weight:700;color:var(--cy);margin-top:9px;display:inline-block}
-section{margin-bottom:54px;scroll-margin-top:26px}
-.sec-head{display:flex;align-items:flex-start;gap:14px;margin-bottom:6px}
-.sec-ic{width:42px;height:42px;flex-shrink:0;border-radius:13px;display:grid;place-items:center;
+.t-dim{color:#5b6480}.t-p{color:var(--tl)}.t-g{color:var(--gn)}.t-v{color:var(--vi)}.t-a{color:var(--ye)}
+.caret{display:inline-block;width:8px;height:17px;background:var(--am);vertical-align:-3px;animation:blink 1s steps(1) infinite}
+/* ═══════════════ TOPIC BENTO ═══════════════ */
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin-bottom:60px;
+  border:1px solid var(--line);border-radius:var(--rad);overflow:hidden;background:var(--line)}
+.card{display:block;background:var(--bg0);padding:22px 20px;text-decoration:none;color:var(--ink);
+  transition:background .2s;position:relative}
+.card:hover{background:var(--panel2)}
+.card .ic{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;margin-bottom:14px;
+  background:var(--panel2);border:1px solid var(--line2);transition:transform .3s var(--ease)}
+.card:hover .ic{transform:translateY(-2px) rotate(-4deg)}
+.card h3{font-size:14.5px;margin-bottom:5px;letter-spacing:-.01em}
+.card p{font-size:12.8px;color:var(--mut);line-height:1.5}
+.card .go{font-size:12px;font-weight:700;color:var(--am);margin-top:10px;display:inline-flex;align-items:center;gap:4px;
+  transform:translateX(0);transition:transform .2s}
+.card:hover .go{transform:translateX(3px)}
+@media (max-width:820px){.cards{grid-template-columns:repeat(2,1fr)}}
+/* ═══════════════ CONTENT TYPO ═══════════════ */
+section{padding-top:64px;scroll-margin-top:24px}
+.sec-head{display:flex;align-items:center;gap:14px;margin-bottom:10px}
+.sec-ic{width:38px;height:38px;border-radius:11px;flex-shrink:0;display:grid;place-items:center;
   background:var(--panel2);border:1px solid var(--line2)}
-h2{font-size:clamp(23px,3.4vw,30px);letter-spacing:-.025em;font-weight:800;line-height:1.2}
-h2 .hash{opacity:0;color:var(--vi);text-decoration:none;font-weight:400;margin-left:8px;font-size:.75em;transition:opacity .15s}
+h2{font-size:25px;letter-spacing:-.02em;font-weight:750;display:flex;align-items:center;gap:9px}
+.hash{opacity:0;color:var(--dim);text-decoration:none;font-weight:400;transition:opacity .15s}
 h2:hover .hash{opacity:1}
-.sec-sub{color:var(--mut);margin:2px 0 20px;max-width:64ch}
-.sec-sub b{color:var(--ink)}
-h3{font-size:16.5px;letter-spacing:-.01em;margin:26px 0 10px;display:flex;align-items:center;gap:9px}
-h3 .hash{opacity:0;color:var(--vi);text-decoration:none;font-size:.8em}
-h3:hover .hash{opacity:1}
-p.body{color:var(--mut);margin-bottom:12px;max-width:70ch}
-p.body b,p.body strong,li b{color:var(--ink)}
-ul.tight{list-style:none;margin:0 0 14px;display:flex;flex-direction:column;gap:9px;max-width:70ch}
-ul.tight li{position:relative;padding-left:24px;color:var(--mut)}
-ul.tight li::before{content:"";position:absolute;left:4px;top:.68em;width:7px;height:7px;border-radius:2px;
+.sec-sub{color:var(--mut);font-size:15px;max-width:64ch;margin:6px 0 26px}
+h3{font-size:16.5px;margin:30px 0 12px;letter-spacing:-.01em}
+.body{color:var(--mut);max-width:68ch;margin-bottom:14px;font-size:14.8px}
+p.body b, .sec-sub b, .lede b{color:var(--ink)}
+.tight{list-style:none;display:flex;flex-direction:column;gap:13px;margin-bottom:24px}
+.tight li{position:relative;padding-left:22px;color:var(--mut);font-size:14.6px;max-width:70ch}
+.tight li::before{content:"";position:absolute;left:0;top:8px;width:7px;height:7px;border-radius:2px;
   background:var(--grad);transform:rotate(45deg)}
-ul.tight li b{font-weight:650}
-code.inl{font:12.8px var(--mono);background:var(--panel2);border:1px solid var(--line);
-  padding:2px 7px;border-radius:7px;color:var(--cy);white-space:nowrap}
-[data-theme="light"] code.inl{color:#0e7490}
-/* steps */
-.steps{counter-reset:st;display:flex;flex-direction:column;gap:11px;margin:18px 0;max-width:70ch}
-.step{counter-increment:st;display:flex;gap:14px;background:var(--panel);border:1px solid var(--line);
-  border-radius:var(--rad);padding:15px 17px;align-items:flex-start}
-.step::before{content:counter(st);flex-shrink:0;width:28px;height:28px;border-radius:9px;background:var(--grad);
-  color:#05080f;font:800 14px var(--sans);display:grid;place-items:center}
-.step p{font-size:14px;color:var(--mut)}
+.tight li b{color:var(--ink)}
+code.inl{font:12.8px var(--mono);background:var(--panel2);border:1px solid var(--line);border-radius:6px;
+  padding:1.5px 6px;color:var(--am)}
+kbd{font:600 11.5px var(--mono);background:var(--panel2);border:1px solid var(--line2);border-bottom-width:2px;
+  border-radius:6px;padding:2.5px 7px;color:var(--ink)}
+/* ── steps / timeline (this content really is a sequence) ── */
+.steps{position:relative;padding-left:2px;margin-bottom:8px}
+.step{position:relative;padding:0 0 26px 40px}
+.step::before{content:"";position:absolute;left:12px;top:22px;bottom:0;width:1px;background:var(--line2)}
+.step:last-child::before{display:none}
+.step::after{content:attr(data-n);position:absolute;left:0;top:0;width:25px;height:25px;border-radius:50%;
+  background:var(--panel2);border:1px solid var(--line2);display:grid;place-items:center;font:700 11px var(--mono);
+  color:var(--am);z-index:1}
+.step p{color:var(--mut);font-size:14.8px;max-width:66ch}
 .step p b{color:var(--ink)}
-/* callouts */
-.call{display:flex;gap:12px;border-radius:var(--rad-s);padding:14px 16px;margin:16px 0;max-width:70ch;
-  font-size:14px;border:1px solid}
-.call svg{flex-shrink:0;margin-top:2px}
-.call b{color:var(--ink)}
-.call.tip{background:rgba(110,231,168,.07);border-color:rgba(110,231,168,.3)}
-.call.warn{background:rgba(251,191,36,.07);border-color:rgba(251,191,36,.32)}
-.call.info{background:rgba(103,232,249,.06);border-color:rgba(103,232,249,.3)}
-.call p{color:var(--mut)}
-/* code blocks */
-.code{position:relative;background:rgba(3,6,12,.9);border:1px solid var(--line2);border-radius:var(--rad-s);
-  margin:14px 0;overflow:hidden;max-width:70ch}
-[data-theme="light"] .code{background:#0c1322}
-.code .lang{position:absolute;top:10px;left:15px;font:700 10.5px var(--sans);letter-spacing:.12em;
-  text-transform:uppercase;color:#5b6480}
-.code pre{padding:36px 16px 15px;overflow-x:auto;font:13px/1.7 var(--mono);color:#c9d4ee}
-.copy{position:absolute;top:8px;right:8px;display:inline-flex;align-items:center;gap:6px;font:600 11.5px var(--sans);
-  background:rgba(148,163,255,.1);color:#c9d4ee;border:1px solid rgba(148,163,255,.25);border-radius:8px;
-  padding:5px 10px;cursor:pointer;transition:all .15s}
-.copy:hover{background:rgba(148,163,255,.2)}
-.copy.ok{color:var(--gn);border-color:rgba(110,231,168,.5)}
-/* mock figures */
-.fig{background:var(--panel);border:1px solid var(--line);border-radius:var(--rad);overflow:hidden;
-  margin:18px 0;max-width:70ch;box-shadow:var(--shadow)}
-.fig-bar{display:flex;align-items:center;gap:7px;padding:10px 14px;border-bottom:1px solid var(--line);
-  font:12px var(--mono);color:var(--dim)}
-.fig-bar .sp{margin-left:auto;font:11px var(--sans)}
-.fig-body{padding:6px 0;font:13px var(--mono)}
-.frow{display:flex;align-items:center;gap:10px;padding:8px 16px;color:var(--mut)}
-.frow + .frow{border-top:1px solid var(--line)}
-.frow .nm{color:var(--ink)}
-.frow .tag{margin-left:auto;font:700 10px var(--sans);padding:2px 8px;border-radius:100px;letter-spacing:.06em}
-.tag.g{background:rgba(110,231,168,.12);color:var(--gn);border:1px solid rgba(110,231,168,.35)}
-.tag.c{background:rgba(103,232,249,.1);color:var(--cy);border:1px solid rgba(103,232,249,.35)}
-.tag.v{background:rgba(167,139,250,.12);color:var(--vi);border:1px solid rgba(167,139,250,.4)}
-.tag.a{background:rgba(251,191,36,.12);color:var(--am);border:1px solid rgba(251,191,36,.35)}
-.dl{font:13px/1.8 var(--mono);padding:12px 18px;white-space:pre-wrap}
-.dl .add{color:var(--gn)}.dl .del{color:var(--rd)}.dl .hunk{color:var(--vi)}
-figcaption{padding:9px 16px;border-top:1px solid var(--line);font-size:12.5px;color:var(--dim)}
-/* feature grid */
-.feat{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin:16px 0;max-width:76ch}
-.feat div{background:var(--panel);border:1px solid var(--line);border-radius:var(--rad-s);padding:14px 15px}
-.feat h4{font-size:14px;margin-bottom:4px;display:flex;align-items:center;gap:8px}
-.feat p{font-size:13px;color:var(--mut);line-height:1.55}
-/* tables */
-.tblwrap{overflow-x:auto;margin:14px 0;max-width:76ch;border:1px solid var(--line);border-radius:var(--rad-s)}
-table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:420px}
-th{text-align:left;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);
-  padding:10px 14px;background:var(--panel2);border-bottom:1px solid var(--line)}
-td{padding:9px 14px;border-bottom:1px solid var(--line);color:var(--mut)}
+/* ── tables ── */
+.tblwrap{overflow-x:auto;margin-bottom:24px;border:1px solid var(--line);border-radius:var(--rad-s)}
+table{width:100%;border-collapse:collapse;font-size:13.8px}
+th{text-align:left;font:600 11px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--dim);
+  padding:11px 15px;border-bottom:1px solid var(--line)}
+td{padding:11px 15px;border-bottom:1px solid var(--line);color:var(--mut)}
 tr:last-child td{border-bottom:0}
-td:first-child{white-space:nowrap}
-kbd{font:12px var(--mono);background:var(--panel2);border:1px solid var(--line2);
-  border-bottom-width:2px;padding:2px 7px;border-radius:6px;color:var(--ink);white-space:nowrap}
-/* faq */
-details.faq{background:var(--panel);border:1px solid var(--line);border-radius:var(--rad-s);
-  margin-bottom:10px;max-width:70ch;overflow:hidden;transition:border-color .15s}
-details.faq[open]{border-color:var(--line2);background:var(--panel2)}
-details.faq summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:11px;
-  padding:14px 16px;font-weight:650;font-size:14.5px}
-details.faq summary::-webkit-details-marker{display:none}
-details.faq summary .pm{flex-shrink:0;width:24px;height:24px;border-radius:8px;background:var(--grad);color:#05080f;
-  display:grid;place-items:center;font-weight:800;transition:transform .25s}
-details.faq[open] summary .pm{transform:rotate(45deg)}
-details.faq .ans{padding:0 16px 16px 51px;color:var(--mut);font-size:14px}
-details.faq .ans b{color:var(--ink)}
-/* footer */
-footer{margin-top:70px;border-top:1px solid var(--line);padding-top:26px;display:flex;flex-wrap:wrap;
-  gap:14px;align-items:center;justify-content:space-between;color:var(--dim);font-size:13px}
-/* back to top */
-#top{position:fixed;right:22px;bottom:22px;width:46px;height:46px;border-radius:14px;border:1px solid var(--line2);
-  background:var(--panel2);backdrop-filter:blur(10px);color:var(--ink);cursor:pointer;display:grid;place-items:center;
-  opacity:0;pointer-events:none;transform:translateY(10px);transition:all .25s;z-index:110}
-#top.show{opacity:1;pointer-events:auto;transform:none}
-#top:hover{background:var(--grad);color:#05080f;border-color:transparent}
-/* reveal */
-.rv{opacity:0;transform:translateY(18px);transition:opacity .55s ease,transform .55s ease}
-.rv.in{opacity:1;transform:none}
-/* responsive */
-@media (max-width:960px){
-  .side{position:fixed;left:0;top:0;bottom:0;z-index:150;height:100dvh;transform:translateX(-105%);
-    transition:transform .28s ease;width:min(300px,84vw);box-shadow:var(--shadow)}
-  body.nav-open .side{transform:none}
-  .scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:140;opacity:0;pointer-events:none;transition:opacity .25s}
-  body.nav-open .scrim{opacity:1;pointer-events:auto}
-  .topbar{display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100;
-    padding:12px 18px;background:rgba(5,8,15,.75);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
-  [data-theme="light"] .topbar{background:rgba(244,246,251,.8)}
-  .topbar b{font-size:14.5px}
-  #burger{background:var(--panel2);border:1px solid var(--line2);border-radius:10px;color:var(--ink);
-    width:38px;height:38px;display:grid;place-items:center;cursor:pointer}
-  .topbar .mini{margin-left:auto}
+td:first-child{color:var(--ink)}
+/* ── code blocks ── */
+.code{background:#0a0c10;border:1px solid var(--line2);border-radius:var(--rad-s);margin-bottom:22px;
+  position:relative;overflow:hidden}
+[data-theme="light"] .code{background:#11131a}
+.code .lang{position:absolute;top:10px;left:14px;font:600 10.5px var(--mono);color:var(--dim);
+  text-transform:uppercase;letter-spacing:.08em}
+.code pre{padding:34px 46px 16px 14px;overflow-x:auto;font:13px/1.65 var(--mono);color:#d3dcf2;white-space:pre}
+.copy{position:absolute;top:9px;right:9px;font:600 11px var(--sans);background:var(--panel2);
+  border:1px solid var(--line2);color:var(--mut);border-radius:7px;padding:5px 10px;cursor:pointer;transition:all .15s}
+.copy:hover{color:var(--ink);border-color:var(--am)}
+.copy.ok{color:var(--gn);border-color:var(--gn)}
+/* ── callouts ── */
+.call{display:flex;gap:11px;padding:14px 16px;border-radius:var(--rad-s);margin-bottom:22px;border:1px solid}
+.call svg{flex-shrink:0;margin-top:1px}
+.call p{font-size:14px;color:var(--mut)}
+.call p b{color:var(--ink)}
+.call.tip{background:rgba(110,231,168,.06);border-color:rgba(110,231,168,.25)}
+.call.warn{background:rgba(250,204,21,.06);border-color:rgba(250,204,21,.28)}
+.call.info{background:rgba(45,212,191,.06);border-color:rgba(45,212,191,.25)}
+/* ── feature grid ── */
+.feat{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px;margin:20px 0 26px}
+.feat > div{padding:16px 17px;border:1px solid var(--line);border-radius:var(--rad-s);background:var(--panel)}
+.feat h4{font-size:14px;margin-bottom:5px}
+.feat p{font-size:13.2px;color:var(--mut)}
+/* ── figures (mini device mockups) ── */
+.fig{border:1px solid var(--line2);border-radius:var(--rad-s);overflow:hidden;margin-bottom:22px;background:#0a0c10}
+[data-theme="light"] .fig{background:#11131a}
+.fig-bar{font:12px var(--mono);color:#8b96b5;padding:9px 13px;border-bottom:1px solid rgba(255,255,255,.08);
+  display:flex;align-items:center;gap:8px}
+.fig-bar .sp{margin-left:auto;color:var(--dim)}
+.fig-body{padding:6px 4px}
+.frow{display:flex;align-items:center;gap:9px;padding:8px 13px;font:13px var(--mono);color:#c9d4ee}
+.frow .nm{flex:1}
+.tag{font:700 10px var(--sans);padding:2px 8px;border-radius:100px;letter-spacing:.03em}
+.tag.c{background:rgba(167,139,250,.16);color:var(--vi)}
+.tag.g{background:rgba(45,212,191,.16);color:var(--tl)}
+.tag.a{background:rgba(250,204,21,.16);color:var(--ye)}
+.tag.v{background:rgba(110,231,168,.16);color:var(--gn)}
+.dl{padding:12px 15px;font:13px/1.7 var(--mono);color:#c9d4ee;white-space:pre}
+.dl .hunk{color:var(--tl)}.dl .add{color:var(--gn)}.dl .del{color:var(--rd)}
+.fig figcaption{padding:10px 14px;font-size:12.5px;color:var(--dim);border-top:1px solid rgba(255,255,255,.06)}
+/* ── keycap shortcut grid ── */
+.keys{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:1px;margin-bottom:22px;
+  background:var(--line);border:1px solid var(--line);border-radius:var(--rad-s);overflow:hidden}
+.keyrow{display:flex;align-items:center;gap:14px;background:var(--bg0);padding:13px 16px}
+.keyrow .combo{display:flex;gap:5px;flex-shrink:0}
+.keyrow .does{font-size:13px;color:var(--mut)}
+/* ── accordion (custom, animated) ── */
+.faq{border:1px solid var(--line);border-radius:var(--rad-s);margin-bottom:10px;overflow:hidden;background:var(--panel)}
+.faq button.q{width:100%;display:flex;align-items:center;gap:12px;text-align:left;background:none;border:0;
+  color:var(--ink);font:600 14.5px var(--sans);padding:15px 16px;cursor:pointer}
+.faq .pm{width:20px;height:20px;border-radius:6px;background:var(--panel2);border:1px solid var(--line2);
+  display:grid;place-items:center;flex-shrink:0;font:700 13px var(--mono);color:var(--am);
+  transition:transform .25s var(--ease)}
+.faq[aria-expanded="true"] .pm{transform:rotate(45deg)}
+.faq .panel{display:grid;grid-template-rows:0fr;transition:grid-template-rows .3s var(--ease)}
+.faq[aria-expanded="true"] .panel{grid-template-rows:1fr}
+.faq .panel-in{overflow:hidden}
+.faq .ans{padding:0 16px 16px 48px;font-size:14px;color:var(--mut)}
+.faq .ans b{color:var(--ink)}
+/* ── reveal-on-scroll ── */
+.rv{opacity:0;transform:translateY(16px);transition:opacity .6s var(--ease),transform .6s var(--ease)}
+.rv.in{opacity:1;transform:translateY(0)}
+footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);display:flex;align-items:center;
+  justify-content:space-between;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--dim)}
+footer a{color:var(--mut)}
+#top{position:fixed;right:24px;bottom:24px;width:44px;height:44px;border-radius:50%;background:var(--panel2);
+  border:1px solid var(--line2);color:var(--ink);display:grid;place-items:center;cursor:pointer;
+  opacity:0;pointer-events:none;transform:translateY(8px);transition:all .25s var(--ease);z-index:80;
+  backdrop-filter:blur(10px)}
+#top.show{opacity:1;pointer-events:auto;transform:translateY(0)}
+#top:hover{border-color:var(--am)}
+/* ═══════════════ COMMAND PALETTE ═══════════════ */
+.palette-scrim{position:fixed;inset:0;background:rgba(4,5,8,.55);backdrop-filter:blur(3px);z-index:150;
+  display:flex;align-items:flex-start;justify-content:center;padding-top:12vh;opacity:0;pointer-events:none;
+  transition:opacity .18s}
+.palette-scrim.open{opacity:1;pointer-events:auto}
+.palette{width:min(560px,92vw);background:var(--bg1);border:1px solid var(--line2);border-radius:16px;
+  box-shadow:0 30px 90px -20px rgba(0,0,0,.6);overflow:hidden;transform:translateY(-10px) scale(.98);
+  transition:transform .2s var(--ease);max-height:70vh;display:flex;flex-direction:column}
+.palette-scrim.open .palette{transform:translateY(0) scale(1)}
+.palette-in{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.palette-in svg{color:var(--dim);flex-shrink:0}
+.palette-in input{flex:1;background:none;border:0;color:var(--ink);font:15px var(--sans);outline:none}
+.palette-in input::placeholder{color:var(--dim)}
+.palette-in kbd{font:600 10.5px var(--mono);background:var(--panel2);border:1px solid var(--line2);
+  border-radius:5px;padding:2px 6px;color:var(--dim)}
+.palette-list{overflow-y:auto;padding:7px}
+.palette-item{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:9px;cursor:pointer;
+  color:var(--mut);font-size:14px}
+.palette-item svg{flex-shrink:0;opacity:.7}
+.palette-item .grp{margin-left:auto;font:600 10px var(--mono);color:var(--dim);text-transform:uppercase}
+.palette-item.sel{background:var(--panel2);color:var(--ink)}
+.palette-item.sel svg{opacity:1}
+.palette-empty{padding:26px 14px;text-align:center;color:var(--dim);font-size:13.5px}
+/* ═══════════════ RESPONSIVE ═══════════════ */
+@media (max-width:980px){
+  .side{position:fixed;left:0;top:0;z-index:130;transform:translateX(-100%);transition:transform .28s var(--ease);
+    box-shadow:0 0 60px rgba(0,0,0,.5)}
+  body.nav-open .side{transform:translateX(0)}
+  body.nav-open .scrim{display:block;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:120}
+  .topbar{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line);
+    position:sticky;top:0;z-index:60;background:rgba(10,12,16,.85);backdrop-filter:blur(14px)}
+  [data-theme="light"] .topbar{background:rgba(243,245,250,.9)}
+  .burger{display:flex}
+  .topbar .brand{padding:0}
   .wrap{padding:0 20px}
-  .hero{padding-top:44px}
-  .term-body{min-height:0}
+  .hero{padding-top:40px}
+  .cards{grid-template-columns:1fr}
 }
-@media (prefers-reduced-motion:reduce){
-  *,*::before,*::after{animation-duration:.001s !important;transition-duration:.001s !important}
-  html{scroll-behavior:auto}
+@media (prefers-reduced-motion: reduce){
+  *{animation-duration:.001s !important;transition-duration:.001s !important}
   .rv{opacity:1;transform:none}
 }
 </style>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-<div class="aurora" aria-hidden="true"><div class="orb o1"></div><div class="orb o2"></div><div class="orb o3"></div></div>
-<div id="progress" aria-hidden="true"></div>
+<div class="aurora"><div class="orb o1" id="orb1"></div><div class="orb o2" id="orb2"></div><div class="orb o3" id="orb3"></div></div>
+<div class="grain"></div>
+<div id="progress"></div>
 
 <div class="topbar">
-  <button id="burger" aria-label="Open navigation" aria-expanded="false">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
-  </button>
-  <b>WebTun Docs</b>
-  <button class="btn btn-ghost mini" id="theme-btn-m" style="padding:7px 11px;font-size:12px" aria-label="Toggle theme">Theme</button>
+  <button class="burger" id="burger" aria-label="Toggle navigation" aria-expanded="false"><span></span></button>
+  <a class="brand" href="#top-anchor">
+    <span class="brand-mark"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--am)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg></span>
+    <b>WebTun</b>
+  </a>
 </div>
-<div class="scrim" id="scrim" aria-hidden="true"></div>
+<div class="scrim" id="scrim"></div>
 
 <div class="layout">
-  <!-- ══════════ SIDEBAR ══════════ -->
   <aside class="side" id="side" aria-label="Documentation navigation">
-    <a class="brand" href="#top-anchor" aria-label="WebTun Docs home">
-      <span class="brand-mark" aria-hidden="true">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#c0caf5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="10" y2="8"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="12" y1="8" x2="18" y2="8"/><line x1="12" y1="12" x2="18" y2="12"/></svg>
-      </span>
+    <a class="brand" href="#top-anchor">
+      <span class="brand-mark"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--am)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg></span>
       <span><b>WebTun</b><span>Docs</span></span>
     </a>
-    <div class="search">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input id="q" type="search" placeholder="Filter sections…  ( / )" aria-label="Filter documentation sections" autocomplete="off">
-      <button id="q-clear" aria-label="Clear search">×</button>
-    </div>
-    <nav class="nav" id="toc" aria-label="Sections">
-      <div class="grp">Start</div>
+    <button class="search-trigger" id="paletteOpen" type="button">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      Jump to a section…
+      <kbd>/</kbd>
+    </button>
+    <nav class="nav" id="toc">
+      <div id="navglow" aria-hidden="true"></div>
+      <div class="grp">Get going</div>
       <a href="#tour"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>60-second tour</a>
       <a href="#run"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><path d="M6 6.5h.01M6 17.5h.01"/></svg>Run the server</a>
       <a href="#home"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>Home base</a>
-      <div class="grp">Everyday tools</div>
+      <div class="grp">Daily driver</div>
       <a href="#terminal"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg>Terminal</a>
       <a href="#editor"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>Editor &amp; previews</a>
       <a href="#files"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>File manager</a>
@@ -435,16 +430,16 @@ footer{margin-top:70px;border-top:1px solid var(--line);padding-top:26px;display
         Open WebTun
       </a>
       <div class="theme-switch" role="group" aria-label="Color theme">
-        <button id="theme-light" aria-pressed="true">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
-          Light
-        </button>
-        <button id="theme-dark" aria-pressed="false">
+        <button id="theme-dark" aria-pressed="true">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
           Dark
         </button>
+        <button id="theme-light" aria-pressed="false">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+          Light
+        </button>
       </div>
-      <div class="ver">guide v1 · ships with the app</div>
+      <div class="ver">guide v2 · ships with the app</div>
     </div>
   </aside>
 
@@ -453,7 +448,7 @@ footer{margin-top:70px;border-top:1px solid var(--line);padding-top:26px;display
     <div class="wrap" id="top-anchor">
 
       <header class="hero">
-        <span class="eyebrow"><span class="pulse" aria-hidden="true"></span>User guide</span>
+        <span class="eyebrow"><span class="pulse" aria-hidden="true"></span>USER GUIDE</span>
         <h1>Your terminal, <span class="grad">everywhere.</span></h1>
         <p class="lede">WebTun puts a full shell, a code editor, your files and git — behind one PIN, in any browser. This guide walks through <b>everything the app can do</b>, so no feature stays hidden. About <b id="read-time">5 min</b> cover to cover.</p>
         <div class="cta-row">
@@ -468,7 +463,7 @@ footer{margin-top:70px;border-top:1px solid var(--line);padding-top:26px;display
 
         <div class="term" role="img" aria-label="Animated illustration of a WebTun terminal session">
           <div class="term-bar" aria-hidden="true">
-            <span class="dot" style="background:#fb7185"></span><span class="dot" style="background:#fbbf24"></span><span class="dot" style="background:#6ee7a8"></span>
+            <span class="dot" style="background:#fb7185"></span><span class="dot" style="background:#facc15"></span><span class="dot" style="background:#6ee7a8"></span>
             <span class="term-title">webtun — zsh</span>
             <span class="term-live"><i></i>LIVE</span>
           </div>
@@ -477,37 +472,37 @@ footer{margin-top:70px;border-top:1px solid var(--line);padding-top:26px;display
       </header>
 
       <nav class="cards" aria-label="Popular topics">
-        <a class="card" href="#terminal"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#67e8f9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg></span><h3>Terminal tabs</h3><p>Many shells at once. Sessions survive refreshes and reconnects.</p><span class="go">Read →</span></a>
+        <a class="card" href="#terminal"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg></span><h3>Terminal tabs</h3><p>Many shells at once. Sessions survive refreshes and reconnects.</p><span class="go">Read →</span></a>
         <a class="card" href="#remote"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span><h3>Reach it remotely</h3><p>One click spins up a secure Cloudflare tunnel URL.</p><span class="go">Read →</span></a>
         <a class="card" href="#git"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6ee7a8" stroke-width="2" stroke-linecap="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg></span><h3>Git without CLI</h3><p>Stage single hunks, commit, pull and push from a panel.</p><span class="go">Read →</span></a>
-        <a class="card" href="#security"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span><h3>Approve devices</h3><p>New logins wait for your approval. You stay in control.</p><span class="go">Read →</span></a>
+        <a class="card" href="#security"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span><h3>Approve devices</h3><p>New logins wait for your approval. You stay in control.</p><span class="go">Read →</span></a>
       </nav>
 
       <!-- ── TOUR ── -->
       <section id="tour" data-title="60-second tour">
-        <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#67e8f9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg></span>
+        <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg></span>
           <div><h2>60-second tour <a class="hash" href="#tour" aria-label="Link to this section">#</a></h2></div>
         </div>
         <p class="sec-sub rv">Brand new? Do these five things and you'll know <b>80% of the app</b>.</p>
         <div class="steps">
-          <div class="step rv"><p><b>Start the server &amp; unlock.</b> <a href="#run">Run it</a>, then enter your PIN — first run has none, so set one in Settings → Security. Everything sits behind it.</p></div>
-          <div class="step rv"><p><b>Open a second terminal tab</b> with <kbd>Ctrl</kbd>+<kbd>T</kbd>. Tabs keep running when you switch, refresh, or briefly lose connection.</p></div>
-          <div class="step rv"><p><b>Press <kbd>Ctrl</kbd>+<kbd>P</kbd></b> to fuzzy-find any file, and <kbd>Ctrl</kbd>+<kbd>B</kbd> to toggle the file explorer sidebar.</p></div>
-          <div class="step rv"><p><b>Create a tunnel</b> from Settings → Tunnel to get a public HTTPS URL for your phone or a friend's laptop. <a href="#remote">How it works</a>.</p></div>
-          <div class="step rv"><p><b>Install it as an app</b> from your browser menu — it works offline as a PWA and reconnects automatically.</p></div>
+          <div class="step rv" data-n="1"><p><b>Start the server &amp; unlock.</b> <a href="#run">Run it</a>, then enter your PIN — first run has none, so set one in Settings → Security. Everything sits behind it.</p></div>
+          <div class="step rv" data-n="2"><p><b>Open a second terminal tab</b> with <kbd>Ctrl</kbd>+<kbd>T</kbd>. Tabs keep running when you switch, refresh, or briefly lose connection.</p></div>
+          <div class="step rv" data-n="3"><p><b>Press <kbd>Ctrl</kbd>+<kbd>P</kbd></b> to fuzzy-find any file, and <kbd>Ctrl</kbd>+<kbd>B</kbd> to toggle the file explorer sidebar.</p></div>
+          <div class="step rv" data-n="4"><p><b>Create a tunnel</b> from Settings → Tunnel to get a public HTTPS URL for your phone or a friend's laptop. <a href="#remote">How it works</a>.</p></div>
+          <div class="step rv" data-n="5"><p><b>Install it as an app</b> from your browser menu — it works offline as a PWA and reconnects automatically.</p></div>
         </div>
       </section>
 
       <!-- ── RUN ── -->
       <section id="run" data-title="Run server install setup CLI flags env port pin">
-        <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#67e8f9" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><path d="M6 6.5h.01M6 17.5h.01"/></svg></span>
+        <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f5a623" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><path d="M6 6.5h.01M6 17.5h.01"/></svg></span>
           <div><h2>Run the server <a class="hash" href="#run" aria-label="Link to this section">#</a></h2></div>
         </div>
         <p class="sec-sub rv">WebTun is <b>one process</b> — start it on any machine and the whole guide above comes alive in a browser.</p>
         <div class="steps">
-          <div class="step rv"><p><b>First time:</b> run <code class="inl">./setup.sh</code> — it installs Node 18+, project dependencies and the tunnel connector.</p></div>
-          <div class="step rv"><p><b>Every day:</b> <code class="inl">npm start</code>, then open <code class="inl">http://localhost:3000</code>. Stop it with <code class="inl">./stop.sh</code>.</p></div>
-          <div class="step rv"><p><b>Set a PIN immediately</b> in Settings → Security — an empty PIN means anyone on your network can walk in.</p></div>
+          <div class="step rv" data-n="1"><p><b>First time:</b> run <code class="inl">./setup.sh</code> — it installs Node 18+, project dependencies and the tunnel connector.</p></div>
+          <div class="step rv" data-n="2"><p><b>Every day:</b> <code class="inl">npm start</code>, then open <code class="inl">http://localhost:3000</code>. Stop it with <code class="inl">./stop.sh</code>.</p></div>
+          <div class="step rv" data-n="3"><p><b>Set a PIN immediately</b> in Settings → Security — an empty PIN means anyone on your network can walk in.</p></div>
         </div>
         <h3>CLI flags <a class="hash" href="#run" aria-label="Link to this section">#</a></h3>
         <div class="tblwrap rv">
@@ -552,7 +547,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
 
       <!-- ── TERMINAL ── -->
       <section id="terminal" data-title="Terminal tabs sessions search links history tmux clipboard">
-        <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#67e8f9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg></span>
+        <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg></span>
           <div><h2>Terminal <a class="hash" href="#terminal" aria-label="Link to this section">#</a></h2></div>
         </div>
         <p class="sec-sub rv">A real shell in every tab — <b>not a simulation</b>. Full filesystem access, your own shell, links you can click.</p>
@@ -596,11 +591,11 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
           <li><b>Zero setup:</b> when your terminal prints <code class="inl">localhost:5173</code>, a toast offers to open it right away; the port field also autocompletes detected listeners. Any port works — even 80 or 443.</li>
           <li><b>Hot-reload works</b> — dev-server WebSockets, streams, downloads and dialogs are all proxied through.</li>
         </ul>
-        <div class="call warn rv"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><p><b>Copied preview links carry your access token.</b> Anyone opening one browses as you — share them like passwords, never publicly.</p></div>
-        <div class="call info rv"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#67e8f9" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><p><b>Server admins can narrow previews</b> to specific ports with <code class="inl">PREVIEW_PORTS=5173,8080</code> in <code class="inl">.env</code> — useful when the box runs databases or admin panels whose ports you would rather not expose through your session. Unset (the default) allows any port except WebTun's own.</p></div>
-        <div class="call info rv"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#67e8f9" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><p><b>Two honest limits:</b> previewed pages run storage-less by design (<code class="inl">localStorage</code>/JS cookies unavailable, so token-based logins won't stick), and apps that hardcode absolute <code class="inl">localhost</code> URLs or OAuth callbacks may misbehave — especially over a remote tunnel. The sandbox is enforced by the server, not just by the frame, so a previewed app can never reach your session token or files — even if you open its preview URL directly in a new tab.</p></div>
+        <div class="call warn rv"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2" stroke-linecap="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><p><b>Copied preview links carry your access token.</b> Anyone opening one browses as you — share them like passwords, never publicly.</p></div>
+        <div class="call info rv"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><p><b>Server admins can narrow previews</b> to specific ports with <code class="inl">PREVIEW_PORTS=5173,8080</code> in <code class="inl">.env</code> — useful when the box runs databases or admin panels whose ports you would rather not expose through your session. Unset (the default) allows any port except WebTun's own.</p></div>
+        <div class="call info rv"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><p><b>Two honest limits:</b> previewed pages run storage-less by design (<code class="inl">localStorage</code>/JS cookies unavailable, so token-based logins won't stick), and apps that hardcode absolute <code class="inl">localhost</code> URLs or OAuth callbacks may misbehave — especially over a remote tunnel. The sandbox is enforced by the server, not just by the frame, so a previewed app can never reach your session token or files — even if you open its preview URL directly in a new tab.</p></div>
         <figure class="fig rv">
-          <div class="fig-bar"><span class="dot" style="background:#fb7185;width:9px;height:9px"></span><span class="dot" style="background:#fbbf24;width:9px;height:9px"></span><span class="dot" style="background:#6ee7a8;width:9px;height:9px"></span> deploy-notes.md — preview <span class="sp">sandboxed</span></div>
+          <div class="fig-bar"><span class="dot" style="background:#fb7185;width:9px;height:9px"></span><span class="dot" style="background:#facc15;width:9px;height:9px"></span><span class="dot" style="background:#6ee7a8;width:9px;height:9px"></span> deploy-notes.md — preview <span class="sp">sandboxed</span></div>
           <div class="dl"><span class="hunk">## Ship checklist</span>
 <span class="add">+ tunnel URL copied to runbook</span>
 <span class="add">+ PIN changed after demo</span>
@@ -630,8 +625,8 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
           <div class="fig-bar">~/projects <span class="sp">4 items</span></div>
           <div class="fig-body">
             <div class="frow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><span class="nm">webtun</span><span class="tag c">GIT</span></div>
-            <div class="frow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#67e8f9" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg><span class="nm">notes.md</span><span class="tag g">EDIT</span></div>
-            <div class="frow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg><span class="nm">demo.mp4</span><span class="tag a">12 MB</span></div>
+            <div class="frow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg><span class="nm">notes.md</span><span class="tag g">EDIT</span></div>
+            <div class="frow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg><span class="nm">demo.mp4</span><span class="tag a">12 MB</span></div>
             <div class="frow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6ee7a8" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg><span class="nm">cover.png</span><span class="tag v">VIEW</span></div>
           </div>
           <figcaption>Badges tell you at a glance what's editable, viewable, or version-controlled.</figcaption>
@@ -664,7 +659,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
 
       <!-- ── COMMANDS ── -->
       <section id="commands" data-title="Command history library reuse snippets">
-        <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span>
+        <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2" stroke-linecap="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span>
           <div><h2>History &amp; command library <a class="hash" href="#commands" aria-label="Link to this section">#</a></h2></div>
         </div>
         <p class="sec-sub rv">Stop retyping that deploy incantation. WebTun <b>collects what you run</b> and lets you save the keepers.</p>
@@ -682,16 +677,16 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
         </div>
         <p class="sec-sub rv">Your computer stays home. <b>You don't have to.</b> One click gives WebTun a public HTTPS address.</p>
         <div class="steps">
-          <div class="step rv"><p><b>Settings → Tunnel → Create.</b> The app fetches the official Cloudflare connector on first use (verified download, nothing bundled) and hands you a <code class="inl">https://….trycloudflare.com</code> URL.</p></div>
-          <div class="step rv"><p><b>Open it anywhere</b> — phone, tablet, a friend's laptop. Same PIN, same sessions, same files.</p></div>
-          <div class="step rv"><p><b>Tunnels persist.</b> Restart the server and your tunnels are remembered and re-validated automatically. Copy the URL any time from the tunnel list. If a tunnel dies it's restarted on its own — backing off from 30s up to 5 minutes, and giving up after 5 tries (it's then shown as dead so it stops churning) — and a recycled process ID can't be mistaken for your live tunnel.</p></div>
+          <div class="step rv" data-n="1"><p><b>Settings → Tunnel → Create.</b> The app fetches the official Cloudflare connector on first use (verified download, nothing bundled) and hands you a <code class="inl">https://….trycloudflare.com</code> URL.</p></div>
+          <div class="step rv" data-n="2"><p><b>Open it anywhere</b> — phone, tablet, a friend's laptop. Same PIN, same sessions, same files.</p></div>
+          <div class="step rv" data-n="3"><p><b>Tunnels persist.</b> Restart the server and your tunnels are remembered and re-validated automatically. Copy the URL any time from the tunnel list. If a tunnel dies it's restarted on its own — backing off from 30s up to 5 minutes, and giving up after 5 tries (it's then shown as dead so it stops churning) — and a recycled process ID can't be mistaken for your live tunnel.</p></div>
         </div>
-        <div class="call warn rv"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><p><b>A public URL is public.</b> Always set a strong PIN before creating a tunnel — an open instance with a tunnel is an open door.</p></div>
+        <div class="call warn rv"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2" stroke-linecap="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><p><b>A public URL is public.</b> Always set a strong PIN before creating a tunnel — an open instance with a tunnel is an open door.</p></div>
       </section>
 
       <!-- ── SECURITY ── -->
       <section id="security" data-title="Sessions PIN approval devices security review">
-        <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
+        <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
           <div><h2>Sessions &amp; security <a class="hash" href="#security" aria-label="Link to this section">#</a></h2></div>
         </div>
         <p class="sec-sub rv">A PIN keeps strangers out. <b>Device approvals</b> keep surprises out — even from people who know the PIN.</p>
@@ -703,12 +698,12 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
           <li><b>Changing the PIN is a ceremony.</b> It needs approval from a different trusted session and wipes all sessions — so a stolen laptop can't lock you out of your own server.</li>
           <li><b>Rate-limited auth</b> slows brute-force guessing, and destructive actions like remote shutdown require PIN protection to be on.</li>
         </ul>
-        <div class="call info rv"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#67e8f9" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><p><b>Trusted devices</b> remember you via a session token in the browser. Use them on personal machines; approve-and-forget on shared ones.</p></div>
+        <div class="call info rv"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><p><b>Trusted devices</b> remember you via a session token in the browser. Use them on personal machines; approve-and-forget on shared ones.</p></div>
       </section>
 
       <!-- ── PERSONALIZE ── -->
       <section id="personalize" data-title="Personalize themes settings appearance reset">
-        <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#67e8f9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></span>
+        <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f5a623" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></span>
           <div><h2>Make it yours <a class="hash" href="#personalize" aria-label="Link to this section">#</a></h2></div>
         </div>
         <p class="sec-sub rv">Settings is one panel, seven sections: <b>Security, Appearance, Terminal, Interface, Features, Tunnel, App</b>.</p>
@@ -742,21 +737,16 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
           <div><h2>Shortcuts <a class="hash" href="#shortcuts" aria-label="Link to this section">#</a></h2></div>
         </div>
         <p class="sec-sub rv">The complete set — also available any time inside the app from the <b>overflow menu → Keyboard Shortcuts</b>.</p>
-        <div class="tblwrap rv">
-          <table>
-            <thead><tr><th>Keys</th><th>Does</th></tr></thead>
-            <tbody>
-              <tr><td><kbd>Ctrl</kbd> + <kbd>P</kbd></td><td>File finder</td></tr>
-              <tr><td><kbd>Ctrl</kbd> + <kbd>T</kbd></td><td>New terminal tab</td></tr>
-              <tr><td><kbd>Ctrl</kbd> + <kbd>W</kbd></td><td>Close tab</td></tr>
-              <tr><td><kbd>Ctrl</kbd> + <kbd>B</kbd></td><td>Toggle file explorer</td></tr>
-              <tr><td><kbd>Ctrl</kbd> + <kbd>F</kbd></td><td>Search in terminal</td></tr>
-              <tr><td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>→</kbd> / <kbd>←</kbd></td><td>Cycle tabs</td></tr>
-              <tr><td><kbd>Ctrl</kbd> + <kbd>S</kbd></td><td>Save editor file</td></tr>
-              <tr><td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>R</kbd></td><td>Refresh preview</td></tr>
-              <tr><td><kbd>Esc</kbd></td><td>Close menus / dialogs</td></tr>
-            </tbody>
-          </table>
+        <div class="keys rv">
+          <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>P</kbd></span><span class="does">File finder</span></div>
+          <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>T</kbd></span><span class="does">New terminal tab</span></div>
+          <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>W</kbd></span><span class="does">Close tab</span></div>
+          <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>B</kbd></span><span class="does">Toggle file explorer</span></div>
+          <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>F</kbd></span><span class="does">Search in terminal</span></div>
+          <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>→/←</kbd></span><span class="does">Cycle tabs</span></div>
+          <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>S</kbd></span><span class="does">Save editor file</span></div>
+          <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>R</kbd></span><span class="does">Refresh preview</span></div>
+          <div class="keyrow"><span class="combo"><kbd>Esc</kbd></span><span class="does">Close menus / dialogs</span></div>
         </div>
         <div class="code rv"><span class="lang">tip</span><button class="copy" data-copy="curl -s http://localhost:3000/api/version">Copy</button><pre>curl -s http://localhost:3000/api/version
 # → {"version":"…"} — quick check the server is alive</pre></div>
@@ -768,13 +758,13 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
           <div><h2>Troubleshooting <a class="hash" href="#troubleshooting" aria-label="Link to this section">#</a></h2></div>
         </div>
         <p class="sec-sub rv">The seven fixes that solve <b>almost everything</b>.</p>
-        <details class="faq rv"><summary><span class="pm">+</span>Port 3000 is already in use</summary><div class="ans">Start the server with a different port (<b>PORT=4000 npm start</b>, or <b>webtun --port 4000</b>). The desktop app does this by itself — it probes upward until it finds a free port.</div></details>
-        <details class="faq rv"><summary><span class="pm">+</span>Tunnel won't connect or the URL died</summary><div class="ans">WebTun restarts a dead tunnel on its own, waiting longer each time (<b>30s, 1m, 2m, 4m, 5m</b>) and giving up after <b>5 attempts</b> — at that point it's marked dead and stops retrying. If it still fails, check the server log: the connector binary downloads on first use and needs outbound HTTPS. You can also delete the tunnel from Settings → Tunnel and create a fresh one. Stale entries after a crash can be cleared with <code class="inl">kill $(pgrep -f 'cloudflared tunnel')</code>.</div></details>
-        <details class="faq rv"><summary><span class="pm">+</span>My new device is stuck on "pending"</summary><div class="ans">Pending approvals <b>expire after 5 minutes</b> and must be accepted from a <b>different, already-active session</b>. Approve from your main device, then sign in again on the new one.</div></details>
-        <details class="faq rv"><summary><span class="pm">+</span>I changed the PIN and got logged out everywhere</summary><div class="ans">That's by design — a PIN change <b>revokes every session</b> for safety. Sign back in with the new PIN on each device.</div></details>
-        <details class="faq rv"><summary><span class="pm">+</span>I forgot my PIN entirely</summary><div class="ans">The PIN lives in the <b>.env file</b> — next to the server, or <code class="inl">~/.config/webtun/.env</code> for global installs. If you can read that file you own the machine: edit the <code class="inl">PIN=</code> line and restart the server. If you can't, that's the security working as intended.</div></details>
-        <details class="faq rv"><summary><span class="pm">+</span>Terminal shows old sessions after a server restart</summary><div class="ans">Sessions live only while the server runs. On boot the server cleans up orphaned sessions automatically — just open a fresh tab.</div></details>
-        <details class="faq rv"><summary><span class="pm">+</span>The installed (PWA) app looks outdated</summary><div class="ans">You'll get an <b>update toast</b> when a new version is ready — tap it to refresh. Your terminals stay alive because the app never force-reloads mid-session.</div></details>
+        <div class="faq rv" aria-expanded="false"><button class="q"><span class="pm">+</span>Port 3000 is already in use</button><div class="panel"><div class="panel-in"><div class="ans">Start the server with a different port (<b>PORT=4000 npm start</b>, or <b>webtun --port 4000</b>). The desktop app does this by itself — it probes upward until it finds a free port.</div></div></div></div>
+        <div class="faq rv" aria-expanded="false"><button class="q"><span class="pm">+</span>Tunnel won't connect or the URL died</button><div class="panel"><div class="panel-in"><div class="ans">WebTun restarts a dead tunnel on its own, waiting longer each time (<b>30s, 1m, 2m, 4m, 5m</b>) and giving up after <b>5 attempts</b> — at that point it's marked dead and stops retrying. If it still fails, check the server log: the connector binary downloads on first use and needs outbound HTTPS. You can also delete the tunnel from Settings → Tunnel and create a fresh one. Stale entries after a crash can be cleared with <code class="inl">kill $(pgrep -f 'cloudflared tunnel')</code>.</div></div></div></div>
+        <div class="faq rv" aria-expanded="false"><button class="q"><span class="pm">+</span>My new device is stuck on "pending"</button><div class="panel"><div class="panel-in"><div class="ans">Pending approvals <b>expire after 5 minutes</b> and must be accepted from a <b>different, already-active session</b>. Approve from your main device, then sign in again on the new one.</div></div></div></div>
+        <div class="faq rv" aria-expanded="false"><button class="q"><span class="pm">+</span>I changed the PIN and got logged out everywhere</button><div class="panel"><div class="panel-in"><div class="ans">That's by design — a PIN change <b>revokes every session</b> for safety. Sign back in with the new PIN on each device.</div></div></div></div>
+        <div class="faq rv" aria-expanded="false"><button class="q"><span class="pm">+</span>I forgot my PIN entirely</button><div class="panel"><div class="panel-in"><div class="ans">The PIN lives in the <b>.env file</b> — next to the server, or <code class="inl">~/.config/webtun/.env</code> for global installs. If you can read that file you own the machine: edit the <code class="inl">PIN=</code> line and restart the server. If you can't, that's the security working as intended.</div></div></div></div>
+        <div class="faq rv" aria-expanded="false"><button class="q"><span class="pm">+</span>Terminal shows old sessions after a server restart</button><div class="panel"><div class="panel-in"><div class="ans">Sessions live only while the server runs. On boot the server cleans up orphaned sessions automatically — just open a fresh tab.</div></div></div></div>
+        <div class="faq rv" aria-expanded="false"><button class="q"><span class="pm">+</span>The installed (PWA) app looks outdated</button><div class="panel"><div class="panel-in"><div class="ans">You'll get an <b>update toast</b> when a new version is ready — tap it to refresh. Your terminals stay alive because the app never force-reloads mid-session.</div></div></div></div>
       </section>
 
       <footer>
@@ -789,38 +779,38 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>
 </button>
 
+<!-- ══════════ COMMAND PALETTE ══════════ -->
+<div class="palette-scrim" id="paletteScrim">
+  <div class="palette" role="dialog" aria-label="Jump to a section">
+    <div class="palette-in">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="paletteInput" type="text" placeholder="Search the guide…" autocomplete="off" spellcheck="false">
+      <kbd>Esc</kbd>
+    </div>
+    <div class="palette-list" id="paletteList"></div>
+  </div>
+</div>
+
 <script>
 (function(){
   'use strict';
   var root = document.documentElement;
   var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var memTheme = null;
 
-  /* ── safe storage ── */
-  function store(k, v){
-    try{
-      if (v === undefined) return localStorage.getItem(k);
-      localStorage.setItem(k, v);
-    }catch(e){ return null; }
-  }
-
-  /* ── theme (light by default) ── */
+  /* ── theme (dark by default) ── */
   var segLight = document.getElementById('theme-light'),
       segDark = document.getElementById('theme-dark');
   function applyTheme(t){
-    if (t !== 'light' && t !== 'dark') t = 'light';
+    if (t !== 'light' && t !== 'dark') t = 'dark';
     root.setAttribute('data-theme', t);
     if (segLight) segLight.setAttribute('aria-pressed', String(t === 'light'));
     if (segDark) segDark.setAttribute('aria-pressed', String(t === 'dark'));
-    store('webtun-docs-theme', t);
+    memTheme = t;
   }
-  applyTheme(store('webtun-docs-theme') || 'light');
-  function flip(){ applyTheme(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'); }
+  applyTheme('dark');
   if (segLight) segLight.addEventListener('click', function(){ applyTheme('light'); });
   if (segDark) segDark.addEventListener('click', function(){ applyTheme('dark'); });
-  /* Guarded: an unguarded lookup here would throw and take the whole IIFE with it
-     (scroll-spy, search, copy, reveal and the hero typing all live below). */
-  var themeBtnM = document.getElementById('theme-btn-m');
-  if (themeBtnM) themeBtnM.addEventListener('click', flip);
 
   /* ── github pages: no local app there — app links point at the repo ── */
   if (/\.github\.io$/.test(window.location.hostname)){
@@ -857,17 +847,24 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
   });
   scrim.addEventListener('click', closeNav);
 
-  /* ── scroll-spy ── */
+  /* ── scroll-spy with a sliding highlight pill ── */
   var links = Array.prototype.slice.call(document.querySelectorAll('#toc a[href^="#"]'));
+  var glow = document.getElementById('navglow');
   var map = {};
   links.forEach(function(a){ map[a.getAttribute('href').slice(1)] = a; });
+  function moveGlow(a){
+    if (!a || !glow) return;
+    glow.style.opacity = '1';
+    glow.style.transform = 'translateY(' + a.offsetTop + 'px)';
+    glow.style.height = a.offsetHeight + 'px';
+  }
   if ('IntersectionObserver' in window){
     var spy = new IntersectionObserver(function(entries){
       entries.forEach(function(en){
         if (en.isIntersecting){
           links.forEach(function(a){ a.classList.remove('active'); });
           var a = map[en.target.id];
-          if (a) a.classList.add('active');
+          if (a){ a.classList.add('active'); moveGlow(a); }
         }
       });
     }, { rootMargin: '-30% 0px -55% 0px' });
@@ -875,48 +872,6 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
   }
   document.getElementById('toc').addEventListener('click', function(e){
     if (e.target.closest('a')) closeNav();
-  });
-
-  /* ── search filter ── */
-  var q = document.getElementById('q'), qClear = document.getElementById('q-clear'),
-      noRes = document.getElementById('no-res');
-  function sectionText(id){
-    var s = document.getElementById(id);
-    return s ? (s.getAttribute('data-title') + ' ' + s.textContent).toLowerCase() : '';
-  }
-  function filter(){
-    var v = q.value.trim().toLowerCase();
-    qClear.style.display = v ? 'block' : 'none';
-    var shown = 0;
-    links.forEach(function(a){
-      var hit = !v || a.textContent.toLowerCase().indexOf(v) !== -1 ||
-                sectionText(a.getAttribute('href').slice(1)).indexOf(v) !== -1;
-      a.classList.toggle('hide', !hit);
-      if (hit) shown++;
-    });
-    noRes.style.display = shown ? 'none' : 'block';
-    document.querySelectorAll('#toc .grp').forEach(function(g){
-      var next = g.nextElementSibling, any = false;
-      while (next && !next.classList.contains('grp')){
-        if (next.tagName === 'A' && !next.classList.contains('hide')){ any = true; break; }
-        next = next.nextElementSibling;
-      }
-      g.style.display = any || !v ? '' : 'none';
-    });
-  }
-  q.addEventListener('input', filter);
-  qClear.addEventListener('click', function(){ q.value = ''; filter(); q.focus(); });
-  document.addEventListener('keydown', function(e){
-    if (e.key === '/' && !/input|textarea/i.test(document.activeElement.tagName)){
-      e.preventDefault(); q.focus();
-    }
-    if (e.key === 'Escape') closeNav();
-  });
-  q.addEventListener('keydown', function(e){
-    if (e.key === 'Enter'){
-      var first = document.querySelector('#toc a:not(.hide)');
-      if (first){ first.click(); q.blur(); }
-    }
   });
 
   /* ── copy buttons ── */
@@ -940,6 +895,15 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
     });
   });
 
+  /* ── animated accordion (FAQ) ── */
+  document.querySelectorAll('.faq').forEach(function(item){
+    var btn = item.querySelector('.q');
+    btn.addEventListener('click', function(){
+      var open = item.getAttribute('aria-expanded') === 'true';
+      item.setAttribute('aria-expanded', String(!open));
+    });
+  });
+
   /* ── reveal on scroll ── */
   var rvEls = document.querySelectorAll('.rv');
   if (reduced || !('IntersectionObserver' in window)){
@@ -951,6 +915,18 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
       });
     }, { threshold: 0.08 });
     rvEls.forEach(function(el){ ro.observe(el); });
+  }
+
+  /* ── orb parallax on the hero, mouse-driven, contained ── */
+  if (!reduced){
+    var orbs = [document.getElementById('orb1'), document.getElementById('orb2'), document.getElementById('orb3')];
+    var depths = [18, 26, 12];
+    window.addEventListener('pointermove', function(e){
+      var nx = (e.clientX / window.innerWidth - .5), ny = (e.clientY / window.innerHeight - .5);
+      orbs.forEach(function(o, i){
+        if (o) o.style.transform = 'translate(' + (nx * depths[i]) + 'px,' + (ny * depths[i]) + 'px)';
+      });
+    }, { passive: true });
   }
 
   /* ── hero terminal typing ── */
@@ -969,8 +945,6 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
       { p:'phone', t:'tail -f server.log', c:'t-a' },
       { p:'', t:'listening on 127.0.0.1:3000 — enjoy WebTun', c:'t-dim' } ]
   ];
-  // Escape every HTML-significant character, not just & and < — the hero lines are
-  // injected as HTML, and `>` / quotes are one refactor away from being exploitable.
   function esc(s){
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
                     .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -984,11 +958,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
   if (reduced){
     renderStatic();
   } else {
-    var si = 0, li = 0, ci = 0;
-    // Finished lines never change, so they are rendered once and kept as a prefix.
-    // The old loop rebuilt every completed line on every keystroke (O(n²) innerHTML
-    // work per scene) — this writes only the line currently being typed.
-    var committed = '';
+    var si = 0, li = 0, ci = 0, committed = '';
     function lineHtml(l, typed){
       return '<div>' + (l.p ? '<span class="t-p">➜ ' + esc(l.p) + '</span> ' : '') +
              '<span class="' + l.c + '">' + esc(typed) + '</span></div>';
@@ -1009,6 +979,65 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
     }
     tick();
   }
+
+  /* ── command palette: mirrors the app's own Ctrl+P fuzzy finder ── */
+  var scrimEl = document.getElementById('paletteScrim'),
+      input = document.getElementById('paletteInput'),
+      list = document.getElementById('paletteList'),
+      openBtn = document.getElementById('paletteOpen');
+  var items = links.map(function(a){
+    var id = a.getAttribute('href').slice(1);
+    var s = document.getElementById(id);
+    return { id: id, label: a.textContent.trim(), grp: (a.previousElementSibling && a.previousElementSibling.classList.contains('grp')) ? '' : '', text: s ? s.textContent.toLowerCase() : '' };
+  });
+  var sel = 0, filtered = items.slice();
+  function renderList(){
+    if (!filtered.length){
+      list.innerHTML = '<div class="palette-empty">No matching sections.</div>';
+      return;
+    }
+    list.innerHTML = filtered.map(function(it, i){
+      return '<div class="palette-item' + (i === sel ? ' sel' : '') + '" data-id="' + it.id + '">' +
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>' +
+        '<span>' + it.label + '</span><span class="grp">#' + it.id + '</span></div>';
+    }).join('');
+  }
+  function openPalette(){
+    scrimEl.classList.add('open');
+    input.value = ''; filtered = items.slice(); sel = 0; renderList();
+    setTimeout(function(){ input.focus(); }, 30);
+  }
+  function closePalette(){ scrimEl.classList.remove('open'); }
+  function jump(id){
+    closePalette();
+    var el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+  }
+  openBtn.addEventListener('click', openPalette);
+  scrimEl.addEventListener('click', function(e){ if (e.target === scrimEl) closePalette(); });
+  list.addEventListener('click', function(e){
+    var it = e.target.closest('.palette-item');
+    if (it) jump(it.getAttribute('data-id'));
+  });
+  input.addEventListener('input', function(){
+    var v = input.value.trim().toLowerCase();
+    filtered = !v ? items.slice() : items.filter(function(it){
+      return it.label.toLowerCase().indexOf(v) !== -1 || it.text.indexOf(v) !== -1;
+    });
+    sel = 0; renderList();
+  });
+  document.addEventListener('keydown', function(e){
+    if ((e.key === '/' || (e.key.toLowerCase() === 'k' && (e.metaKey || e.ctrlKey))) &&
+        !/input|textarea/i.test(document.activeElement.tagName)){
+      e.preventDefault(); openPalette();
+    }
+    if (e.key === 'Escape'){ closePalette(); closeNav(); }
+    if (scrimEl.classList.contains('open')){
+      if (e.key === 'ArrowDown'){ e.preventDefault(); sel = Math.min(sel + 1, filtered.length - 1); renderList(); }
+      if (e.key === 'ArrowUp'){ e.preventDefault(); sel = Math.max(sel - 1, 0); renderList(); }
+      if (e.key === 'Enter' && filtered[sel]){ jump(filtered[sel].id); }
+    }
+  });
 })();
 </script>
 </body>
