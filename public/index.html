@@ -560,7 +560,8 @@ svg { display: block; }
 .file-thumb { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity var(--transition-normal); }
 .file-thumb.ld { opacity: 1; }
 .file-icon svg { width: 14px; height: 14px; }
-.file-icon.k-dir { color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); }
+.file-icon.k-dir { color: var(--yellow, #fbbf24); background: color-mix(in srgb, var(--accent) 13%, transparent); }
+.file-icon.k-dir svg path { fill: currentColor; }
 .file-icon.k-code { color: var(--green); background: color-mix(in srgb, var(--green) 13%, transparent); }
 .file-icon.k-img { color: var(--cyan); background: color-mix(in srgb, var(--cyan) 13%, transparent); }
 .file-icon.k-doc { color: var(--accent2); background: color-mix(in srgb, var(--accent2) 16%, transparent); }
