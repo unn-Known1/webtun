@@ -2157,6 +2157,22 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
   </div>
 </div>
 
+<!-- New Preview Modal -->
+<div class="overlay" id="preview-overlay">
+  <div class="modal modal-sm">
+    <h2>New Preview</h2>
+    <div class="modal-row">
+      <label for="preview-port-input">Local port</label>
+      <input type="text" id="preview-port-input" inputmode="numeric" pattern="[0-9]*" placeholder="8000" autocomplete="off" onkeydown="if(event.key==='Enter')confirmNewPreview()">
+      <div class="field-error" id="preview-error" role="alert"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeOverlay('preview-overlay')">Cancel</button>
+      <button class="btn btn-primary" id="preview-ok-btn" onclick="confirmNewPreview()">Open</button>
+    </div>
+  </div>
+</div>
+
 <!-- Conflict Dialog -->
 <div class="overlay" id="conflict-overlay">
   <div class="modal" id="conflict-modal">
@@ -2976,7 +2992,7 @@ function createPreviewWrapper(tab) {
   wrapper.style.flexDirection = 'column';
   const bar = document.createElement('div');
   bar.className = 'preview-bar';
-  bar.innerHTML = '<input class="preview-port-input" inputmode="numeric" pattern="[0-9]*" aria-label="Port" title="Local port" placeholder="port">'
+  bar.innerHTML = '<input class="preview-port-input" list="preview-ports-list" inputmode="numeric" pattern="[0-9]*" aria-label="Port" title="Local port" placeholder="port">'
     + '<input class="preview-path-input" aria-label="Path" title="Path" placeholder="/  (e.g. /docs) — Enter opens">'
     + '<button class="btn btn-primary preview-go" type="button">Go</button>'
     + '<button class="btn btn-ghost preview-reload" type="button" title="Reload">Reload</button>'
@@ -2987,7 +3003,9 @@ function createPreviewWrapper(tab) {
   const frame = document.createElement('iframe');
   frame.className = 'preview-frame';
   frame.setAttribute('title', `Preview :${tab.port}`);
-  frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-popups');
+  // No allow-same-origin on purpose: previewed pages stay opaque-origin so they
+  // can't touch WebTun's localStorage/session token. Downloads + dialogs on.
+  frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-popups allow-downloads allow-modals');
   frame.setAttribute('referrerpolicy', 'no-referrer');
   wrapper.appendChild(bar);
   wrapper.appendChild(loading);
@@ -3004,17 +3022,18 @@ function createPreviewWrapper(tab) {
   bar.querySelector('.preview-go').addEventListener('click', go);
   bar.querySelector('.preview-reload').addEventListener('click', () => previewReload(tab));
   bar.querySelector('.preview-copy').addEventListener('click', () => {
-    try { copyText(location.origin + previewBuildUrl(tab.port, tab.previewPath || '/')); toast('Preview URL copied', 'success'); } catch { toast('Copy failed', 'error'); }
+    try { copyText(location.origin + previewBuildUrl(tab.port, tab.previewPath || '/')); toast('Preview URL copied — it carries your access token, share carefully', 'warning'); } catch { toast('Copy failed', 'error'); }
   });
   const keyGo = e => { if (e.key === 'Enter') { e.preventDefault(); go(); } };
   tab.portInput.addEventListener('keydown', keyGo);
   tab.pathInput.addEventListener('keydown', keyGo);
+  tab.portInput.addEventListener('focus', fillPreviewPorts);
   frame.addEventListener('load', () => { try { loading.classList.add('hidden'); } catch {} });
   frame.addEventListener('error', () => { try { loading.classList.add('hidden'); } catch {} });
 }
 function previewNavigate(tab, port, pth) {
   const n = parseInt(String(port).trim(), 10);
-  if (!Number.isInteger(n) || n < 1024 || n > 65535) { toast('Port must be 1024–65535', 'error'); return; }
+  if (!Number.isInteger(n) || n < 1 || n > 65535) { toast('Port must be 1–65535', 'error'); return; }
   let p = String(pth == null ? (tab.previewPath || '/') : pth).trim() || '/';
   if (!p.startsWith('/')) p = '/' + p;
   tab.port = n;
@@ -3035,7 +3054,7 @@ function previewReload(tab) {
 }
 function newPreviewTab(port, pth) {
   const n = parseInt(port, 10);
-  const initialPort = Number.isInteger(n) && n >= 1024 && n <= 65535 ? n : 8000;
+  const initialPort = Number.isInteger(n) && n >= 1 && n <= 65535 ? n : 8000;
   let p = String(pth || '/');
   if (!p.startsWith('/')) p = '/' + p;
   const id = ++tabCounter;
@@ -3050,10 +3069,17 @@ function newPreviewTab(port, pth) {
   return tab;
 }
 function newPreviewPrompt() {
-  const raw = prompt('Preview local port (1024–65535):', '8000');
-  if (raw == null) return;
-  const n = parseInt(String(raw).trim(), 10);
-  if (!Number.isInteger(n) || n < 1024 || n > 65535) { toast('Port must be 1024–65535', 'error'); return; }
+  const inp = document.getElementById('preview-port-input');
+  if (inp) { inp.value = '8000'; clearFieldError('preview-error'); }
+  openOverlay('preview-overlay');
+  setTimeout(() => { try { inp.focus(); inp.select(); } catch {} }, 100);
+}
+function confirmNewPreview() {
+  const raw = (document.getElementById('preview-port-input').value || '').trim();
+  const n = parseInt(raw, 10);
+  if (!Number.isInteger(n) || n < 1 || n > 65535) { showFieldError('preview-error', 'Port must be 1–65535'); return; }
+  clearFieldError('preview-error');
+  closeOverlay('preview-overlay');
   newPreviewTab(n, '/');
 }
 let _portsCache = null, _portsCacheAt = 0;
@@ -3064,6 +3090,22 @@ async function refreshPortsCache(force) {
     if (r && Array.isArray(r.ports)) { _portsCache = r.ports; _portsCacheAt = Date.now(); return _portsCache; }
   } catch {}
   return _portsCache || [];
+}
+// Port autocomplete for preview bars (listening loopback ports, 15s cache).
+async function fillPreviewPorts() {
+  let dl = document.getElementById('preview-ports-list');
+  if (!dl) {
+    dl = document.createElement('datalist');
+    dl.id = 'preview-ports-list';
+    document.body.appendChild(dl);
+  }
+  try {
+    const ports = await refreshPortsCache(false);
+    dl.innerHTML = (ports || []).slice(0, 30).map(p => {
+      const n = Number(p && p.port != null ? p.port : p);
+      return Number.isInteger(n) ? `<option value="${n}">` : '';
+    }).join('');
+  } catch {}
 }
 // Terminal-output scan: suggest "Open preview" when a loopback URL appears.
 // Debounced per tab+port (60s), suggestions only — never auto-opens.
@@ -3077,7 +3119,12 @@ function scanPreviewHint(tab, text) {
     m = [b[0], b[1], '/'];
   }
   const port = parseInt(m[1], 10);
-  if (!Number.isInteger(port) || port < 1024 || port > 65535) return;
+  if (!Number.isInteger(port) || port < 1 || port > 65535) return;
+  // Never suggest WebTun itself as a preview target.
+  try {
+    const selfPort = Number(location.port) || (location.protocol === 'https:' ? 443 : 80);
+    if (port === selfPort) return;
+  } catch {}
   let pth = '/';
   try { pth = (m[2] || '/').replace(/["'\),;\]]+$/, '') || '/'; if (!pth.startsWith('/')) pth = '/'; } catch { pth = '/'; }
   const key = `${tab.id}:${port}`;

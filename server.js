@@ -3835,7 +3835,9 @@ function checkPreviewAuth(req, res, next) {
 }
 function validPreviewPort(p) {
   const n = Number(p);
-  return Number.isInteger(n) && n >= 1024 && n <= 65535 && n !== (Number(PORT) || 3000);
+  // Any port except WebTun's own — connecting needs no privilege (only binding does),
+  // so local services on 80/443/etc. preview fine. Loopback-only dial below, no SSRF.
+  return Number.isInteger(n) && n >= 1 && n <= 65535 && n !== (Number(PORT) || 3000);
 }
 const HOP_HEADERS = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade', 'content-length']);
 function previewError(res, port, msg) {
@@ -3883,7 +3885,12 @@ function handlePreviewProxy(req, res) {
   } catch {}
   let upReq;
   try {
-    upReq = http.request({ host: 'localhost', port: targetPort, method: req.method, path: suffix, headers: fwd, timeout: 10000, agent: previewAgent }, upRes => {
+    // Dial 127.0.0.1 (not 'localhost'): dev servers usually bind IPv4-only and
+    // 'localhost' often resolves to ::1 first → refused. Loopback either way.
+    upReq = http.request({ host: '127.0.0.1', port: targetPort, method: req.method, path: suffix, headers: fwd, timeout: 10000, agent: previewAgent }, upRes => {
+      // Upstream answered — idle timeout no longer applies. Long-lived SSE /
+      // log-tail / token streams must not be killed after 10s of quiet.
+      try { upReq.setTimeout(0); } catch {}
       // Same-origin framing: override global DENY, strip upstream framers only.
       res.setHeader('X-Frame-Options', 'SAMEORIGIN');
       res.statusCode = upRes.statusCode || 502;
@@ -3917,26 +3924,42 @@ function handlePreviewProxy(req, res) {
       } catch {}
       const ctype = (upRes.headers['content-type'] || '').toString().toLowerCase();
       if (ctype.includes('text/html') && req.method === 'GET') {
-        const chunks = [];
-        let bytes = 0;
-        const MAX_REWRITE = 2 * 1024 * 1024;
-        let tooBig = false;
+        // Bounded <head> scan: inject <base> so relative URLs resolve through
+        // the proxy, then stream the body — huge pages no longer buffer fully
+        // (or lose the injection past the old 2MB cliff). Byte-level surgery
+        // with a latin1 needle (ASCII-safe) so multibyte text is never mangled.
+        const HEAD_MAX = 512 * 1024;
+        const baseTag = Buffer.from(`<base href="/api/preview/${targetPort}/">`, 'latin1');
+        let buf = [], bytes = 0, headSent = false;
+        const sendHead = (raw) => {
+          headSent = true;
+          let out = raw;
+          try {
+            const s = raw.toString('latin1');
+            if (!/<base[\s>]/i.test(s)) {
+              const m = /<head[^>]*>/i.exec(s);
+              if (m) {
+                const at = m.index + m[0].length;
+                out = Buffer.concat([raw.subarray(0, at), baseTag, raw.subarray(at)]);
+              }
+            }
+          } catch {}
+          try { res.removeHeader('Content-Length'); } catch {}
+          try { res.write(out); } catch {}
+        };
         upRes.on('data', c => {
-          if (tooBig) { try { res.write(c); } catch {} return; }
-          bytes += c.length;
-          if (bytes > MAX_REWRITE) { tooBig = true; try { res.write(Buffer.concat(chunks)); } catch {} chunks.length = 0; try { res.write(c); } catch {} return; }
-          chunks.push(c);
+          if (headSent) { try { res.write(c); } catch {} return; }
+          buf.push(c); bytes += c.length;
+          if (bytes > HEAD_MAX) { const all = Buffer.concat(buf); buf = []; sendHead(all); return; }
+          const joined = Buffer.concat(buf);
+          if (/<\/head\s*>/i.test(joined.toString('latin1'))) { buf = []; sendHead(joined); }
         });
         upRes.on('end', () => {
-          if (tooBig) { try { res.end(); } catch {} return; }
           try {
-            let html = Buffer.concat(chunks).toString('utf8');
-            if (!/<base\s/i.test(html)) {
-              html = html.replace(/<head[^>]*>/i, m => `${m}<base href="/api/preview/${targetPort}/">`);
-            }
-            res.removeHeader('Content-Length');
-            res.end(html);
-          } catch { try { res.end(Buffer.concat(chunks)); } catch {} }
+            if (!headSent) sendHead(Buffer.concat(buf));
+            buf = [];
+          } catch {}
+          try { res.end(); } catch {}
         });
         upRes.on('error', () => { try { res.end(); } catch {} });
       } else {
@@ -3948,8 +3971,11 @@ function handlePreviewProxy(req, res) {
   upReq.on('error', () => { if (!res.headersSent) previewError(res, targetPort, 'connection refused'); else try { res.end(); } catch {} });
   req.pipe(upReq);
 }
-app.all('/api/preview/:port', rateLimiter, checkPreviewAuth, handlePreviewProxy);
-app.all('/api/preview/:port/*', rateLimiter, checkPreviewAuth, handlePreviewProxy);
+// NOTE: no rateLimiter here on purpose — one app load fans out to dozens of
+// asset requests and would 429 constantly. Auth (PIN/session) + loopback-only
+// target is the real gate; brute force still throttled at the auth endpoints.
+app.all('/api/preview/:port', checkPreviewAuth, handlePreviewProxy);
+app.all('/api/preview/:port/*', checkPreviewAuth, handlePreviewProxy);
 
 // Loopback listeners for the preview address-bar autocomplete (best-effort).
 app.get('/api/ports', checkPin, (req, res) => {
@@ -4018,7 +4044,7 @@ server.on('upgrade', (req, socket, head) => {
     let upstream;
     try {
       const proto = req.headers['sec-websocket-protocol'];
-      upstream = new WebSocket(`ws://localhost:${targetPort}${targetPath}`, proto || undefined);
+      upstream = new WebSocket(`ws://127.0.0.1:${targetPort}${targetPath}`, proto || undefined);
     } catch { try { clientWs.close(1011, 'bad target'); } catch {} return; }
     const closeBoth = (code, reason) => {
       try { clientWs.close(code || 1000, reason || ''); } catch {}
