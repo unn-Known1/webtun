@@ -90,6 +90,7 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 - **Git mini-panel** — branch switching/creation, stash, discard, repo init, staged/unstaged/untracked/conflict groups, colorized diffs, commit, push/pull; auto-shows inside repos; Simple mode hides rarely-used actions
 - **Settings control deck** — collapsible groups with live search, runtime PIN set/change/disable (saved to `.env`)
 - **Editor** — CodeMirror with autosave draft, `F11` fullscreen (covers terminal area only, never the file explorer), `horizontal/vertical` split toggle, markdown/HTML preview
+- **File tabs** — open any file in its own tab beside your terminals (button in the editor header, or **Open in Tab** in the file context menu); up to 10 at once, each code file with its own live editor, cursor, scroll and undo history — so **Tile view shows several files at once**. Per-tab Save/Reload, and **Panel** hands the file (buffer and undo history included) to the split editor
 
 ### Mobile
 - **Touch gestures** — swipe to close tabs, pull-to-refresh
@@ -193,6 +194,18 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 ---
 
 ## Changelog
+
+### v2.1.0
+- **Full audit remediation** — every actionable finding from the 2026-09-14 code review landed (113 fixed, 25 deliberately-kept behaviours left alone, including empty-PIN-is-open and full-filesystem-by-default)
+- **Security** — concurrent logins can no longer both become active without approval; revoked or PIN-rotated sessions have their WebSocket connections actively closed (not merely asked to go away) with a 60s re-validation sweep; each rate limiter owns its own window; clipboard state is keyed per session with a TTL; tar entries that are links are refused and the extracted binary is containment-checked; error responses no longer leak absolute paths
+- **App preview** — served on an opaque origin under a sandbox policy with the upstream CSP never merged, so a previewed app cannot reach your session token or files; proxy errors are normalized so it can no longer be used to probe which local ports are open; new `PREVIEW_PORTS` allow-list narrows which ports are previewable
+- **Terminal** — clipboard *reads* (OSC 52 paste) are opt-in via Settings; pasting never splits multi-byte characters; docs hero and search work is unchanged in behaviour but far cheaper; pinch-zoom changes the size for the session only and no longer rewrites your saved font size
+- **Editor & docs** — reopening a file offers to restore an unsaved draft (cleared on save or discard); EPUB previews are sandboxed; the tab strip is keyboard-reachable and modal panels make the rest of the page inert
+- **File tabs** — open a file in its own tab next to your terminals (editor-header button or right-click → **Open in Tab**); **every code file gets its own live editor**, so **Tile view shows several files side by side** with independent cursors, scroll and undo history, plus a per-tab Save/Reload toolbar and a **Panel** button that hands the buffer to the split editor; PDF/EPUB/Office tabs share one live viewer instead, so several large documents stay open without the memory cost (parked tabs remember page, zoom, sheet and scroll); drafts, unsaved-changes guards and the two surfaces' buffers never diverge, and the tab layout is restored on reload
+- **Reliability** — dead tunnels restart with backoff and give up cleanly instead of churning, and a recycled process ID can't pass as a live tunnel; the history cap survives restarts; staging a hunk is pinned to the hunk you clicked (it asks you to refresh rather than stage the wrong lines); the legacy state-file migration no longer runs on `require()`; a dead preview or search request can't hang the server
+- **Performance** — system stats are cached and shared between the launchpad pulse, header icon and stats panel instead of each polling separately; live preview renders on edit rather than polling every second; upload progress updates once per frame; PDF scrolling no longer walks every page per frame
+- **Packaging & scripts** — a version/lockfile/tag guard now gates CI and refuses a stale `npm publish`; `setup.sh` fetches and sanity-checks the NodeSource script instead of piping it into root bash; `install.sh` pre-checks its tools and refuses a dirty tree; `stop.sh` verifies the pidfile before signalling; `nodemon.json` keeps dev restarts off runtime state files
+- **Config** — new `ALLOWED_ORIGINS` and `PREVIEW_PORTS`; JSON bodies are capped at 2 MB (12 MB for file writes) instead of a blanket 50 MB; a missing `git` binary returns 501 instead of 400
 
 ### v2.0.5
 - In-app user guide — new `/docs` page (Settings → About → **User guide & docs**) covering terminal, editor, files, git, tunnels, sessions, shortcuts and troubleshooting; also published to GitHub Pages
