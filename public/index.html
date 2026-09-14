@@ -334,6 +334,11 @@ svg { display: block; }
 #editor-view.fullscreen #editor-header { border-bottom: 1px solid var(--border); background: var(--bg2); }
 #editor-view.fullscreen #editor-area { flex: 1; min-height: 0; }
 #editor-view.fullscreen #editor-area .CodeMirror { height: 100%; }
+/* Fullscreen must fill the whole split area: the desktop split rules below cap
+   #editor-view with max-height/max-width (and win on specificity: two IDs beat
+   #editor-view.fullscreen), which left a strip of terminal visible at the bottom. */
+#editor-split-area > #editor-view.fullscreen,
+#editor-split-area.horizontal > #editor-view.fullscreen { max-width: none; max-height: none; border: none; }
 #editor-split-area { position: relative; }
 
 /* Desktop: split layout */
@@ -780,6 +785,21 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 #epub-wrap { flex: 1; overflow: auto; display: flex; flex-direction: column; background: white; -webkit-overflow-scrolling: touch; }
 #epub-view { flex: 1; overflow: visible; position: relative; min-height: 100%; }
 #epub-view iframe { width: 100%; height: 100%; border: none; }
+
+/* Office doc preview (DOCX/XLSX, read-only) */
+#office-viewer { display: none; flex-direction: column; width: 100%; height: 100%; overflow: hidden; background: var(--bg); }
+#office-viewer.active { display: flex; }
+#office-wrap { flex: 1; overflow: auto; padding: 12px 24px; font-size: 14px; line-height: 1.7; color: var(--fg); -webkit-overflow-scrolling: touch; }
+#office-content { max-width: 900px; margin: 0 auto; overflow-wrap: break-word; }
+#office-content h1, #office-content h2, #office-content h3, #office-content h4 { margin: 1em 0 0.5em; font-weight: 700; }
+#office-content p { margin: 0.75em 0; }
+#office-content ul, #office-content ol { margin: 0.5em 0; padding-left: 2em; }
+#office-content table { border-collapse: collapse; max-width: 100%; margin: 12px 0; font-size: 12px; line-height: 1.5; }
+#office-content th, #office-content td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; vertical-align: top; }
+#office-content th { background: var(--bg2); }
+#office-content img { max-width: 100%; height: auto; }
+#office-content a { color: var(--accent); }
+#office-note { font-size: 11px; color: var(--fg3); padding: 8px 0; }
 
 /* ═══════════════════════════════════════════════════════
    CODEMIRROR
@@ -1673,6 +1693,14 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
               </div>
               <div id="epub-wrap"><div id="epub-view"></div></div>
             </div>
+            <div id="office-viewer">
+              <div class="doc-toolbar">
+                <span class="doc-title" id="office-title"></span>
+                <span class="doc-page-info" id="office-info"></span>
+                <button class="icon-btn" title="Download" onclick="downloadFile(editorPath)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+              </div>
+              <div id="office-wrap"><div id="office-content"></div></div>
+            </div>
           </div>
         </div>
       </div>
@@ -1893,6 +1921,11 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
           <div class="field-error" id="tunnel-field-error" role="alert"></div>
           <div id="tunnel-list"></div>
           <div id="tunnel-status" style="font-size:11px;color:var(--fg2);min-height:16px;margin-top:2px"></div>
+        </div>
+        <div class="settings-section" data-sec="app">
+          <h3>App</h3>
+          <button class="btn btn-danger" id="exit-app-btn" onclick="exitApp()" style="width:100%">Exit app</button>
+          <div style="font-size:11px;color:var(--fg3);margin-top:6px">Stops the server and closes all sessions.</div>
         </div>
         <div style="margin-top:4px">
           <button class="btn btn-ghost" id="reset-settings-btn" onclick="resetSettings()" style="width:100%">Reset settings</button>
@@ -5728,6 +5761,7 @@ async function openFileEditor(path) {
   if (isImageFile(path)) { openImageViewer(path); return; }
   if (isPdfFile(path)) { openPdfViewer(path); return; }
   if (isEpubFile(path)) { openEpubViewer(path); return; }
+  if (isOfficeFile(path)) { openOfficeViewer(path); return; }
   if (!canOpenInEditor(path)) { toast('Preview not supported for this file type — use Download', 'warning'); return; }
   const r = await api(`/api/files/read?path=${encodeURIComponent(path)}`);
   if (r.error) {
@@ -5847,7 +5881,7 @@ async function saveFile() {
 }
 
 async function closeEditor() {
-  const isDocPreview = !!(_pdfDoc || _epubBook);
+  const isDocPreview = !!(_pdfDoc || _epubBook || _officePath);
   if (!isDocPreview) {
     const currentContent = editor ? editor.getValue() : document.getElementById('editor-textarea').value;
     if (currentContent !== editorOriginalContent) {
@@ -5913,7 +5947,10 @@ function canOpenInEditor(path) {
 
 function isPdfFile(path) { return /\.pdf$/i.test(path); }
 function isEpubFile(path) { return /\.epub$/i.test(path); }
-function isDocFile(path) { return isPdfFile(path) || isEpubFile(path); }
+function isOfficeDocx(path) { return /\.docx$/i.test(path); }
+function isOfficeXlsx(path) { return /\.xlsx$/i.test(path); }
+function isOfficeFile(path) { return isOfficeDocx(path) || isOfficeXlsx(path); }
+function isDocFile(path) { return isPdfFile(path) || isEpubFile(path) || isOfficeFile(path); }
 
 // ── Doc preview dynamic loader ──
 function loadScript(src) {
@@ -5987,6 +6024,7 @@ async function openPdfViewer(path) {
   mdPreviewActive = false;
   clearPreviewLiveReload();
   document.getElementById('epub-viewer').classList.remove('active');
+  document.getElementById('office-viewer').classList.remove('active');
   const pdfViewer = document.getElementById('pdf-viewer');
   pdfViewer.classList.add('active');
   document.getElementById('pdf-title').textContent = fileName;
@@ -6394,6 +6432,7 @@ async function openEpubViewer(path) {
   mdPreviewActive = false;
   clearPreviewLiveReload();
   document.getElementById('pdf-viewer').classList.remove('active');
+  document.getElementById('office-viewer').classList.remove('active');
   const epubViewer = document.getElementById('epub-viewer');
   epubViewer.classList.add('active');
   document.getElementById('epub-title').textContent = fileName;
@@ -6513,7 +6552,160 @@ function cleanupDocViewers() {
   if (epubViewer) epubViewer.classList.remove('active');
   const epubView = document.getElementById('epub-view');
   if (epubView) epubView.innerHTML = '';
+  // Office (DOCX/XLSX, read-only)
+  _officeGen++;
+  _officePath = '';
+  const officeViewer = document.getElementById('office-viewer');
+  if (officeViewer) officeViewer.classList.remove('active');
+  const officeContent = document.getElementById('office-content');
+  if (officeContent) officeContent.innerHTML = '';
   document.getElementById('editor-save-btn').style.display = '';
+}
+// ── Office doc preview (DOCX/XLSX, read-only) ──
+// Client-side only: mammoth (DOCX→HTML) + SheetJS (XLSX→table), lazy-loaded
+// from jsDelivr (already in CSP). Legacy .doc/.xls/.ppt have no browser
+// renderer — those stay on the Download fallback.
+const MAX_OFFICE_SIZE = 10 * 1024 * 1024; // 10MB — larger files: use Download
+const OFFICE_SHEET_MAX_ROWS = 500;
+const OFFICE_SHEET_MAX_COLS = 50;
+let _officePath = '';
+let _officeGen = 0;
+async function loadMammoth() {
+  if (window.mammoth) return;
+  await loadScript('https://cdn.jsdelivr.net/npm/mammoth@1/mammoth.browser.min.js');
+  if (!window.mammoth) throw new Error('mammoth not found');
+}
+async function loadSheetJs() {
+  if (window.XLSX) return;
+  await loadScript('https://cdn.jsdelivr.net/npm/xlsx@0/dist/xlsx.full.min.js');
+  if (!window.XLSX) throw new Error('SheetJS not found');
+}
+async function openOfficeViewer(path) {
+  const myGen = ++_officeGen;
+  _officePath = '';
+  // Viewer shell (mirrors openPdfViewer/openEpubViewer)
+  editorPath = path;
+  editorOriginalContent = '';
+  const fileName = path.split(/[\\/]/).pop() || path;
+  document.getElementById('editor-filename').textContent = fileName + '  /  ' + path;
+  document.getElementById('editor-status').textContent = '';
+  const cm = document.querySelector('.CodeMirror');
+  if (cm) cm.style.display = 'none';
+  document.getElementById('editor-preview').classList.remove('active');
+  const iframe = document.getElementById('editor-preview-iframe');
+  if (iframe) { iframe.style.display = 'none'; iframe.srcdoc = ''; }
+  const mdContent = document.getElementById('md-preview-content');
+  if (mdContent) { mdContent.style.display = 'none'; }
+  mdPreviewActive = false;
+  clearPreviewLiveReload();
+  document.getElementById('pdf-viewer').classList.remove('active');
+  document.getElementById('epub-viewer').classList.remove('active');
+  document.getElementById('office-viewer').classList.add('active');
+  _officePath = path;
+  document.getElementById('office-title').textContent = fileName;
+  document.getElementById('office-info').textContent = 'Loading…';
+  document.getElementById('office-content').innerHTML = '<div style="color:var(--fg2);padding:20px">Loading…</div>';
+  if (window.innerWidth > 768) {
+    document.getElementById('content').classList.add('editor-open');
+    const splitArea = document.getElementById('editor-split-area');
+    try {
+      const orient = safeStorage.getItem('wt-editor-split-orientation');
+      const isHoriz = orient === 'horizontal';
+      if (splitArea) splitArea.classList.toggle('horizontal', isHoriz);
+    } catch {}
+  }
+  document.getElementById('editor-view').classList.add('open');
+  document.getElementById('editor-save-btn').style.display = 'none';
+  document.getElementById('md-preview-toggle').style.display = 'none';
+  document.getElementById('preview-refresh-btn').style.display = 'none';
+  requestAnimationFrame(() => { tabs.forEach(tab => { try { fitTerm(tab); } catch (e) {} }); });
+  const isDocx = isOfficeDocx(path);
+  // Libs lazy-load on first use (cached after)
+  const needLib = (isDocx && !window.mammoth) || (!isDocx && !window.XLSX);
+  let libToast = null;
+  try {
+    if (isDocx && typeof DOMPurify === 'undefined') throw new Error('sanitizer failed to load (CDN blocked?)');
+    if (needLib) libToast = toast('Loading office viewer…', 'info');
+    if (isDocx) await loadMammoth();
+    else await loadSheetJs();
+  } catch (e) {
+    if (libToast) libToast.remove();
+    if (myGen !== _officeGen) return;
+    return officeLoadError(e.message);
+  }
+  if (libToast) libToast.remove();
+  if (myGen !== _officeGen) return;
+  try {
+    const resp = await fetch(`/api/files/image?path=${encodeURIComponent(path)}&_t=${Date.now()}`, { headers: { 'x-pin-token': authToken } });
+    if (myGen !== _officeGen) return;
+    if (!resp.ok) throw new Error('Failed to fetch file (' + resp.status + ')');
+    const buf = await resp.arrayBuffer();
+    if (myGen !== _officeGen) return;
+    if (!buf || buf.byteLength < 4) throw new Error('Empty file');
+    if (buf.byteLength > MAX_OFFICE_SIZE) throw new Error('File too large for preview (max 10MB) — use Download');
+    const head = new Uint8Array(buf.slice(0, 4));
+    if (!(head[0] === 0x50 && head[1] === 0x4B)) throw new Error('Not a valid Office file (missing ZIP header)');
+    if (isDocx) await renderOfficeDocx(buf);
+    else renderOfficeXlsx(buf);
+  } catch (e) {
+    if (myGen !== _officeGen) return;
+    officeLoadError(e.message);
+  }
+}
+function officeLoadError(msg) {
+  document.getElementById('office-info').textContent = 'Failed';
+  document.getElementById('office-content').innerHTML = '<div style="color:var(--red);padding:20px">Failed to load: ' + escHtml(msg) + '</div>';
+  toast('Office preview failed: ' + msg, 'error');
+}
+async function renderOfficeDocx(buf) {
+  const out = await window.mammoth.convertToHtml({ arrayBuffer: buf });
+  let html = (out && out.value ? out.value : '').trim();
+  if (!html) html = '<p>(Empty document)</p>';
+  // Never render unsanitized HTML — office files can carry scripts/links.
+  const wrap = document.createElement('div');
+  wrap.innerHTML = DOMPurify.sanitize(html);
+  // Drop remote images that could leak the session to third parties.
+  wrap.querySelectorAll('img').forEach(img => {
+    const src = img.getAttribute('src') || '';
+    if (/^https?:/i.test(src)) img.removeAttribute('src');
+  });
+  wrap.querySelectorAll('a').forEach(a => { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener'); });
+  const content = document.getElementById('office-content');
+  content.innerHTML = '';
+  content.appendChild(wrap);
+  const notes = [];
+  if (out && out.messages && out.messages.length) notes.push(out.messages.length + ' element(s) simplified');
+  notes.push('Read-only');
+  document.getElementById('office-info').textContent = notes.join(' • ');
+}
+function renderOfficeXlsx(buf) {
+  const wb = window.XLSX.read(buf, { type: 'array' });
+  const names = (wb && wb.SheetNames) || [];
+  if (!names.length) throw new Error('No sheets found');
+  const ws = wb.Sheets[names[0]];
+  // Manual table build with per-cell escaping (no raw lib HTML injected).
+  const rows = window.XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', blankrows: false });
+  const totalRows = rows.length;
+  const totalCols = rows.reduce((m, r) => Math.max(m, Array.isArray(r) ? r.length : 0), 0);
+  const shown = rows.slice(0, OFFICE_SHEET_MAX_ROWS).map(r => (Array.isArray(r) ? r : []).slice(0, OFFICE_SHEET_MAX_COLS));
+  let html = '<table><tbody>';
+  for (const r of shown) {
+    html += '<tr>' + r.map(c => '<td>' + escHtml(fmtOfficeCell(c)) + '</td>').join('') + '</tr>';
+  }
+  html += '</tbody></table>';
+  const notes = [];
+  notes.push(names.length > 1 ? ('Sheet 1 of ' + names.length + ': ' + names[0]) : (names[0] || 'Sheet 1'));
+  if (totalRows > OFFICE_SHEET_MAX_ROWS || totalCols > OFFICE_SHEET_MAX_COLS) {
+    notes.push('Showing first ' + shown.length + '×' + (shown.length ? shown[0].length : 0) + ' of ' + totalRows + '×' + totalCols);
+  }
+  notes.push('Read-only');
+  document.getElementById('office-content').innerHTML = html;
+  document.getElementById('office-info').textContent = notes.join(' • ');
+}
+function fmtOfficeCell(c) {
+  if (c === null || c === undefined) return '';
+  if (typeof c === 'number') return String(Math.round(c * 1e10) / 1e10);
+  return String(c);
 }
 // Preload doc viewers in background for instant open (respect datasaver)
 function preloadDocViewers() {
@@ -7537,6 +7729,12 @@ function openSecurityReview() {
 let tunnelList = [];
 
 async function restoreTunnels() {
+  // The app may auto-pick a free port (3001+ when 3000 is taken), so default
+  // the target input to the actual origin instead of the baked-in :3000.
+  try {
+    const tu = document.getElementById('tunnel-url');
+    if (tu && (!tu.value || /localhost:3000\b/.test(tu.value))) tu.value = location.origin;
+  } catch {}
   const r = await api('/api/tunnel');
   tunnelList = r.tunnels || [];
   renderTunnels();
@@ -10300,6 +10498,26 @@ async function killProcess(pid, cmd) {
   const r = await api('/api/system/kill', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pid: Number(pid) }) });
   if (r && r.success) { toast('Killed ' + pid, 'success'); refreshSystemStats(false); }
   else toast(r && r.error ? r.error : 'Kill failed', 'error');
+}
+
+async function exitApp() {
+  const ok = await confirmDialog({ title: 'Exit app?', message: 'This will stop the server and disconnect all sessions.', okText: 'Exit app', cancelText: 'Cancel', danger: true });
+  if (!ok) return;
+  // Electron: quit the whole app (window + server child process).
+  if (isElectron && window.electronAPI && typeof window.electronAPI.exitApp === 'function') {
+    try { await window.electronAPI.exitApp(); } catch { toast('Exit failed', 'error'); }
+    return;
+  }
+  const btn = document.getElementById('exit-app-btn');
+  setBtnBusy(btn, true);
+  try {
+    const r = await api('/api/system/shutdown', { method: 'POST' });
+    if (r && r.success) toast('Shutting down…', 'success');
+    else { toast((r && r.error) || 'Exit failed', 'error'); setBtnBusy(btn, false); }
+  } catch {
+    toast('Exit failed', 'error');
+    setBtnBusy(btn, false);
+  }
 }
 
 // ═══════════════════════════════════════════════════════

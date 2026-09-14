@@ -3514,6 +3514,22 @@ app.post('/api/system/kill', checkPin, requirePinSet, async (req, res) => {
   }
 });
 
+// ── Shutdown server (from Settings → Exit app) ─────────────────────
+// Stops tunnels/PTYs via cleanup(), then exits. Authed + PIN-protected
+// like /api/system/kill so an open instance can't be killed remotely.
+app.post('/api/system/shutdown', checkPin, requirePinSet, (req, res) => {
+  res.json({ success: true, message: 'Shutting down' });
+  // Let the response flush before tearing down.
+  setTimeout(() => {
+    try { cleanup(); } catch {}
+    try {
+      server.close(() => { process.exit(0); });
+    } catch {}
+    // Fallback: never hang if connections keep the server alive.
+    setTimeout(() => { process.exit(0); }, 1500).unref?.();
+  }, 100);
+});
+
 // ── Cloudflared tunnel management ──────────────────────────────────
 const tunnels = new Map();
 const TUNNEL_FILE = path.join(DATA_DIR, '.tunnels.json');

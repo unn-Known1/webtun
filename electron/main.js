@@ -3,11 +3,12 @@ const { fork } = require('child_process');
 const path = require('path');
 const os = require('os');
 const http = require('http');
+const net = require('net');
 const fs = require('fs');
 
 let mainWindow;
 let serverProcess;
-const PORT = (() => {
+let PORT = (() => {
   const p = parseInt(process.env.PORT, 10);
   return Number.isFinite(p) && p > 0 && p <= 65535 ? p : 3000;
 })();
@@ -42,6 +43,27 @@ function serverLogPath() {
   } catch {
     return path.join(os.tmpdir(), 'webtun-server.log');
   }
+}
+
+// Probe 127.0.0.1 for a free port starting at `startPort` (up to 20 tries).
+// Lets the packaged app boot on 3001+ when 3000 is taken instead of
+// showing "Failed to start server".
+function findFreePort(startPort, maxTries = 20) {
+  return new Promise((resolve) => {
+    const tryPort = (port, attempt) => {
+      if (attempt >= maxTries || port > 65535) return resolve(startPort);
+      const tester = net.createServer();
+      tester.once('error', () => {
+        tester.close();
+        tryPort(port + 1, attempt + 1);
+      });
+      tester.once('listening', () => {
+        tester.close(() => resolve(port));
+      });
+      tester.listen(port, '127.0.0.1');
+    };
+    tryPort(startPort, 0);
+  });
 }
 
 function startServer() {
@@ -196,6 +218,11 @@ if (!gotLock) {
 app.whenReady().then(async () => {
   if (!gotLock) return; // second instance — quitting, don't boot another server
   try {
+    // Auto-pick a free port (3000 → 3001 → …) so an occupied default port
+    // boots the app instead of failing. startServer()/createWindow() read PORT.
+    const free = await findFreePort(PORT);
+    if (free !== PORT) console.log(`Port ${PORT} occupied — using ${free} instead`);
+    PORT = free;
     await startServer();
     createWindow();
   } catch (e) {
@@ -224,6 +251,11 @@ app.on('before-quit', () => {
 
 app.on('activate', () => {
   if (mainWindow === null) createWindow();
+});
+
+// ── Exit app (from Settings → Exit app) ──────────────────────────
+ipcMain.handle('exit-app', () => {
+  app.quit();
 });
 
 // ── Auto-start on login ──────────────────────────────────────
