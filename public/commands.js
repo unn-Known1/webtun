@@ -7,9 +7,10 @@
 // `cat` becomes the section header in the panel, so groups are shown in source order.
 // `requiresConfirm: true` pops a danger dialog before running (see `runCmdLib()`).
 //
-// Platform note: Git, Node/npm and Docker behave the same on Linux, macOS and Windows, so
-// those groups are safe everywhere. The "Files & system" group is Linux/macOS shell syntax —
-// Windows defaults to PowerShell (see WEBTUN_SHELL) and needs its own equivalents.
+// Platform note: Docker behaves the same on Linux, macOS and Windows, so that group is safe
+// everywhere. "Network" and "Files & system" are POSIX shell syntax — a couple of entries are
+// Linux-only (`free`, `ss`) — so Windows, which defaults to PowerShell (see WEBTUN_SHELL),
+// needs its own equivalents for those two groups.
 window.DEFAULT_CMDS = [
 
   // ── Docker ── (cross-platform)

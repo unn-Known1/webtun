@@ -1,28 +1,41 @@
-# Development
-.mimocode/
+# NOTE: the real gate is `files` in package.json — a whitelist, so nothing outside
+# bin/, server.js, verify-version.js, lib/, public/ and postinstall.js ships regardless of
+# what is listed below. This file is defence-in-depth for when that whitelist is widened.
+# npm force-includes README.md, LICENSE and package.json no matter what is ignored here.
+# Current tarball: 18 files — check with `npm pack --dry-run`.
+
+# Agent / editor tool state (exists per-machine, never part of the package)
 .opencode/
+.mimocode/
 .specify/
 .github/
 nodemon.json
 
-# Electron (optional, not needed for npm usage)
+# Electron packaging (optional; not needed to run the npm package)
 electron/
 
-# Shell scripts (setup/install are for git clone users)
+# Shell scripts (setup/install/stop are for git-clone users)
 setup.sh
 install.sh
 stop.sh
 
-# Config & logs
+# Config, runtime state and logs
 .env
 *.log
 webtun.pid
 .tunnels.json
 tunnel-url.txt
 
+# GitHub Pages site files (published from the repo root; the server never serves them,
+# so they belong to Pages and not to the npm package)
+.nojekyll
+robots.txt
+sitemap.xml
+
 # Build output
 dist/
 release/
 
-# Docs
-AGENTS.md
+# Docs — root-anchored glob so this cannot drift each time a doc is added or removed
+# (PREVIEW_TAB_PLAN.md was deleted once its design shipped and /docs documented it).
+/*.md
