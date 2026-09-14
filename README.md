@@ -87,7 +87,7 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 - **Conflict resolution** — replace, merge, keep both, skip
 - **Unified path bar** — tappable breadcrumb segments + click current folder (or pencil) to type any path, `Enter` to go, `Esc` to cancel
 - **Rich rows** — type-tinted icons, live photo thumbnails, size + modified dates, hover quick-download, sortable sticky folder/file groups
-- **Git mini-panel** — branch switching/creation, stash, discard, repo init, staged/unstaged/untracked/conflict groups, colorized diffs, commit, push/pull; auto-shows inside repos
+- **Git mini-panel** — branch switching/creation, stash, discard, repo init, staged/unstaged/untracked/conflict groups, colorized diffs, commit, push/pull; auto-shows inside repos; Simple mode hides rarely-used actions
 - **Settings control deck** — collapsible groups with live search, runtime PIN set/change/disable (saved to `.env`)
 - **Editor** — CodeMirror with autosave draft, `F11` fullscreen (covers terminal area only, never the file explorer), `horizontal/vertical` split toggle, markdown/HTML preview
 

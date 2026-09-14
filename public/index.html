@@ -1017,6 +1017,10 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 #git-all-row { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--fg2); padding: 2px 8px; cursor: pointer; }
 #git-actions-row { display: flex; gap: 4px; padding: 4px 6px; flex-wrap: wrap; align-items: center; }
 #git-actions-row select { height: 26px; font-size: 11px; background: var(--bg3); color: var(--fg2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+/* Simple git panel (Settings → Features): hide rarely-used actions until .show-rare */
+#git-panel.git-simple:not(.show-rare) .git-rare { display: none; }
+#git-adv-toggle { display: none; margin: 2px 8px 8px; }
+#git-panel.git-simple #git-adv-toggle { display: inline-block; }
 #git-identity-row { display: flex; gap: 4px; padding: 4px 6px; flex-wrap: wrap; }
 #git-identity-row input { flex: 1; min-width: 90px; height: 26px; font-size: 11px; }
 #git-reset-row { display: flex; gap: 4px; padding: 4px 6px; align-items: center; }
@@ -1500,27 +1504,27 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
           <div id="git-commit-row">
             <input id="git-msg" type="text" placeholder="Commit message…" aria-label="Commit message" maxlength="1000" oninput="clearFieldError('git-msg-error')">
             <button class="sidebar-action-btn" id="git-commit-btn" onclick="gitCommit()" title="Commit staged changes">Commit</button>
-            <button class="sidebar-action-btn" id="git-amend-btn" onclick="gitAmend()" title="Amend last commit with staged changes">Amend</button>
+            <button class="sidebar-action-btn git-rare" id="git-amend-btn" onclick="gitAmend()" title="Amend last commit with staged changes">Amend</button>
           </div>
           <div class="field-error" id="git-msg-error" role="alert" style="padding:0 8px"></div>
           <label id="git-all-row"><input type="checkbox" id="git-all-cb"> Stage all + commit</label>
-          <div id="git-stash-row">
+          <div id="git-stash-row" class="git-rare">
             <button class="sidebar-action-btn" id="git-stash-btn" onclick="gitStash()" title="Stash tracked changes (commit box text becomes the message)">Stash</button>
             <span id="git-stash-count"></span>
           </div>
-          <div id="git-stash-list"></div>
+          <div id="git-stash-list" class="git-rare"></div>
           <div id="git-actions-row">
-            <select id="git-pull-mode" title="Pull strategy" aria-label="Pull strategy">
+            <select id="git-pull-mode" class="git-rare" title="Pull strategy" aria-label="Pull strategy">
               <option value="merge">merge</option>
               <option value="rebase">rebase</option>
               <option value="ff-only">ff-only</option>
             </select>
             <button class="sidebar-action-btn" id="git-pull-btn" onclick="gitPull()" title="git pull">Pull</button>
             <button class="sidebar-action-btn" id="git-push-btn" onclick="gitPush()" title="git push">Push</button>
-            <button class="sidebar-action-btn" id="git-fetch-btn" onclick="gitFetch()" title="git fetch --all">Fetch</button>
-            <button class="sidebar-action-btn" onclick="refreshGitPanel(currentPath, true)" title="Refresh git status">Refresh</button>
+            <button class="sidebar-action-btn git-rare" id="git-fetch-btn" onclick="gitFetch()" title="git fetch --all">Fetch</button>
+            <button class="sidebar-action-btn git-rare" onclick="refreshGitPanel(currentPath, true)" title="Refresh git status">Refresh</button>
           </div>
-          <div id="git-reset-row">
+          <div id="git-reset-row" class="git-rare">
             <select id="git-reset-mode" title="Reset mode" aria-label="Reset mode">
               <option value="mixed">mixed</option>
               <option value="soft">soft</option>
@@ -1530,14 +1534,15 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
             <button class="sidebar-action-btn" onclick="gitReset()" title="Reset to ref">Reset</button>
           </div>
           <div class="field-error" id="git-reset-error" role="alert" style="padding:0 8px"></div>
-          <div id="git-tags-row">
+          <div id="git-tags-row" class="git-rare">
             <input id="git-tag-input" type="text" placeholder="v1.0.0" aria-label="New tag name" maxlength="200">
             <input id="git-tag-msg" type="text" placeholder="message (optional)" aria-label="Tag message" maxlength="500">
             <button class="sidebar-action-btn" onclick="gitTagCreate()" title="Create tag">Tag</button>
           </div>
           <div class="field-error" id="git-tag-error" role="alert" style="padding:0 8px"></div>
-          <div id="git-tags-list"></div>
+          <div id="git-tags-list" class="git-rare"></div>
           <div id="git-log"></div>
+          <button class="sidebar-action-btn" id="git-adv-toggle" onclick="toggleGitAdvanced()" aria-expanded="false" title="Show rarely-used git actions">Show advanced…</button>
         </div>
       </div>
       <div id="sidebar-footer" role="toolbar" aria-label="File actions">
@@ -1911,6 +1916,11 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
             <div class="toggle on" id="s-gitEnabled" role="switch" tabindex="0" aria-checked="true" onclick="toggleSetting('gitEnabled')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('gitEnabled')}"><input type="checkbox" id="s-gitEnabled-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
           </div>
           <div style="font-size:11px;color:var(--fg3);margin-top:6px">Show the Git section in the sidebar and enable git status checks.</div>
+          <div class="setting-row">
+            <label for="s-gitSimple-cb">Simple Git panel</label>
+            <div class="toggle" id="s-gitSimple" role="switch" tabindex="0" aria-checked="false" onclick="toggleSetting('gitSimple')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('gitSimple')}"><input type="checkbox" id="s-gitSimple-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
+          </div>
+          <div style="font-size:11px;color:var(--fg3);margin-top:6px">Hide rarely-used actions (amend, fetch, stash, reset, tags). A “Show advanced…” button reveals them in place.</div>
         </div>
         <div class="settings-section" data-sec="tunnel">
           <h3>Tunnel</h3>
@@ -2227,7 +2237,7 @@ let hasTmux = false;
   theme: 'light', fontSize: 14, font: "'JetBrains Mono', 'SF Mono', 'Fira Code', Consolas, monospace",
   cursor: 'block', blink: true, scrollback: 5000, bell: false,
   mobilekeys: false, confirmclose: true, datasaver: false, autostart: false, keepAwake: false, termRightClick: true,
-  gitEnabled: true
+  gitEnabled: true, gitSimple: false
 };
 let serverPlatform = '';
 
@@ -7130,6 +7140,7 @@ function loadSettings() {
       if (typeof s.screensaver === 'boolean') settings.screensaver = s.screensaver;
       if (typeof s.screensaverMin === 'number' && s.screensaverMin >= 1 && s.screensaverMin <= 120) settings.screensaverMin = s.screensaverMin;
       if (typeof s.gitEnabled === 'boolean') settings.gitEnabled = s.gitEnabled;
+      if (typeof s.gitSimple === 'boolean') settings.gitSimple = s.gitSimple;
     }
   } catch(e) { console.warn(e); }
   document.getElementById('s-theme').value = settings.theme;
@@ -7137,8 +7148,9 @@ function loadSettings() {
   document.getElementById('s-scrollback').value = settings.scrollback;
   document.getElementById('s-font').value = settings.font;
   document.getElementById('s-cursor').value = settings.cursor;
-  syncToggle('blink'); syncToggle('bell'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver'); syncToggle('termRightClick'); syncToggle('screensaver'); syncToggle('gitEnabled');
+  syncToggle('blink'); syncToggle('bell'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver'); syncToggle('termRightClick'); syncToggle('screensaver'); syncToggle('gitEnabled'); syncToggle('gitSimple');
   try { if (typeof applyGitEnabled === 'function') applyGitEnabled(); } catch {}
+  try { if (typeof applyGitSimple === 'function') applyGitSimple(); } catch {}
   syncKeepAwakeUI();
   if (settings.keepAwake && hasWakeLock) { requestWakeLock(); }
   if (isElectron) {
@@ -7156,7 +7168,7 @@ const DEFAULT_SETTINGS = {
   theme: 'light', fontSize: 14, font: "'JetBrains Mono', 'SF Mono', 'Fira Code', Consolas, monospace",
   cursor: 'block', blink: true, scrollback: 5000, bell: false,
   mobilekeys: false, confirmclose: true, datasaver: false, autostart: false, keepAwake: false, termRightClick: true,
-  screensaver: false, screensaverMin: 5, gitEnabled: true
+  screensaver: false, screensaverMin: 5, gitEnabled: true, gitSimple: false
 };
 
 async function resetSettings() {
@@ -7170,7 +7182,7 @@ async function resetSettings() {
   document.getElementById('s-font').value = settings.font;
   document.getElementById('s-cursor').value = settings.cursor;
   document.getElementById('s-screensaver-min').value = settings.screensaverMin;
-  syncToggle('blink'); syncToggle('bell'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver'); syncToggle('termRightClick'); syncToggle('screensaver'); syncToggle('gitEnabled'); syncToggle('autostart');
+  syncToggle('blink'); syncToggle('bell'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver'); syncToggle('termRightClick'); syncToggle('screensaver'); syncToggle('gitEnabled'); syncToggle('gitSimple'); syncToggle('autostart');
   // keepAwake is a header checkbox, not a settings toggle — resync it
   try { if (typeof syncKeepAwakeUI === 'function') syncKeepAwakeUI(); } catch {}
   // Clear an active auto-screensaver and the search filter (sections stay hidden otherwise)
@@ -7187,6 +7199,7 @@ async function resetSettings() {
   const mk = document.getElementById('mobile-keys');
   if (mk) mk.style.display = settings.mobilekeys && window.innerWidth <= 768 ? 'flex' : 'none';
   try { if (typeof applyGitEnabled === 'function') applyGitEnabled(); } catch {}
+  try { if (typeof applyGitSimple === 'function') applyGitSimple(); } catch {}
   toast('Settings reset', 'success');
 }
 
@@ -7245,6 +7258,30 @@ function toggleSetting(k) {
   if (k === 'gitEnabled') {
     try { applyGitEnabled(); } catch {}
   }
+  if (k === 'gitSimple') {
+    try { applyGitSimple(); } catch {}
+  }
+}
+
+function applyGitSimple() {
+  const panel = document.getElementById('git-panel');
+  if (!panel) return;
+  panel.classList.toggle('git-simple', settings.gitSimple === true);
+  try { updateGitAdvToggle(); } catch {}
+}
+function toggleGitAdvanced() {
+  const panel = document.getElementById('git-panel');
+  if (!panel) return;
+  panel.classList.toggle('show-rare');
+  try { updateGitAdvToggle(); } catch {}
+}
+function updateGitAdvToggle() {
+  const btn = document.getElementById('git-adv-toggle');
+  const panel = document.getElementById('git-panel');
+  if (!btn || !panel) return;
+  const show = panel.classList.contains('show-rare');
+  btn.textContent = show ? 'Show fewer' : 'Show advanced…';
+  btn.setAttribute('aria-expanded', String(show));
 }
 
 function applyGitEnabled() {
