@@ -90,7 +90,10 @@ a{color:var(--cy)}
 .nav a.active{color:var(--ink);background:var(--panel2);border-left-color:var(--cy)}
 .nav a.hide{display:none}
 #no-res{display:none;font-size:13px;color:var(--dim);padding:8px 10px}
-.side-foot{margin-top:auto;display:flex;flex-direction:column;gap:9px;padding-top:14px;border-top:1px solid var(--line)}
+.side-foot{margin-top:auto;position:sticky;bottom:0;z-index:5;display:flex;flex-direction:column;gap:9px;
+  margin-left:-16px;margin-right:-16px;padding:14px 16px 20px;border-top:1px solid var(--line);
+  background:rgba(5,8,15,.92);backdrop-filter:blur(14px)}
+[data-theme="light"] .side-foot{background:rgba(244,246,251,.94)}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font:600 13.5px var(--sans);
   padding:10px 14px;border-radius:11px;border:1px solid var(--line2);cursor:pointer;text-decoration:none;
   transition:transform .15s,box-shadow .15s,background .15s}
@@ -539,7 +542,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
           <li><b>Read before you commit:</b> per-file diffs, commit history with detail view, branch &amp; tag management, stash and pop.</li>
           <li><b>Author identity per repo.</b> The panel asks for your name and email once per repository — commits simply refuse to run until it's set.</li>
           <li><b>Sync safely:</b> pull (merge, rebase or fast-forward-only), push with upstream setup, fetch with generous timeouts for slow networks.</li>
-          <li><b>Simple mode for a calm panel:</b> Settings → Features → <b>Simple Git panel</b> hides the rarely-used actions (amend, fetch, refresh, stash, reset, tags) — a <i>Show advanced…</i> button at the panel bottom reveals them in place.</li>
+          <li><b>Simple mode for a calm panel</b> (on by default): the Git panel hides its rarely-used actions (amend, fetch, refresh, stash, reset, tags) — a <i>Show advanced…</i> button at the panel bottom reveals them in place. Prefer everything visible? Switch it off in Settings → Features.</li>
           <li><b>Escape hatches included:</b> amend the last commit, soft/mixed/hard reset to any commit, discard files, init a fresh repo.</li>
         </ul>
         <figure class="fig rv">
@@ -619,7 +622,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
         <p class="sec-sub rv">WebTun is a web app that <b>refuses to feel like one</b>.</p>
         <ul class="tight rv">
           <li><b>Install it from the browser</b> (menu → <i>Install / Add to Home Screen</i>) — or tap the install banner when it appears, with extra guidance on iOS. As a PWA it launches full-screen, works through network blips, and nudges you — never force-reloads — when an update is ready.</li>
-          <li><b>Desktop app (Electron)</b> bundles the server: double-click and it picks a free port automatically if 3000 is busy. Enable <b>Start on Login</b> to have it waiting after every reboot. Quitting from Settings → App → <b>Exit app</b> stops the server and closes every session cleanly.</li>
+          <li><b>Desktop app (Electron)</b> bundles the server: double-click and it picks a free port automatically if 3000 is busy. Enable <b>Start on Login</b> to have it waiting after every reboot. <b>Exit app</b> sits at the very bottom of the Settings panel, outside any section — one tap stops the server and closes every session cleanly.</li>
           <li><b>Touch-friendly throughout</b> — file actions, git hunks and approvals are all big-target buttons, not hover-only menus.</li>
           <li><b>Gestures:</b> swipe a tab sideways to close it, pull down to refresh, pinch to resize terminal text, and flip on Selection mode when you need to copy output instead of tapping it.</li>
           <li><b>Mobile extras:</b> enable <i>Show Mobile Keys</i> in Settings → Terminal for an on-screen keys row (terminal only), and <i>Data Saver</i> to pause live gauges and background preloads on metered connections.</li>

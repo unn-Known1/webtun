@@ -1918,7 +1918,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
           <div style="font-size:11px;color:var(--fg3);margin-top:6px">Show the Git section in the sidebar and enable git status checks.</div>
           <div class="setting-row">
             <label for="s-gitSimple-cb">Simple Git panel</label>
-            <div class="toggle" id="s-gitSimple" role="switch" tabindex="0" aria-checked="false" onclick="toggleSetting('gitSimple')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('gitSimple')}"><input type="checkbox" id="s-gitSimple-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
+            <div class="toggle on" id="s-gitSimple" role="switch" tabindex="0" aria-checked="true" onclick="toggleSetting('gitSimple')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('gitSimple')}"><input type="checkbox" id="s-gitSimple-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
           </div>
           <div style="font-size:11px;color:var(--fg3);margin-top:6px">Hide rarely-used actions (amend, fetch, stash, reset, tags). A “Show advanced…” button reveals them in place.</div>
         </div>
@@ -1934,11 +1934,6 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
           <div class="field-error" id="tunnel-field-error" role="alert"></div>
           <div id="tunnel-list"></div>
           <div id="tunnel-status" style="font-size:11px;color:var(--fg2);min-height:16px;margin-top:2px"></div>
-        </div>
-        <div class="settings-section" data-sec="app">
-          <h3>App</h3>
-          <button class="btn btn-danger" id="exit-app-btn" onclick="exitApp()" style="width:100%">Exit app</button>
-          <div style="font-size:11px;color:var(--fg3);margin-top:6px">Stops the server and closes all sessions.</div>
         </div>
         <div style="margin-top:4px">
           <button class="btn btn-ghost" id="reset-settings-btn" onclick="resetSettings()" style="width:100%">Reset settings</button>
@@ -1964,6 +1959,9 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
               <a href="/docs" target="_blank" rel="noopener" style="color:var(--accent)">User guide &amp; docs</a>
             </div>
           </div>
+        </div>
+        <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:16px">
+          <button class="btn btn-danger" id="exit-app-btn" onclick="exitApp()" style="width:100%" title="Stops the server and closes all sessions">Exit app</button>
         </div>
       </div>
     </div>
@@ -2237,7 +2235,7 @@ let hasTmux = false;
   theme: 'light', fontSize: 14, font: "'JetBrains Mono', 'SF Mono', 'Fira Code', Consolas, monospace",
   cursor: 'block', blink: true, scrollback: 5000, bell: false,
   mobilekeys: false, confirmclose: true, datasaver: false, autostart: false, keepAwake: false, termRightClick: true,
-  gitEnabled: true, gitSimple: false
+  gitEnabled: true, gitSimple: true
 };
 let serverPlatform = '';
 
@@ -7168,7 +7166,7 @@ const DEFAULT_SETTINGS = {
   theme: 'light', fontSize: 14, font: "'JetBrains Mono', 'SF Mono', 'Fira Code', Consolas, monospace",
   cursor: 'block', blink: true, scrollback: 5000, bell: false,
   mobilekeys: false, confirmclose: true, datasaver: false, autostart: false, keepAwake: false, termRightClick: true,
-  screensaver: false, screensaverMin: 5, gitEnabled: true, gitSimple: false
+  screensaver: false, screensaverMin: 5, gitEnabled: true, gitSimple: true
 };
 
 async function resetSettings() {
