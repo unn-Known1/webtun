@@ -44,12 +44,19 @@
     "terminal",
     "web-terminal",
     "ssh",
+    "ssh-alternative",
     "remote-access",
+    "remote-terminal",
     "cloudflare",
     "tunnel",
     "file-manager",
     "pwa",
-    "self-hosted"
+    "self-hosted",
+    "homelab",
+    "electron",
+    "xterm",
+    "git",
+    "devtools"
   ],
   "build": {
     "appId": "com.webtun.app",

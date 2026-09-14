@@ -3,10 +3,101 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WebTun Docs — Your terminal, everywhere</title>
-<meta name="description" content="The visual user guide for WebTun: terminal, editor, files, git, tunnels, sessions and more.">
+<title>WebTun Docs — Self-Hosted Web Terminal, Files, Git &amp; Remote Access</title>
+<meta name="description" content="The visual user guide for WebTun, the self-hosted web terminal and browser-based SSH alternative. Terminal tabs, editor, file manager, git panel, Cloudflare tunnels, sessions and shortcuts — 5 minutes cover to cover.">
 <meta name="theme-color" content="#f4f6fb">
+<link rel="canonical" href="https://unn-known1.github.io/webtun/public/docs.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="WebTun">
+<meta property="og:title" content="WebTun Docs — Self-Hosted Web Terminal, Files, Git &amp; Remote Access">
+<meta property="og:description" content="The visual user guide for WebTun, the self-hosted web terminal. Terminal, editor, files, git, tunnels, sessions and shortcuts in one page.">
+<meta property="og:url" content="https://unn-known1.github.io/webtun/public/docs.html">
+<meta property="og:image" content="https://unn-known1.github.io/webtun/public/icon-512.png">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="WebTun Docs — Self-Hosted Web Terminal, Files, Git &amp; Remote Access">
+<meta name="twitter:description" content="The visual user guide for WebTun, the self-hosted web terminal. Terminal, editor, files, git, tunnels, sessions and shortcuts in one page.">
+<meta name="twitter:image" content="https://unn-known1.github.io/webtun/public/icon-512.png">
 <link rel="icon" type="image/png" href="favicon.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebApplication",
+      "name": "WebTun Docs",
+      "url": "https://unn-known1.github.io/webtun/public/docs.html",
+      "applicationCategory": "DeveloperApplication",
+      "operatingSystem": "Any",
+      "offers": {
+        "@type": "Offer",
+        "price": "0"
+      },
+      "description": "Visual user guide for WebTun, the self-hosted web terminal: terminal tabs, editor, file manager, git panel, Cloudflare tunnels, sessions and shortcuts."
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Port 3000 is already in use",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Start the server with a different port (PORT=4000 npm start, or webtun --port 4000). The desktop app does this by itself — it probes upward until it finds a free port."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Tunnel won't connect or the URL died",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Delete the tunnel from Settings → Tunnel and create a fresh one. If it still fails, check the server log — the connector binary downloads on first use and needs outbound HTTPS. Stale entries after a crash can be cleared with kill $(pgrep -f 'cloudflared tunnel')."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "My new device is stuck on \"pending\"",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Pending approvals expire after 5 minutes and must be accepted from a different, already-active session. Approve from your main device, then sign in again on the new one."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "I changed the PIN and got logged out everywhere",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "That's by design — a PIN change revokes every session for safety. Sign back in with the new PIN on each device."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "I forgot my PIN entirely",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "The PIN lives in the .env file — next to the server, or ~/.config/webtun/.env for global installs. If you can read that file you own the machine: edit the PIN= line and restart the server. If you can't, that's the security working as intended."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Terminal shows old sessions after a server restart",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Sessions live only while the server runs. On boot the server cleans up orphaned sessions automatically — just open a fresh tab."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "The installed (PWA) app looks outdated",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "You'll get an update toast when a new version is ready — tap it to refresh. Your terminals stay alive because the app never force-reloads mid-session."
+          }
+        }
+      ]
+    }
+  ]
+}
+</script>
 <style>
 /* ═══════════════ TOKENS ═══════════════ */
 :root{
