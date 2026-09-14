@@ -797,6 +797,11 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 #office-content table { border-collapse: collapse; max-width: 100%; margin: 12px 0; font-size: 12px; line-height: 1.5; }
 #office-content th, #office-content td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; vertical-align: top; }
 #office-content th { background: var(--bg2); }
+/* Spreadsheet grid: sticky header row + sticky row-number gutter */
+#office-content table.office-grid { border-collapse: separate; border-spacing: 0; }
+.office-grid thead th { position: sticky; top: 0; background: var(--bg3); z-index: 2; white-space: nowrap; }
+.office-grid thead th.corner { left: 0; z-index: 3; }
+.office-grid td.rownum { position: sticky; left: 0; background: var(--bg2); color: var(--fg3); font-family: var(--font); font-size: 10px; text-align: right; white-space: nowrap; z-index: 1; min-width: 34px; }
 #office-content img { max-width: 100%; height: auto; }
 #office-content a { color: var(--accent); }
 #office-note { font-size: 11px; color: var(--fg3); padding: 8px 0; }
@@ -1701,10 +1706,11 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
               </div>
               <div id="epub-wrap"><div id="epub-view"></div></div>
             </div>
-            <div id="office-viewer">
+                          <div id="office-viewer">
               <div class="doc-toolbar">
                 <span class="doc-title" id="office-title"></span>
                 <span class="doc-page-info" id="office-info"></span>
+                <select id="office-sheet-sel" title="Sheet" aria-label="Sheet" style="display:none;height:26px;font-size:11px;background:var(--bg3);color:var(--fg2);border:1px solid var(--border);border-radius:var(--radius-sm);max-width:160px" onchange="officeSheetChanged(this.value)"></select>
                 <button class="icon-btn" title="Download" onclick="downloadFile(editorPath)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
               </div>
               <div id="office-wrap"><div id="office-content"></div></div>
@@ -5824,6 +5830,7 @@ async function openFileEditor(path) {
   if (isPdfFile(path)) { openPdfViewer(path); return; }
   if (isEpubFile(path)) { openEpubViewer(path); return; }
   if (isOfficeFile(path)) { openOfficeViewer(path); return; }
+  if (isLegacyOfficeFile(path)) { toast('Legacy Office format — re-save as .docx/.xlsx (or .pdf) to preview, or use Download', 'warning'); return; }
   if (!canOpenInEditor(path)) { toast('Preview not supported for this file type — use Download', 'warning'); return; }
   const r = await api(`/api/files/read?path=${encodeURIComponent(path)}`);
   if (r.error) {
@@ -6012,6 +6019,7 @@ function isEpubFile(path) { return /\.epub$/i.test(path); }
 function isOfficeDocx(path) { return /\.docx$/i.test(path); }
 function isOfficeXlsx(path) { return /\.xlsx$/i.test(path); }
 function isOfficeFile(path) { return isOfficeDocx(path) || isOfficeXlsx(path); }
+function isLegacyOfficeFile(path) { return /\.(doc|dot|docm|dotm|xls|xlt|xlsm|xlsb|xlam|ppt|pot|pps|pptm|potm|ppsm|ppsx|odt|ods|odp|rtf)$/i.test(path); }
 function isDocFile(path) { return isPdfFile(path) || isEpubFile(path) || isOfficeFile(path); }
 
 // ── Doc preview dynamic loader ──
@@ -6719,8 +6727,15 @@ function officeLoadError(msg) {
   document.getElementById('office-content').innerHTML = '<div style="color:var(--red);padding:20px">Failed to load: ' + escHtml(msg) + '</div>';
   toast('Office preview failed: ' + msg, 'error');
 }
+let _officeWb = null; // cached xlsx workbook for sheet switching
 async function renderOfficeDocx(buf) {
-  const out = await window.mammoth.convertToHtml({ arrayBuffer: buf });
+  _officeWb = null;
+  try { const sel = document.getElementById('office-sheet-sel'); if (sel) sel.style.display = 'none'; } catch {}
+  // convertImage keeps embedded pictures (dropped by default) as data: URLs —
+  // allowed by CSP img-src and kept by DOMPurify; remote URLs still stripped below.
+  const out = await window.mammoth.convertToHtml({ arrayBuffer: buf }, {
+    convertImage: window.mammoth.images.imgElement(img => img.readAsDataURL().then(src => ({ src })))
+  });
   let html = (out && out.value ? out.value : '').trim();
   if (!html) html = '<p>(Empty document)</p>';
   // Never render unsanitized HTML — office files can carry scripts/links.
@@ -6744,23 +6759,87 @@ function renderOfficeXlsx(buf) {
   const wb = window.XLSX.read(buf, { type: 'array' });
   const names = (wb && wb.SheetNames) || [];
   if (!names.length) throw new Error('No sheets found');
-  const ws = wb.Sheets[names[0]];
-  // Manual table build with per-cell escaping (no raw lib HTML injected).
-  const rows = window.XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', blankrows: false });
-  const totalRows = rows.length;
-  const totalCols = rows.reduce((m, r) => Math.max(m, Array.isArray(r) ? r.length : 0), 0);
-  const shown = rows.slice(0, OFFICE_SHEET_MAX_ROWS).map(r => (Array.isArray(r) ? r : []).slice(0, OFFICE_SHEET_MAX_COLS));
-  let html = '<table><tbody>';
-  for (const r of shown) {
-    html += '<tr>' + r.map(c => '<td>' + escHtml(fmtOfficeCell(c)) + '</td>').join('') + '</tr>';
+  _officeWb = wb;
+  renderOfficeSheet(0);
+}
+function buildOfficeSheetSelect(names, idx) {
+  const sel = document.getElementById('office-sheet-sel');
+  if (!sel) return;
+  if (!names || names.length < 2) { sel.style.display = 'none'; sel.innerHTML = ''; return; }
+  sel.style.display = '';
+  sel.innerHTML = names.map((n, i) => '<option value="' + i + '"' + (i === idx ? ' selected' : '') + '>' + escHtml(n) + '</option>').join('');
+  sel.value = String(idx);
+}
+function officeSheetChanged(v) {
+  const i = parseInt(v, 10);
+  if (Number.isInteger(i)) { try { renderOfficeSheet(i); } catch (e) { officeLoadError(e.message); } }
+}
+function officeCellText(cell) {
+  if (!cell) return '';
+  // Prefer authored formatted text (dates, %, currency); fall back to raw value.
+  if (cell.w != null) return String(cell.w);
+  return fmtOfficeCell(cell.v);
+}
+function renderOfficeSheet(idx) {
+  const wb = _officeWb;
+  const names = (wb && wb.SheetNames) || [];
+  const ws = wb && wb.Sheets[names[idx]];
+  if (!ws || !ws['!ref']) {
+    document.getElementById('office-content').innerHTML = '<p>(Empty sheet)</p>';
+    document.getElementById('office-info').textContent = (names[idx] || 'Sheet') + ' • Empty • Read-only';
+    buildOfficeSheetSelect(names, idx);
+    return;
+  }
+  const range = window.XLSX.utils.decode_range(ws['!ref']);
+  const totalRows = range.e.r - range.s.r + 1;
+  const totalCols = range.e.c - range.s.c + 1;
+  const endR = Math.min(range.e.r, range.s.r + OFFICE_SHEET_MAX_ROWS - 1);
+  const endC = Math.min(range.e.c, range.s.c + OFFICE_SHEET_MAX_COLS - 1);
+  // Merged ranges: top-left cell keeps colspan/rowspan, covered cells skipped.
+  const skip = new Set(), span = new Map();
+  try {
+    for (const m of (ws['!merges'] || [])) {
+      span.set(m.s.r + ',' + m.s.c, { rs: m.e.r - m.s.r + 1, cs: m.e.c - m.s.c + 1 });
+      for (let R = m.s.r; R <= m.e.r; R++) for (let C = m.s.c; C <= m.e.c; C++) {
+        if (R !== m.s.r || C !== m.s.c) skip.add(R + ',' + C);
+      }
+    }
+  } catch {}
+  // Title-row pattern: a single-row merge spanning the full width is a title,
+  // not a header — the row below it becomes the header instead.
+  let headerR = range.s.r;
+  try {
+    const t = span.get(range.s.r + ',' + range.s.c);
+    if (t && t.rs === 1 && t.cs === totalCols && totalCols > 1) headerR = range.s.r + 1;
+  } catch {}
+  // Cell-address iteration (not sheet_to_json) so blank rows/cols keep alignment.
+  const enc = window.XLSX.utils.encode_cell, encCol = window.XLSX.utils.encode_col;
+  let html = '<table class="office-grid"><thead><tr><th class="corner" scope="col"></th>';
+  for (let C = range.s.c; C <= endC; C++) html += '<th scope="col">' + encCol(C) + '</th>';
+  html += '</tr></thead><tbody>';
+  for (let R = range.s.r; R <= endR; R++) {
+    html += '<tr><td class="rownum">' + (R + 1) + '</td>';
+    for (let C = range.s.c; C <= endC; C++) {
+      const k = R + ',' + C;
+      if (skip.has(k)) continue;
+      const txt = escHtml(officeCellText(ws[enc({ r: R, c: C })]));
+      const sp = span.get(k);
+      const spanAttr = sp ? ' colspan="' + sp.cs + '" rowspan="' + sp.rs + '"' : '';
+      // Header row renders as <th>, like a real spreadsheet.
+      html += R === headerR ? '<th scope="col"' + spanAttr + '>' + txt + '</th>' : '<td' + spanAttr + '>' + txt + '</td>';
+    }
+    html += '</tr>';
   }
   html += '</tbody></table>';
   const notes = [];
-  notes.push(names.length > 1 ? ('Sheet 1 of ' + names.length + ': ' + names[0]) : (names[0] || 'Sheet 1'));
-  if (totalRows > OFFICE_SHEET_MAX_ROWS || totalCols > OFFICE_SHEET_MAX_COLS) {
-    notes.push('Showing first ' + shown.length + '×' + (shown.length ? shown[0].length : 0) + ' of ' + totalRows + '×' + totalCols);
+  notes.push(names[idx] + (names.length > 1 ? ' (' + (idx + 1) + '/' + names.length + ')' : ''));
+  if (endR < range.e.r || endC < range.e.c) {
+    notes.push('Showing ' + (endR - range.s.r + 1) + '×' + (endC - range.s.c + 1) + ' of ' + totalRows + '×' + totalCols);
+  } else {
+    notes.push(totalRows + '×' + totalCols);
   }
   notes.push('Read-only');
+  buildOfficeSheetSelect(names, idx);
   document.getElementById('office-content').innerHTML = html;
   document.getElementById('office-info').textContent = notes.join(' • ');
 }
@@ -6775,6 +6854,8 @@ function preloadDocViewers() {
     if (settings && settings.datasaver) return;
     if (!window.pdfjsLib) loadPdfJs().catch(()=>{});
     if (!window.ePub) loadEpubJs().catch(()=>{});
+    if (!window.mammoth) loadMammoth().catch(()=>{});
+    if (!window.XLSX) loadSheetJs().catch(()=>{});
   } catch {}
 }
 setTimeout(() => {
