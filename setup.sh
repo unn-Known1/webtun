@@ -41,6 +41,32 @@ OS="$(uname -s)"
 ARCH="$(uname -m)"
 info "Detected: $OS / $ARCH"
 
+# Run one of NodeSource's setup scripts as root.
+# Previously this piped the response straight into `sudo bash` with all output
+# discarded: a fetch failure (proxy, offline, MITM'd 200) became a cryptic apt
+# error, and nothing about the script was ever inspected. Now it is downloaded to
+# a temp file over HTTPS, sanity-checked for the expected content, then run with
+# its output visible.
+install_nodesource() {
+  local url="$1" tmp
+  tmp="$(mktemp)" || die "mktemp failed"
+  info "Fetching NodeSource setup script ($url)…"
+  if ! curl -fsSL --proto '=https' --tlsv1.2 "$url" -o "$tmp"; then
+    rm -f "$tmp"
+    die "Could not download $url — check your network, then install Node.js ≥18 manually: https://nodejs.org"
+  fi
+  if ! grep -qi nodesource "$tmp"; then
+    rm -f "$tmp"
+    die "Downloaded setup script does not look like NodeSource's — refusing to run it as root"
+  fi
+  info "Running NodeSource setup as root (adds their apt/dnf repository)…"
+  if ! sudo -E bash "$tmp"; then
+    rm -f "$tmp"
+    die "NodeSource setup failed"
+  fi
+  rm -f "$tmp"
+}
+
 # ── Node.js ──────────────────────────────────────────────────
 install_node() {
   if command -v node &>/dev/null; then
@@ -58,13 +84,13 @@ install_node() {
   case "$OS" in
     Linux)
       if command -v apt-get &>/dev/null; then
-        curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - &>/dev/null
+        install_nodesource https://deb.nodesource.com/setup_lts.x
         sudo apt-get install -y nodejs &>/dev/null
       elif command -v dnf &>/dev/null; then
-        curl -fsSL https://rpm.nodesource.com/setup_lts.x | sudo bash - &>/dev/null
+        install_nodesource https://rpm.nodesource.com/setup_lts.x
         sudo dnf install -y nodejs &>/dev/null
       elif command -v yum &>/dev/null; then
-        curl -fsSL https://rpm.nodesource.com/setup_lts.x | sudo bash - &>/dev/null
+        install_nodesource https://rpm.nodesource.com/setup_lts.x
         sudo yum install -y nodejs &>/dev/null
       elif command -v pacman &>/dev/null; then
         sudo pacman -Sy --noconfirm nodejs npm &>/dev/null
@@ -146,13 +172,22 @@ else
   echo ""
 
   # Use printf with %s to avoid heredoc expansion (prevents $(cmd) execution) (F84)
-  {
-    printf 'PORT=%s\n' "$PORT"
-    printf 'HOST=0.0.0.0\n'
-    printf 'PIN=%s\n' "$INPUT_PIN"
-    printf '# SHELL=/bin/bash  # override shell if needed\n'
-  } > "$ENV_FILE"
-  success "Config saved to .env"
+  # The PIN is a secret: the default umask (022) left this file world-readable
+  # at 0644, unlike the 0600 atomic writes the runtime uses for rotation.
+  (
+    umask 077
+    {
+      printf 'PORT=%s\n' "$PORT"
+      printf 'HOST=0.0.0.0\n'
+      # Quoted: systemd's EnvironmentFile parses this file with its own rules,
+      # and an unquoted PIN containing spaces truncated the value there. The
+      # runtime loader strips surrounding quotes.
+      printf 'PIN="%s"\n' "$INPUT_PIN"
+      printf '# SHELL=/bin/bash  # override shell if needed\n'
+    } > "$ENV_FILE"
+  )
+  chmod 600 "$ENV_FILE" 2>/dev/null || true
+  success "Config saved to .env (mode 600)"
 fi
 
 # ── Cloudflared ───────────────────────────────────────────────
@@ -173,9 +208,13 @@ install_cloudflared() {
         armv7l)  CF_FILE="cloudflared-linux-arm" ;;
         *)        warn "Unknown arch $ARCH, trying amd64"; CF_FILE="cloudflared-linux-amd64" ;;
       esac
-      curl -fsSL "$CF_BASE/$CF_FILE" -o /tmp/cloudflared
-      chmod +x /tmp/cloudflared
-      sudo mv /tmp/cloudflared /usr/local/bin/cloudflared
+      # Private temp dir, not a fixed /tmp path a local user could pre-plant
+      # (symlink redirection before the sudo mv). HTTPS-only on the wire.
+      CF_TMP="$(mktemp -d)"
+      curl -fsSL --proto '=https' --tlsv1.2 "$CF_BASE/$CF_FILE" -o "$CF_TMP/cloudflared"
+      chmod +x "$CF_TMP/cloudflared"
+      sudo mv "$CF_TMP/cloudflared" /usr/local/bin/cloudflared
+      rm -rf "$CF_TMP"
       ;;
     Darwin)
       if command -v brew &>/dev/null; then
@@ -185,9 +224,15 @@ install_cloudflared() {
           arm64) CF_FILE="cloudflared-darwin-arm64.tgz" ;;
           *)     CF_FILE="cloudflared-darwin-amd64.tgz" ;;
         esac
-        curl -fsSL "$CF_BASE/$CF_FILE" -o /tmp/cf.tgz
-        tar xzf /tmp/cf.tgz -C /tmp
-        sudo mv /tmp/cloudflared /usr/local/bin/cloudflared
+        CF_TMP="$(mktemp -d)"
+        curl -fsSL --proto '=https' --tlsv1.2 "$CF_BASE/$CF_FILE" -o "$CF_TMP/cf.tgz"
+        tar xzf "$CF_TMP/cf.tgz" -C "$CF_TMP"
+        if [ ! -f "$CF_TMP/cloudflared" ]; then
+          rm -rf "$CF_TMP"
+          die "Archive did not contain a cloudflared binary"
+        fi
+        sudo mv "$CF_TMP/cloudflared" /usr/local/bin/cloudflared
+        rm -rf "$CF_TMP"
       fi
       ;;
     *)
@@ -212,6 +257,11 @@ setup_systemd() {
   SERVICE_FILE="/etc/systemd/system/webtun.service"
   NODE_PATH="$(command -v node)"
   
+  # Under `sudo ./setup.sh` $USER is root, which would run the whole server as
+  # root; prefer the invoking user.
+  SVC_USER="${SUDO_USER:-$USER}"
+  if ! id -u "$SVC_USER" &>/dev/null; then SVC_USER="$USER"; fi
+
   sudo tee "$SERVICE_FILE" > /dev/null << EOF
 [Unit]
 Description=WebTun - Web Terminal Server
@@ -219,7 +269,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=$USER
+User=$SVC_USER
 WorkingDirectory=$SCRIPT_DIR
 ExecStart=$NODE_PATH $SCRIPT_DIR/server.js
 Restart=on-failure
@@ -234,6 +284,7 @@ EOF
   sudo systemctl daemon-reload
   sudo systemctl enable webtun
   sudo systemctl start webtun
+  SYSTEMD_INSTALLED=true
   success "Systemd service installed and started"
   echo "  ${CYAN}Manage with:${RESET} sudo systemctl {start|stop|restart|status} webtun"
 }
@@ -254,21 +305,40 @@ if [ -f "$SCRIPT_DIR/webtun.pid" ]; then
   fi
 fi
 # Narrow pkill to this dir to avoid killing other users' server.js (F85)
+# Whole seconds only: macOS /bin/sleep rejects fractional arguments, and with
+# `set -e` a `sleep 0.5` aborted the entire setup on Darwin.
 pkill -f "node.*$SCRIPT_DIR/server\.js" 2>/dev/null || true
-sleep 0.5
+sleep 1
+
+# ── Systemd offer — BEFORE starting, deliberately ───────────────
+# The offer used to live after the nohup start below: installing the service
+# then launched a SECOND `node server.js` on the same port, which crash-looped
+# on EADDRINUSE (the old guard passed because our own just-started server was
+# answering the health probe).
+SYSTEMD_INSTALLED=false
+USE_SYSTEMD=false
+if [[ "$OS" == "Linux" ]] && command -v systemctl &>/dev/null && [ ! -f "/etc/systemd/system/webtun.service" ]; then
+  setup_systemd
+  if [ "$SYSTEMD_INSTALLED" = "true" ]; then USE_SYSTEMD=true; fi
+fi
 
 # Start server in background, log to file
 LOG_FILE="$SCRIPT_DIR/webtun.log"
-NODE_CMD="$(command -v node)"
-nohup "$NODE_CMD" "$SCRIPT_DIR/server.js" >> "$LOG_FILE" 2>&1 &
-SERVER_PID=$!
-echo "$SERVER_PID" > "$SCRIPT_DIR/webtun.pid"
+if [ "$USE_SYSTEMD" != "true" ]; then
+  NODE_CMD="$(command -v node)"
+  nohup "$NODE_CMD" "$SCRIPT_DIR/server.js" >> "$LOG_FILE" 2>&1 &
+  SERVER_PID=$!
+  echo "$SERVER_PID" > "$SCRIPT_DIR/webtun.pid"
+else
+  SERVER_PID="systemd"
+fi
 
 # Wait for server — verify pid alive to avoid hitting old instance (F85)
 SERVER_UP=false
 for _ in {1..10}; do
-  sleep 0.5
-  if ! kill -0 "$SERVER_PID" 2>/dev/null; then break; fi
+  sleep 1
+  # The systemd path has no $! to probe.
+  if [ "$USE_SYSTEMD" != "true" ] && ! kill -0 "$SERVER_PID" 2>/dev/null; then break; fi
   if command -v curl &>/dev/null; then
     if curl -sf "http://localhost:$PORT/api/auth/required" &>/dev/null; then
       # Double-check that our pid still owns the port (lsof/ss check not fatal)
@@ -311,12 +381,8 @@ echo "  │  PID:    $SERVER_PID                               │"
 echo "  └─────────────────────────────────────────┘"
 echo ""
 
-# Systemd offer
-if [[ "$OS" == "Linux" ]] && command -v systemctl &>/dev/null && [ ! -f "/etc/systemd/system/webtun.service" ]; then
-  # Only offer systemd if we're the only process on the port (don't race with existing server)
-  if curl -sf "http://localhost:$PORT/api/auth/required" &>/dev/null; then
-    setup_systemd
-  fi
+if [ "$USE_SYSTEMD" = "true" ]; then
+  echo "  ${CYAN}Systemd service active — WebTun will start on boot.${RESET}"
 fi
 
 # ── Cloudflare Tunnel ──────────────────────────────────────────
@@ -359,5 +425,9 @@ fi
 
 echo ""
 echo "  ${GREEN}Done.${RESET} WebTun server running (PID $SERVER_PID)."
-echo "  ${GREEN}To stop:${RESET} kill \$(cat webtun.pid)"
+if [ "$USE_SYSTEMD" = "true" ]; then
+  echo "  ${GREEN}To stop:${RESET} sudo systemctl stop webtun"
+else
+  echo "  ${GREEN}To stop:${RESET} kill \$(cat webtun.pid)"
+fi
 echo ""

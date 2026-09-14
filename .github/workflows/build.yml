@@ -19,7 +19,34 @@ permissions:
   contents: write
 
 jobs:
+  # Fast guard: never build or publish a tag whose version and lockfile disagree
+  # (the checklist asked humans to bump both files; nothing verified it).
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Version + lockfile sync
+        run: npm run version:check
+
+      - name: Packaging smoke test
+        run: npm pack --dry-run
+
+      - name: Server entry loads
+        run: node -e "require('./server.js'); console.log('require ok'); process.exit(0)"
+
+      - name: Dependency audit (production only)
+        run: npm audit --omit=dev
+
   build-windows:
+    needs: verify
     runs-on: windows-latest
     if: contains(inputs.platforms, 'windows') || github.event_name != 'workflow_dispatch' || inputs.platforms == ''
     steps:
@@ -75,6 +102,7 @@ jobs:
           retention-days: 30
 
   build-linux:
+    needs: verify
     runs-on: ubuntu-latest
     if: contains(inputs.platforms, 'linux') || github.event_name != 'workflow_dispatch' || inputs.platforms == ''
     steps:
@@ -121,6 +149,7 @@ jobs:
           retention-days: 30
 
   build-mac:
+    needs: verify
     runs-on: macos-latest
     if: contains(inputs.platforms, 'mac') || github.event_name != 'workflow_dispatch' || inputs.platforms == ''
     steps:

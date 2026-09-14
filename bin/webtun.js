@@ -26,6 +26,12 @@ function printHelp() {
     PIN                   Authentication PIN (empty = no auth)
     SHELL                 Shell to use (default: PowerShell on Windows, bash/sh elsewhere)
     WORKSPACE_ROOT        Root directory for file operations (default: ~)
+    ALLOW_FULL_FS         set to "false" to confine the File API to WORKSPACE_ROOT
+    TRUST_PROXY           set to "true" when behind a reverse proxy (X-Forwarded-For)
+    WEBTUN_SHELL          override the shell on Windows (e.g. /usr/bin/bash for Git Bash)
+    ALLOWED_ORIGINS       extra WebSocket origins, comma-separated (custom hostnames)
+    PREVIEW_PORTS         restrict app-preview targets, comma-separated (default: any)
+    XDG_CONFIG_HOME       where runtime state lives (default: ~/.config/webtun)
 
   Examples:
     webtun                          Start on default port
@@ -65,15 +71,20 @@ function parseArgs(argv) {
         process.exit(1);
       }
       opts.host = argv[++i];
+    } else if (arg.startsWith('--pin=')) {
+      // Explicit form — the only way to pass a PIN that starts with "-".
+      process.env.PIN = arg.slice('--pin='.length);
     } else if (arg === '--pin') {
-      // Consume the next argv unconditionally (except other known flags) so
-      // dash-led PINs like -s3cret work; use PIN=-s3cret env for anything else.
-      const KNOWN_FLAGS = ['--port','-p','--host','-h','--pin','--tunnel','-t','--help','-H','--version','-v'];
-      if (argv[i+1] === undefined || KNOWN_FLAGS.includes(argv[i+1])) {
+      // Reject -led values outright: `--pin -tunnel` (a typo for --tunnel) used
+      // to silently set PIN="-tunnel" and leave the instance open.
+      const next = argv[i+1];
+      if (next === undefined || next.startsWith('-')) {
         console.error('Error: --pin requires a value');
+        console.error('       For a PIN starting with "-", use --pin=<value> or set PIN=<value>.');
         process.exit(1);
       }
-      process.env.PIN = argv[++i] || '';
+      process.env.PIN = next;
+      i++;
     } else if (arg === '--tunnel' || arg === '-t') {
       opts.tunnel = true;
     } else {
@@ -98,6 +109,7 @@ async function startTunnel(port) {
     } catch (e) {
       console.error('\n  Error: cloudflared is not installed (' + e.message + ').');
       console.error('  Install it from: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/');
+      process.exitCode = 1; // the tunnel the user asked for did not start
       return;
     }
   }
@@ -110,11 +122,23 @@ async function startTunnel(port) {
 
   let tunnelUrl = null;
 
+  // Don't wait forever for a URL that will never appear (cloudflared can fail
+  // after printing its banner); surface the log tail and a non-zero status.
+  const urlTimer = setTimeout(() => {
+    if (tunnelUrl) return;
+    console.error('  Error: no public URL after 15s — cloudflared did not start a tunnel.');
+    process.exitCode = 1;
+  }, 15000);
+  if (urlTimer.unref) urlTimer.unref();
+
   const handler = data => {
     const text = data.toString();
-    const m = text.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
+    // Also match named-tunnel hostnames (cfargotunnel.com); the old pattern
+    // only knew trycloudflare.com, so the URL line was missed entirely.
+    const m = text.match(/https:\/\/[a-z0-9-]+\.(?:trycloudflare\.com|cfargotunnel\.com)/i);
     if (m && !tunnelUrl) {
       tunnelUrl = m[0];
+      try { clearTimeout(urlTimer); } catch {}
       console.log('');
       console.log('  ┌─────────────────────────────────────────────────────┐');
       console.log('  │  Public URL (share this!):                          │');
@@ -134,7 +158,9 @@ async function startTunnel(port) {
   proc.on('exit', (code) => {
     if (code !== 0 && !tunnelUrl) {
       console.error('  Tunnel exited with code', code);
+      process.exitCode = 1;
     }
+    try { clearTimeout(urlTimer); } catch {}
   });
 
   const stop = () => {
@@ -147,16 +173,92 @@ async function startTunnel(port) {
   process.on('exit', () => { try { proc.kill('SIGTERM'); } catch {} });
 }
 
+function isAddrInUse(err) {
+  return /EADDRINUSE|address already in use/i.test(String(err && err.message || ''));
+}
+
+// Probe 127.0.0.1 for a free port starting at `startPort`.
+function findFreePort(startPort, maxTries = 20) {
+  const net = require('net');
+  return new Promise((resolve, reject) => {
+    const tryPort = (port, attempt) => {
+      if (attempt >= maxTries || port > 65535) {
+        return reject(new Error(`No free port found between ${startPort} and ${port}`));
+      }
+      const tester = net.createServer();
+      tester.once('error', () => { tester.close(); tryPort(port + 1, attempt + 1); });
+      tester.once('listening', () => tester.close(() => resolve(port)));
+      tester.listen(port, '127.0.0.1');
+    };
+    tryPort(startPort, 0);
+  });
+}
+
+// Wait for the HTTP API to answer before starting a tunnel that points at it —
+// a listening socket is not proof the app is ready to serve requests.
+function waitForServer(port, timeoutMs = 5000) {
+  const http = require('http');
+  const deadline = Date.now() + timeoutMs;
+  return new Promise(resolve => {
+    const check = () => {
+      const req = http.get(`http://127.0.0.1:${port}/api/auth/required`, res => {
+        res.resume();
+        resolve(true);
+      });
+      req.setTimeout(2000, () => { try { req.destroy(); } catch {} });
+      req.on('error', () => {
+        if (Date.now() > deadline) resolve(false);
+        else setTimeout(check, 200);
+      });
+    };
+    check();
+  });
+}
+
 const opts = parseArgs(args);
 const { startServer, PORT } = require('../server');
 
-const listenPort = opts.port || PORT;
+// PORT is already validated (1-65535) in server.js — an invalid $PORT used to
+// reach listen() verbatim from the CLI path and fail with a cryptic error.
+let listenPort = opts.port || PORT;
 
-startServer(opts).then(() => {
-  if (opts.tunnel) {
-    startTunnel(listenPort);
-  }
-}).catch(err => {
-  console.error('Failed to start server:', err.message);
-  process.exit(1);
-});
+function boot(port, allowPortFallback) {
+  return startServer({ ...opts, port }).then(() => {
+    if (!opts.tunnel) return;
+    return waitForServer(port).then(up => {
+      if (!up) {
+        console.error('  Error: server did not answer on port ' + port + ' — not starting the tunnel.');
+        process.exitCode = 1;
+        return;
+      }
+      startTunnel(port);
+    });
+  }).catch(err => {
+    if (allowPortFallback && isAddrInUse(err)) {
+      // An implicit port (default or $PORT) may simply be busy: move up the range
+      // the same way the Electron app does. An explicit --port is never overridden.
+      return findFreePort(port + 1)
+        .then(next => {
+          console.warn(`  Port ${port} is in use — using ${next} instead.`);
+          listenPort = next;
+          return boot(next, false);
+        })
+        .catch(() => {
+          console.error(`Failed to start server: port ${port} is in use and no free port was found.`);
+          console.error(`  Free it, or pick another: webtun --port 4000`);
+          process.exit(1);
+        });
+    }
+    if (isAddrInUse(err)) {
+      console.error(`Failed to start server: port ${port} is already in use.`);
+      console.error('  Free it, or pick another with --port <n>.');
+      process.exit(1);
+    }
+    console.error('Failed to start server:', err.message);
+    process.exit(1);
+  });
+}
+
+// Only auto-move ports when the port was implicit (default or $PORT) — an
+// explicit --port is a request, not a suggestion.
+boot(listenPort, !opts.port);

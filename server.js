@@ -7,10 +7,14 @@ function loadEnvFile(envPath) {
     envContent.split('\n').forEach(line => {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#')) return;
-      const idx = trimmed.indexOf('=');
+      // Tolerate `export PIN=…`: the persister already rewrites such lines, so
+      // without this the key was stored literally as "export PIN" and never
+      // read back. The prefix is stripped before splitting on '='.
+      const stmt = trimmed.replace(/^export\s+/, '');
+      const idx = stmt.indexOf('=');
       if (idx === -1) return;
-      const key = trimmed.slice(0, idx).trim();
-      let val = trimmed.slice(idx + 1).trim();
+      const key = stmt.slice(0, idx).trim();
+      let val = stmt.slice(idx + 1).trim();
       if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
         val = val.slice(1, -1);
       }
@@ -59,7 +63,8 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
-const { execSync, execFileSync, spawn } = require('child_process');
+const dns = require('dns');
+const { execSync, execFileSync, execFile, spawn } = require('child_process');
 // archiver v8 is ESM-only. Top-level require() of ESM works on modern plain
 // Node but can fail under the packaged Electron loader (asar), crashing the
 // server at startup — so load it lazily, only when zipping is requested.
@@ -123,26 +128,37 @@ const BINARY_EXTS = new Set([
 // NOTE: Behind cloudflared tunnel every remote IP appears as 127.0.0.1 (tunnel collapses to loopback).
 // We use req.ip (Express respects app.set('trust proxy')) so limiter correctly respects trust proxy config.
 // All tunnel users share one bucket when behind loopback — consider per-token bucket if multi-tenant.
-// Map size cap prevents blowup via spoofed X-Forwarded-For (now unused) or IP rotation.
-const rateLimitWindows = new Map();
+// Each limiter owns its OWN window map: the auth (5/10s) and general (20/10s)
+// limiters used to share one Map, so a single counter was incremented by both
+// and the strict auth budget could be spent (or falsely tripped) by ordinary
+// requests from the same IP.
 function createRateLimiter(opts) {
+  const windows = new Map();
+  // Map size cap prevents blowup via spoofed X-Forwarded-For or IP rotation (F44)
+  const sweep = setInterval(() => {
+    const now = Date.now();
+    for (const [key, win] of windows) { if (now > win.resetAt) windows.delete(key); }
+  }, 60000);
+  if (sweep.unref) sweep.unref();
   return (req, res, next) => {
     if (opts.skipWhenNoPin && !PIN) return next();
     const now = Date.now();
     // Use Express req.ip which respects trust proxy; avoids manual X-Forwarded-For spoofing (F8,F44)
     const key = req.ip || req.socket.remoteAddress || 'default';
-    // Cap Map size to prevent memory exhaustion (F44 blowup) — evict oldest entry
-    if (rateLimitWindows.size > 10000) {
-      const firstKey = rateLimitWindows.keys().next().value;
-      if (firstKey !== undefined) rateLimitWindows.delete(firstKey);
+    if (windows.size > 10000) {
+      const firstKey = windows.keys().next().value;
+      if (firstKey !== undefined) windows.delete(firstKey);
     }
-    let win = rateLimitWindows.get(key);
+    let win = windows.get(key);
     if (!win || now > win.resetAt) {
       win = { count: 0, resetAt: now + (opts.windowMs || 10000) };
-      rateLimitWindows.set(key, win);
+      windows.set(key, win);
     }
     win.count++;
-    if (win.count > (opts.limit || 10)) return res.status(429).json({ error: opts.errorMsg || 'Too many requests' });
+    if (win.count > (opts.limit || 10)) {
+      try { res.setHeader('Retry-After', String(Math.max(1, Math.ceil((win.resetAt - now) / 1000)))); } catch {}
+      return res.status(429).json({ error: opts.errorMsg || 'Too many requests' });
+    }
     next();
   };
 }
@@ -150,18 +166,24 @@ function createRateLimiter(opts) {
 const authRateLimiter = createRateLimiter({ limit: 5, windowMs: 10000, errorMsg: 'Too many attempts', skipWhenNoPin: true });
 const rateLimiter = createRateLimiter({ limit: 20, windowMs: 10000 });
 
-// Periodic cleanup of rate limiter
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, win] of rateLimitWindows) { if (now > win.resetAt) rateLimitWindows.delete(key); }
-}, 60000);
-
 const app = express();
 app.disable('x-powered-by'); // don't advertise the stack
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ noServer: true });
 
-const PORT = process.env.PORT || 3000;
+// Validated once, here: this is the single source of truth for the CLI, the
+// Electron host and direct `node server.js` runs. An invalid $PORT ("abc",
+// 99999) used to be passed straight to listen() and fail with a cryptic error.
+const PORT = (() => {
+  const raw = process.env.PORT;
+  if (raw === undefined || raw === '') return 3000;
+  const n = parseInt(raw, 10);
+  if (!Number.isInteger(n) || n < 1 || n > 65535) {
+    console.warn(`  Warning: invalid PORT="${raw}" — falling back to 3000`);
+    return 3000;
+  }
+  return n;
+})();
 // Mutable at runtime via POST /api/pin (persisted to __dirname/.env).
 // All auth checks read this binding, so changes apply instantly.
 let PIN = process.env.PIN || '';
@@ -189,32 +211,61 @@ const WORKSPACE_ROOT = (() => {
   return path.resolve(ws);
 })();
 
-// Global JSON limit 50MB — per-route guards (e.g., write 10MB, history 1k) are stricter (F42)
-app.use(express.json({ limit: '50mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
-
-// In-app user guide — single static page (public/docs.html, also published to GitHub Pages),
-// served like index.html (no CSP), reachable at /docs
-app.get('/docs', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'docs.html'));
-});
-
-// Handle malformed JSON gracefully
-app.use((err, req, res, next) => {
-  if (err.type === 'entity.parse.failed') {
-    return res.status(400).json({ error: 'Invalid JSON' });
-  }
-  next(err);
-});
-
-// Security headers
+// Security headers — registered BEFORE express.static on purpose. When this
+// middleware ran after it, every static response (index.html at /, /docs,
+// icons, manifest, sw.js) was served with no CSP / X-Frame-Options /
+// Referrer-Policy / Permissions-Policy at all.
+// script-src keeps 'unsafe-inline': the single-file frontend depends on an
+// inline boot script plus ~100 inline handlers (no bundler — see AGENTS.md).
+// It still restricts script origins to self + jsDelivr + blob:, which
+// previously was not enforced for the app shell at all.
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; connect-src 'self' https://*.trycloudflare.com wss: blob:; script-src 'self' https://cdn.jsdelivr.net blob:; style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; font-src 'self' data: https://fonts.gstatic.com https://fonts.googleapis.com; img-src 'self' data: blob:; frame-src 'self' blob:; child-src 'self' blob:; worker-src 'self' blob: https://cdn.jsdelivr.net;");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; connect-src 'self' https://*.trycloudflare.com wss: blob:; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net blob:; style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; font-src 'self' data: https://fonts.gstatic.com https://fonts.googleapis.com; img-src 'self' data: blob:; frame-src 'self' blob:; child-src 'self' blob:; worker-src 'self' blob: https://cdn.jsdelivr.net;");
+  // HSTS only when the request really arrived over TLS (directly or via a
+  // TLS-terminating reverse proxy). Sending it on plain HTTP is ignored by
+  // browsers anyway, and a LAN-only install has no TLS to pin.
+  if (req.secure || req.headers['x-forwarded-proto'] === 'https') {
+    res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
+  }
   next();
+});
+
+// JSON body limits: keep the global default small and only let the one route that
+// legitimately carries file content buffer more. A flat 50 MB global limit meant a
+// 40 MB POST to any endpoint was buffered in full before that route's own 10 MB
+// guard could reject it. (F42 / B-L4)
+const JSON_LIMIT_BASE = '2mb';
+const JSON_LIMIT_LARGE = '12mb';
+const LARGE_JSON_ROUTES = new Set(['/api/files/write']);
+app.use((req, res, next) => {
+  const limit = LARGE_JSON_ROUTES.has(req.path) ? JSON_LIMIT_LARGE : JSON_LIMIT_BASE;
+  return express.json({ limit })(req, res, next);
+});
+app.use(express.static(path.join(__dirname, 'public')));
+
+// In-app user guide — single static page (public/docs.html, also published to GitHub Pages),
+// served like index.html, reachable at /docs
+app.get('/docs', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'docs.html'));
+});
+
+// Handle malformed JSON gracefully. Registered after express.json (the only
+// middleware that can raise entity.parse.failed) so parse errors still land
+// here, while every other error keeps flowing down the chain normally.
+app.use((err, req, res, next) => {
+  if (err.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'Invalid JSON' });
+  }
+  // Oversized bodies are rejected by the parser, so return JSON (not Express's
+  // default HTML error page) — the client turns a JSON {error} into a toast.
+  if (err.type === 'entity.too.large' || err.status === 413) {
+    return res.status(413).json({ error: 'Request body too large' });
+  }
+  next(err);
 });
 
 // Trust proxy for proper IP detection behind reverse proxy
@@ -222,8 +273,14 @@ app.use((req, res, next) => {
 // Set TRUST_PROXY=true in .env if behind a reverse proxy
 app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : 'loopback');
 
+// Auth secrets are short (PIN ≤64 chars, session tokens 64 hex). Anything
+// longer is attacker input (e.g. a 50MB body / huge ?token=), and the padded
+// compare below would allocate a buffer of max(lenA,lenB) per request — an
+// easy memory-amplification DoS.
+const MAX_AUTH_SECRET_LEN = 256;
 function constantTimeEqual(a, b) {
   if (typeof a !== 'string' || typeof b !== 'string') return false;
+  if (a.length > MAX_AUTH_SECRET_LEN || b.length > MAX_AUTH_SECRET_LEN) return false;
   const bufA = Buffer.from(a);
   const bufB = Buffer.from(b);
   if (bufA.length === bufB.length) {
@@ -252,14 +309,31 @@ const SESSION_IDLE_MS = 30 * 24 * 3600 * 1000; // expire after 30d idle
 const SESSION_MAX = 100;
 const SESSION_PENDING_MS = 5 * 60 * 1000; // pending approvals lapse after 5min (deny by default)
 const SESSION_PENDING_MAX = 5;
-setInterval(() => {
+const authSessionSweep = setInterval(() => {
   const _now = Date.now();
   for (const [_t, _s] of authSessions) {
     if (_s.status === 'pending' && _now > (_s.expiresAt || 0)) { clearSessionTimer(_s); authSessions.delete(_t); continue; }
     if (_now - (_s.lastSeen || 0) > SESSION_IDLE_MS) { clearSessionTimer(_s); authSessions.delete(_t); }
   }
 }, 60000);
+// Maintenance timers must not keep the process alive on their own — the HTTP
+// listener is what should own the lifecycle.
+if (authSessionSweep.unref) authSessionSweep.unref();
 function clearSessionTimer(s) { try { if (s && s.timer) clearTimeout(s.timer); } catch {} if (s) s.timer = null; }
+// Arm the deny-by-default expiry for a pending session. Shared by first-issue
+// and by the bootstrap demotion path (see /api/auth) so both behave identically.
+function armPendingTimer(token, s) {
+  s.status = 'pending';
+  s.expiresAt = Date.now() + SESSION_PENDING_MS;
+  clearSessionTimer(s);
+  s.timer = setTimeout(() => {
+    // Deny by default: lapse the request and tell remaining clients
+    if (authSessions.get(token) === s) {
+      authSessions.delete(token);
+      broadcastClientEvent({ event: 'sessions-changed' });
+    }
+  }, SESSION_PENDING_MS);
+}
 function countActiveSessions(exceptToken) {
   let n = 0;
   for (const [t, s] of authSessions) {
@@ -302,6 +376,16 @@ function clientIp(req) {
     return req.ip || (req.socket && req.socket.remoteAddress) || '';
   } catch { return ''; }
 }
+// Demote an over-granted bootstrap session to pending: it stays alive but
+// powerless until an existing active session approves it. Tolerates an unknown
+// token (nothing to demote) rather than throwing.
+function demoteToPending(token, s) {
+  const target = s || authSessions.get(token);
+  if (!target) return null;
+  armPendingTimer(token, target);
+  return authSessions.get(token);
+}
+
 function issueSession(req, deviceHint, status) {
   const token = crypto.randomBytes(32).toString('hex');
   const now = Date.now();
@@ -312,20 +396,12 @@ function issueSession(req, deviceHint, status) {
     status: status || 'active',
     expiresAt: 0, timer: null,
   };
-  if (s.status === 'pending') {
-    s.expiresAt = now + SESSION_PENDING_MS;
-    s.timer = setTimeout(() => {
-      // Deny by default: lapse the request and tell remaining clients
-      if (authSessions.get(token) === s) {
-        authSessions.delete(token);
-        broadcastClientEvent({ event: 'sessions-changed' });
-      }
-    }, SESSION_PENDING_MS);
-  }
   authSessions.set(token, s);
+  if (s.status === 'pending') armPendingTimer(token, s);
   while (authSessions.size > SESSION_MAX) {
     const oldest = authSessions.keys().next().value;
     if (oldest === undefined) break;
+    if (oldest === token) break; // never evict the session we just minted
     const _o = authSessions.get(oldest);
     clearSessionTimer(_o);
     authSessions.delete(oldest);
@@ -381,11 +457,21 @@ function checkPin(req, res, next) {
 // socket is loopback, so proxy headers disqualify "local". An attacker can
 // add X-Forwarded-For but can never strip the CF-Ray Cloudflare adds —
 // and erring toward "remote" only ever denies, never grants.
-function isLoopbackReq(req) {
-  const h = (req && req.headers) || {};
+// Shared by the HTTP and WebSocket paths so the two can never disagree: the WS
+// handshake has a socket and headers but no Express request, and used to fake
+// one (which is exactly how the two gates drift apart).
+function isLoopbackSocket(socket, headers) {
+  const h = headers || {};
   if (h['cf-ray'] || h['cf-connecting-ip'] || h['cf-ipcountry'] || h['cf-visitor'] || h['x-forwarded-for'] || h['forwarded']) return false;
-  const ip = ((req.ip || (req.socket && req.socket.remoteAddress)) || '').toLowerCase();
+  const ip = String((socket && socket.remoteAddress) || '').toLowerCase();
   return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+}
+function isLoopbackReq(req) {
+  if (!req) return false;
+  // Prefer the socket address (what the kernel says) over a proxy-derived
+  // req.ip; forwarded headers are already rejected above.
+  const sock = req.socket || { remoteAddress: req.ip };
+  return isLoopbackSocket(sock, req.headers);
 }
 // Destructive endpoints stay disabled until the owner enables PIN protection.
 // (With PIN empty, checkPin is a pass-through — this closes that hole.)
@@ -412,7 +498,18 @@ app.post('/api/auth', authRateLimiter, (req, res) => {
     // session pends until a different active session approves it.
     if (countActiveSessions() === 0) {
       const token = issueSession(req, device, 'active');
-      const s = authSessions.get(token);
+      let s = authSessions.get(token);
+      // Post-condition, not the gate itself: at most ONE session may hold the
+      // bootstrap grant. This handler is synchronous, so Node runs the count
+      // above and the issue below without yielding and they cannot interleave
+      // (the audit's B-C6 describes a race that needs an `await` in between).
+      // The assertion keeps that invariant true even if an await is added here
+      // later — a second unrestricted session is demoted, never granted.
+      if (s && countActiveSessions(token) !== 0) {
+        s = demoteToPending(token, s);
+        broadcastClientEvent({ event: 'session-pending', id: token, ip: s.ip, device: s.device, at: s.createdAt, expiresAt: s.expiresAt });
+        return res.json({ success: true, pending: true, token, expiresAt: s.expiresAt });
+      }
       if (s) broadcastClientEvent({ event: 'new-login', ip: s.ip, device: s.device, at: s.createdAt });
       return res.json({ success: true, token });
     }
@@ -509,14 +606,22 @@ function resolveDataDir() {
   } catch { return __dirname; }
 }
 const DATA_DIR = resolveDataDir();
-// One-time migration: carry state forward from legacy __dirname location.
-for (const _f of ['.env', '.cmdhist.json', '.tunnels.json', 'tunnel-url.txt']) {
-  try {
-    const _dst = path.join(DATA_DIR, _f), _src = path.join(__dirname, _f);
-    if (DATA_DIR !== __dirname && !fs.existsSync(_dst) && fs.existsSync(_src)) {
-      fs.copyFileSync(_src, _dst);
-    }
-  } catch {}
+// One-time migration: carry state forward from the legacy __dirname location.
+// Deliberately NOT run at import time — requiring this module should not copy files
+// into the user's config directory. startServer() calls it, which covers both real
+// entry points (this file run directly, and the CLI/Electron fork).
+let _migrated = false;
+function migrateLegacyState() {
+  if (_migrated) return;
+  _migrated = true;
+  for (const _f of ['.env', '.cmdhist.json', '.tunnels.json', 'tunnel-url.txt']) {
+    try {
+      const _dst = path.join(DATA_DIR, _f), _src = path.join(__dirname, _f);
+      if (DATA_DIR !== __dirname && !fs.existsSync(_dst) && fs.existsSync(_src)) {
+        fs.copyFileSync(_src, _dst);
+      }
+    } catch {}
+  }
 }
 // Persist PIN to the writable .env (same file the startup parser reads).
 // Atomic tmp+rename with 0600, mirroring .cmdhist.json writes.
@@ -528,18 +633,29 @@ function envPathForWrite() {
   } catch { return path.join(DATA_DIR, '.env'); }
 }
 const ENV_PATH = envPathForWrite();
+// systemd's EnvironmentFile re-parses this file with its own rules, where an
+// unquoted value containing whitespace or '#' is truncated. Quote only when
+// needed, and never introduce escapes: the startup loader strips surrounding
+// quotes but does not unescape, so escaping would corrupt the round-trip.
+function envValue(v) {
+  const s = String(v == null ? '' : v);
+  if (s === '') return '';
+  if (/[\s#]/.test(s) && !/["'\\]/.test(s)) return '"' + s + '"';
+  return s;
+}
 function persistPinToEnv(pin) {
   let lines = [];
   try { lines = fs.readFileSync(ENV_PATH, 'utf8').split('\n'); }
   catch (e) { if (e.code !== 'ENOENT') throw e; }
   let found = false;
+  const enc = envValue(pin);
   const out = lines.map(l => {
-    if (!found && /^\s*(export\s+)?PIN\s*=/.test(l)) { found = true; return `PIN=${pin}`; }
+    if (!found && /^\s*(export\s+)?PIN\s*=/.test(l)) { found = true; return `PIN=${enc}`; }
     return l;
   });
   if (!found) {
     if (out.length && out[out.length - 1].trim() !== '') out.push('');
-    out.push(`PIN=${pin}`);
+    out.push(`PIN=${enc}`);
   }
   const tmp = ENV_PATH + '.tmp';
   fs.writeFileSync(tmp, out.join('\n'), { mode: 0o600 });
@@ -579,6 +695,10 @@ function applyPinRotation(req, next, byDevice) {
   } catch {}
   const sessionsRevoked = authSessions.size;
   authSessions.clear();
+  // Every token minted under the old PIN is now dead. Closing the sockets is
+  // not cosmetic: the handshake is the only other auth check, so a client that
+  // ignored the advisory event would otherwise keep a live shell forever.
+  try { closeInvalidSockets('PIN changed'); } catch {}
   let persisted = false, persistError = '';
   try { persistPinToEnv(next); persisted = true; }
   catch (e) { persistError = e.message || 'write failed'; }
@@ -633,7 +753,7 @@ app.post('/api/pin', authRateLimiter, checkPin, (req, res) => {
     const out = applyPinRotation(req, next, describeChanger(req));
     res.json({ success: true, protected: !!PIN, ...out });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -654,7 +774,7 @@ app.post('/api/pin/approve', authRateLimiter, checkPin, (req, res) => {
     broadcastClientEvent({ event: 'pin-change-resolved', approved: true, device: p.device, ip: p.ip });
     res.json({ success: true, protected: !!PIN, token, ...out });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -675,7 +795,7 @@ app.post('/api/pin/veto', authRateLimiter, checkPin, (req, res) => {
     broadcastClientEvent({ event: 'sessions-changed' });
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -743,138 +863,243 @@ async function renameWithFallback(src, dst) {
   }
 }
 
+// Central error → response mapping. Absolute paths used to travel straight to
+// the client through e.message ("ENOENT: no such file or directory, open
+// '/home/you/secret/notes.md'"), which leaked filesystem layout to any caller.
+const FS_ERR_MSG = {
+  ENOENT: 'Path not found', EACCES: 'Permission denied', EPERM: 'Permission denied',
+  EISDIR: 'Path is a directory', ENOTDIR: 'Not a directory', ELOOP: 'Too many symbolic links',
+  ENOSPC: 'No space left on device', EMFILE: 'Too many open files', ENFILE: 'Too many open files',
+  ENAMETOOLONG: 'Path too long', EROFS: 'Read-only filesystem', EXDEV: 'Cross-device operation not supported',
+  EBUSY: 'Resource busy'
+};
+function redactPaths(msg) {
+  // Windows drive paths plus POSIX absolute paths that begin a word (' /, " /,
+  // = /, : /). The (?!\/) guard leaves URLs alone, so a message quoting
+  // https://host/a/b survives while '/home/you/secret' becomes '<path>'.
+  return String(msg)
+    .replace(/[A-Za-z]:\\[^\s"']*/g, '<path>')
+    .replace(/(^|[\s"'(=:,])\/(?!\/)[\w.@%+-]+(?:\/[\w.@%+-]+)*/g, '$1<path>');
+}
+function safeErr(e, fallbackStatus) {
+  const raw = (e && e.message) || '';
+  const code = (e && e.code) || '';
+  let status = (e && e.status) || fallbackStatus || 500;
+  if (!Number.isInteger(status) || status < 400 || status > 599) status = 500;
+  const fsError = Object.prototype.hasOwnProperty.call(FS_ERR_MSG, code);
+  // Raw filesystem messages embed absolute paths, so they are replaced by a
+  // code-derived sentence. Our own thrown errors keep their text (redacted) —
+  // validation feedback like "refusing to kill pid 1" must not be swallowed.
+  const msg = fsError ? FS_ERR_MSG[code] : (redactPaths(raw) || 'Operation failed');
+  if (status >= 500) {
+    try { console.warn('[webtun] error:', status, code || '-', raw.slice(0, 300)); } catch {}
+  }
+  const body = { error: msg };
+  if (code) body.code = code;
+  return { status, body };
+}
+// Sanitized one-line text for batch responses ({ results: [{ error }] }).
+function errText(e) { return safeErr(e).body.error; }
+// Git CLI stderr is bound for the UI (it is genuinely useful), so it keeps its
+// wording, but paths are redacted and the length is bounded.
+function gitErrText(e, fallback, max = 500) {
+  return redactPaths((e && e.message) || '').trim().slice(0, max) || fallback;
+}
+function sendErr(res, e, fallbackStatus) {
+  const { status, body } = safeErr(e, fallbackStatus);
+  if (res.headersSent) { try { res.end(); } catch {} return; }
+  try { res.status(status).json(body); } catch {}
+}
+
 async function dirSize(dir, maxDepth = 10) {
+  // Called on a plain file too: report it directly instead of walking into a
+  // readdir() that can only fail (used to answer 0).
+  const rootStat = await fsPromises.lstat(dir).catch(() => null);
+  if (rootStat && !rootStat.isDirectory()) return rootStat.isFile() ? rootStat.size : 0;
   let total = 0;
   let entryCount = 0;
-  const MAX_ENTRIES = 100000;
+  const sizeErrors = []; // hard failures are re-thrown once the walk drains
+  const MAX_ENTRIES = 50000;
   const visited = new Set();
-  const CONCURRENCY = 32;
-  // Helper to process entries with concurrency cap
-  async function walk(d, depth) {
-    if (depth > maxDepth) return;
-    if (entryCount > MAX_ENTRIES) return;
-    let real;
-    try { real = fs.realpathSync(d); } catch { real = path.resolve(d); }
-    if (visited.has(real)) return;
-    visited.add(real);
-    let entries;
-    try { entries = await fsPromises.readdir(d, { withFileTypes: true }); } catch { return; }
-    entryCount += entries.length;
-    if (entryCount > MAX_ENTRIES) return;
-    // Process in chunks to limit concurrency (32 parallel stat)
-    for (let i = 0; i < entries.length; i += CONCURRENCY) {
-      const chunk = entries.slice(i, i + CONCURRENCY);
-      await Promise.all(chunk.map(async e => {
-        const full = path.join(d, e.name);
-        try {
-          if (e.isDirectory()) {
-            // Check symlink for loops — if symlink to dir, resolve and check visited
-            let lst;
-            try { lst = await fsPromises.lstat(full); } catch { return; }
-            if (lst.isSymbolicLink()) {
-              let targetReal;
-              try { targetReal = fs.realpathSync(full); } catch { return; }
-              if (visited.has(targetReal)) return;
-              // Check containment if sandbox enabled — skip if outside
-              if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, targetReal)) return;
-              await walk(full, depth + 1);
-            } else {
-              await walk(full, depth + 1);
+  const CONCURRENCY = 8; // ONE global budget — was 32 per directory level (×N^depth)
+  const stack = [[dir, 0]];
+  const pending = new Set();
+  while (stack.length || pending.size) {
+    while (stack.length && pending.size < CONCURRENCY) {
+      const [d, depth] = stack.pop();
+      if (depth > maxDepth) continue;
+      const task = (async () => {
+        let real;
+        // realpathSync() blocked the event loop once per directory; this is
+        // called by size/zip/download on possibly huge trees.
+        try { real = await fsPromises.realpath(d); } catch { real = path.resolve(d); }
+        if (visited.has(real)) return;
+        visited.add(real);
+        let entries;
+        try { entries = await fsPromises.readdir(d, { withFileTypes: true }); } catch { return; }
+        entryCount += entries.length;
+        if (entryCount > MAX_ENTRIES) {
+          const e = new Error('Directory has too many entries (max ' + MAX_ENTRIES + ')');
+          e.status = 413;
+          throw e;
+        }
+        for (const e of entries) {
+          const full = path.join(d, e.name);
+          if (e.isSymbolicLink() || e.isDirectory()) {
+            // Symlinked directories stay navigable when the whole filesystem is
+            // exposed (the documented default). Cycles terminate because every
+            // directory is resolved to its realpath and recorded in `visited`
+            // above. Under the sandbox (ALLOW_FULL_FS=false) links are skipped,
+            // and symlinked *files* are never counted in either mode — a link
+            // would report someone else's bytes as the user's own.
+            if (e.isSymbolicLink()) {
+              if (!ALLOW_FULL_FS) continue;
+              let tgt; try { tgt = await fsPromises.stat(full); } catch { continue; }
+              if (!tgt.isDirectory()) continue;
             }
-          } else if (e.isFile()) {
-            const st = await fsPromises.stat(full);
-            total += st.size;
-          } else {
-            // For symlink files, use lstat then stat only if needed
-            try {
-              const lst = await fsPromises.lstat(full);
-              if (lst.isSymbolicLink()) return; // skip symlink files to avoid outside read
-              if (lst.isFile()) {
-                const st = await fsPromises.stat(full);
-                total += st.size;
-              }
-            } catch {}
+            stack.push([full, depth + 1]);
+            continue;
           }
-        } catch {}
-      }));
+          if (!e.isFile()) continue;
+          try {
+            const lst = await fsPromises.lstat(full);
+            if (lst.isFile()) total += lst.size;
+          } catch {}
+        }
+      })().catch(err => { sizeErrors.push(err); });
+      pending.add(task);
+      task.then(() => pending.delete(task));
     }
+    if (pending.size) await Promise.race([...pending]);
   }
-  await walk(dir, 0);
+  if (sizeErrors.length) throw sizeErrors[0];
   return total;
 }
 
-function createZipArchive(entries, zipPath) {
-  return new Promise(async (resolve, reject) => {
-    try {
-      // Ensure destination inside workspace (F63)
-      if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, zipPath)) {
-        const e = new Error('Access denied: zip destination outside workspace'); e.status = 403; return reject(e);
-      }
-      // Per-entry checks and total size guard (>1GB reject) (F63)
-      const MAX_TOTAL = 1 * 1024 * 1024 * 1024;
-      let totalSize = 0;
-      for (const entry of entries) {
-        let lst;
-        try { lst = fs.lstatSync(entry.fullPath); } catch (e) { return reject(e); }
-        if (lst.isSymbolicLink()) {
-          // Skip symlink that points outside workspace (leak protection) (F63)
-          let real;
-          try { real = fs.realpathSync(entry.fullPath); } catch { continue; }
-          if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, real)) continue;
-          // Skip symlinks even inside to avoid zip traversing outside via link
-          continue;
-        }
-        let size = 0;
-        if (lst.isDirectory()) {
-          size = await dirSize(entry.fullPath);
-        } else if (lst.isFile()) {
-          size = lst.size;
-        } else {
-          continue;
-        }
-        totalSize += size;
-        if (totalSize > MAX_TOTAL) {
-          const e = new Error('Total size exceeds 1GB'); e.status = 413; return reject(e);
-        }
-        if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, entry.fullPath)) {
-          const e = new Error('Access denied: entry outside workspace'); e.status = 403; return reject(e);
-        }
-      }
-      const output = fs.createWriteStream(zipPath);
-      let ZipArchive;
-      try { ZipArchive = getZipArchive(); } catch (e) { return reject(e); }
-      const archive = new ZipArchive({ zlib: { level: 6 } });
-      output.on('close', () => resolve());
-      output.on('error', reject);
-      archive.on('error', reject);
-      archive.pipe(output);
-      for (const entry of entries) {
-        try {
-          let lst;
-          try { lst = fs.lstatSync(entry.fullPath); } catch (e) { return reject(e); }
-          if (lst.isSymbolicLink()) continue;
-          const st = fs.statSync(entry.fullPath);
-          if (st.isDirectory()) archive.directory(entry.fullPath, entry.nameInZip);
-          else archive.file(entry.fullPath, { name: entry.nameInZip });
-        } catch (e) {
-          return reject(e);
+const ZIP_MAX_TOTAL = 1 * 1024 * 1024 * 1024;
+const ZIP_MAX_ENTRIES = 50000;
+
+// Walk the requested roots ourselves instead of handing directories to
+// archiver's directory(). archiver's glob follows symlinked directories, and
+// the previous version stat'ed twice (lstatSync then statSync) around an
+// async dirSize() — a TOCTOU window where the checked size was not the size
+// sent. Here every entry is lstat'ed once, links are skipped outright, and the
+// running total is the authoritative cap.
+async function collectZipEntries(roots) {
+  const items = [];
+  let totalBytes = 0;
+  const addFile = (full, name, size) => {
+    totalBytes += size;
+    if (totalBytes > ZIP_MAX_TOTAL) {
+      const e = new Error('Total size exceeds 1GB'); e.status = 413; throw e;
+    }
+    if (items.length >= ZIP_MAX_ENTRIES) {
+      const e = new Error('Too many entries (max ' + ZIP_MAX_ENTRIES + ')'); e.status = 413; throw e;
+    }
+    items.push({ type: 'file', path: full, name });
+  };
+  for (const root of roots) {
+    let lst;
+    try { lst = await fsPromises.lstat(root.fullPath); }
+    catch (e) { const err = new Error('Cannot read ' + path.basename(root.fullPath)); err.status = e.code === 'ENOENT' ? 404 : 500; err.code = e.code; throw err; }
+    if (lst.isSymbolicLink()) continue; // never archive through a link
+    if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, root.fullPath)) {
+      const e = new Error('Access denied: entry outside workspace'); e.status = 403; throw e;
+    }
+    if (lst.isFile()) { addFile(root.fullPath, root.nameInZip, lst.size); continue; }
+    if (!lst.isDirectory()) continue;
+    items.push({ type: 'dir', name: root.nameInZip });
+    const stack = [[root.fullPath, root.nameInZip]];
+    while (stack.length) {
+      const [d, rel] = stack.pop();
+      let entries;
+      try { entries = await fsPromises.readdir(d, { withFileTypes: true }); } catch { continue; }
+      for (const ent of entries) {
+        if (ent.isSymbolicLink()) continue;
+        const full = path.join(d, ent.name);
+        const name = rel ? rel + '/' + ent.name : ent.name;
+        if (ent.isDirectory()) {
+          if (items.length >= ZIP_MAX_ENTRIES) {
+            const e = new Error('Too many entries (max ' + ZIP_MAX_ENTRIES + ')'); e.status = 413; throw e;
+          }
+          items.push({ type: 'dir', name });
+          stack.push([full, name]);
+        } else if (ent.isFile()) {
+          let st;
+          try { st = await fsPromises.lstat(full); } catch { continue; }
+          if (st.isFile()) addFile(full, name, st.size);
         }
       }
-      archive.finalize();
-    } catch (e) { reject(e); }
+    }
+  }
+  return items;
+}
+
+function addEntriesToArchive(archive, items) {
+  for (const it of items) {
+    if (it.type === 'dir') archive.append(Buffer.alloc(0), { name: it.name + '/' });
+    else archive.file(it.path, { name: it.name });
+  }
+}
+
+async function createZipArchive(entries, zipPath) {
+  // Ensure destination inside workspace (F63)
+  if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, zipPath)) {
+    const e = new Error('Access denied: zip destination outside workspace'); e.status = 403; throw e;
+  }
+  const ZipArchive = getZipArchive();
+  // Collected before the stream opens, so a rejected archive never leaves a
+  // truncated .zip behind.
+  const items = await collectZipEntries(entries);
+  const archive = new ZipArchive({ zlib: { level: 6 } });
+  const output = fs.createWriteStream(zipPath);
+  await new Promise((resolve, reject) => {
+    let settled = false;
+    const fail = err => {
+      if (settled) return;
+      settled = true;
+      try { archive.abort(); } catch {}
+      try { output.destroy(); } catch {}
+      try { fs.unlinkSync(zipPath); } catch {}
+      reject(err);
+    };
+    output.on('close', () => { if (!settled) { settled = true; resolve(); } });
+    output.on('error', fail);
+    archive.on('error', fail);
+    archive.on('warning', () => {});
+    archive.pipe(output);
+    addEntriesToArchive(archive, items);
+    const fin = archive.finalize();
+    if (fin && typeof fin.catch === 'function') fin.catch(fail);
   });
+  return zipPath;
 }
 
 function streamZipDirectory(dirPath, res) {
   const ZipArchive = getZipArchive(); // throws → caller try/catch answers 500
   const archive = new ZipArchive({ zlib: { level: 6 } });
-  archive.on('error', err => {
-    if (!res.headersSent) res.status(500).json({ error: err.message });
-    else res.end();
-  });
-  archive.pipe(res);
-  archive.directory(dirPath, path.basename(dirPath));
-  archive.finalize();
+  // Returned immediately (not a promise) so the caller can still abort it on
+  // client disconnect; the walk itself is async and link-free.
+  (async () => {
+    try {
+      const items = await collectZipEntries([{ fullPath: dirPath, nameInZip: path.basename(dirPath) }]);
+      if (res.writableEnded) { try { archive.abort(); } catch {} return; }
+      archive.on('error', err => {
+        try { console.warn('[webtun] zip stream error:', err && err.message); } catch {}
+        if (!res.headersSent) { const r = safeErr(err); res.status(r.status).json(r.body); }
+        else { try { res.end(); } catch {} }
+      });
+      archive.pipe(res);
+      addEntriesToArchive(archive, items);
+      const fin = archive.finalize();
+      if (fin && typeof fin.catch === 'function') fin.catch(() => { try { res.end(); } catch {} });
+    } catch (e) {
+      const r = safeErr(e);
+      try { archive.abort(); } catch {}
+      if (res.headersSent) { try { res.end(); } catch {} }
+      else { try { res.status(r.status).json(r.body); } catch {} }
+    }
+  })();
   return archive;
 }
 
@@ -893,7 +1118,8 @@ function extractZip(zipPath, destDir) {
     yauzl.open(zipPath, { lazyEntries: true }, (err, zipfile) => {
       if (err) return reject(err);
       let entryCount = 0;
-      let totalUncompressed = 0;
+      let totalUncompressed = 0; // from archive metadata (attacker-controlled hint)
+      let liveTotal = 0;        // bytes actually decompressed — the authoritative cap
       const MAX_ENTRIES = 1000;
       const MAX_TOTAL = 1 * 1024 * 1024 * 1024;
       zipfile.readEntry();
@@ -928,9 +1154,25 @@ function extractZip(zipPath, destDir) {
         zipfile.openReadStream(entry, (err2, readStream) => {
           if (err2) { zipfile.close(); return reject(err2); }
           const writeStream = fs.createWriteStream(target);
-          readStream.on('error', (e) => { zipfile.close(); reject(e); });
-          writeStream.on('error', (e) => { zipfile.close(); reject(e); });
-          writeStream.on('close', () => zipfile.readEntry());
+          let aborted = false;
+          readStream.on('data', chunk => {
+            // Count REAL decompressed bytes: entry.uncompressedSize comes from
+            // the archive header, so a lying header (the classic zip-bomb)
+            // sailed past the cap above while the disk filled anyway.
+            liveTotal += chunk.length;
+            if (liveTotal > MAX_TOTAL) {
+              aborted = true;
+              try { readStream.destroy(); } catch {}
+              try { writeStream.destroy(); } catch {}
+              try { fs.unlinkSync(target); } catch {}
+              zipfile.close();
+              const e = new Error('Uncompressed size exceeds 1GB'); e.status = 413;
+              reject(e);
+            }
+          });
+          readStream.on('error', (e) => { if (!aborted) { zipfile.close(); reject(e); } });
+          writeStream.on('error', (e) => { if (!aborted) { zipfile.close(); reject(e); } });
+          writeStream.on('close', () => { if (!aborted) zipfile.readEntry(); });
           readStream.pipe(writeStream);
         });
       });
@@ -942,19 +1184,26 @@ function extractZip(zipPath, destDir) {
 
 const { findCloudflared, ensureCloudflared } = require('./lib/cloudflared');
 
-function killPid(pid, signal = 'SIGTERM') {
+// Kill a process we own. There is deliberately no `signal` parameter: it was
+// accepted and then ignored on Windows (taskkill /F is unconditionally forceful),
+// which made callers believe SIGKILL semantics were available everywhere.
+// Escalating termination lives in POST /api/system/kill instead.
+function killPid(pid) {
   if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0) return;
   try {
     if (os.platform() === 'win32') {
-      try { execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' }); } catch {}
+      // execFile with an argv array, never a shell string: this helper is also
+      // called with PIDs read back from .tunnels.json, so interpolation here
+      // would be a shell-injection sink.
+      try { execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' }); } catch {}
       // Fallback: also kill any remaining child processes via WMIC
       try {
-        const out = execSync(`wmic process where "ParentProcessId=${pid}" get ProcessId /format:list`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+        const out = execFileSync('wmic', ['process', 'where', `ParentProcessId=${pid}`, 'get', 'ProcessId', '/format:list'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
         const childPids = out.split('\n').filter(l => l.startsWith('ProcessId=')).map(l => parseInt(l.split('=')[1])).filter(Boolean);
-        for (const cp of childPids) { try { execSync(`taskkill /PID ${cp} /F`, { stdio: 'ignore' }); } catch {} }
+        for (const cp of childPids) { try { execFileSync('taskkill', ['/PID', String(cp), '/F'], { stdio: 'ignore' }); } catch {} }
       } catch {}
     } else {
-      process.kill(pid, signal);
+      process.kill(pid, 'SIGTERM');
     }
   } catch {}
 }
@@ -1095,8 +1344,7 @@ app.get('/api/files', checkPin, async (req, res) => {
     else if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, parent)) parent = null;
     res.json({ path: dir, parent, files });
   } catch (e) {
-    const status = e.status || 500;
-    res.status(status).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -1117,8 +1365,7 @@ app.post('/api/files/rename', checkPin, async (req, res) => {
     await renameWithFallback(oldPath, newPath);
     res.json({ success: true, newPath });
   } catch (e) {
-    const status = e.status || 500;
-    res.status(status).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -1138,8 +1385,10 @@ async function resolveCopyMove(src, dst, conflict, isMove) {
     const ext = path.extname(dst);
     const base = path.basename(dst, ext);
     const dir = path.dirname(dst);
+    // Bounded: an absurd number of existing copies must not spin forever. 1000 is
+    // far past any realistic collision chain; beyond it, fall through to overwrite.
     let counter = 1;
-    while (true) {
+    while (counter <= 1000) {
       const suffix = counter === 1 ? ' (copy)' : ` (copy ${counter})`;
       dst = path.join(dir, base + suffix + ext);
       try { await fsPromises.access(dst); counter++; } catch { break; }
@@ -1206,8 +1455,7 @@ async function handleCopyMove(req, res, isMove) {
     const result = await resolveCopyMove(src, dst, req.body.conflict || '', isMove);
     res.json(result);
   } catch (e) {
-    const status = e.status || 500;
-    res.status(status).json({ error: e.message });
+    sendErr(res, e);
   }
 }
 
@@ -1244,8 +1492,7 @@ app.delete('/api/files', checkPin, async (req, res) => {
     }
     res.json({ success: true });
   } catch (e) {
-    const status = e.status || 500;
-    res.status(status).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -1259,8 +1506,7 @@ app.post('/api/files/mkdir', checkPin, async (req, res) => {
     await fsPromises.mkdir(p, { recursive: true });
     res.json({ success: true });
   } catch (e) {
-    const status = e.status || 500;
-    res.status(status).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -1274,8 +1520,7 @@ app.post('/api/files/touch', checkPin, async (req, res) => {
     await fsPromises.writeFile(p, '', { flag: 'a' });
     res.json({ success: true });
   } catch (e) {
-    const status = e.status || 500;
-    res.status(status).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -1310,8 +1555,7 @@ app.post('/api/files/zip', checkPin, async (req, res) => {
     await createZipArchive([{ fullPath: p, nameInZip: baseName }], zipPath);
     res.json({ success: true, name: zipName });
   } catch (e) {
-    const status = e.status || 500;
-    res.status(status).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -1351,20 +1595,18 @@ app.post('/api/files/unzip', checkPin, async (req, res) => {
     } catch (e) {
       // Rollback partial on failure (F64) — only the temp dir, never user data
       try { await fsPromises.rm(tmpDir, { recursive: true, force: true }); } catch {}
-      const status = e.status || 500;
-      return res.status(status).json({ error: e.message });
+      return sendErr(res, e);
     }
     try {
       try { await fsPromises.rmdir(destDir); } catch {}
       await fsPromises.rename(tmpDir, destDir);
     } catch (e) {
       try { await fsPromises.rm(tmpDir, { recursive: true, force: true }); } catch {}
-      return res.status(500).json({ error: e.message || 'Failed to move extracted files into place' });
+      return sendErr(res, e && e.message ? e : new Error('Failed to move extracted files into place'), 500);
     }
     res.json({ success: true, dir: destDir });
   } catch (e) {
-    const status = e.status || 500;
-    res.status(status).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -1385,8 +1627,7 @@ app.get('/api/files/read', checkPin, async (req, res) => {
     const content = buf.toString('utf8');
     res.json({ content, length: st.size });
   } catch (e) {
-    const status = e.status || 500;
-    res.status(status).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -1406,8 +1647,7 @@ app.post('/api/files/write', checkPin, async (req, res) => {
     await fsPromises.writeFile(p, req.body.content, 'utf8');
     res.json({ success: true });
   } catch (e) {
-    const status = e.status || 500;
-    res.status(status).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -1434,12 +1674,12 @@ app.get('/api/files/image', checkPin, async (req, res) => {
     // Ensure stream destroyed when client aborts to avoid FD leak (F57)
     req.on('close', () => { try { stream.destroy(); } catch {} });
     stream.on('error', err => {
-      if (!res.headersSent) res.status(err.status || 500).json({ error: err.message });
+      if (!res.headersSent) sendErr(res, err);
       else res.end();
     });
     stream.pipe(res);
   } catch (e) {
-    if (!res.headersSent) res.status(e.status || 500).json({ error: e.message });
+    if (!res.headersSent) sendErr(res, e);
   }
 });
 
@@ -1472,13 +1712,13 @@ app.get('/api/files/download', checkPin, async (req, res) => {
       const stream = fs.createReadStream(p);
       req.on('close', () => { try { stream.destroy(); } catch {} });
       stream.on('error', err => {
-        if (!res.headersSent) res.status(err.status || 500).json({ error: err.message });
+        if (!res.headersSent) sendErr(res, err);
         else res.end();
       });
       stream.pipe(res);
     }
   } catch (e) {
-    if (!res.headersSent) res.status(e.status || 500).json({ error: e.message });
+    if (!res.headersSent) sendErr(res, e);
   }
 });
 
@@ -1488,7 +1728,7 @@ app.post('/api/files/upload', checkPin, (req, res) => {
   try {
     destDir = realPath(req.query.path || WORKSPACE_ROOT);
   } catch (e) {
-    return res.status(403).json({ error: e.message });
+    return sendErr(res, e, 403);
   }
   const UNIFIED_SAFE_RE = /[^a-zA-Z0-9_.\-]/g;
   const storage = multer.diskStorage({
@@ -1509,11 +1749,21 @@ app.post('/api/files/upload', checkPin, (req, res) => {
     filename: (_, file, cb) => cb(null, path.basename(file.originalname).replace(UNIFIED_SAFE_RE, '_'))
   });
   const upload = multer({ storage, limits: { fileSize: 500 * 1024 * 1024, files: 100 } }).array('files');
+  // Pre-flight the declared size: multer streams to disk, so checking the
+  // 2GB batch total AFTER the write let an attacker fill the disk first.
+  // (Content-Length is a client hint; the multer limits below stay the hard cap.)
+  const MAX_BATCH = 2 * 1024 * 1024 * 1024;
+  const declared = Number(req.headers['content-length'] || 0);
+  if (Number.isFinite(declared) && declared > MAX_BATCH + (8 * 1024 * 1024)) {
+    return res.status(413).json({ error: 'Total upload size exceeds 2GB' });
+  }
   upload(req, res, err => {
     if (err) {
+      // Don't leave already-written temp files behind on an aborted batch.
+      try { (Array.isArray(req.files) ? req.files : []).forEach(f => { try { fs.unlinkSync(f.path); } catch {} }); } catch {}
       // Multer limit errors are 413, not 500 (e.g. LIMIT_FILE_SIZE)
       const status = (err.code && err.code.startsWith('LIMIT_')) ? 413 : 500;
-      return res.status(status).json({ error: err.message });
+      return sendErr(res, err, status);
     }
     // Total batch cap (2GB) against disk-fill; clean up the batch on exceed
     try {
@@ -1528,9 +1778,19 @@ app.post('/api/files/upload', checkPin, (req, res) => {
   });
 });
 
-// Cache for owner/group to avoid blocking execFileSync on every request (F60 trail)
+// Cache for owner/group to avoid re-spawning on every request (F60 trail)
 const _ownerCache = new Map();
 const _groupCache = new Map();
+
+// Async variant: execFileSync on this hot metadata path blocked the event loop
+// for every cache miss (and the cache is per-uid/gid, so cold starts hit it).
+function execFileText(cmd, args) {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, { encoding: 'utf8', timeout: 2000, maxBuffer: 64 * 1024 }, (err, stdout) => {
+      if (err) reject(err); else resolve(String(stdout || '').trim());
+    });
+  });
+}
 
 // ── File stat / metadata ──────────────────────────────────────────────
 app.get('/api/files/stat', checkPin, async (req, res) => {
@@ -1554,14 +1814,14 @@ app.get('/api/files/stat', checkPin, async (req, res) => {
       isSymlink: lst ? lst.isSymbolicLink() : false,
       isSocket: st.isSocket(), isFIFO: st.isFIFO(),
     };
-    // Use cache for owner (F60 trail) — still blocking but cached
+    // Use cache for owner (F60 trail)
     try {
       if (os.platform() === 'win32') {
         stat.owner = String(st.uid);
       } else if (_ownerCache.has(st.uid)) {
         stat.owner = _ownerCache.get(st.uid);
       } else {
-        const owner = execFileSync('id', ['-nu', String(st.uid)], { encoding: 'utf8', stdio: 'pipe', timeout: 2000 }).trim();
+        const owner = await execFileText('id', ['-nu', String(st.uid)]);
         _ownerCache.set(st.uid, owner);
         if (_ownerCache.size > 500) { const k=_ownerCache.keys().next().value; _ownerCache.delete(k); }
         stat.owner = owner;
@@ -1573,14 +1833,14 @@ app.get('/api/files/stat', checkPin, async (req, res) => {
       } else if (_groupCache.has(st.gid)) {
         stat.group = _groupCache.get(st.gid);
       } else if (os.platform() === 'darwin') {
-        const dscl = execSync(`dscl . -read /Groups/${st.gid} RecordName 2>/dev/null`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 2000 }).trim();
+        const dscl = await execFileText('dscl', ['.', '-read', `/Groups/${st.gid}`, 'RecordName']);
         const m = dscl.match(/RecordName:\s*(.+)/);
         const g = m ? m[1].trim() : String(st.gid);
         _groupCache.set(st.gid, g);
         if (_groupCache.size > 500) { const k=_groupCache.keys().next().value; _groupCache.delete(k); }
         stat.group = g;
       } else {
-        const g = execFileSync('getent', ['group', String(st.gid)], { encoding: 'utf8', stdio: 'pipe', timeout: 2000 }).split(':')[0];
+        const g = (await execFileText('getent', ['group', String(st.gid)])).split(':')[0];
         _groupCache.set(st.gid, g);
         if (_groupCache.size > 500) { const k=_groupCache.keys().next().value; _groupCache.delete(k); }
         stat.group = g;
@@ -1592,10 +1852,7 @@ app.get('/api/files/stat', checkPin, async (req, res) => {
     } catch {}
     res.json(stat);
   } catch (e) {
-    const status = e.status || 500;
-    // Avoid leaking absolute path in error (F60)
-    const msg = e.message && e.message.includes(WORKSPACE_ROOT) ? e.message.replace(WORKSPACE_ROOT, '~') : e.message;
-    res.status(status).json({ error: msg });
+    sendErr(res, e);
   }
 });
 
@@ -1618,8 +1875,7 @@ app.get('/api/files/size', checkPin, async (req, res) => {
     const size = await dirSize(p);
     res.json({ path: p, size, isDir: true });
   } catch (e) {
-    const status = e.status || 500;
-    res.status(status).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -1634,7 +1890,7 @@ app.post('/api/files/batch-delete', checkPin, async (req, res) => {
     const results = [];
     for (const raw of req.body.paths) {
       let p;
-      try { p = realPath(raw); } catch (e) { results.push({ path: raw, success: false, error: e.message }); continue; }
+      try { p = realPath(raw); } catch (e) { results.push({ path: raw, success: false, error: errText(e) }); continue; }
       if (!isDeletablePath(p)) { results.push({ path: raw, success: false, error: 'Refusing to delete this path' }); continue; }
       try {
         const lst = await fsPromises.lstat(p);
@@ -1643,13 +1899,12 @@ app.post('/api/files/batch-delete', checkPin, async (req, res) => {
         else await fsPromises.unlink(p);
         results.push({ path: raw, success: true });
       } catch (e) {
-        results.push({ path: raw, success: false, error: e.message });
+        results.push({ path: raw, success: false, error: errText(e) });
       }
     }
     res.json({ results, succeeded: results.filter(r => r.success).length, failed: results.filter(r => !r.success).length });
   } catch (e) {
-    const status = e.status || 500;
-    res.status(status).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -1665,7 +1920,7 @@ async function handleBatchCopyMove(req, res, isMove) {
     const results = [];
     for (const raw of req.body.sources) {
       let src;
-      try { src = realPath(raw); } catch (e) { results.push({ path: raw, success: false, error: e.message }); continue; }
+      try { src = realPath(raw); } catch (e) { results.push({ path: raw, success: false, error: errText(e) }); continue; }
       try {
         const baseName = path.basename(src);
         const dst = path.join(destDir, baseName);
@@ -1679,13 +1934,12 @@ async function handleBatchCopyMove(req, res, isMove) {
         const result = await resolveCopyMove(src, dst, conflict, isMove);
         results.push({ path: raw, success: true, ...result });
       } catch (e) {
-        results.push({ path: raw, success: false, error: e.message });
+        results.push({ path: raw, success: false, error: errText(e) });
       }
     }
     res.json({ results, succeeded: results.filter(r => r.success).length, failed: results.filter(r => !r.success).length });
   } catch (e) {
-    const status = e.status || 500;
-    res.status(status).json({ error: e.message });
+    sendErr(res, e);
   }
 }
 
@@ -1706,8 +1960,7 @@ app.post('/api/files/chmod', checkPin, async (req, res) => {
     const warning = os.platform() === 'win32' ? 'chmod has no effect on Windows' : undefined;
     res.json({ success: true, mode: req.body.mode, ...(warning && { warning }) });
   } catch (e) {
-    const status = e.status || 500;
-    res.status(status).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -1724,8 +1977,7 @@ app.post('/api/files/symlink', checkPin, async (req, res) => {
     await fsPromises.symlink(target, linkPath);
     res.json({ success: true, target, linkPath });
   } catch (e) {
-    const status = e.status || 500;
-    res.status(status).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -1756,11 +2008,19 @@ app.post('/api/files/search-content', rateLimiter, checkPin, async (req, res) =>
     if (isRegex) {
       if (query.length > 200) return res.status(400).json({ error: 'regex too long max 200' });
       try { regex = new RegExp(query, 'gi'); } catch { return res.status(400).json({ error: 'invalid regex pattern' }); }
-      // ReDoS guard: reject patterns with catastrophic backtracking markers (e.g., (a+)+ )
-      if (/(\)\+|\)\*|\+\+|\*\*).{0,20}\1/.test(query) && query.length > 50) {
-        // heuristic: still allow but limit execution time per line via timeout (handled by overall request timeout)
+      // ReDoS guard, enforced (the previous check detected this shape and then
+      // did nothing): a quantifier applied to a group that already contains one
+      // — (a+)+, (a*)*, (ab+){2,} — backtracks catastrophically and would block
+      // the event loop for the entire server. Common safe forms like (foo|bar)+
+      // have no inner quantifier and still pass.
+      if (/\([^)]*[+*][^)]*\)\s*(?:[+*]|\{\d*,?\d*\})/.test(query)) {
+        return res.status(400).json({ error: 'regex rejected: nested quantifiers can hang the server — use a literal search' });
       }
     }
+    // Hard deadline: a pathological-but-accepted pattern must not pin the
+    // event loop indefinitely across a large tree.
+    const SCAN_DEADLINE = Date.now() + 15000;
+    const SCAN_CAP = 2 * 1024 * 1024; // bytes scanned per file (was: whole file in RAM)
 
     async function walkContentSearch(currentDir, depth) {
       if (depth > maxDepth || results.length >= maxResults) return;
@@ -1798,32 +2058,65 @@ app.post('/api/files/search-content', rateLimiter, checkPin, async (req, res) =>
               const { bytesRead } = await fd.read(buf, 0, BINARY_CHECK_LEN, 0);
               if (buf.slice(0, bytesRead).includes(0)) continue; // binary
             } finally { await fd.close(); }
-            const content = await fsPromises.readFile(full, 'utf8');
-            const lines = content.split('\n');
             const lowerQuery = query.toLowerCase();
-            for (let i = 0; i < lines.length && results.length < maxResults; i++) {
+            const checkLine = (line, lineNo) => {
               let match;
               if (regex) {
                 regex.lastIndex = 0;
-                match = regex.exec(lines[i]);
+                match = regex.exec(line);
               } else {
-                const idx = lines[i].toLowerCase().indexOf(lowerQuery);
+                const idx = line.toLowerCase().indexOf(lowerQuery);
                 match = idx !== -1 ? { index: idx } : null;
               }
               if (match) {
-                results.push({ path: full, line: i + 1, column: match.index, content: lines[i].substring(0, 500) });
+                results.push({ path: full, line: lineNo, column: match.index, content: line.substring(0, 500) });
               }
-            }
+            };
+            // Stream the file instead of readFile-ing it whole: the old version
+            // held up to 10MB per candidate file in memory and split the entire
+            // buffer into lines before looking at any of them.
+            const stream = fs.createReadStream(full, { encoding: 'utf8', highWaterMark: 64 * 1024 });
+            let carry = '';
+            let lineNo = 0;
+            let scanned = 0;
+            let stopped = false;
+            try {
+              for await (const chunk of stream) {
+                if (results.length >= maxResults || Date.now() > SCAN_DEADLINE) { stopped = true; break; }
+                scanned += Buffer.byteLength(chunk);
+                if (scanned > SCAN_CAP) { stopped = true; break; }
+                carry += chunk;
+                let nl;
+                while ((nl = carry.indexOf('\n')) !== -1) {
+                  const line = carry.slice(0, nl);
+                  carry = carry.slice(nl + 1);
+                  lineNo++;
+                  checkLine(line, lineNo);
+                  if (results.length >= maxResults) break;
+                }
+                // A single pathological line must not grow the buffer forever.
+                if (carry.length > 1024 * 1024) { carry = carry.slice(-500); lineNo++; }
+              }
+              if (!stopped && carry && results.length < maxResults) checkLine(carry, lineNo + 1);
+            } catch {}
+            finally { try { stream.destroy(); } catch {} }
+            if (Date.now() > SCAN_DEADLINE || results.length >= maxResults) break;
           }
         } catch {}
       }
-      await Promise.all(dirs.map(d => walkContentSearch(path.join(currentDir, d.name), depth + 1)));
+      // Sequential descent: Promise.all over every subdirectory fanned out
+      // without any limit (fd/memory exhaustion on wide trees) and ignored the
+      // result caps until the recursion unwound.
+      for (const d of dirs) {
+        if (results.length >= maxResults || Date.now() > SCAN_DEADLINE) break;
+        await walkContentSearch(path.join(currentDir, d.name), depth + 1);
+      }
     }
 
     await walkContentSearch(searchDir, 0);
     res.json({ results, count: results.length, query, path: searchDir });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -1854,8 +2147,7 @@ app.post('/api/files/batch-zip', checkPin, async (req, res) => {
     await createZipArchive(entries, dest);
     res.json({ success: true, name: path.basename(dest), files: req.body.sources.length });
   } catch (e) {
-    const status = e.status || 500;
-    res.status(status).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -1886,36 +2178,49 @@ app.get('/api/files/tail', checkPin, async (req, res) => {
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
 
-    // Send initial content (last N lines)
-    const content = await fsPromises.readFile(p, 'utf8');
-    const allLines = content.split('\n');
-    const tailLines = allLines.slice(-lines);
-    res.write(`data: ${JSON.stringify({ type: 'init', lines: tailLines, total: allLines.length })}\n\n`);
+    // Read only a bounded tail window. This used to readFile() the ENTIRE file
+    // (up to 100MB) for the initial payload, and compared `content.length`
+    // (characters) against stat.size (bytes), so multibyte logs resynced at the
+    // wrong offset. Everything below is byte-offset based.
+    const MAX_TAIL_BYTES = 64 * 1024;
+    const readRange = async (start, len) => {
+      if (len <= 0) return Buffer.alloc(0);
+      const fd = await fsPromises.open(p, 'r');
+      try {
+        const buf = Buffer.alloc(len);
+        await fd.read(buf, 0, len, start);
+        return buf;
+      } finally { await fd.close(); }
+    };
+
+    const initStart = Math.max(0, st.size - MAX_TAIL_BYTES);
+    const initBuf = await readRange(initStart, st.size - initStart);
+    const tailLines = initBuf.toString('utf8').split('\n').slice(-lines);
+    res.write(`data: ${JSON.stringify({ type: 'init', lines: tailLines, total: tailLines.length })}\n\n`);
 
     // Poll for changes
-    let lastSize = content.length;
+    let lastSize = st.size;
     const timer = setInterval(async () => {
       if (res.writableEnded) { clearInterval(timer); return; }
       try {
         const newSt = await fsPromises.stat(p);
         if (newSt.size > lastSize) {
-          const fd = await fsPromises.open(p, 'r');
-          const buf = Buffer.alloc(newSt.size - lastSize);
-          await fd.read(buf, 0, buf.length, lastSize);
-          await fd.close();
+          // Cap each poll at MAX_TAIL_BYTES so a burst of writes can't allocate
+          // an unbounded buffer; anything older than the window is skipped.
+          const start = Math.max(lastSize, newSt.size - MAX_TAIL_BYTES);
+          const buf = await readRange(start, newSt.size - start);
           lastSize = newSt.size;
-          const newLines = buf.toString('utf8');
-          res.write(`data: ${JSON.stringify({ type: 'data', lines: newLines })}\n\n`);
+          res.write(`data: ${JSON.stringify({ type: 'data', lines: buf.toString('utf8') })}\n\n`);
         } else if (newSt.size < lastSize) {
-          // File was truncated — re-read
-          lastSize = 0;
+          // File was truncated — resync from the new end
+          lastSize = newSt.size;
         }
       } catch {}
     }, pollInterval);
 
     req.on('close', () => { clearInterval(timer); });
   } catch (e) {
-    if (!res.headersSent) res.status(500).json({ error: e.message });
+    if (!res.headersSent) sendErr(res, e);
   }
 });
 
@@ -1985,7 +2290,7 @@ app.get('/api/system/network', rateLimiter, checkPin, async (req, res) => {
     } catch {}
     res.json({ interfaces: result, gateway, dns, ports: listenPorts });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -1993,14 +2298,28 @@ app.get('/api/system/network', rateLimiter, checkPin, async (req, res) => {
 
 // ── Clipboard (server-side staging) ───────────────────────────────────
 // Per-IP clipboard to prevent cross-user leak (F17, F69)
-const clipboards = new Map(); // ip -> { sources, action, createdAt }
-function getClipboard(ip) {
-  if (!clipboards.has(ip)) clipboards.set(ip, { sources: [], action: null, createdAt: null });
-  return clipboards.get(ip);
+// Keyed by the authenticated session, not the socket address: behind a tunnel
+// every client's req.ip is 127.0.0.1, so an IP key handed one user's cut/copy
+// set to another. Entries also expire — they used to live until a restart.
+const clipboards = new Map(); // key -> { sources, action, createdAt, expiresAt }
+const CLIPBOARD_TTL_MS = 15 * 60 * 1000;
+function clipboardKey(req) {
+  const t = (req && req.authToken) || '';
+  if (t) return 't:' + crypto.createHash('sha256').update(String(t)).digest('hex').slice(0, 32);
+  return 'ip:' + ((req && req.ip) || 'default');
+}
+function getClipboard(key) {
+  const now = Date.now();
+  for (const [k, v] of clipboards) {
+    if (!v || !v.sources || !v.sources.length) continue;
+    if (v.expiresAt && now > v.expiresAt) clipboards.delete(k);
+  }
+  if (!clipboards.has(key)) clipboards.set(key, { sources: [], action: null, createdAt: null, expiresAt: 0 });
+  return clipboards.get(key);
 }
 
 app.get('/api/clipboard', checkPin, (req, res) => {
-  const cb = getClipboard(req.ip || 'default');
+  const cb = getClipboard(clipboardKey(req));
   res.json({ clipboard: cb });
 });
 
@@ -2011,25 +2330,25 @@ app.post('/api/clipboard', checkPin, async (req, res) => {
     }
     if (req.body.sources.length > 100) return res.status(400).json({ error: 'too many sources max 100' });
     const action = req.body.action === 'cut' ? 'cut' : 'copy';
-    const ip = req.ip || 'default';
+    const key = clipboardKey(req);
     const clipboard = {
       sources: req.body.sources.map(s => realPath(s)),
       action,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      expiresAt: Date.now() + CLIPBOARD_TTL_MS
     };
-    clipboards.set(ip, clipboard);
+    clipboards.set(key, clipboard);
     res.json({ clipboard, count: clipboard.sources.length });
   } catch (e) {
-    const status = e.status || 500;
-    res.status(status).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
 app.post('/api/clipboard/paste', checkPin, async (req, res) => {
   try {
     if (!req.body.destination) return res.status(400).json({ error: 'destination is required' });
-    const ip = req.ip || 'default';
-    const clipboard = getClipboard(ip);
+    const key = clipboardKey(req);
+    const clipboard = getClipboard(key);
     if (!clipboard.sources.length) return res.status(400).json({ error: 'clipboard is empty' });
     const destDir = resolvePath(req.body.destination);
     const conflict = req.body.conflict || 'replace';
@@ -2045,27 +2364,25 @@ app.post('/api/clipboard/paste', checkPin, async (req, res) => {
         const result = await resolveCopyMove(src, dst, conflict, clipboard.action === 'cut');
         results.push({ path: src, success: true, ...result });
       } catch (e) {
-        results.push({ path: src, success: false, error: e.message });
+        results.push({ path: src, success: false, error: errText(e) });
       }
     }
     const pasteAction = clipboard.action;
     const succeeded = results.filter(r => r.success).length;
     const failed = results.filter(r => !r.success).length;
     if (clipboard.action === 'cut' && failed === 0) {
-      clipboards.set(ip, { sources: [], action: null, createdAt: null });
+      clipboards.set(key, { sources: [], action: null, createdAt: null, expiresAt: 0 });
     } else if (clipboard.action === 'cut' && failed > 0) {
       // Keep clipboard for retry on partial failure (F69)
     }
     res.json({ results, succeeded, failed, pasteAction });
   } catch (e) {
-    const status = e.status || 500;
-    res.status(status).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
 app.delete('/api/clipboard', checkPin, (req, res) => {
-  const ip = req.ip || 'default';
-  clipboards.set(ip, { sources: [], action: null, createdAt: null });
+  clipboards.set(clipboardKey(req), { sources: [], action: null, createdAt: null, expiresAt: 0 });
   res.json({ success: true });
 });
 
@@ -2074,16 +2391,24 @@ const HISTORY_FILE = path.join(DATA_DIR, '.cmdhist.json');
 let cmdHistory = [];
 let cmdHistMax = 50;
 
+// Stored as { max, items }. The max used to live only in memory, so a changed
+// cap silently reverted to 50 on the next restart. A bare array (the old
+// shape) is still readable.
 function loadCmdHistory() {
   try {
     const parsed = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
-    cmdHistory = Array.isArray(parsed) ? parsed : [];
+    const items = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed.items) ? parsed.items : []);
+    cmdHistory = items.filter(it => it && typeof it.cmd === 'string').slice(0, 500);
+    if (parsed && !Array.isArray(parsed) && Number.isInteger(parsed.max) && parsed.max >= 10 && parsed.max <= 500) {
+      cmdHistMax = parsed.max;
+    }
+    if (cmdHistory.length > cmdHistMax) cmdHistory.length = cmdHistMax;
   } catch { cmdHistory = []; }
 }
 function saveCmdHistory() {
   try {
     const tmp = HISTORY_FILE + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(cmdHistory), { mode: 0o600 });
+    fs.writeFileSync(tmp, JSON.stringify({ max: cmdHistMax, items: cmdHistory }), { mode: 0o600 });
     try { fs.chmodSync(tmp, 0o600); } catch {}
     fs.renameSync(tmp, HISTORY_FILE);
   } catch {}
@@ -2123,7 +2448,7 @@ app.post('/api/history', checkPin, (req, res) => {
     saveCmdHistory();
     res.json({ success: true, history: cmdHistory });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -2323,13 +2648,13 @@ app.get('/api/git/status', rateLimiter, checkPin, async (req, res) => {
     catch { st.upstream = ''; }
     res.json({ git: true, isRepo: true, root, ...st });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
 app.get('/api/git/diff', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.query.path);
     const file = req.query.file;
     if (!file || typeof file !== 'string' || Array.isArray(file)) return res.status(400).json({ error: 'file is required' });
@@ -2341,19 +2666,19 @@ app.get('/api/git/diff', rateLimiter, checkPin, async (req, res) => {
     // head=1 diffs against HEAD — the only view that shows unmerged/conflicted files
     if (req.query.head === '1') args.push('HEAD');
     args.push('--', rel);
-    let diff = await spawnRead('git', args);
+    let diff = await spawnRead('git', args, { maxBytes: 400000 });
     const binary = diff.includes('Binary files');
     const truncated = diff.length > 200000;
     if (truncated) diff = diff.slice(0, 200000);
     res.json({ success: true, diff, binary, truncated });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
 app.get('/api/git/log', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.query.path);
     let n = parseInt(req.query.n, 10);
     if (isNaN(n) || n < 1) n = 10;
@@ -2365,7 +2690,7 @@ app.get('/api/git/log', rateLimiter, checkPin, async (req, res) => {
     });
     res.json({ success: true, commits });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -2386,31 +2711,31 @@ function gitFileArgs(root, files) {
 
 app.post('/api/git/stage', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
     const rels = gitFileArgs(root, req.body && req.body.files);
     await spawnRead('git', ['-C', root, 'add', '--', ...rels]);
     res.json({ success: true });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
 app.post('/api/git/unstage', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
     const rels = gitFileArgs(root, req.body && req.body.files);
     await spawnRead('git', ['-C', root, 'restore', '--staged', '--', ...rels]);
     res.json({ success: true });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
 app.post('/api/git/commit', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
     let message = req.body && req.body.message;
     if (typeof message !== 'string' || !message.trim()) return res.status(400).json({ error: 'commit message is required' });
@@ -2419,34 +2744,34 @@ app.post('/api/git/commit', rateLimiter, checkPin, async (req, res) => {
     try {
       await spawnRead('git', ['-C', root, 'commit', '-m', message]);
     } catch (e) {
-      return res.status(400).json({ error: (e.message || 'commit failed').trim().slice(0, 500) || 'commit failed' });
+      return res.status(400).json({ error: gitErrText(e, 'commit failed') });
     }
     let hash = '';
     try { hash = (await spawnRead('git', ['-C', root, 'rev-parse', '--short', 'HEAD'])).trim(); } catch {}
     res.json({ success: true, hash });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
 app.post('/api/git/pull', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
     const mode = req.body && req.body.mode;
     const flag = mode === 'rebase' ? '--rebase' : mode === 'ff-only' ? '--ff-only' : '--no-rebase';
     let out = '';
     try { out = await spawnRead('git', ['-C', root, 'pull', flag], { timeout: 60000 }); }
-    catch (e) { return res.status(400).json({ error: (e.message || 'pull failed').trim().slice(0, 1000) || 'pull failed' }); }
+    catch (e) { return res.status(400).json({ error: gitErrText(e, 'pull failed', 1000) }); }
     res.json({ success: true, output: out.slice(-5000) });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
 app.post('/api/git/push', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
     // upstream:true runs `git push -u origin HEAD` (explicit user consent —
     // offered by the client when push fails with "no upstream branch").
@@ -2454,10 +2779,10 @@ app.post('/api/git/push', rateLimiter, checkPin, async (req, res) => {
     if (req.body && req.body.upstream) args.push('-u', 'origin', 'HEAD');
     let out = '';
     try { out = await spawnRead('git', args, { timeout: 60000 }); }
-    catch (e) { return res.status(400).json({ error: (e.message || 'push failed').trim().slice(0, 1000) || 'push failed' }); }
+    catch (e) { return res.status(400).json({ error: gitErrText(e, 'push failed', 1000) }); }
     res.json({ success: true, output: out.slice(-5000) });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -2476,7 +2801,7 @@ async function assertSafeBranch(root, name) {
 
 app.get('/api/git/branches', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.query.path);
     const raw = await spawnRead('git', ['-C', root, 'branch', '--format=%(refname:short)%1f%(HEAD)%1f%(upstream:short)']);
     const branches = raw.split('\n').filter(Boolean).map(l => {
@@ -2485,39 +2810,39 @@ app.get('/api/git/branches', rateLimiter, checkPin, async (req, res) => {
     });
     res.json({ success: true, branches });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
 app.post('/api/git/switch', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
     const branch = await assertSafeBranch(root, req.body && req.body.branch);
     try { await spawnRead('git', ['-C', root, 'switch', branch]); }
-    catch (e) { return res.status(400).json({ error: (e.message || 'switch failed').trim().slice(0, 500) || 'switch failed' }); }
+    catch (e) { return res.status(400).json({ error: gitErrText(e, 'switch failed') }); }
     res.json({ success: true, branch });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
 app.post('/api/git/branch', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
     const branch = await assertSafeBranch(root, req.body && req.body.name);
     try { await spawnRead('git', ['-C', root, 'switch', '-c', branch]); }
-    catch (e) { return res.status(400).json({ error: (e.message || 'create failed').trim().slice(0, 500) || 'create failed' }); }
+    catch (e) { return res.status(400).json({ error: gitErrText(e, 'create failed') }); }
     res.json({ success: true, branch });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
 app.get('/api/git/stash', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.query.path);
     const raw = await spawnRead('git', ['-C', root, 'stash', 'list', '--format=%gd%x1f%gs']);
     const stashes = raw.split('\n').filter(Boolean).map(l => {
@@ -2526,29 +2851,29 @@ app.get('/api/git/stash', rateLimiter, checkPin, async (req, res) => {
     });
     res.json({ success: true, stashes });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
 app.post('/api/git/stash', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
     let message = req.body && req.body.message;
     message = typeof message === 'string' ? message.trim().slice(0, 200) : '';
     const args = ['-C', root, 'stash', 'push'];
     if (message) args.push('-m', message);
     try { await spawnRead('git', args); }
-    catch (e) { return res.status(400).json({ error: (e.message || 'stash failed').trim().slice(0, 500) || 'stash failed' }); }
+    catch (e) { return res.status(400).json({ error: gitErrText(e, 'stash failed') }); }
     res.json({ success: true });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
 app.post('/api/git/stash/pop', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
     const ref = req.body && req.body.ref;
     const args = ['-C', root, 'stash', 'pop'];
@@ -2559,10 +2884,10 @@ app.post('/api/git/stash/pop', rateLimiter, checkPin, async (req, res) => {
       args.push(ref);
     }
     try { await spawnRead('git', args); }
-    catch (e) { return res.status(400).json({ error: (e.message || 'pop failed').trim().slice(0, 500) || 'pop failed' }); }
+    catch (e) { return res.status(400).json({ error: gitErrText(e, 'pop failed') }); }
     res.json({ success: true });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -2570,19 +2895,19 @@ app.post('/api/git/stash/pop', rateLimiter, checkPin, async (req, res) => {
 // restores worktree from the index, staged entries untouched).
 app.post('/api/git/discard', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
     const rels = gitFileArgs(root, req.body && req.body.files);
     await spawnRead('git', ['-C', root, 'restore', '--', ...rels]);
     res.json({ success: true });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
 app.post('/api/git/init', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const dir = resolvePath(req.body && req.body.path);
     let st;
     try { st = await fsPromises.stat(dir); } catch { return res.status(400).json({ error: 'directory not found' }); }
@@ -2591,7 +2916,7 @@ app.post('/api/git/init', rateLimiter, checkPin, async (req, res) => {
     catch { await spawnRead('git', ['-C', dir, 'init']); return res.json({ success: true }); }
     res.json({ success: true, already: true });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -2605,17 +2930,17 @@ async function gitIdentityFor(root) {
 
 app.get('/api/git/identity', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.query.path);
     res.json({ success: true, ...(await gitIdentityFor(root)) });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
 app.post('/api/git/identity', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
     const clean = v => {
       if (typeof v !== 'string') return '';
@@ -2632,27 +2957,27 @@ app.post('/api/git/identity', rateLimiter, checkPin, async (req, res) => {
     await spawnRead('git', ['-C', root, 'config', 'user.email', email]);
     res.json({ success: true, name, email });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
 // ── Git fetch / amend / reset ───────────────────────────────────────
 app.post('/api/git/fetch', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
     let out = '';
     try { out = await spawnRead('git', ['-C', root, 'fetch', '--all'], { timeout: 60000 }); }
-    catch (e) { return res.status(400).json({ error: (e.message || 'fetch failed').trim().slice(0, 1000) || 'fetch failed' }); }
+    catch (e) { return res.status(400).json({ error: gitErrText(e, 'fetch failed', 1000) }); }
     res.json({ success: true, output: out.slice(-5000) });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
 app.post('/api/git/amend', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
     try { await spawnRead('git', ['-C', root, 'rev-parse', '--verify', 'HEAD']); }
     catch { return res.status(400).json({ error: 'nothing to amend (no commits yet)' }); }
@@ -2662,12 +2987,12 @@ app.post('/api/git/amend', rateLimiter, checkPin, async (req, res) => {
     else args.push('--no-edit');
     try {
       await spawnRead('git', args);
-    } catch (e) { return res.status(400).json({ error: (e.message || 'amend failed').trim().slice(0, 500) || 'amend failed' }); }
+    } catch (e) { return res.status(400).json({ error: gitErrText(e, 'amend failed') }); }
     let hash = '';
     try { hash = (await spawnRead('git', ['-C', root, 'rev-parse', '--short', 'HEAD'])).trim(); } catch {}
     res.json({ success: true, hash });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -2689,17 +3014,17 @@ async function assertCommitRef(root, ref) {
 
 app.post('/api/git/reset', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
     const mode = req.body && req.body.mode;
     if (!['mixed', 'soft', 'hard'].includes(mode)) return res.status(400).json({ error: 'mode must be mixed, soft or hard' });
     const hash = await assertCommitRef(root, (req.body && req.body.ref) || 'HEAD');
     try {
       await spawnRead('git', ['-C', root, 'reset', '--' + mode, hash]);
-    } catch (e) { return res.status(400).json({ error: (e.message || 'reset failed').trim().slice(0, 500) || 'reset failed' }); }
+    } catch (e) { return res.status(400).json({ error: gitErrText(e, 'reset failed') }); }
     res.json({ success: true, mode, hash: hash.slice(0, 7) });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -2718,18 +3043,18 @@ async function assertSafeTag(root, name) {
 
 app.get('/api/git/tags', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.query.path);
     const raw = await spawnRead('git', ['-C', root, 'tag', '--list', '--sort=-creatordate']);
     res.json({ success: true, tags: raw.split('\n').map(t => t.trim()).filter(Boolean).slice(0, 50) });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
 app.post('/api/git/tag', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
     const name = await assertSafeTag(root, req.body && req.body.name);
     const msg = req.body && req.body.message;
@@ -2738,40 +3063,40 @@ app.post('/api/git/tag', rateLimiter, checkPin, async (req, res) => {
     args.push(name);
     try {
       await spawnRead('git', args);
-    } catch (e) { return res.status(400).json({ error: (e.message || 'tag failed').trim().slice(0, 500) || 'tag failed' }); }
+    } catch (e) { return res.status(400).json({ error: gitErrText(e, 'tag failed') }); }
     res.json({ success: true, name });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
 app.post('/api/git/untag', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
     const name = await assertSafeTag(root, req.body && req.body.name);
     try {
       await spawnRead('git', ['-C', root, 'tag', '-d', name]);
-    } catch (e) { return res.status(400).json({ error: (e.message || 'delete tag failed').trim().slice(0, 500) || 'delete tag failed' }); }
+    } catch (e) { return res.status(400).json({ error: gitErrText(e, 'delete tag failed') }); }
     res.json({ success: true, name });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
 // ── Git show (commit detail) ────────────────────────────────────────
 app.get('/api/git/show', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.query.path);
     const hash = await assertCommitRef(root, req.query.ref);
-    let out = await spawnRead('git', ['-C', root, 'show', '--no-color', '--find-renames', '--format=fuller', hash], { timeout: 15000 });
+    let out = await spawnRead('git', ['-C', root, 'show', '--no-color', '--find-renames', '--format=fuller', hash], { timeout: 15000, maxBytes: 400000 });
     const binary = out.includes('Binary files');
     const truncated = out.length > 200000;
     if (truncated) out = out.slice(0, 200000);
     res.json({ success: true, hash, diff: out, binary, truncated });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -2815,7 +3140,7 @@ async function gitHunksFor(root, file, cached) {
 
 app.get('/api/git/hunks', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.query.path);
     const file = req.query.file;
     if (!file || typeof file !== 'string' || Array.isArray(file)) return res.status(400).json({ error: 'file is required' });
@@ -2833,47 +3158,66 @@ app.get('/api/git/hunks', rateLimiter, checkPin, async (req, res) => {
       })
     });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
-async function applyHunk(root, file, index, unstage) {
+// The client sends the hunk header it rendered. Indices shift whenever the
+// working tree changes, so an index alone could stage a *different* hunk than
+// the one the user clicked; the header pins down which hunk was meant.
+async function applyHunk(root, file, index, unstage, expectedHeader) {
   const { header, hunks } = await gitHunksFor(root, file, unstage);
   const i = Number(index);
-  if (!Number.isInteger(i) || i < 0 || i >= hunks.length) { const e = new Error('invalid hunk index'); e.status = 400; throw e; }
-  const patch = hunkPatchText(header, hunks[i]);
+  if (!Number.isInteger(i) || i < 0) { const e = new Error('invalid hunk index'); e.status = 400; throw e; }
+  const expected = typeof expectedHeader === 'string' ? expectedHeader.trim() : '';
+  let target = i;
+  if (expected) {
+    const matches = [];
+    for (let n = 0; n < hunks.length; n++) if (hunks[n].header.trim() === expected) matches.push(n);
+    if (!matches.length) {
+      const e = new Error('hunk changed on disk — refresh and retry');
+      e.status = 409;
+      throw e;
+    }
+    // Prefer the original position when it still holds the same hunk, otherwise
+    // apply the hunk the user actually saw at its new index.
+    target = matches.includes(i) ? i : matches[0];
+  } else if (i >= hunks.length) {
+    const e = new Error('invalid hunk index'); e.status = 400; throw e;
+  }
+  const patch = hunkPatchText(header, hunks[target]);
   const args = ['-C', root, 'apply', '--cached'];
   if (unstage) args.push('--reverse');
   args.push('-');
   try {
     await spawnRead('git', args, { input: patch });
   } catch (e) {
-    const msg = (e.message || '').trim().slice(0, 500);
+    const msg = gitErrText(e, '', 500);
     throw Object.assign(new Error(msg.includes('patch does not apply') || !msg ? 'hunk no longer applies — refresh and retry' : msg), { status: 400 });
   }
 }
 
 app.post('/api/git/stage-hunk', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
     if (!req.body || typeof req.body.file !== 'string') return res.status(400).json({ error: 'file is required' });
-    await applyHunk(root, req.body.file, req.body.index, false);
+    await applyHunk(root, req.body.file, req.body.index, false, req.body.expected);
     res.json({ success: true });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
 app.post('/api/git/unstage-hunk', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.status(400).json({ error: 'git not installed' });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
     if (!req.body || typeof req.body.file !== 'string') return res.status(400).json({ error: 'file is required' });
-    await applyHunk(root, req.body.file, req.body.index, true);
+    await applyHunk(root, req.body.file, req.body.index, true, req.body.expected);
     res.json({ success: true });
   } catch (e) {
-    res.status(e.status || 500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -2889,7 +3233,7 @@ function getTMUX() {
 const ptySessions = new Map(); // sessionId -> { proc, exited, createdAt, lastActive, attached }
  // TTL sweep every 5min: delete sessions with no attached ws idle over 30min (F73).
  // Sessions with a live connection are never swept, however long they run.
-setInterval(() => {
+const ptySessionSweep = setInterval(() => {
   const now = Date.now();
   for (const [sid, entry] of ptySessions) {
     if ((entry.attached || 0) > 0) continue;
@@ -2908,6 +3252,19 @@ setInterval(() => {
     ptySessions.delete(oldest);
   }
 }, 5 * 60 * 1000);
+if (ptySessionSweep.unref) ptySessionSweep.unref();
+
+// Link-local / cloud-metadata addresses that must never be a tunnel target,
+// whether they arrive as a literal or as the resolution of a hostname.
+function isBlockedTunnelIp(host) {
+  const h = String(host == null ? '' : host).toLowerCase().replace(/^\[|\]$/g, '');
+  if (!h) return false;
+  if (h === '100.100.100.200' || h === '192.0.0.192' || h === 'fd00:ec2::254') return true;
+  if (h.startsWith('169.254.')) return true;          // IPv4 link-local (metadata)
+  if (h === '169.254') return true;
+  if (h.startsWith('fe80:') || /^fe[89ab][0-9a-f]:/.test(h)) return true; // IPv6 fe80::/10
+  return false;
+}
 
 function isValidPID(pid) {
   return typeof pid === 'number' && Number.isInteger(pid) && pid > 0;
@@ -2962,10 +3319,9 @@ app.get('/api/sessions', checkPin, (req, res) => {
 app.delete('/api/sessions/:id', checkPin, (req, res) => {
   const raw = req.params.id || '';
   const id = raw.replace(/[^a-zA-Z0-9_-]/g, '');
-  if (!id || id.length < 1 || id.length > 64) {
+  if (!id || id.length > 64) {
     return res.status(400).json({ error: 'invalid session id' });
   }
-  if (id === '') return res.status(400).json({ error: 'invalid session id' });
   if (TMUX) {
     // Try new prefix first, then legacy wt- for migration
     const tryNames = [TMUX_PREFIX + id, 'wt-' + id];
@@ -2993,13 +3349,23 @@ app.delete('/api/sessions/:id', checkPin, (req, res) => {
 //     0x01 = resize        (4B: cols uint16LE, rows uint16LE)
 //     0x02 = ping          (no payload)
 
-const ALLOWED_WS_ORIGINS = new Set();
+// Extra allowed WS origins for reverse-proxy / custom hostnames, comma-separated.
+// Same-origin requests are always allowed; this used to be a permanently empty
+// Set, which made the membership test below dead code.
+//   ALLOWED_ORIGINS=https://box.example.com,https://other.example.net
+const ALLOWED_WS_ORIGINS = new Set(
+  String(process.env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map(s => s.trim().replace(/\/$/, ''))
+    .filter(Boolean)
+);
 // Failed WS handshakes per IP (brute-force throttle), swept every minute.
 const wsAuthFails = new Map();
-setInterval(() => {
+const wsAuthFailsSweep = setInterval(() => {
   const _now = Date.now();
   for (const [_ip, _w] of wsAuthFails) { if (_now > _w.resetAt) wsAuthFails.delete(_ip); }
 }, 60000);
+if (wsAuthFailsSweep.unref) wsAuthFailsSweep.unref();
 
 // Push a JSON control event to terminal clients (server→client type 0x03).
 // Used for new-login alerts and session-revoked kicks.
@@ -3018,13 +3384,56 @@ function broadcastClientEvent(obj) {
     for (const ws of wss.clients) sendClientEvent(ws, obj);
   } catch {}
 }
+// Read-only session lookup: unlike getSession() it does NOT bump lastSeen, so
+// the periodic sweep below can't keep an idle session alive indefinitely.
+function peekSession(token) {
+  const s = authSessions.get(token);
+  if (!s) return null;
+  if (Date.now() - (s.lastSeen || 0) > SESSION_IDLE_MS) return null;
+  return s;
+}
+// Is this socket's credential still good? Raw-PIN sockets (legacy) are valid
+// only while the PIN is unchanged; session sockets must still be active.
+function wsTokenValid(token) {
+  if (!PIN) return true;
+  if (typeof token !== 'string' || !token) return false;
+  if (constantTimeEqual(token, PIN)) return true;
+  const s = peekSession(token);
+  return !!(s && s.status === 'active');
+}
+// Kick every socket whose credential no longer validates — including sockets
+// that handshook while the instance was still open (no token recorded).
+function closeInvalidSockets(reason) {
+  for (const ws of wss.clients) {
+    try {
+      const t = ws._authToken;
+      if (t && wsTokenValid(t)) continue;
+      sendClientEvent(ws, { event: 'session-revoked' });
+      ws.close(1008, reason || 'Session no longer valid');
+    } catch {}
+  }
+}
+// Revoke one session: notify AND close it. The 0x03 event lets the client show
+// the right UI; the close is what actually stops the shell.
 function pushSessionRevoked(token) {
   try {
     for (const ws of wss.clients) {
-      try { if (ws._authToken === token) sendClientEvent(ws, { event: 'session-revoked' }); } catch {}
+      try {
+        if (ws._authToken !== token) continue;
+        sendClientEvent(ws, { event: 'session-revoked' });
+        ws.close(1008, 'Session revoked');
+      } catch {}
     }
   } catch {}
 }
+// Sessions also die on their own (idle expiry, pending lapse, eviction).
+// Re-validate every terminal socket once a minute so a stale socket can never
+// outlive its session.
+const wsAuthSweep = setInterval(() => {
+  if (!PIN) return;
+  try { closeInvalidSockets('Session no longer valid'); } catch {}
+}, 60000);
+if (wsAuthSweep.unref) wsAuthSweep.unref();
 function getWsOrigin(req) {
   return (req.headers['origin'] || '').replace(/\/$/, '');
 }
@@ -3051,7 +3460,7 @@ wss.on('connection', (ws, req) => {
   if (PIN) {
     const t = typeof token === 'string' ? token : '';
     const _s = t ? getSession(t) : null;
-    const _pinOk = t && constantTimeEqual(t, PIN) && rawPinAllowed({ ip: req.socket.remoteAddress, socket: req.socket, headers: req.headers });
+    const _pinOk = t && constantTimeEqual(t, PIN) && rawPinAllowed({ socket: req.socket, headers: req.headers, get ip() { return req.socket.remoteAddress; } });
     if (!t || (!_pinOk && (!_s || _s.status !== 'active'))) {
       try {
         const _ip = req.socket.remoteAddress || 'unknown';
@@ -3070,10 +3479,11 @@ wss.on('connection', (ws, req) => {
 
   let cols      = parseInt(url.searchParams.get('cols'))  || 80;
   let rows      = parseInt(url.searchParams.get('rows'))  || 24;
-  // Clamp cols/rows to prevent OOM (F52): 2-500
+  // Clamp cols/rows to prevent OOM (F52): 2-500. The clamp is also the
+  // validation — `parseInt(...) || 80|24` and Math.min/max guarantee two
+  // finite integers in range, so there is nothing left to reject here.
   cols = Math.min(Math.max(2, cols), 500);
   rows = Math.min(Math.max(2, rows), 500);
-  if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols < 2 || rows < 2) { ws.close(1008, 'Invalid size'); return; }
   let cwd;
   try {
     cwd = realPath(url.searchParams.get('cwd') || WORKSPACE_ROOT);
@@ -3084,7 +3494,7 @@ wss.on('connection', (ws, req) => {
   let sessionId = '';
   if (rawSession !== null) {
     const sanitized = rawSession.replace(/[^a-zA-Z0-9_-]/g, '');
-    if (!sanitized || sanitized.length < 1 || sanitized.length > 64) {
+    if (!sanitized || sanitized.length > 64) {
       ws.close(1008, 'Invalid session id');
       return;
     }
@@ -3294,15 +3704,21 @@ app.get('/api/search', rateLimiter, checkPin, async (req, res) => {
     await asyncSafeWalk(searchDir, 0, maxDepth, q, results, maxResults);
     res.json({ results });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
 function spawnRead(cmd, args, opts = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, { stdio: [opts.input !== undefined ? 'pipe' : 'ignore', 'pipe', 'pipe'], timeout: opts.timeout || 5000 });
-    // Cap buffered output so a huge repo can't OOM the server (diff/log/status)
+    // Two different caps:
+    //  maxBuffer — hard limit; exceeding it aborts the command (runaway output).
+    //  maxBytes  — soft limit; output keeps draining but stops being accumulated.
+    //              Callers that slice the result to a fixed size anyway pass this so
+    //              they don't buffer megabytes of text they are about to throw away.
     const maxBuffer = opts.maxBuffer || 2 * 1024 * 1024;
+    const maxBytes = Math.min(opts.maxBytes || maxBuffer, maxBuffer);
+    const MAX_STDERR = 64 * 1024;
     let stdout = '', stderr = '', outLen = 0, killed = false;
     const onData = store => d => {
       if (killed) return;
@@ -3313,7 +3729,14 @@ function spawnRead(cmd, args, opts = {}) {
         reject(new Error('command output exceeded limit'));
         return;
       }
-      if (store === 0) stdout += d.toString(); else stderr += d.toString();
+      if (store === 0) {
+        if (stdout.length >= maxBytes) return;
+        stdout += d.toString();
+        if (stdout.length > maxBytes) stdout = stdout.slice(0, maxBytes);
+      } else if (stderr.length < MAX_STDERR) {
+        stderr += d.toString();
+        if (stderr.length > MAX_STDERR) stderr = stderr.slice(0, MAX_STDERR);
+      }
     };
     child.stdout.on('data', onData(0));
     child.stderr.on('data', onData(1));
@@ -3327,7 +3750,14 @@ function spawnRead(cmd, args, opts = {}) {
 }
 
 // ── System stats ────────────────────────────────────────────────────
+// Stats are polled repeatedly by the UI, and each miss shells out to df/ps/nvidia-smi
+// and burns a 100 ms CPU sample. Serve a 2 s-old sample instead. (B-L6)
+const SYS_STATS_TTL_MS = 2000;
+let _sysStatsCache = { at: 0, data: null };
 app.get('/api/system', checkPin, async (req, res) => {
+  if (_sysStatsCache.data && Date.now() - _sysStatsCache.at < SYS_STATS_TTL_MS) {
+    return res.json(_sysStatsCache.data);
+  }
   const cpus = os.cpus();
   const cpuModel = cpus.length > 0 ? cpus[0].model : 'unknown';
   const cpuCount = cpus.length;
@@ -3482,7 +3912,7 @@ app.get('/api/system', checkPin, async (req, res) => {
     }
   } catch {}
 
-  res.json({
+  const payload = {
     hostname: os.hostname(),
     platform: os.platform(),
     uptime: os.uptime(),
@@ -3491,7 +3921,9 @@ app.get('/api/system', checkPin, async (req, res) => {
     gpus,
     disk,
     processes
-  });
+  };
+  _sysStatsCache = { at: Date.now(), data: payload };
+  res.json(payload);
 });
 
 // ── Kill process (from System Stats) ────────────────────────────────
@@ -3505,18 +3937,18 @@ app.post('/api/system/kill', checkPin, requirePinSet, async (req, res) => {
     // Prevent killing cloudflared tunnels managed by WebTun
     for (const [, t] of tunnels) { if (t.pid === pid) return res.status(400).json({ error: 'refusing to kill managed cloudflared' }); }
     if (os.platform() === 'win32') {
-      try { execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' }); } catch (e) { return res.status(500).json({ error: e.message || 'kill failed' }); }
+      try { execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' }); } catch (e) { return sendErr(res, e && e.message ? e : new Error('kill failed'), 500); }
     } else {
       try { process.kill(pid, 'SIGTERM'); } catch (e) {
         if (e.code === 'ESRCH') return res.status(404).json({ error: 'process not found' });
-        try { process.kill(pid, 'SIGKILL'); } catch (e2) { return res.status(500).json({ error: e2.message }); }
+        try { process.kill(pid, 'SIGKILL'); } catch (e2) { return sendErr(res, e2, 500); }
       }
       // Give 1.5s then SIGKILL if still alive
       setTimeout(() => { try { process.kill(pid, 0); process.kill(pid, 'SIGKILL'); } catch {} }, 1500);
     }
     res.json({ success: true, pid });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
@@ -3541,17 +3973,36 @@ const tunnels = new Map();
 const TUNNEL_FILE = path.join(DATA_DIR, '.tunnels.json');
 const TUNNEL_URL_FILE = path.join(DATA_DIR, 'tunnel-url.txt');
 
+// A recycled PID can make a dead tunnel look alive. When the process start
+// time was recorded at spawn, require it to still match (Linux: starttime
+// ticks since boot; macOS: lstart). Windows has no cheap equivalent, so it
+// keeps the command-name check.
+function processStartKey(pid) {
+  if (!isValidPID(pid)) return null;
+  try {
+    if (os.platform() === 'linux') {
+      const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
+      const rest = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+      return rest[19] || null;
+    }
+    if (os.platform() === 'darwin') {
+      return execFileSync('ps', ['-p', String(pid), '-o', 'lstart='], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null;
+    }
+  } catch {}
+  return null;
+}
+
 function isCloudflaredProcess(pid) {
   if (!isValidPID(pid)) return false;
   try {
     if (os.platform() === 'win32') {
-      const stdout = execSync(`tasklist /FI "PID eq ${pid}" /FO CSV /NH`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+      const stdout = execFileSync('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
       return stdout.toLowerCase().includes('cloudflared');
     } else if (os.platform() === 'linux') {
       const cmdline = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8');
       return cmdline.toLowerCase().includes('cloudflared');
     } else {
-      const stdout = execSync(`ps -p ${pid} -o command=`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+      const stdout = execFileSync('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
       return stdout.toLowerCase().includes('cloudflared');
     }
   } catch {
@@ -3559,9 +4010,27 @@ function isCloudflaredProcess(pid) {
   }
 }
 
+// The recorded PID still belongs to the cloudflared process we spawned (not a
+// recycled PID of something unrelated).
+function sameCloudflaredProcess(entry) {
+  if (!isValidPID(entry.pid) || !isCloudflaredProcess(entry.pid)) return false;
+  if (entry.startKey) {
+    const now = processStartKey(entry.pid);
+    if (now && now !== entry.startKey) return false; // PID was recycled
+  }
+  return true;
+}
+
+// An entry is alive if its child process is still running, or (after a restart
+// reloaded from disk, where `proc` is gone) if its PID still checks out.
+function tunnelProcessAlive(entry) {
+  if (entry.proc && !entry.exited) return true;
+  return sameCloudflaredProcess(entry);
+}
+
 function saveTunnels() {
   const arr = Array.from(tunnels.entries()).map(([id, t]) => ({
-    id, localUrl: t.localUrl, tunnelUrl: t.tunnelUrl, createdAt: t.createdAt, pid: t.pid
+    id, localUrl: t.localUrl, tunnelUrl: t.tunnelUrl, createdAt: t.createdAt, pid: t.pid, startKey: t.startKey || null
   }));
   try {
     const tmp = TUNNEL_FILE + '.tmp';
@@ -3586,9 +4055,8 @@ function loadTunnels() {
   try {
     const arr = JSON.parse(fs.readFileSync(TUNNEL_FILE, 'utf8'));
     for (const t of arr) {
-      if (isCloudflaredProcess(t.pid)) {
-        tunnels.set(t.id, { proc: null, localUrl: t.localUrl, tunnelUrl: t.tunnelUrl, createdAt: t.createdAt, pid: t.pid });
-      }
+      const entry = { proc: null, localUrl: t.localUrl, tunnelUrl: t.tunnelUrl, createdAt: t.createdAt, pid: t.pid, startKey: t.startKey || null };
+      if (tunnelProcessAlive(entry)) tunnels.set(t.id, entry);
     }
   } catch {}
 }
@@ -3617,10 +4085,10 @@ function spawnCloudflared(args, opts = {}) {
   return spawn(bin, args, opts);
 }
 
-function restartTunnel(id, entry) {
+function restartTunnel(id, entry, onSuccess) {
   if (!entry.localUrl) return;
   try { if (entry.proc) entry.proc.kill('SIGTERM'); } catch {}
-  try { if (entry.pid && isCloudflaredProcess(entry.pid)) killPid(entry.pid); } catch {}
+  try { if (sameCloudflaredProcess(entry)) killPid(entry.pid); } catch {}
   tunnels.delete(id);
 
   const url = entry.localUrl;
@@ -3644,10 +4112,13 @@ function restartTunnel(id, entry) {
       proc.stderr.removeAllListeners('data');
       proc.stdout.resume();
       proc.stderr.resume();
-      tunnels.set(newId, { proc, pid: proc.pid, localUrl: url, tunnelUrl: newUrl, createdAt: Date.now() });
+      const fresh = { proc, pid: proc.pid, localUrl: url, tunnelUrl: newUrl, createdAt: Date.now(), startKey: processStartKey(proc.pid) };
+      proc.on('exit', () => { fresh.exited = true; });
+      tunnels.set(newId, fresh);
       saveTunnels();
       updateTunnelUrlFile();
       console.log(`  Tunnel restarted: ${newUrl} → ${url}`);
+      if (typeof onSuccess === 'function') { try { onSuccess(); } catch {} }
     }
   };
   proc.stdout.on('data', handler);
@@ -3657,21 +4128,44 @@ function restartTunnel(id, entry) {
 }
 
 const TUNNEL_CHECK_INTERVAL = 30000;
-setInterval(async () => {
+const TUNNEL_MAX_RESTARTS = 5;
+const TUNNEL_MAX_BACKOFF = 5 * 60 * 1000;
+// id → { attempts, nextAt }. Without this a dead tunnel retried every 30s
+// forever (hot loop against a failing cloudflared / DNS outage).
+const tunnelRestarts = new Map();
+
+function tunnelBackoffMs(attempts) {
+  return Math.min(TUNNEL_CHECK_INTERVAL * Math.pow(2, Math.max(0, attempts - 1)), TUNNEL_MAX_BACKOFF);
+}
+
+const tunnelSweep = setInterval(() => {
+  const now = Date.now();
   for (const [id, entry] of tunnels) {
-    const alive = entry.proc !== null || (entry.pid && isCloudflaredProcess(entry.pid));
-    if (!alive) {
-      console.log(`  Tunnel ${id} dead — restarting…`);
-      restartTunnel(id, entry);
+    if (tunnelProcessAlive(entry)) {
+      if (tunnelRestarts.has(id)) tunnelRestarts.delete(id);
+      if (entry.dead) entry.dead = false;
+      continue;
     }
+    if (entry.dead) continue; // gave up already — no log spam
+    const st = tunnelRestarts.get(id) || { attempts: 0, nextAt: 0 };
+    if (now < st.nextAt) continue;
+    if (st.attempts >= TUNNEL_MAX_RESTARTS) {
+      entry.dead = true;
+      console.log(`  Tunnel ${id} dead — giving up after ${st.attempts} restart attempts`);
+      continue;
+    }
+    st.attempts += 1;
+    st.nextAt = now + tunnelBackoffMs(st.attempts);
+    tunnelRestarts.set(id, st);
+    console.log(`  Tunnel ${id} dead — restart attempt ${st.attempts}/${TUNNEL_MAX_RESTARTS} (next retry in ${Math.round(tunnelBackoffMs(st.attempts) / 1000)}s)…`);
+    restartTunnel(id, entry, () => { tunnelRestarts.delete(id); });
   }
-}, TUNNEL_CHECK_INTERVAL);
+}, TUNNEL_CHECK_INTERVAL).unref();
 
 app.get('/api/tunnel', checkPin, async (req, res) => {
   const entries = Array.from(tunnels.entries());
   const results = await Promise.allSettled(entries.map(async ([id, t]) => {
-    let alive = t.proc !== null;
-    if (!alive && t.pid) { alive = isCloudflaredProcess(t.pid); }
+    const alive = tunnelProcessAlive(t);
     let targetAlive = false;
     if (alive) {
       const ac = new AbortController();
@@ -3693,7 +4187,9 @@ app.get('/api/tunnel', checkPin, async (req, res) => {
         tunnelAlive = true;
       } catch {} finally { clearTimeout(timer); }
     }
-    return { id, localUrl: t.localUrl, tunnelUrl: t.tunnelUrl, createdAt: t.createdAt, alive, targetAlive, tunnelAlive };
+    const rst = tunnelRestarts.get(id);
+    return { id, localUrl: t.localUrl, tunnelUrl: t.tunnelUrl, createdAt: t.createdAt, alive, targetAlive, tunnelAlive,
+      dead: !!t.dead, restartAttempts: (rst && rst.attempts) || 0 };
   }));
   const tunnels_list = results.map(r => r.status === 'fulfilled' ? r.value : null).filter(Boolean);
   res.json({ tunnels: tunnels_list });
@@ -3711,7 +4207,17 @@ app.post('/api/tunnel', checkPin, async (req, res) => {
     // Metadata/link-local endpoints beyond the obvious one
     const blockedHosts = ['169.254.169.254', 'metadata.google.internal', 'instance-data',
       'metadata.google.internal.', '100.100.100.200', '192.0.0.192', 'fd00:ec2::254', '[fd00:ec2::254]'];
-    if (blockedHosts.includes(host) || host.startsWith('169.254.')) return res.status(400).json({ error: 'url host blocked (SSRF)' });
+    if (blockedHosts.includes(host) || isBlockedTunnelIp(host)) return res.status(400).json({ error: 'url host blocked (SSRF)' });
+    // A hostname string can hide a metadata address (evil.com → 169.254.169.254),
+    // so resolve it too. IPv4 in odd notations (2130706433, 0x7f.0.0.1) is
+    // already canonicalized by new URL(). Unresolvable names (mDNS/LAN hosts)
+    // are still allowed — this is a metadata/link-local block, not a resolver.
+    if (!/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
+      try {
+        const { address } = await dns.promises.lookup(host);
+        if (isBlockedTunnelIp(address)) return res.status(400).json({ error: 'url host resolves to a blocked address (SSRF)' });
+      } catch {}
+    }
     if (host === '0.0.0.0' || host === '[::]') return res.status(400).json({ error: 'url host is not connectable' });
     const allowed = ['localhost', '127.0.0.1', '::1'];
     // Allow only local URLs unless ALLOW_FULL_FS true (admin opt-in for LAN tunneling)
@@ -3739,7 +4245,7 @@ app.post('/api/tunnel', checkPin, async (req, res) => {
       detached: true, stdio: ['ignore', 'pipe', 'pipe']
     });
   } catch (e) {
-    return res.status(500).json({ error: e.message });
+    return sendErr(res, e, 500);
   }
   proc.unref();
   let tunnelUrl = null;
@@ -3771,12 +4277,17 @@ app.post('/api/tunnel', checkPin, async (req, res) => {
     // Verify tunnel URL is actually reachable
     const urlOk = await verifyTunnelUrl(tunnelUrl);
     const id = tunnelUrl.replace(/^https:\/\//, '').replace(/\.trycloudflare\.com$/, '');
-    tunnels.set(id, { proc, pid: proc.pid, localUrl: url, tunnelUrl, createdAt: Date.now() });
+    const fresh = { proc, pid: proc.pid, localUrl: url, tunnelUrl, createdAt: Date.now(), startKey: processStartKey(proc.pid) };
+    proc.on('exit', () => { fresh.exited = true; });
+    tunnels.set(id, fresh);
+    tunnelRestarts.delete(id);
     saveTunnels();
     res.json({ success: true, id, url: tunnelUrl, verified: urlOk });
   } catch (e) {
     try { if (proc.pid) killPid(proc.pid); else proc.kill(); } catch {}
-    res.status(500).json({ error: e.message === 'timeout' ? 'Timed out waiting for tunnel URL' : e.message });
+    sendErr(res, e && e.message === 'timeout'
+      ? Object.assign(new Error('Timed out waiting for tunnel URL'), { status: 500 })
+      : e, 500);
   }
 });
 
@@ -3790,11 +4301,12 @@ app.delete('/api/tunnel', checkPin, (req, res) => {
     if (entry.proc) {
       try { entry.proc.kill('SIGTERM'); } catch {}
       if (entry.proc.pid) killPid(entry.proc.pid);
-    } else if (entry.pid && isCloudflaredProcess(entry.pid)) {
+    } else if (sameCloudflaredProcess(entry)) {
       killPid(entry.pid);
     }
   } catch {}
   tunnels.delete(id);
+  tunnelRestarts.delete(id);
   saveTunnels();
   res.json({ success: true });
 });
@@ -3833,11 +4345,25 @@ function checkPreviewAuth(req, res, next) {
   if (!s || s.status !== 'active') return res.status(401).json({ error: 'Unauthorized' });
   req.authToken = token; req.authSession = s; return next();
 }
+// Ports the preview proxy may dial. By default any port except WebTun's own:
+// connecting needs no privilege, the dial is always 127.0.0.1, and the caller
+// is already authenticated. Set PREVIEW_PORTS=5173,8080 to restrict it when an
+// instance is shared and you don't want the proxy usable as a loopback scanner.
+const PREVIEW_PORTS = (() => {
+  const raw = String(process.env.PREVIEW_PORTS || '').trim();
+  if (!raw) return null;
+  const set = new Set();
+  for (const part of raw.split(',')) {
+    const n = Number(part.trim());
+    if (Number.isInteger(n) && n >= 1 && n <= 65535) set.add(n);
+  }
+  return set.size ? set : null;
+})();
 function validPreviewPort(p) {
   const n = Number(p);
-  // Any port except WebTun's own — connecting needs no privilege (only binding does),
-  // so local services on 80/443/etc. preview fine. Loopback-only dial below, no SSRF.
-  return Number.isInteger(n) && n >= 1 && n <= 65535 && n !== (Number(PORT) || 3000);
+  if (!Number.isInteger(n) || n < 1 || n > 65535) return false;
+  if (PREVIEW_PORTS && !PREVIEW_PORTS.has(n)) return false;
+  return n !== (Number(PORT) || 3000);
 }
 const HOP_HEADERS = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade', 'content-length']);
 function previewError(res, port, msg) {
@@ -3853,7 +4379,9 @@ function handlePreviewProxy(req, res) {
   let suffix = '';
   try {
     const u = new URL(req.originalUrl, 'http://x');
-    suffix = u.pathname.replace(new RegExp(`^/api/preview/${targetPort}`), '') || '/';
+    // Plain prefix slice, not `new RegExp(...)` built from request input.
+    const prefix = '/api/preview/' + targetPort;
+    suffix = (u.pathname.startsWith(prefix) ? u.pathname.slice(prefix.length) : u.pathname) || '/';
     suffix += u.search || '';
   } catch { suffix = '/'; }
   if (suffix.includes('\0')) return res.status(400).json({ error: 'bad path' });
@@ -3870,6 +4398,9 @@ function handlePreviewProxy(req, res) {
   for (const [k, v] of Object.entries(req.headers)) {
     const lk = k.toLowerCase();
     if (HOP_HEADERS.has(lk) || lk === 'host' || lk === 'x-pin-token' || lk === 'cookie') continue;
+    // A loopback dev server is untrusted code: never hand it our credentials.
+    if (lk === 'authorization' || lk === 'proxy-authorization') continue;
+    if (lk.startsWith('x-') && /token|auth|secret|pin|session/i.test(lk)) continue;
     fwd[k] = v;
   }
   fwd['Host'] = `localhost:${targetPort}`;
@@ -3898,8 +4429,14 @@ function handlePreviewProxy(req, res) {
         const lk = k.toLowerCase();
         if (HOP_HEADERS.has(lk) || lk === 'x-frame-options' || lk === 'content-security-policy' || lk === 'content-security-policy-report-only') continue;
         if (lk === 'location' && typeof v === 'string') {
-          // /x → /api/preview/<port>/x ; absolute loopback → same
-          let nv = v.replace(/^(https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?)(\/.*)?$/i, (m, _o, _h, _p, pth) => `/api/preview/${targetPort}${pth || '/'}`);
+          // /x → /api/preview/<port>/x ; absolute loopback-alias → same.
+          // Aliases other than localhost/127.0.0.1 (0.0.0.0, [::1], [::]) were
+          // left untouched before, and any other absolute URL passed straight
+          // through — an upstream 302 to an external host turned the authed
+          // proxy into an open redirect. Anything still absolute goes to the
+          // preview root instead.
+          let nv = v.replace(/^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|\[::\])(?::\d+)?(\/.*)?$/i, (m, pth) => `/api/preview/${targetPort}${pth || '/'}`);
+          if (/^https?:\/\//i.test(nv)) nv = `/api/preview/${targetPort}/`;
           if (nv.startsWith('/') && !nv.startsWith(`/api/preview/${targetPort}`)) nv = `/api/preview/${targetPort}${nv}`;
           try { res.setHeader(k, nv); } catch {}
           continue;
@@ -3912,15 +4449,15 @@ function handlePreviewProxy(req, res) {
         }
         try { res.setHeader(k, v); } catch {}
       }
-      // Preserve upstream CSP minus framing (don't blindly drop script-src).
+      // Never let upstream JS run in the WebTun origin. `sandbox` without
+      // allow-same-origin forces an opaque origin, so a proxied dev app cannot
+      // read wt-session-token / localStorage / the files API — including when
+      // /api/preview/<port>/ is opened as a top-level page. The upstream CSP is
+      // deliberately NOT merged: replaying it could re-permit same-origin
+      // scripts and undo the sandbox. Mirrors the in-app iframe sandbox flags
+      // (allow-scripts allow-forms allow-popups allow-downloads allow-modals).
       try {
-        const csp = upRes.headers['content-security-policy'];
-        if (typeof csp === 'string' && csp) {
-          const cleaned = csp.split(';').map(s => s.trim()).filter(s => s && !/^frame-ancestors/i.test(s)).join('; ');
-          res.setHeader('Content-Security-Policy', (cleaned ? cleaned + '; ' : '') + "frame-ancestors 'self'");
-        } else {
-          res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
-        }
+        res.setHeader('Content-Security-Policy', "sandbox allow-scripts allow-forms allow-popups allow-downloads allow-modals; frame-ancestors 'self'");
       } catch {}
       const ctype = (upRes.headers['content-type'] || '').toString().toLowerCase();
       if (ctype.includes('text/html') && req.method === 'GET') {
@@ -3967,8 +4504,12 @@ function handlePreviewProxy(req, res) {
       }
     });
   } catch (e) { return previewError(res, targetPort, 'proxy error'); }
-  upReq.on('timeout', () => { try { upReq.destroy(); } catch {} if (!res.headersSent) previewError(res, targetPort, 'connection timed out'); else try { res.end(); } catch {} });
-  upReq.on('error', () => { if (!res.headersSent) previewError(res, targetPort, 'connection refused'); else try { res.end(); } catch {} });
+  // One message for every dial failure. Distinguishing "refused" from
+  // "timed out" told an authenticated caller which loopback ports have a
+  // listener; the timing still differs, so this removes the explicit signal
+  // rather than making the probe impossible.
+  upReq.on('timeout', () => { try { upReq.destroy(); } catch {} if (!res.headersSent) previewError(res, targetPort, 'no application is answering there'); else try { res.end(); } catch {} });
+  upReq.on('error', () => { if (!res.headersSent) previewError(res, targetPort, 'no application is answering there'); else try { res.end(); } catch {} });
   req.pipe(upReq);
 }
 // NOTE: no rateLimiter here on purpose — one app load fans out to dozens of
@@ -4073,7 +4614,7 @@ function cleanup() {
       if (entry.proc) {
         try { entry.proc.kill('SIGTERM'); } catch {}
         if (entry.proc.pid) killPid(entry.proc.pid);
-      } else if (entry.pid && isCloudflaredProcess(entry.pid)) {
+      } else if (sameCloudflaredProcess(entry)) {
         killPid(entry.pid);
       }
     } catch {}
@@ -4081,7 +4622,9 @@ function cleanup() {
   if (TMUX) {
     try {
       const out = execFileSync(TMUX, ['list-sessions', '-F', '#{session_name}'], { encoding: 'utf8' }).trim();
-      const sessions = out.split('\n').filter(s => s.startsWith(TMUX_PREFIX) || s.startsWith('wt-'));
+      // Only OUR namespaced sessions: the previous `|| startsWith('wt-')`
+      // killed the user's own `wt-*` tmux sessions on every SIGTERM.
+      const sessions = out.split('\n').filter(s => s.startsWith(TMUX_PREFIX));
       for (const s of sessions) {
         try { execFileSync(TMUX, ['kill-session', '-t', s], { stdio: 'ignore' }); } catch {}
       }
@@ -4098,6 +4641,7 @@ function startServer(opts = {}) {
   const port = opts.port || PORT;
   const host = opts.host || HOST;
 
+  migrateLegacyState();
   loadTunnels();
   cleanupOrphanTmuxSessions();
 
@@ -4117,15 +4661,23 @@ process.on('uncaughtException', e => {
   try { cleanup(); } catch {}
   process.exit(1);
 });
+// Symmetric with uncaughtException above: Node's own default for an unhandled
+// rejection is to throw (and crash), so swallowing it here silently left the
+// process running in an undefined state — the opposite of the uncaught path.
 process.on('unhandledRejection', e => {
-  console.error('Unhandled:', e);
+  console.error('Unhandled rejection:', (e && e.stack) || e);
+  try { cleanup(); } catch {}
+  process.exit(1);
 });
 
 process.on('SIGTERM', () => { try { cleanup(); } catch {}; process.exit(0); });
 process.on('SIGINT', () => { try { cleanup(); } catch {}; process.exit(0); });
 process.on('exit', () => { try { cleanup(); } catch {} });
 
-module.exports = { app, server, startServer, PORT, PIN, WORKSPACE_ROOT, findCloudflared };
+module.exports = { app, server, startServer, PORT, WORKSPACE_ROOT, findCloudflared };
+// PIN is mutable at runtime (POST /api/pin). Exporting it by value handed
+// consumers a snapshot, so embedders kept seeing the secret from boot time.
+Object.defineProperty(module.exports, 'PIN', { get: () => PIN, enumerable: true });
 
 if (require.main === module) {
   startServer();

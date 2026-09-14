@@ -50,7 +50,7 @@
           "name": "Tunnel won't connect or the URL died",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Delete the tunnel from Settings → Tunnel and create a fresh one. If it still fails, check the server log — the connector binary downloads on first use and needs outbound HTTPS. Stale entries after a crash can be cleared with kill $(pgrep -f 'cloudflared tunnel')."
+            "text": "WebTun restarts a dead tunnel by itself, waiting longer each time (30s, 1m, 2m, 4m, 5m) and giving up after 5 attempts — at that point the tunnel is marked dead and stops retrying. If it still fails, check the server log: the connector binary downloads on first use and needs outbound HTTPS. You can also delete the tunnel from Settings → Tunnel and create a fresh one. Stale entries after a crash can be cleared with kill $(pgrep -f 'cloudflared tunnel')."
           }
         },
         {
@@ -551,24 +551,25 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
       </section>
 
       <!-- ── TERMINAL ── -->
-      <section id="terminal" data-title="Terminal tabs sessions search links history tmux">
+      <section id="terminal" data-title="Terminal tabs sessions search links history tmux clipboard">
         <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#67e8f9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg></span>
           <div><h2>Terminal <a class="hash" href="#terminal" aria-label="Link to this section">#</a></h2></div>
         </div>
         <p class="sec-sub rv">A real shell in every tab — <b>not a simulation</b>. Full filesystem access, your own shell, links you can click.</p>
         <ul class="tight rv">
-          <li><b>Tabs for everything</b> — <kbd>Ctrl</kbd>+<kbd>T</kbd> opens one, <kbd>Ctrl</kbd>+<kbd>W</kbd> closes it, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>→</kbd>/<kbd>←</kbd> cycles. Double-click a tab to rename it, and your whole tab layout (terminals + previews) is remembered across reloads.</li>
+          <li><b>Tabs for everything</b> — <kbd>Ctrl</kbd>+<kbd>T</kbd> opens one, <kbd>Ctrl</kbd>+<kbd>W</kbd> closes it, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>→</kbd>/<kbd>←</kbd> cycles. Double-click a tab to rename it, and your whole tab layout (terminals + previews) is remembered across reloads. The tab strip is <b>keyboard reachable</b> too: <kbd>Tab</kbd> onto the active tab, then <kbd>←</kbd>/<kbd>→</kbd> to move (or <kbd>Home</kbd>/<kbd>End</kbd> for the ends), and in tile view each tile header is focusable and activates with <kbd>Enter</kbd>.</li>
           <li><b>Sessions survive accidents.</b> Refresh the page, close the laptop, drop Wi-Fi — your shells keep running server-side (via tmux when available) and reattach exactly where you left them.</li>
           <li><b>Tile view</b> lays every terminal out in a grid at once — find it in the overflow menu when you're juggling logs, a server, and a shell.</li>
           <li><b>Search inside output</b> with <kbd>Ctrl</kbd>+<kbd>F</kbd> (match highlighting, optional case-sensitivity), and <b>click file paths &amp; URLs</b> printed by your tools to jump straight there.</li>
           <li><b>Confirm on Close</b> guards tab closes (on by default) — and warns about unsaved editor changes before a tab disappears.</li>
           <li><b>Commands are remembered.</b> What you type is tracked (escape sequences filtered out), so the command library and history stay clean and reusable.</li>
+          <li><b>Clipboard access is opt-in.</b> Programs can always <b>copy</b> to your clipboard, but <b>reading</b> it (OSC 52 paste, used by terminal editors) is off by default — otherwise stray output could quietly pull your clipboard into the session. Turn on <b>Settings → Terminal → Allow terminal clipboard read</b> when you want it.</li>
         </ul>
         <div class="call tip rv"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6ee7a8" stroke-width="2" stroke-linecap="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg><p><b>Tip:</b> long-running job? Start it in its own tab. Even if the browser tab closes, the process keeps going on the host.</p></div>
       </section>
 
       <!-- ── EDITOR ── -->
-      <section id="editor" data-title="Editor code preview markdown html office docx xlsx save">
+      <section id="editor" data-title="Editor code preview markdown html office docx xlsx save sandbox draft restore preview ports PREVIEW_PORTS dev server localhost">
         <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></span>
           <div><h2>Editor &amp; previews <a class="hash" href="#editor" aria-label="Link to this section">#</a></h2></div>
         </div>
@@ -578,7 +579,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
           <li><b>Live preview</b> for HTML and Markdown in a sandboxed pane — <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> refreshes it.</li>
           <li><b>Office files open read-only</b> right in the app: Word (.docx) renders with text, tables and embedded images; Excel (.xlsx) gets a real spreadsheet grid — every sheet switchable from the toolbar, column letters, row numbers, merged cells, sticky headers, and values formatted as authored (dates, %, currency). Legacy .doc/.xls/.ppt? The app tells you to re-save rather than showing garbage.</li>
           <li><b>PDFs and ebooks too.</b> PDFs render with a selectable text layer (search and copy work); EPUBs open as a proper paged reader.</li>
-          <li><b>Work it your way:</b> <kbd>F11</kbd> takes the editor fullscreen, the split toggle flips code/preview between side-by-side and stacked, and unsaved edits are <b>auto-drafted</b> — crash mid-sentence and your words are still there.</li>
+          <li><b>Work it your way:</b> <kbd>F11</kbd> takes the editor fullscreen, the split toggle flips code/preview between side-by-side and stacked, and unsaved edits are <b>auto-drafted</b> — crash mid-sentence and your words are still there. Re-open the file and WebTun asks whether to <b>restore the draft</b> or discard it (drafts are only offered when they differ from what's on disk, and are cleared once you save or explicitly discard).</li>
           <li><b>Images preview inline</b> instead of downloading. Big binaries stay out of the editor. Truly unsupported files say so plainly instead of showing garbage.</li>
         </ul>
         <h3>App preview tabs <a class="hash" href="#editor" aria-label="Link to this section">#</a></h3>
@@ -588,7 +589,8 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
           <li><b>Hot-reload works</b> — dev-server WebSockets, streams, downloads and dialogs are all proxied through.</li>
         </ul>
         <div class="call warn rv"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><p><b>Copied preview links carry your access token.</b> Anyone opening one browses as you — share them like passwords, never publicly.</p></div>
-        <div class="call info rv"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#67e8f9" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><p><b>Two honest limits:</b> previewed pages run storage-less by design (<code class="inl">localStorage</code>/JS cookies unavailable, so token-based logins won't stick), and apps that hardcode absolute <code class="inl">localhost</code> URLs or OAuth callbacks may misbehave — especially over a remote tunnel.</p></div>
+        <div class="call info rv"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#67e8f9" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><p><b>Server admins can narrow previews</b> to specific ports with <code class="inl">PREVIEW_PORTS=5173,8080</code> in <code class="inl">.env</code> — useful when the box runs databases or admin panels whose ports you would rather not expose through your session. Unset (the default) allows any port except WebTun's own.</p></div>
+        <div class="call info rv"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#67e8f9" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><p><b>Two honest limits:</b> previewed pages run storage-less by design (<code class="inl">localStorage</code>/JS cookies unavailable, so token-based logins won't stick), and apps that hardcode absolute <code class="inl">localhost</code> URLs or OAuth callbacks may misbehave — especially over a remote tunnel. The sandbox is enforced by the server, not just by the frame, so a previewed app can never reach your session token or files — even if you open its preview URL directly in a new tab.</p></div>
         <figure class="fig rv">
           <div class="fig-bar"><span class="dot" style="background:#fb7185;width:9px;height:9px"></span><span class="dot" style="background:#fbbf24;width:9px;height:9px"></span><span class="dot" style="background:#6ee7a8;width:9px;height:9px"></span> deploy-notes.md — preview <span class="sp">sandboxed</span></div>
           <div class="dl"><span class="hunk">## Ship checklist</span>
@@ -635,7 +637,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
         </div>
         <p class="sec-sub rv">Open any repository folder and the Git panel lights up — <b>stage, review, commit, sync</b> without memorizing flags.</p>
         <ul class="tight rv">
-          <li><b>Stage by hunk, not by file.</b> Split a diff into pieces and stage exactly the lines you mean — perfect for untangling mixed-up edits.</li>
+          <li><b>Stage by hunk, not by file.</b> Split a diff into pieces and stage exactly the lines you mean — perfect for untangling mixed-up edits. The button is pinned to the hunk you clicked, so if the file changes underneath you between opening the list and clicking, you get a <i>refresh and retry</i> instead of the wrong lines being staged.</li>
           <li><b>Read before you commit:</b> per-file diffs, commit history with detail view, branch &amp; tag management, stash and pop.</li>
           <li><b>Author identity per repo.</b> The panel asks for your name and email once per repository — commits simply refuse to run until it's set.</li>
           <li><b>Sync safely:</b> pull (merge, rebase or fast-forward-only), push with upstream setup, fetch with generous timeouts for slow networks.</li>
@@ -661,7 +663,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
         <ul class="tight rv">
           <li><b>Automatic history</b> — every command you run is saved (terminal noise filtered out), searchable, and deletable one-by-one or in full.</li>
           <li><b>Command library</b> — promote your best one-liners to saved snippets and re-run them in any tab with a click.</li>
-          <li><b>History stays lean</b> — it's capped automatically (50 by default) and you can delete single entries or wipe it all from the history panel.</li>
+          <li><b>History stays lean</b> — it's capped automatically (50 by default) and you can delete single entries or wipe it all from the history panel. Change the cap and it's <b>remembered across restarts</b>.</li>
         </ul>
       </section>
 
@@ -674,7 +676,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
         <div class="steps">
           <div class="step rv"><p><b>Settings → Tunnel → Create.</b> The app fetches the official Cloudflare connector on first use (verified download, nothing bundled) and hands you a <code class="inl">https://….trycloudflare.com</code> URL.</p></div>
           <div class="step rv"><p><b>Open it anywhere</b> — phone, tablet, a friend's laptop. Same PIN, same sessions, same files.</p></div>
-          <div class="step rv"><p><b>Tunnels persist.</b> Restart the server and your tunnels are remembered and re-validated automatically. Copy the URL any time from the tunnel list.</p></div>
+          <div class="step rv"><p><b>Tunnels persist.</b> Restart the server and your tunnels are remembered and re-validated automatically. Copy the URL any time from the tunnel list. If a tunnel dies it's restarted on its own — backing off from 30s up to 5 minutes, and giving up after 5 tries (it's then shown as dead so it stops churning) — and a recycled process ID can't be mistaken for your live tunnel.</p></div>
         </div>
         <div class="call warn rv"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><p><b>A public URL is public.</b> Always set a strong PIN before creating a tunnel — an open instance with a tunnel is an open door.</p></div>
       </section>
@@ -721,7 +723,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
           <li><b>Install it from the browser</b> (menu → <i>Install / Add to Home Screen</i>) — or tap the install banner when it appears, with extra guidance on iOS. As a PWA it launches full-screen, works through network blips, and nudges you — never force-reloads — when an update is ready.</li>
           <li><b>Desktop app (Electron)</b> bundles the server: double-click and it picks a free port automatically if 3000 is busy. Enable <b>Start on Login</b> to have it waiting after every reboot. <b>Exit app</b> sits at the very bottom of the Settings panel, outside any section — one tap stops the server and closes every session cleanly.</li>
           <li><b>Touch-friendly throughout</b> — file actions, git hunks and approvals are all big-target buttons, not hover-only menus.</li>
-          <li><b>Gestures:</b> swipe a tab sideways to close it, pull down to refresh, pinch to resize terminal text, and flip on Selection mode when you need to copy output instead of tapping it.</li>
+          <li><b>Gestures:</b> swipe a tab sideways to close it, pull down to refresh, pinch to resize terminal text (that size lasts for the session only — set your default in Settings → Appearance), and flip on Selection mode when you need to copy output instead of tapping it.</li>
           <li><b>Mobile extras:</b> enable <i>Show Mobile Keys</i> in Settings → Terminal for an on-screen keys row (terminal only), and <i>Data Saver</i> to pause live gauges and background preloads on metered connections.</li>
         </ul>
       </section>
@@ -759,7 +761,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
         </div>
         <p class="sec-sub rv">The seven fixes that solve <b>almost everything</b>.</p>
         <details class="faq rv"><summary><span class="pm">+</span>Port 3000 is already in use</summary><div class="ans">Start the server with a different port (<b>PORT=4000 npm start</b>, or <b>webtun --port 4000</b>). The desktop app does this by itself — it probes upward until it finds a free port.</div></details>
-        <details class="faq rv"><summary><span class="pm">+</span>Tunnel won't connect or the URL died</summary><div class="ans">Delete the tunnel from Settings → Tunnel and create a fresh one. If it still fails, check the server log — the connector binary downloads on first use and needs outbound HTTPS. Stale entries after a crash can be cleared with <code class="inl">kill $(pgrep -f 'cloudflared tunnel')</code>.</div></details>
+        <details class="faq rv"><summary><span class="pm">+</span>Tunnel won't connect or the URL died</summary><div class="ans">WebTun restarts a dead tunnel on its own, waiting longer each time (<b>30s, 1m, 2m, 4m, 5m</b>) and giving up after <b>5 attempts</b> — at that point it's marked dead and stops retrying. If it still fails, check the server log: the connector binary downloads on first use and needs outbound HTTPS. You can also delete the tunnel from Settings → Tunnel and create a fresh one. Stale entries after a crash can be cleared with <code class="inl">kill $(pgrep -f 'cloudflared tunnel')</code>.</div></details>
         <details class="faq rv"><summary><span class="pm">+</span>My new device is stuck on "pending"</summary><div class="ans">Pending approvals <b>expire after 5 minutes</b> and must be accepted from a <b>different, already-active session</b>. Approve from your main device, then sign in again on the new one.</div></details>
         <details class="faq rv"><summary><span class="pm">+</span>I changed the PIN and got logged out everywhere</summary><div class="ans">That's by design — a PIN change <b>revokes every session</b> for safety. Sign back in with the new PIN on each device.</div></details>
         <details class="faq rv"><summary><span class="pm">+</span>I forgot my PIN entirely</summary><div class="ans">The PIN lives in the <b>.env file</b> — next to the server, or <code class="inl">~/.config/webtun/.env</code> for global installs. If you can read that file you own the machine: edit the <code class="inl">PIN=</code> line and restart the server. If you can't, that's the security working as intended.</div></details>
@@ -807,7 +809,10 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
   function flip(){ applyTheme(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'); }
   if (segLight) segLight.addEventListener('click', function(){ applyTheme('light'); });
   if (segDark) segDark.addEventListener('click', function(){ applyTheme('dark'); });
-  document.getElementById('theme-btn-m').addEventListener('click', flip);
+  /* Guarded: an unguarded lookup here would throw and take the whole IIFE with it
+     (scroll-spy, search, copy, reveal and the hero typing all live below). */
+  var themeBtnM = document.getElementById('theme-btn-m');
+  if (themeBtnM) themeBtnM.addEventListener('click', flip);
 
   /* ── github pages: no local app there — app links point at the repo ── */
   if (/\.github\.io$/.test(window.location.hostname)){
@@ -956,7 +961,12 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
       { p:'phone', t:'tail -f server.log', c:'t-a' },
       { p:'', t:'listening on 127.0.0.1:3000 — enjoy WebTun', c:'t-dim' } ]
   ];
-  function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+  // Escape every HTML-significant character, not just & and < — the hero lines are
+  // injected as HTML, and `>` / quotes are one refactor away from being exploitable.
+  function esc(s){
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+                    .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
   function renderStatic(){
     termBody.innerHTML = scenes[0].map(function(l){
       return '<div>' + (l.p ? '<span class="t-p">➜ ' + esc(l.p) + '</span> ' : '') +
@@ -966,24 +976,27 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
   if (reduced){
     renderStatic();
   } else {
-    var si = 0, li = 0, ci = 0, out = '';
+    var si = 0, li = 0, ci = 0;
+    // Finished lines never change, so they are rendered once and kept as a prefix.
+    // The old loop rebuilt every completed line on every keystroke (O(n²) innerHTML
+    // work per scene) — this writes only the line currently being typed.
+    var committed = '';
     function lineHtml(l, typed){
       return '<div>' + (l.p ? '<span class="t-p">➜ ' + esc(l.p) + '</span> ' : '') +
              '<span class="' + l.c + '">' + esc(typed) + '</span></div>';
     }
     function tick(){
-      var scene = scenes[si], line = scene[li];
+      var line = scenes[si][li];
       if (ci <= line.t.length){
-        var html = '';
-        for (var i = 0; i < li; i++) html += lineHtml(scene[i], scene[i].t);
-        html += lineHtml(line, line.t.slice(0, ci)) + '<div><span class="caret"></span></div>';
-        termBody.innerHTML = html;
+        termBody.innerHTML = committed + lineHtml(line, line.t.slice(0, ci)) +
+                             '<div><span class="caret"></span></div>';
         ci++;
         setTimeout(tick, line.p ? 34 : 12);
-      } else if (li < scene.length - 1){
+      } else if (li < scenes[si].length - 1){
+        committed += lineHtml(line, line.t);
         li++; ci = 0; setTimeout(tick, 260);
       } else {
-        setTimeout(function(){ si = (si + 1) % scenes.length; li = 0; ci = 0; out = ''; tick(); }, 3400);
+        setTimeout(function(){ si = (si + 1) % scenes.length; li = 0; ci = 0; committed = ''; tick(); }, 3400);
       }
     }
     tick();

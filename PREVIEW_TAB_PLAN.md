@@ -1,5 +1,11 @@
 # WebTun — App Preview Tab Plan
 
+> **STATUS: IMPLEMENTED — design record only, not a task list.** The preview tab shipped in
+> v2.0.x as **New Preview** (overflow menu / toolbar of `public/index.html`). Every `file:line`
+> reference below was written before the implementation and has since drifted, so treat them as
+> historical. Live behaviour is documented in `/docs` → *App preview tabs*; the proxy internals
+> live in `server.js` (`handlePreviewProxy`, `validPreviewPort`).
+
 ## 0. Goal / Non-goal
 - Goal: `App:PORT` tab renders `localhost:PORT` running on the same host, inside WebTun, over the same `:3000` URL + same PIN auth. Same tab bar as terminal tabs.
 - Non-goal: general internet browser, native GUI apps. Loopback apps only.

@@ -10,7 +10,16 @@ function rebuildNodePty() {
   } catch {}
 
   const ptyDir = path.join(__dirname, 'node_modules', 'node-pty');
-  if (!fs.existsSync(ptyDir)) return; // Not installed yet (first time npm install)
+  if (!fs.existsSync(ptyDir)) {
+    // Reaching here means require('node-pty') already failed AND the package is
+    // absent — i.e. a genuinely broken tree (--ignore-scripts, --omit=optional,
+    // or a partially-failed install). Saying nothing left the user with a
+    // "Cannot find module 'node-pty'" at first terminal open and no explanation.
+    console.log('  WARNING: node-pty is not installed (node_modules/node-pty is missing).');
+    console.log('  The terminal will not work. Try:');
+    console.log('    npm install            # re-run without --ignore-scripts');
+    return;
+  }
 
   console.log('  rebuilding node-pty...');
   try {

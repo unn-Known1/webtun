@@ -50,6 +50,7 @@
   --bg2: #16161e;
   --bg3: #24283b;
   --bg4: #2a2d3e;
+  --amber: #e5a50a;
   --border: #3b3f52;
   --fg: #c0caf5;
   --fg2: #787c99;
@@ -237,7 +238,9 @@ svg { display: block; }
 .preview-bar input { height: 28px; font-size: 12px; font-family: var(--font); background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 8px; color: var(--fg); }
 .preview-bar input:focus { border-color: var(--accent); }
 #preview-port-input, .preview-port-input { width: 90px; flex-shrink: 0; }
-#preview-path-input, .preview-path-input { flex: 1; min-width: 80px; }
+/* Tab bars are built per preview tab, so the path input is matched by class only
+   (an id would be duplicated across tabs). */
+.preview-path-input { flex: 1; min-width: 80px; }
 .preview-bar .btn { height: 28px; padding: 0 12px; font-size: 12px; }
 .preview-frame { flex: 1; width: 100%; min-height: 0; border: none; background: var(--bg); border-radius: var(--radius); }
 .preview-loading { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: var(--bg); color: var(--fg2); font-size: 12px; font-family: var(--font-ui); pointer-events: none; }
@@ -573,7 +576,6 @@ svg { display: block; }
 .file-item .file-quick { display: none; align-items: center; justify-content: center; width: 26px; height: 26px; min-width: 26px; border-radius: var(--radius-sm); color: var(--fg2); background: none; border: none; cursor: pointer; flex-shrink: 0; }
 .file-item:hover .file-quick { display: flex; }
 .file-item .file-quick:hover { background: var(--bg4); color: var(--fg); }
-.file-item .file-actions { display: none; position: absolute; right: 6px; top: 50%; transform: translateY(-50%); gap: 2px; background: var(--bg4); border-radius: var(--radius); padding: 2px; }
 /* Sticky group dividers */
 .file-group { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 7px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--fg3); font-family: var(--font-ui); padding: 9px 12px 4px; background: var(--bg2); background: color-mix(in srgb, var(--bg2) 88%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
 .file-group::after { content: ''; flex: 1; height: 1px; background: var(--border); }
@@ -591,10 +593,8 @@ svg { display: block; }
 .file-skel:nth-child(3n+1) .sk-l2 { width: 44%; }
 .file-skel .sk-ico, .file-skel .sk-l1, .file-skel .sk-l2 { background: linear-gradient(90deg, var(--bg3) 25%, var(--bg4) 50%, var(--bg3) 75%); background-size: 200% 100%; animation: skShimmer 1.2s ease-in-out infinite; }
 @keyframes skShimmer { to { background-position: -200% 0; } }
-.file-item:hover .file-actions { display: flex; }
 .file-action-btn { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-sm); font-size: 11px; color: var(--fg2); }
 @media (hover: none) and (pointer: coarse) {
-  .file-item .file-actions { display: flex; }
   .file-item .file-quick { display: flex; }
   .file-item:hover { background: var(--bg3); }
   .file-action-btn { width: 36px; height: 36px; }
@@ -698,7 +698,7 @@ svg { display: block; }
 .shortcuts-table td { padding: 6px 0; font-size: 12.5px; color: var(--fg); border-bottom: 1px solid var(--border); }
 .shortcuts-table td:first-child { color: var(--fg2); white-space: nowrap; padding-right: 16px; width: 1%; }
 .shortcuts-table tr:last-child td { border-bottom: none; }
-kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-size: 11px; color: var(--fg); background: var(--bg1); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; }
+kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-size: 11px; color: var(--fg); background: var(--bg3); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; }
 .btn { height: 34px; padding: 0 16px; border-radius: var(--radius); font-size: 13px; font-family: var(--font); cursor: pointer; transition: all var(--transition-fast); border: 1px solid transparent; }
 #conflict-modal.modal-sm { width: 380px; }
 #conflict-heading { font-size: 15px; margin-bottom: 8px; color: var(--fg); }
@@ -1350,7 +1350,11 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
       if (theme === 'system') {
         theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dracula' : 'light';
       }
+      // Set BOTH: applyTheme() writes body + documentElement, and the CSS
+      // theme variables live on [data-theme=…]. Setting only body here left
+      // getXtermTheme()'s documentElement lookup reading :root on first paint.
       document.body.dataset.theme = theme;
+      document.documentElement.dataset.theme = theme;
     } catch(e){ console.warn('Settings init error:', e); }
   })();
 </script>
@@ -1361,7 +1365,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
     <div class="pin-eyebrow">Secure access</div>
     <h1 style="display:flex;align-items:center;justify-content:center;gap:6px"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="10" y2="8"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="6" y1="16" x2="8" y2="16"/><line x1="12" y1="8" x2="18" y2="8"/><line x1="12" y1="12" x2="18" y2="12"/><line x1="12" y1="16" x2="16" y2="16"/><line x1="10" y1="16" x2="10" y2="16"/></svg>WebTun</h1>
     <p>Enter PIN to continue</p>
-    <input id="pin-input" type="password" placeholder="••••" autocomplete="off" maxlength="32" inputmode="text" aria-label="PIN code">
+    <input id="pin-input" type="password" placeholder="••••" autocomplete="off" maxlength="64" inputmode="text" aria-label="PIN code">
     <div id="pin-error" role="alert"></div>
     <div style="margin-top:12px">
       <button class="btn btn-primary" id="pin-unlock-btn" onclick="submitPin()">Unlock</button>
@@ -1588,7 +1592,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
       <div id="editor-split-area">
         <div id="terminals">
           <div id="search-bar">
-            <input id="search-input" type="text" placeholder="Search…" oninput="doSearch()" onkeydown="searchKeydown(event)">
+            <input id="search-input" type="text" placeholder="Search…" oninput="queueSearch()" onkeydown="searchKeydown(event)">
             <span id="search-results"></span>
             <button class="search-btn" title="Prev (Shift+Enter)" onclick="searchPrev()">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
@@ -1873,11 +1877,15 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
           <h3>Terminal</h3>
           <div class="setting-row">
             <label for="s-scrollback">Scrollback Lines</label>
-            <input type="number" id="s-scrollback" min="100" max="100000" value="5000" onchange="applyScrollback(+this.value)">
+            <input type="number" id="s-scrollback" min="100" max="50000" value="5000" onchange="applyScrollback(+this.value)">
           </div>
           <div class="setting-row">
             <label for="s-bell-cb">Bell Sound</label>
             <div class="toggle" id="s-bell" role="switch" tabindex="0" aria-checked="false" onclick="toggleSetting('bell')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('bell')}"><input type="checkbox" id="s-bell-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
+          </div>
+          <div class="setting-row">
+            <label for="s-clipboardRead-cb">Allow terminal clipboard read</label>
+            <div class="toggle" id="s-clipboardRead" role="switch" tabindex="0" aria-checked="false" onclick="toggleSetting('clipboardRead')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('clipboardRead')}"><input type="checkbox" id="s-clipboardRead-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
           </div>
           <div class="setting-row">
             <label for="s-termRightClick-cb">Right-Click Menu</label>
@@ -2234,7 +2242,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
   <button class="btn btn-primary" style="height:32px;padding:0 12px;font-size:12px" onclick="installPWA()">Install</button>
 </div>
 
-<script src="/commands.js"></script>
+<script defer src="/commands.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════
 let authToken = '';
@@ -2615,54 +2623,64 @@ async function unlockApp() {
 
   loadFiles(currentPath);
   renderBookmarks();
-  startScreensaverWatch();
-  setupDragDrop();
-  setupTabBarDnD();
-  setupKeyboardShortcuts();
-  startFileWatcher();
-  setupMobileKeys();
-  window._cleanups = [];
-  const onResizeMobileKeys = () => { clearTimeout(window._resizeMkTimer); window._resizeMkTimer = setTimeout(setupMobileKeys, 150); };
-  window.addEventListener('resize', onResizeMobileKeys);
-  window._cleanups.push(() => window.removeEventListener('resize', onResizeMobileKeys));
-  registerSW();
   restoreTunnels();
-  setupSwipeGestures();
-  setupFileListTouch();
-  setupFileListClicks();
-  setupFileListKeyboard();
-  setupFileListContextMenu();
-  setupCtxMenuKeyboard();
-  setupMoreMenuKeyboard();
-  restoreSidebarWidth();
-  setupSidebarResize();
-  setupEditorResize();
-  window.addEventListener('resize', updateSidebarNarrowClass);
-  window._cleanups.push(() => window.removeEventListener('resize', updateSidebarNarrowClass));
-  document.getElementById('tab-scroll').setAttribute('role', 'tablist');
-  document.getElementById('file-list-wrap').setAttribute('role', 'listbox');
+  setupMobileKeys();
 
-  // Arrow-key navigation between tabs when focus is in the tab strip
-  document.getElementById('tab-scroll').addEventListener('keydown', e => {
-    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-      e.preventDefault();
-      cycleTab(e.key === 'ArrowRight' ? 1 : -1);
-      const t = getActiveTab();
-      if (t?.el) t.el.focus();
-    } else if (e.key === 'Home') {
-      e.preventDefault();
-      if (tabs.length) { activateTab(tabs[0].id); tabs[0].el.focus(); }
-    } else if (e.key === 'End') {
-      e.preventDefault();
-      if (tabs.length) { activateTab(tabs[tabs.length - 1].id); tabs[tabs.length - 1].el.focus(); }
-    }
-  });
+  // ── One-time wiring ────────────────────────────────────────────────────
+  // Everything below binds global document/window listeners. unlockApp() runs
+  // again after sign-out → re-login, and re-running this block stacked
+  // duplicate handlers, so a single Ctrl+T opened N tabs and one Escape
+  // toggled overlays repeatedly. `_cleanups` is only flushed on pagehide, so
+  // it must not be reset here either — the old callbacks are still live.
+  if (!window._wiringDone) {
+    window._wiringDone = true;
+    window._cleanups = window._cleanups || [];
+    startScreensaverWatch();
+    setupDragDrop();
+    setupTabBarDnD();
+    setupKeyboardShortcuts();
+    startFileWatcher();
+    const onResizeMobileKeys = () => { clearTimeout(window._resizeMkTimer); window._resizeMkTimer = setTimeout(setupMobileKeys, 150); };
+    window.addEventListener('resize', onResizeMobileKeys);
+    window._cleanups.push(() => window.removeEventListener('resize', onResizeMobileKeys));
+    registerSW();
+    setupSwipeGestures();
+    setupFileListTouch();
+    setupFileListClicks();
+    setupFileListKeyboard();
+    setupFileListContextMenu();
+    setupCtxMenuKeyboard();
+    setupMoreMenuKeyboard();
+    restoreSidebarWidth();
+    setupSidebarResize();
+    setupEditorResize();
+    window.addEventListener('resize', updateSidebarNarrowClass);
+    window._cleanups.push(() => window.removeEventListener('resize', updateSidebarNarrowClass));
+    document.getElementById('tab-scroll').setAttribute('role', 'tablist');
+    document.getElementById('file-list-wrap').setAttribute('role', 'listbox');
 
-  // Listen for system theme changes
-  const systemThemeMql = window.matchMedia('(prefers-color-scheme: dark)');
-  const onSystemThemeChange = () => { if (settings.theme === 'system') applyTheme('system'); };
-  systemThemeMql.addEventListener('change', onSystemThemeChange);
-  window._cleanups.push(() => systemThemeMql.removeEventListener('change', onSystemThemeChange));
+    // Arrow-key navigation between tabs when focus is in the tab strip
+    document.getElementById('tab-scroll').addEventListener('keydown', e => {
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        cycleTab(e.key === 'ArrowRight' ? 1 : -1);
+        const t = getActiveTab();
+        if (t?.el) t.el.focus();
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        if (tabs.length) { activateTab(tabs[0].id); tabs[0].el.focus(); }
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        if (tabs.length) { activateTab(tabs[tabs.length - 1].id); tabs[tabs.length - 1].el.focus(); }
+      }
+    });
+
+    // Listen for system theme changes
+    const systemThemeMql = window.matchMedia('(prefers-color-scheme: dark)');
+    const onSystemThemeChange = () => { if (settings.theme === 'system') applyTheme('system'); };
+    systemThemeMql.addEventListener('change', onSystemThemeChange);
+    window._cleanups.push(() => systemThemeMql.removeEventListener('change', onSystemThemeChange));
+  }
 
   // Restore tabs from last session, or open a fresh one
   const saved = loadTabState();
@@ -2680,26 +2698,37 @@ async function unlockApp() {
     newTab();
   }
 
-  const onVisibilityChange = () => {
-    if (document.visibilityState === 'visible') {
-      tabs.forEach(tab => {
-        if (tab.closed) return;
-        if (!tab.ws || tab.ws.readyState !== WebSocket.OPEN) {
-          if (!tab.reconnectTimer) {
-            tab.reconnectDelay = 1000;
-            connectWebSocket(tab, true);
-          }
-        }
-      });
-    }
-  };
-  document.addEventListener('visibilitychange', onVisibilityChange);
-  window._cleanups.push(() => document.removeEventListener('visibilitychange', onVisibilityChange));
+  // App/PWA shortcut (?newTerm=1 from the manifest): it had no handler, so the
+  // shortcut was just a duplicate of a normal launch.
+  try {
+    if (new URLSearchParams(location.search).get('newTerm') === '1') newTab();
+  } catch {}
 
-  window.addEventListener('pagehide', () => {
-    window._cleanups?.forEach(fn => { try { fn(); } catch(e) { console.warn(e); } });
-    window._cleanups = [];
-  });
+  // Same one-time rule as the wiring block above: this reads the live `tabs`
+  // array, so it must only ever be registered once.
+  if (!window._visibilityWired) {
+    window._visibilityWired = true;
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        tabs.forEach(tab => {
+          if (tab.closed) return;
+          if (!tab.ws || tab.ws.readyState !== WebSocket.OPEN) {
+            if (!tab.reconnectTimer) {
+              tab.reconnectDelay = 1000;
+              connectWebSocket(tab, true);
+            }
+          }
+        });
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window._cleanups.push(() => document.removeEventListener('visibilitychange', onVisibilityChange));
+
+    window.addEventListener('pagehide', () => {
+      window._cleanups?.forEach(fn => { try { fn(); } catch(e) { console.warn(e); } });
+      window._cleanups = [];
+    });
+  }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -2886,6 +2915,9 @@ function createTabButton(tab) {
   tabEl.className = 'tab';
   tabEl.setAttribute('role', 'tab');
   tabEl.setAttribute('aria-selected', 'false');
+  // Roving tabindex: only the active tab is in the tab order, so Tab reaches
+  // the strip and the arrow keys move between tabs (activateTab updates this).
+  tabEl.tabIndex = -1;
   tabEl.dataset.id = id;
   tabEl.draggable = true;
 
@@ -2966,8 +2998,21 @@ function activateTab(id) {
   activeTabId = id;
   tabs.forEach(t => {
     t.el?.classList.toggle('active', t.id === id);
-    if (t.el) t.el.setAttribute('aria-selected', t.id === id ? 'true' : 'false');
-    if (t.wrapper) t.wrapper.classList.toggle('active', t.id === id);
+    if (t.el) {
+      t.el.setAttribute('aria-selected', t.id === id ? 'true' : 'false');
+      t.el.tabIndex = t.id === id ? 0 : -1;
+    }
+    if (t.wrapper) {
+      t.wrapper.classList.toggle('active', t.id === id);
+      // Wire tab ↔ panel for assistive tech (ids are generated once).
+      if (!t.wrapper.id) t.wrapper.id = 'tabpanel-' + t.id;
+      if (!t.wrapper.getAttribute('role')) t.wrapper.setAttribute('role', 'tabpanel');
+      if (t.el) {
+        if (!t.el.id) t.el.id = 'tab-' + t.id;
+        t.el.setAttribute('aria-controls', t.wrapper.id);
+        t.wrapper.setAttribute('aria-labelledby', t.el.id);
+      }
+    }
   });
   const tab = tabs.find(t => t.id === id);
   if (tab?.fitAddon) setTimeout(() => fitTerm(tab), 60);
@@ -3322,17 +3367,21 @@ function connectWebSocket(tab, isReconnect = false) {
               const targets = parts[0] || 'c';
               const b64 = parts.slice(1).join(';');
               if (b64) {
-                // SET clipboard
+                // SET clipboard — always honored (a program can only overwrite,
+                // never read). UTF-8 safe, so emoji/CJK are no longer dropped.
                 try {
-                  const decoded = atob(b64);
+                  const decoded = b64ToUtf8(b64);
                   if (targets.includes('c') || targets.includes('p')) {
                     navigator.clipboard.writeText(decoded).catch(() => {});
                   }
                 } catch (_) {}
-              } else {
-                // GET clipboard — respond with current clipboard contents
+              } else if (settings.clipboardRead) {
+                // GET clipboard — opt-in (Settings → Terminal). Any remote
+                // output could otherwise pull the local clipboard into the
+                // session with no prompt at all: a stray
+                // `printf '\e]52;c;?'`, a malicious script, a pasted payload.
                 navigator.clipboard.readText().then(text => {
-                  const response = '\x1b]52;c;' + btoa(text) + '\x07';
+                  const response = '\x1b]52;c;' + utf8ToB64(text) + '\x07';
                   if (tab.ws && tab.ws.readyState === WebSocket.OPEN) {
                     const enc = new TextEncoder().encode(response);
                     const buf = new Uint8Array(1 + enc.length);
@@ -3340,6 +3389,9 @@ function connectWebSocket(tab, isReconnect = false) {
                     tab.ws.send(buf.buffer);
                   }
                 }).catch(() => {});
+              } else if (!tab._clipReadHintShown) {
+                tab._clipReadHintShown = true;
+                toast('A program asked to read your clipboard — enable "Allow terminal clipboard read" in Settings', 'warning');
               }
             }
           }
@@ -3356,8 +3408,21 @@ function connectWebSocket(tab, isReconnect = false) {
     }
   }
 
-  ws.onmessage = e => {
-    const buf = new Uint8Array(e.data);
+  // Defensive: ws.binaryType is set to 'arraybuffer' right after construction,
+  // but a Blob frame (or an unexpected string frame) must not throw inside the
+  // message handler — that would kill the socket handler mid-session.
+  ws.onmessage = async e => {
+    let buf;
+    if (e.data instanceof ArrayBuffer) {
+      buf = new Uint8Array(e.data);
+    } else if (typeof Blob !== 'undefined' && e.data instanceof Blob) {
+      try { buf = new Uint8Array(await e.data.arrayBuffer()); } catch { return; }
+    } else if (typeof e.data === 'string') {
+      buf = new TextEncoder().encode(e.data);
+    } else {
+      return;
+    }
+    if (!buf.length) return;
     const type = buf[0], payload = buf.slice(1);
     if (type === 0x00) processTerminalOutput(payload);
     else if (type === 0x01) tab.term.writeln('\r\n\x1b[31m[Process exited]\x1b[0m');
@@ -3505,10 +3570,13 @@ async function closeTab(e, id) {
     if (!ok) return;
   }
 
-  // Check for unsaved editor changes
+  // Check for unsaved editor changes. Doc previews (PDF/EPUB/Office) hold no
+  // CodeMirror document — the buffer is stale, so comparing it raised false
+  // "unsaved changes" prompts. Same guard closeEditor() uses.
   const editorOpen = document.getElementById('editor-view').classList.contains('open');
   const currentContent = editor ? editor.getValue() : '';
-  if (editorOpen && currentContent !== editorOriginalContent) {
+  const isDocPreview = !!(_pdfDoc || _epubBook || _officePath);
+  if (editorOpen && !isDocPreview && currentContent !== editorOriginalContent) {
     const ok = await confirmDialog({ title: 'Unsaved changes', message: 'You have unsaved changes. Close anyway?', okText: 'Close', cancelText: 'Cancel', danger: true });
     if (!ok) return;
   }
@@ -3526,6 +3594,11 @@ async function closeTab(e, id) {
     cleanupScrollHandlers();
   }
   tab.resizeObserver?.disconnect();
+  // Release the GL context explicitly: browsers cap WebGL contexts (~16), and
+  // after that new terminals silently lose the GPU renderer.
+  try { tab._webglAddon?.dispose(); } catch {}
+  tab._webglAddon = null;
+  try { tab._searchResultsSub?.dispose?.(); } catch {}
   tab.term?.dispose();
   try { if (tab.iframe) tab.iframe.src = 'about:blank'; } catch {}
   tab.el?.remove();
@@ -3663,7 +3736,7 @@ async function tickLpPulse() {
   const el = document.getElementById('lp-pulse');
   if (!el || !document.getElementById('launchpad')?.classList.contains('show')) return;
   try {
-    const s = await api('/api/system');
+    const s = await fetchSystemStats();
     if (!s || !document.getElementById('launchpad')?.classList.contains('show')) return;
     const load = s.cpu && s.cpu.loadAvg ? Number(s.cpu.loadAvg[0]).toFixed(2) : '–';
     const cpu = s.cpu && s.cpu.usage !== undefined ? s.cpu.usage + '%' : '–';
@@ -3820,6 +3893,24 @@ function initTerminal(tab) {
   term.loadAddon(searchAddon);
   term.loadAddon(webLinksAddon);
 
+  // Real match counts. addon-search has no getDecorations(), so the UI used to
+  // print a hardcoded "1/1"; onDidChangeResults is the actual API and fires
+  // when a search carries decorations (see SEARCH_DECORATIONS).
+  try {
+    tab._searchResultsSub = searchAddon.onDidChangeResults(res => {
+      try {
+        if (getActiveTab() !== tab) return;
+        const el = document.getElementById('search-results');
+        if (!el) return;
+        const q = document.getElementById('search-input')?.value || '';
+        if (!q) { el.textContent = ''; return; }
+        // resultIndex is -1 when the match limit is exceeded.
+        if (!res || res.resultIndex < 0 || !res.resultCount) { el.textContent = q ? 'No results' : ''; return; }
+        el.textContent = `${res.resultIndex + 1}/${res.resultCount}`;
+      } catch {}
+    });
+  } catch (_) {}
+
   try {
     const unicodeAddon = new Unicode11Addon.Unicode11Addon();
     term.loadAddon(unicodeAddon);
@@ -3848,7 +3939,7 @@ function initTerminal(tab) {
     tab.textarea.name = 'terminal-input';
   }
 
-  // Intercept paste events to use bracketed paste mode (required for TUI apps like vim, nano, mc) — chunk 60KB with loop
+  // Intercept paste events to use bracketed paste mode (required for TUI apps like vim, nano, mc).
   // NOTE: xterm.js also listens for 'paste' on the same textarea and re-emits
   // it via onData. Without stopping propagation our bracketed send + xterm's
   // send fire together, pasting everything twice (notably with the native
@@ -3861,15 +3952,10 @@ function initTerminal(tab) {
       const text = (e.clipboardData || window.clipboardData)?.getData('text');
       if (!text || !tab.ws || tab.ws.readyState !== WebSocket.OPEN) return;
       tab._lastPasteText = text;
+      // sendWsInput() chunks on character boundaries — the old fixed 60KB byte
+      // slices cut multibyte characters in half, showing up as � in the shell.
       const bracketed = '\x1b[200~' + text + '\x1b[201~';
-      const enc = new TextEncoder().encode(bracketed);
-      const CHUNK = 60 * 1024;
-      for (let off = 0; off < enc.length; off += CHUNK) {
-        const slice = enc.subarray(off, Math.min(off + CHUNK, enc.length));
-        const buf = new Uint8Array(1 + slice.length);
-        buf[0] = 0x00; buf.set(slice, 1);
-        try { tab.ws.send(buf.buffer); } catch {}
-      }
+      try { sendWsInput(tab.ws, bracketed); } catch {}
     }, true);
   }
 
@@ -3908,6 +3994,12 @@ function initTerminal(tab) {
 
   // Resize observer
   tab.resizeObserver = new ResizeObserver(() => {
+    // In tile view every wrapper is visible, so background tiles must refit
+    // too — they used to stay at their old size forever.
+    if (tilesMode) {
+      tabs.forEach(t => { if (t.term && t.wrapper) { try { fitTerm(t); } catch {} } });
+      return;
+    }
     if (activeTabId === tab.id) { try { fitTerm(tab); } catch(e) { console.warn(e); } }
   });
   tab.resizeObserver.observe(tab.wrapper);
@@ -4009,12 +4101,7 @@ function initTerminal(tab) {
     if (e.ctrlKey || e.metaKey) return;
     e.preventDefault();
     // TUI apps with mouse tracking handle scroll themselves — forward the event to xterm.js
-    let isTracking = false;
-    try {
-      const core = term._core;
-      if (core?.coreMouseService?.isMouseTrackingActive?.()) isTracking = core.coreMouseService.isMouseTrackingActive();
-      // fallback check via private API may throw across xterm versions
-    } catch (_) { isTracking = false; }
+    const isTracking = xtermMouseTracking(term);
     if (isTracking) {
       try {
         const vp = tab.wrapper.querySelector('.xterm-viewport');
@@ -4028,18 +4115,7 @@ function initTerminal(tab) {
     let delta = e.deltaY;
     if (e.deltaMode === 1) delta *= 16;
     else if (e.deltaMode === 2) delta *= 16 * term.rows;
-    let lineHeight = 16;
-    try {
-      const d = term._core?.viewportRenderer?.dimensions;
-      if (d?.actualCellHeight) lineHeight = d.actualCellHeight;
-      else {
-        const rowsEl = tab.wrapper.querySelector('.xterm-rows');
-        lineHeight = rowsEl && rowsEl.children[0] ? rowsEl.children[0].getBoundingClientRect().height || 16 : 16;
-      }
-    } catch (_) {
-      const rowsEl = tab.wrapper.querySelector('.xterm-rows');
-      lineHeight = rowsEl && rowsEl.children[0] ? rowsEl.children[0].getBoundingClientRect().height || 16 : 16;
-    }
+    const lineHeight = xtermCharHeight(term, tab.wrapper);
     const lines = Math.sign(delta) * Math.max(1, Math.round(Math.abs(delta) / lineHeight));
     term.scrollLines(lines);
   }, { passive: false });
@@ -4067,14 +4143,9 @@ function initTerminal(tab) {
         const newSize = Math.max(10, Math.min(28, curSize + (delta > 0 ? 1 : -1)));
         tab.term.options.fontSize = newSize;
         if (tab.fitAddon) tab.fitAddon.fit();
-        if (!window._pinchSaveTimer) {
-          window._pinchSaveTimer = setTimeout(() => {
-            const persisted = JSON.parse(safeStorage.getItem('wt-settings') || '{}');
-            persisted.fontSize = tab.term.options.fontSize;
-            safeStorage.setItem('wt-settings', JSON.stringify(persisted));
-            window._pinchSaveTimer = null;
-          }, 500);
-        }
+        // Deliberately NOT persisted: a pinch gesture is transient, and writing it into
+        // wt-settings silently changed the user's saved default for every future tab.
+        // Font size is set deliberately from Settings → Appearance.
         lastPinchDist = dist;
       }
     }
@@ -4086,10 +4157,41 @@ function initTerminal(tab) {
 
 function getActiveTab() { return tabs.find(t => t.id === activeTabId); }
 
+// ── xterm private-API isolation ─────────────────────────────────────────────
+// xterm.js exposes no public API for cell metrics or mouse-tracking state — the
+// official fit addon reads the same `_core` internals. All such access lives in
+// these three helpers so an upgrade that renames them breaks exactly one place
+// (each has a DOM/`term.modes` fallback rather than throwing).
+function xtermCellMetrics(term) {
+  try {
+    const d = term?._core?.viewportRenderer?.dimensions || term?._core?._renderService?.dimensions;
+    if (d && d.actualCellWidth && d.actualCellHeight) return d;
+  } catch (_) {}
+  return null;
+}
+function xtermMouseTracking(term) {
+  try {
+    // Public API (xterm ≥5): 'none' | 'x10' | 'vt200' | 'drag' | 'any'
+    const mode = term?.modes?.mouseTrackingMode;
+    if (typeof mode === 'string') return mode !== 'none';
+  } catch (_) {}
+  try {
+    const svc = term?._core?.coreMouseService;
+    if (svc && typeof svc.isMouseTrackingActive === 'function') return !!svc.isMouseTrackingActive();
+  } catch (_) {}
+  return false;
+}
+function xtermCharHeight(term, wrapper) {
+  const d = xtermCellMetrics(term);
+  if (d?.actualCellHeight) return d.actualCellHeight;
+  const rowsEl = wrapper?.querySelector ? wrapper.querySelector('.xterm-rows') : null;
+  return rowsEl && rowsEl.children[0] ? (rowsEl.children[0].getBoundingClientRect().height || 16) : 16;
+}
+
 function fitTerm(tab) {
   try {
     if (!tab?.term?.element || !tab.wrapper) return;
-    const d = tab.term._core?.viewportRenderer?.dimensions;
+    const d = xtermCellMetrics(tab.term);
     if (!d || !d.actualCellWidth || !d.actualCellHeight) {
       if (tab.fitAddon) { tab.fitAddon.fit(); }
       return;
@@ -4201,9 +4303,8 @@ function layoutTiles() {
     hdr.setAttribute('aria-label', 'Activate ' + tab.title);
     const tthName = document.createElement('span');
     tthName.className = 'tth-name';
-    tthName.setAttribute('tabindex', '0');
-    tthName.setAttribute('role', 'button');
-    tthName.setAttribute('aria-label', 'Focus terminal ' + tab.title);
+    // Plain span on purpose: `hdr` is already the button (role=button +
+    // tabindex). A nested focusable role=button is invalid for screen readers.
     tthName.textContent = tab.title;
     hdr.appendChild(tthName);
     const tthClose = document.createElement('button');
@@ -4217,10 +4318,9 @@ function layoutTiles() {
       activateTab(tab.id);
     });
     hdr.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activateTab(tab.id); }
-    });
-    tthName.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); activateTab(tab.id); tab.term?.focus(); }
+      // Enter/Space on the header both activates and focuses the terminal, which
+      // is what the (now removed) nested name button used to do.
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activateTab(tab.id); tab.term?.focus(); }
     });
     hdr.querySelector('.tth-close').addEventListener('click', e => {
       e.stopPropagation();
@@ -4233,11 +4333,32 @@ function layoutTiles() {
   }, 60);
 }
 
+// UTF-8 safe base64 (OSC 52). atob/btoa are Latin-1 only and throw on
+// emoji/CJK — those payloads silently lost the clipboard sync entirely.
+function b64ToUtf8(b64) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+function utf8ToB64(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = '';
+  const CHUNK = 0x8000; // chunked: avoid blowing the arg limit on big clips
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(bin);
+}
+
 // ═══════════════════════════════════════════════════════
 // XTERM THEME
 // ═══════════════════════════════════════════════════════
+// Read the theme variables off <body>, which is the element that actually
+// carries the resolved [data-theme=…]; documentElement only had it after an
+// explicit applyTheme(), so the first terminal painted with the wrong palette.
 function getXtermTheme() {
-  const s = getComputedStyle(document.documentElement);
+  const s = getComputedStyle(document.body || document.documentElement);
   const g = v => s.getPropertyValue(v).trim();
   return {
     background: g('--bg'), foreground: g('--fg'), cursor: g('--accent'),
@@ -4251,7 +4372,7 @@ function getXtermTheme() {
 }
 
 function getXtermSelectionTheme() {
-  const s = getComputedStyle(document.documentElement);
+  const s = getComputedStyle(document.body || document.documentElement);
   const g = v => s.getPropertyValue(v).trim();
   return {
     extension: true,
@@ -4583,15 +4704,31 @@ function cycleFileSort() {
   if (currentPath) loadFiles(currentPath);
 }
 
-// Icon tile kind mirroring getFileIcon() groups (dir/code/image/doc/archive/file)
+// Single source of truth for extension → kind, shared by fileKind() (tile colour)
+// and getFileIcon() (inline SVG). These used to be two hand-maintained lists that
+// drifted: `.mjs`/`.cjs`/`.bash`/`.swift` got the *code* icon on a generic tile,
+// while `.txt`/`.md`/`.docx` got the generic icon on a *doc* tile. One map, one answer.
+const EXT_KIND = (() => {
+  const groups = {
+    code: ['.js','.jsx','.mjs','.cjs','.ts','.tsx','.json','.py','.c','.h','.cpp','.cc','.hpp','.java','.cs','.sh','.bash','.html','.htm','.css','.xml','.yml','.yaml','.toml','.sql','.go','.rs','.rb','.php','.pl','.swift','.kt','.dart','.lua','.r'],
+    // .svg lives here, not under code: it is previewable inline as an image.
+    img: ['.png','.jpg','.jpeg','.gif','.webp','.ico','.bmp','.avif','.svg'],
+    doc: ['.pdf','.epub','.doc','.docx','.xls','.xlsx','.ppt','.pptx','.txt','.md'],
+    zip: ['.zip','.tar','.gz','.tgz','.bz2','.xz','.7z','.rar'],
+  };
+  const m = new Map();
+  for (const [kind, exts] of Object.entries(groups)) for (const e of exts) m.set(e, kind);
+  return m;
+})();
+
+// Icon tile kind (dir/code/img/doc/zip/file) — the values are also CSS class suffixes.
 function fileKind(ext, isDir) {
   if (isDir) return 'dir';
-  const e = (ext || '').toLowerCase();
-  if (['.js','.jsx','.mjs','.cjs','.ts','.tsx','.json','.py','.c','.h','.cpp','.cc','.hpp','.java','.cs','.sh','.bash','.html','.htm','.css','.xml','.svg','.yml','.yaml','.toml','.sql','.go','.rs','.rb','.php','.pl','.swift','.kt','.dart','.lua','.r'].includes(e)) return 'code';
-  if (['.png','.jpg','.jpeg','.gif','.webp','.ico','.bmp','.avif'].includes(e)) return 'img';
-  if (['.pdf','.epub','.doc','.docx','.xls','.xlsx','.ppt','.pptx','.txt','.md'].includes(e)) return 'doc';
-  if (['.zip','.tar','.gz','.bz2','.xz','.7z','.rar','.tgz'].includes(e)) return 'zip';
-  return 'file';
+  return EXT_KIND.get((ext || '').toLowerCase()) || 'file';
+}
+
+function extKind(ext) {
+  return EXT_KIND.get((ext || '').toLowerCase()) || 'file';
 }
 
 function timeAgo(ts) {
@@ -4845,16 +4982,18 @@ function startFileWatcher() {
   fileWatchTimer = setInterval(watch, 10000);
 }
 
+// Icon per kind — same EXT_KIND map as fileKind(), so the glyph and the tile colour
+// can never disagree for a given extension again.
+const FILE_ICONS = {
+  code: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
+  img: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>',
+  doc: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>',
+  zip: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/></svg>',
+  file: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+};
+
 function getFileIcon(ext) {
-  const codeExts = { '.js':1,'.ts':1,'.jsx':1,'.tsx':1,'.py':1,'.rs':1,'.go':1,'.java':1,'.c':1,'.cpp':1,'.html':1,'.css':1,'.sh':1,'.yml':1,'.yaml':1,'.toml':1,'.json':1,'.sql':1 };
-  const imgExts = { '.png':1,'.jpg':1,'.jpeg':1,'.gif':1,'.svg':1,'.webp':1,'.ico':1 };
-  const archiveExts = { '.zip':1,'.tar':1,'.gz':1,'.bz2':1,'.xz':1,'.7z':1,'.rar':1 };
-  const docExts = { '.pdf':1,'.epub':1 };
-  if (codeExts[ext]) return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>';
-  if (imgExts[ext]) return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>';
-  if (docExts[ext]) return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>';
-  if (archiveExts[ext]) return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/></svg>';
-  return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+  return FILE_ICONS[extKind(ext)];
 }
 
 function escHtml(str) {
@@ -4974,7 +5113,17 @@ document.getElementById('path-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') { e.preventDefault(); exitPathEdit(true); }
   else if (e.key === 'Escape') { e.preventDefault(); exitPathEdit(false); }
 });
-document.getElementById('path-input').addEventListener('blur', () => exitPathEdit(false));
+// Blur commits a *changed* path instead of silently throwing it away. Tapping
+// elsewhere (which dismisses the mobile keyboard) used to look like the field was
+// broken — the typed path vanished with no feedback.
+document.getElementById('path-input').addEventListener('blur', () => {
+  const bar = document.getElementById('path-bar');
+  const input = document.getElementById('path-input');
+  if (!bar || !input || !bar.classList.contains('editing')) return;
+  const typed = (input.value || '').trim();
+  if (typed && typed !== currentPath) exitPathEdit(true);
+  else exitPathEdit(false);
+});
 
 // ═══════════════════════════════════════════════════════
 // CONTEXT MENU
@@ -5655,12 +5804,22 @@ async function uploadFileList(items) {
         xhr.open('POST', `/api/files/upload?path=${path}`);
         xhr.setRequestHeader('x-pin-token', authToken);
         
+        // Progress fires per network chunk (dozens per second) and each event used to
+        // write style.width + textContent. Coalesce layout work into a frame, and
+        // rate-limit the text update to ~4 Hz.
+        let _progRaf = 0, _progLastText = 0, _progPct = 0;
+        const paintUploadProgress = () => {
+          _progRaf = 0;
+          const now = Date.now();
+          const showText = now - _progLastText >= 250;
+          if (showText) _progLastText = now;
+          const overallPct = ((completed + (_progPct / 100)) / total) * 100;
+          setUploadProgress(overallPct, '', showText ? `${fileName} (${_progPct}%)` : undefined);
+        };
         xhr.upload.addEventListener('progress', e => {
-          if (e.lengthComputable) {
-            const pct = Math.round((e.loaded / e.total) * 100);
-            const overallPct = ((completed + (pct / 100)) / total) * 100;
-            setUploadProgress(overallPct, '', `${fileName} (${pct}%)`);
-          }
+          if (!e.lengthComputable) return;
+          _progPct = Math.round((e.loaded / e.total) * 100);
+          if (!_progRaf) _progRaf = requestAnimationFrame(paintUploadProgress);
         });
         
         xhr.onload = () => {
@@ -5757,7 +5916,7 @@ function initCodeMirror() {
       },
     }
   });
-  editor.on('change', () => { updateEditorDirty(); autoSaveDraft(); });
+  editor.on('change', () => { updateEditorDirty(); autoSaveDraft(); schedulePreviewLiveReload(); });
   return editor;
 }
 let _autoSaveTimer = null;
@@ -5777,6 +5936,9 @@ function autoSaveDraft() {
 }
 function loadDraft(p) {
   try { return safeStorage.getItem('wt-draft:' + p); } catch { return null; }
+}
+function removeDraft(p) {
+  try { safeStorage.removeItem('wt-draft:' + p); } catch {}
 }
 
 function updateEditorDirty() {
@@ -5814,7 +5976,10 @@ function getCMmode(fileName) {
     case 'php': return 'php';
     case 'pl': case 'pm': return 'perl';
     case 'swift': return 'swift';
-    case 'kt': case 'kts': return 'text/x-kotlin';
+    // No kotlin mode exists in the pinned codemirror@5.65.18 bundle, and naming
+    // a mode that was never loaded only produced a CodeMirror warning plus a
+    // silent plain-text fallback. Fall back deliberately instead.
+    case 'kt': case 'kts': return null;
     case 'dart': return 'dart';
     case 'lua': return 'lua';
     case 'r': return 'r';
@@ -5823,6 +5988,49 @@ function getCMmode(fileName) {
     case 'ps1': case 'psm1': return 'powershell';
     default: return null;
   }
+}
+
+// Language modes that are NOT in the first-paint <script> set: fetched only
+// when a file of that type is actually opened (verified present on the CDN for
+// the pinned version). Modes loaded eagerly at boot keep their existing tags.
+const CM_BASE = 'https://cdn.jsdelivr.net/npm/codemirror@5.65.18/';
+const CM_LAZY_MODES = {
+  ruby: 'mode/ruby/ruby.min.js',
+  php: 'mode/php/php.min.js',
+  perl: 'mode/perl/perl.min.js',
+  swift: 'mode/swift/swift.min.js',
+  dart: 'mode/dart/dart.min.js',
+  lua: 'mode/lua/lua.min.js',
+  r: 'mode/r/r.min.js',
+  toml: 'mode/toml/toml.min.js',
+  powershell: 'mode/powershell/powershell.min.js'
+};
+const _cmModeFailed = new Set();
+function cmModeLoaded(name) {
+  try {
+    return !!((CodeMirror.modes && CodeMirror.modes[name]) || (CodeMirror.mimeModes && CodeMirror.mimeModes[name]));
+  } catch { return false; }
+}
+// Resolves the CM mode spec for a filename, fetching the mode script if needed.
+// Never throws: falls back to plain text so the editor always opens.
+async function resolveCMmode(fileName) {
+  const spec = getCMmode(fileName);
+  if (!spec) return 'text/plain';
+  const name = typeof spec === 'string' ? spec : spec.name;
+  const url = CM_LAZY_MODES[name];
+  if (!url) return spec;                       // already in the page / MIME-based mode
+  if (cmModeLoaded(name)) return spec;
+  if (_cmModeFailed.has(name)) return 'text/plain';
+  try {
+    await loadScript(CM_BASE + url);
+  } catch (e) {
+    // Offline, blocked, or the asset moved: plain text beats a broken editor.
+    _cmModeFailed.add(name);
+    return 'text/plain';
+  }
+  if (cmModeLoaded(name)) return spec;
+  _cmModeFailed.add(name);
+  return 'text/plain';
 }
 
 async function openFileEditor(path) {
@@ -5851,9 +6059,24 @@ async function openFileEditor(path) {
   cleanupDocViewers();
   document.getElementById('editor-save-btn').style.display = '';
 
+  // Restore an autosaved draft from a previous session (crash safety). Only when it
+  // actually differs from what is on disk, and only after the user opts in.
+  let openContent = r.content;
+  const draft = loadDraft(path);
+  if (draft !== null && draft !== r.content) {
+    const restore = await confirmDialog({
+      title: 'Unsaved draft found',
+      message: 'A newer unsaved version of this file was found from a previous session. Restore it?',
+      okText: 'Restore draft',
+      cancelText: 'Discard draft',
+    });
+    if (restore) openContent = draft;
+    else removeDraft(path);
+  }
+
   const cm = initCodeMirror();
-  cm.setValue(r.content);
-  cm.setOption('mode', getCMmode(fileName) || 'text/plain');
+  cm.setValue(openContent);
+  cm.setOption('mode', await resolveCMmode(fileName));
   cm.setOption('readOnly', false);
   document.querySelector('.CodeMirror').style.display = '';
   cm.refresh();
@@ -5941,6 +6164,8 @@ async function saveFile() {
   setBtnBusy(document.getElementById('editor-save-btn'), false);
   if (r.success) {
     editorOriginalContent = content;
+    removeDraft(editorPath);
+    clearTimeout(_autoSaveTimer);
     updateEditorDirty();
     document.getElementById('editor-status').textContent = 'Saved';
     toast('Saved', 'success');
@@ -5956,7 +6181,10 @@ async function closeEditor() {
     if (currentContent !== editorOriginalContent) {
       const ok = await confirmDialog({ title: 'Unsaved changes', message: 'You have unsaved changes. Close anyway?', okText: 'Discard', cancelText: 'Keep Editing', danger: true });
       if (!ok) return;
+      // Explicit discard: drop the crash-safety draft too, so it is not offered again.
+      if (editorPath) removeDraft(editorPath);
     }
+    clearTimeout(_autoSaveTimer);
   }
   clearPreviewLiveReload();
   cleanupDocViewers();
@@ -6411,7 +6639,6 @@ function setupPdfScrollTracking() {
   _pdfScrollHandler = () => {
     if (!ticking) { ticking = true; requestAnimationFrame(update); }
   };
-  wrap.addEventListener('scroll', _pdfScrollHandler, { passive: true });
   // also use IntersectionObserver for more precise
   try {
     _pdfObserver = new IntersectionObserver((entries) => {
@@ -6432,8 +6659,16 @@ function setupPdfScrollTracking() {
     }, { root: wrap, threshold: [0.5, 0.75] });
     boxes.forEach(c => _pdfObserver.observe(c));
   } catch { _pdfObserver = null; }
-  // initial update
-  setTimeout(update, 100);
+  if (_pdfObserver) {
+    // The observer already updates the page indicator on visibility change. Both
+    // used to run at once, so every scroll also did a getBoundingClientRect() pass
+    // over every page box. The scroll pass is now only a fallback for browsers
+    // without IntersectionObserver.
+    requestAnimationFrame(update);
+  } else {
+    wrap.addEventListener('scroll', _pdfScrollHandler, { passive: true });
+    setTimeout(update, 100);
+  }
 }
 function pdfNav(dir) {
   if (!_pdfDoc) return;
@@ -6485,6 +6720,32 @@ let _epubBook = null;
 let _epubRendition = null;
 let _epubPath = '';
 let _epubBlobUrl = null;
+
+// epub.js renders book content into same-origin frames, which would otherwise
+// inherit this origin's storage and fetch credentials. `allowScriptedContent:
+// false` stops the library enabling scripts; this pins the sandbox ourselves and
+// strips active content, so a hostile .epub stays inert even if the library's
+// defaults change. `allow-same-origin` is kept because epub.js needs DOM access
+// to apply themes and measure the page — without scripts it grants nothing.
+function hardenEpubRendition(rendition) {
+  try {
+    rendition.hooks.content.register(contents => {
+      try {
+        const doc = contents && contents.document;
+        const frame = doc && doc.defaultView && doc.defaultView.frameElement;
+        if (frame) {
+          frame.setAttribute('sandbox', 'allow-same-origin');
+          frame.setAttribute('referrerpolicy', 'no-referrer');
+        }
+        if (doc) {
+          for (const el of doc.querySelectorAll('script,object,embed,iframe,frame,applet,base')) {
+            try { el.remove(); } catch {}
+          }
+        }
+      } catch {}
+    });
+  } catch {}
+}
 
 async function openEpubViewer(path) {
   editorPath = path;
@@ -6556,8 +6817,9 @@ async function openEpubViewer(path) {
       console.warn('scrolled-doc failed, fallback to paginated', e);
       try { if (rendition) rendition.destroy(); } catch {}
       document.getElementById('epub-view').innerHTML = '';
-      rendition = book.renderTo('epub-view', { flow: 'paginated', width: '100%', height: '100%', manager: 'default' });
+      rendition = book.renderTo('epub-view', { flow: 'paginated', width: '100%', height: '100%', manager: 'default', allowScriptedContent: false });
     }
+    hardenEpubRendition(rendition);
     _epubRendition = rendition;
     const s = getComputedStyle(document.documentElement);
     const bg = s.getPropertyValue('--bg').trim();
@@ -6852,6 +7114,9 @@ function fmtOfficeCell(c) {
 function preloadDocViewers() {
   try {
     if (settings && settings.datasaver) return;
+    // Honour the browser's own data-saving hint too (Android Chrome, Safari
+    // low-data mode): a warm-up we never asked for shouldn't fight it.
+    if (navigator.connection && navigator.connection.saveData) return;
     if (!window.pdfjsLib) loadPdfJs().catch(()=>{});
     if (!window.ePub) loadEpubJs().catch(()=>{});
     if (!window.mammoth) loadMammoth().catch(()=>{});
@@ -7145,22 +7410,29 @@ function renderMdPreview() {
 }
 
 let _previewLiveReloadTimer = null;
-let _previewLastContent = '';
-function startPreviewLiveReload() {
-  clearPreviewLiveReload();
-  _previewLastContent = editor ? editor.getValue() : '';
-  _previewLiveReloadTimer = setInterval(() => {
+// Live preview is driven by CodeMirror's `change` event (see initCodeMirror) with a
+// debounce, instead of a 1 s interval that called editor.getValue() and compared the
+// whole document text every tick. Same result, no polling, and it fires per edit.
+const PREVIEW_MAX_LIVE_BYTES = 200000;
+function schedulePreviewLiveReload() {
+  if (!mdPreviewActive || !editor) return;
+  if (editor.getValue().length > PREVIEW_MAX_LIVE_BYTES) return;
+  clearTimeout(_previewLiveReloadTimer);
+  _previewLiveReloadTimer = setTimeout(() => {
+    _previewLiveReloadTimer = null;
     if (!mdPreviewActive || !editor) return;
-    const current = editor.getValue();
-    if (current !== _previewLastContent) {
-      _previewLastContent = current;
-      if (/\.html?$/i.test(editorPath)) renderHtmlPreview();
-      else renderMdPreview();
-    }
-  }, 1000);
+    if (editor.getValue().length > PREVIEW_MAX_LIVE_BYTES) return;
+    if (/\.html?$/i.test(editorPath)) renderHtmlPreview();
+    else renderMdPreview();
+  }, 350);
+}
+function startPreviewLiveReload() {
+  // Nothing to start: the change handler is always wired. Kept as the entry point
+  // the preview toggles call, and used to drop any pending render.
+  clearPreviewLiveReload();
 }
 function clearPreviewLiveReload() {
-  if (_previewLiveReloadTimer) { clearInterval(_previewLiveReloadTimer); _previewLiveReloadTimer = null; }
+  if (_previewLiveReloadTimer) { clearTimeout(_previewLiveReloadTimer); _previewLiveReloadTimer = null; }
 }
 
 function refreshPreview() {
@@ -7227,18 +7499,32 @@ function toggleSearchCase() {
   doSearch();
 }
 
+// Decoration colors for search highlighting; enabling decorations is also what
+// makes the addon emit onDidChangeResults (the count in #search-results).
+const SEARCH_DECORATIONS = {
+  matchBackground: '#3d59a1', matchBorder: '#7aa2f7', matchOverviewRuler: '#7aa2f7',
+  activeMatchBackground: '#e0af68', activeMatchBorder: '#ffc777', activeMatchColorOverviewRuler: '#e0af68'
+};
+
+// Typing used to scan the entire scrollback (up to 50k lines) synchronously on
+// every keystroke, which janked the terminal in long buffers.
+let _searchDebounce = null;
+function queueSearch() {
+  clearTimeout(_searchDebounce);
+  _searchDebounce = setTimeout(doSearch, 150);
+}
+
 function doSearch() {
   const q = document.getElementById('search-input').value;
   const tab = getActiveTab();
-  if (!tab?.searchAddon || !q) { document.getElementById('search-results').textContent = ''; return; }
-  const found = tab.searchAddon.findNext(q, { caseSensitive: searchCaseSensitive });
-  const decorations = tab.searchAddon.getDecorations ? tab.searchAddon.getDecorations() : [];
-  const count = decorations.length || (found ? 1 : 0);
-  document.getElementById('search-results').textContent = found ? (count > 0 ? `1/${count}` : '') : 'No results';
+  const el = document.getElementById('search-results');
+  if (!tab?.searchAddon || !q) { el.textContent = ''; return; }
+  // Count is rendered by the addon's onDidChangeResults event (wired per tab).
+  tab.searchAddon.findNext(q, { caseSensitive: searchCaseSensitive, decorations: SEARCH_DECORATIONS });
 }
 
-function searchNext() { const q=document.getElementById('search-input').value; if (!q) return; const t=getActiveTab(); t?.searchAddon?.findNext(q, {caseSensitive: searchCaseSensitive}); }
-function searchPrev() { const q=document.getElementById('search-input').value; if (!q) return; const t=getActiveTab(); t?.searchAddon?.findPrevious(q, {caseSensitive: searchCaseSensitive}); }
+function searchNext() { const q=document.getElementById('search-input').value; if (!q) return; const t=getActiveTab(); t?.searchAddon?.findNext(q, {caseSensitive: searchCaseSensitive, decorations: SEARCH_DECORATIONS}); }
+function searchPrev() { const q=document.getElementById('search-input').value; if (!q) return; const t=getActiveTab(); t?.searchAddon?.findPrevious(q, {caseSensitive: searchCaseSensitive, decorations: SEARCH_DECORATIONS}); }
 
 function searchKeydown(e) {
   if (e.key === 'Enter') { e.shiftKey ? searchPrev() : searchNext(); }
@@ -7267,6 +7553,7 @@ function loadSettings() {
       if (typeof s.screensaverMin === 'number' && s.screensaverMin >= 1 && s.screensaverMin <= 120) settings.screensaverMin = s.screensaverMin;
       if (typeof s.gitEnabled === 'boolean') settings.gitEnabled = s.gitEnabled;
       if (typeof s.gitSimple === 'boolean') settings.gitSimple = s.gitSimple;
+      if (typeof s.clipboardRead === 'boolean') settings.clipboardRead = s.clipboardRead;
     }
   } catch(e) { console.warn(e); }
   document.getElementById('s-theme').value = settings.theme;
@@ -7274,7 +7561,7 @@ function loadSettings() {
   document.getElementById('s-scrollback').value = settings.scrollback;
   document.getElementById('s-font').value = settings.font;
   document.getElementById('s-cursor').value = settings.cursor;
-  syncToggle('blink'); syncToggle('bell'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver'); syncToggle('termRightClick'); syncToggle('screensaver'); syncToggle('gitEnabled'); syncToggle('gitSimple');
+  syncToggle('blink'); syncToggle('bell'); syncToggle('clipboardRead'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver'); syncToggle('termRightClick'); syncToggle('screensaver'); syncToggle('gitEnabled'); syncToggle('gitSimple');
   try { if (typeof applyGitEnabled === 'function') applyGitEnabled(); } catch {}
   try { if (typeof applyGitSimple === 'function') applyGitSimple(); } catch {}
   syncKeepAwakeUI();
@@ -7294,7 +7581,8 @@ const DEFAULT_SETTINGS = {
   theme: 'light', fontSize: 14, font: "'JetBrains Mono', 'SF Mono', 'Fira Code', Consolas, monospace",
   cursor: 'block', blink: true, scrollback: 5000, bell: false,
   mobilekeys: false, confirmclose: true, datasaver: false, autostart: false, keepAwake: false, termRightClick: true,
-  screensaver: false, screensaverMin: 5, gitEnabled: true, gitSimple: true
+  screensaver: false, screensaverMin: 5, gitEnabled: true, gitSimple: true,
+  clipboardRead: false // off: OSC 52 GET (program reads your clipboard) needs consent
 };
 
 async function resetSettings() {
@@ -7308,7 +7596,7 @@ async function resetSettings() {
   document.getElementById('s-font').value = settings.font;
   document.getElementById('s-cursor').value = settings.cursor;
   document.getElementById('s-screensaver-min').value = settings.screensaverMin;
-  syncToggle('blink'); syncToggle('bell'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver'); syncToggle('termRightClick'); syncToggle('screensaver'); syncToggle('gitEnabled'); syncToggle('gitSimple'); syncToggle('autostart');
+  syncToggle('blink'); syncToggle('bell'); syncToggle('clipboardRead'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver'); syncToggle('termRightClick'); syncToggle('screensaver'); syncToggle('gitEnabled'); syncToggle('gitSimple'); syncToggle('autostart');
   // keepAwake is a header checkbox, not a settings toggle — resync it
   try { if (typeof syncKeepAwakeUI === 'function') syncKeepAwakeUI(); } catch {}
   // Clear an active auto-screensaver and the search filter (sections stay hidden otherwise)
@@ -7421,11 +7709,23 @@ function applyGitEnabled() {
   try { if (typeof currentPath !== 'undefined' && currentPath) refreshGitPanel(currentPath, true); } catch {}
 }
 
+// Every element a modal sidebar/panel must block while it is open. #main is
+// excluded because these panels are its children.
+const BACKDROP_INERT_IDS = ['header', 'sidebar', 'content'];
+function setBackdropInert(on) {
+  for (const id of BACKDROP_INERT_IDS) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    try { if (on) el.setAttribute('inert', ''); else el.removeAttribute('inert'); } catch {}
+  }
+}
+
 function openSettings() {
   const panel = document.getElementById('settings-panel');
   const isOpen = panel.classList.contains('open');
-  // Don't inert #main because panel is inside #main — inert would disable panel itself. Inert content only (sidebar is sibling).
-  const content = document.getElementById('content');
+  // Don't inert #main because the panel lives inside it — inert would disable
+  // the panel itself. Inert the panel's visible siblings instead, so the
+  // sidebar/header/tab strip can't be clicked or tabbed behind the dialog.
   if (!isOpen) {
     panel.classList.add('open');
     setupSettingsSections();
@@ -7439,7 +7739,7 @@ function openSettings() {
     panel.setAttribute('role', 'dialog');
     // Defer inert + focus to next frame so panel transform can composite on GPU without reflowing sidebar/file-list
     requestAnimationFrame(() => {
-      if (content) content.setAttribute('inert', '');
+      setBackdropInert(true);
       installFocusTrap(panel);
       const firstFocusable = panel.querySelector('select, button, input');
       if (firstFocusable) firstFocusable.focus({ preventScroll: true });
@@ -7448,17 +7748,16 @@ function openSettings() {
   } else {
     panel.classList.remove('open');
     panel.removeAttribute('aria-modal');
-    if (content) content.removeAttribute('inert');
+    setBackdropInert(false);
     removeFocusTrap();
     document.removeEventListener('click', closeSettingsOnClickOutside, true);
   }
 }
 function closeSettings() {
   const panel = document.getElementById('settings-panel');
-  const content = document.getElementById('content');
   panel.classList.remove('open');
   panel.removeAttribute('aria-modal');
-  if (content) content.removeAttribute('inert');
+  setBackdropInert(false);
   removeFocusTrap();
   document.removeEventListener('click', closeSettingsOnClickOutside, true);
 }
@@ -7938,10 +8237,15 @@ function renderTunnels() {
     inner.appendChild(urlSpan);
     const status = document.createElement('span');
     status.className = 'tunnel-status';
-    status.style.background = t.alive ? 'var(--green)' : 'var(--yellow)';
+    // `dead` = the watchdog gave up after its retries, so the tunnel will not
+    // come back on its own — distinct from a transient "Orphan".
+    const isDead = t.dead === true;
+    status.style.background = isDead ? 'var(--red)' : (t.alive ? 'var(--green)' : 'var(--yellow)');
     status.style.color = 'var(--bg)';
-    status.textContent = t.alive ? 'Live' : 'Orphan';
-    status.title = t.alive ? 'cloudflared is running' : 'cloudflared process not found';
+    status.textContent = isDead ? 'Dead' : (t.alive ? 'Live' : 'Orphan');
+    status.title = isDead
+      ? `cloudflared stopped and did not come back after ${t.restartAttempts || 0} restart attempts — recreate the tunnel`
+      : (t.alive ? 'cloudflared is running' : 'cloudflared process not found');
     inner.appendChild(status);
     if (t.alive && t.targetAlive !== undefined) {
       const targetStatus = document.createElement('span');
@@ -7968,7 +8272,7 @@ function renderTunnels() {
     openBtn.title = 'Open in new tab';
     openBtn.setAttribute('aria-label', 'Open tunnel in new tab');
     openBtn.appendChild(mkSvg('12','12','0 0 24 24','<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>'));
-    openBtn.addEventListener('click', () => window.open(t.tunnelUrl, '_blank'));
+    openBtn.addEventListener('click', () => window.open(t.tunnelUrl, '_blank', 'noopener,noreferrer'));
     inner.appendChild(openBtn);
     const stopBtn = document.createElement('button');
     stopBtn.className = 'icon-btn tunnel-btn stop';
@@ -8640,16 +8944,10 @@ function pasteToTerminal() {
     if (!text) return;
     const tab = getActiveTab();
     if (tab?.ws && tab.ws.readyState === WebSocket.OPEN) {
-      // Bracketed paste: wrap in escape sequences so the shell buffers the input — chunk 60KB with loop
+      // Bracketed paste: wrap in escape sequences so the shell buffers the input.
+      // sendWsInput() chunks on character boundaries, so multibyte UTF-8 is never split.
       const bracketed = '\x1b[200~' + text + '\x1b[201~';
-      const enc = new TextEncoder().encode(bracketed);
-      const CHUNK = 60 * 1024;
-      for (let off = 0; off < enc.length; off += CHUNK) {
-        const slice = enc.subarray(off, Math.min(off + CHUNK, enc.length));
-        const buf = new Uint8Array(1 + slice.length);
-        buf[0] = 0x00; buf.set(slice, 1);
-        try { tab.ws.send(buf.buffer); } catch {}
-      }
+      try { sendWsInput(tab.ws, bracketed); } catch {}
       tab.term?.focus();
       toast('Pasted to terminal', 'success');
     }
@@ -8749,16 +9047,26 @@ function setupVisualViewport() {
         if (vvScale !== 1) return; // ignore pinch-zoom (U61, U65)
         const diff = vvH - window.innerHeight;
         const absDiff = Math.abs(diff);
-        const isKeyboard = absDiff > 50 && diff < 0; // iOS: vv smaller. For Samsung, also check visualViewport offsetTop
-        // Fallback: check visualViewport offsetTop > 10 indicates keyboard on some Android
+        // Fallback: visualViewport offsetTop > 10 means the visual viewport panned
+        // up, which is how some Android builds report the keyboard.
         const offsetTop = window.visualViewport.offsetTop || 0;
-        const keyboardOpen = isKeyboard || offsetTop > 10;
+        // Height the keyboard actually covers.
+        //  iOS keeps the layout viewport and shrinks the visual one → innerHeight - vvH.
+        //  Android/Samsung shrink innerHeight too → ≈0, and nothing needs compensating.
+        // Using absDiff alone was wrong on the offsetTop path: it added a handful of
+        // pixels of margin where hundreds of pixels were covered.
+        const covered = Math.max(0, window.innerHeight - vvH - offsetTop);
+        const isKeyboard = absDiff > 50 && diff < 0;
+        const keyboardOpen = isKeyboard || offsetTop > 10 || covered > 50;
+        // Never reserve more than 60% of the viewport — a bogus metric must not
+        // collapse the terminal to nothing.
+        const keyboardMargin = Math.min(covered, Math.round(window.innerHeight * 0.6));
         const mobileKeys = document.getElementById('mobile-keys');
         const selRow = document.getElementById('mkey-sel-row');
         const terminals = document.getElementById('terminals');
         if (!terminals) return;
         if (keyboardOpen) {
-          terminals.style.marginBottom = absDiff + 'px';
+          terminals.style.marginBottom = keyboardMargin + 'px';
           if (mobileKeys) mobileKeys.style.display = 'none';
           const ctrlRow = document.getElementById('mkey-ctrl-row');
           if (ctrlRow && ctrlRow.style.display === 'flex') ctrlRow.dataset.wasOpen = '1';
@@ -9227,6 +9535,8 @@ function showPinScreen() {
     try { clearTimeout(t.reconnectTimer); } catch {}
     try { cleanupWebSocket(t); } catch {}
     try { t.resizeObserver?.disconnect(); } catch {}
+    try { t._webglAddon?.dispose(); } catch {}
+    try { t._searchResultsSub?.dispose?.(); } catch {}
     try { t.term?.dispose(); } catch {}
     try { t.el?.remove(); } catch {}
     try { t.wrapper?.remove(); } catch {}
@@ -9961,16 +10271,23 @@ async function toggleHunks(btn, file, cached) {
     b.className = 'sidebar-action-btn';
     b.style.marginTop = '2px';
     b.textContent = cached ? 'Unstage hunk' : 'Stage hunk';
-    b.addEventListener('click', () => hunkOp(file, h.index, cached));
+    // Send the header we rendered: indices shift as the tree changes, and an
+    // index alone could stage a different hunk than the one clicked.
+    b.addEventListener('click', () => hunkOp(file, h.index, cached, h.header));
     hd.appendChild(b);
     wrap.appendChild(hd);
   });
   row.appendChild(wrap);
 }
-async function hunkOp(file, index, cached) {
+async function hunkOp(file, index, cached, expected) {
   if (!gitRoot) return;
-  const r = await api(cached ? '/api/git/unstage-hunk' : '/api/git/stage-hunk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: gitRoot, file, index }) });
-  if (!r || r.error) { toast((r && r.error) || 'Hunk failed', 'error'); return; }
+  const r = await api(cached ? '/api/git/unstage-hunk' : '/api/git/stage-hunk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: gitRoot, file, index, expected }) });
+  if (!r || r.error) {
+    toast((r && r.error) || 'Hunk failed', 'error');
+    // The hunk moved or vanished — re-render the list so the buttons match disk.
+    if (/refresh and retry/i.test((r && r.error) || '')) refreshGitPanel(currentPath);
+    return;
+  }
   toast(cached ? 'Hunk unstaged' : 'Hunk staged', 'success');
   refreshGitPanel(currentPath);
 }
@@ -10104,7 +10421,17 @@ function doFinderSearch() {
   empty.textContent = 'Searching…';
   finderTimer = setTimeout(async () => {
     finderAbort = new AbortController();
-    const data = await api(`/api/search?q=${encodeURIComponent(q)}&path=${encodeURIComponent(currentPath)}`, { signal: finderAbort.signal });
+    let data;
+    try {
+      data = await api(`/api/search?q=${encodeURIComponent(q)}&path=${encodeURIComponent(currentPath)}`, { signal: finderAbort.signal });
+    } catch (err) {
+      // api() rethrows DOMException('AbortError') for a superseded search
+      // (normal while typing). Without this the rejection was unhandled and
+      // finderAbort was never cleared.
+      if (err && (err.name === 'AbortError' || err.aborted)) { finderAbort = null; return; }
+      empty.textContent = 'Search failed';
+      return;
+    }
     if (finderAbort?.signal.aborted) return;
     finderAbort = null;
     results.innerHTML = '';
@@ -10149,7 +10476,10 @@ function finderKeydown(e) {
 // ═══════════════════════════════════════════════════════
 // COMMAND LIBRARY
 // ═══════════════════════════════════════════════════════
-const DEFAULT_CMDS = window.DEFAULT_CMDS || [];
+// public/commands.js is deferred, so this global only exists after parsing.
+// Read it lazily instead of snapshotting it at parse time (the snapshot would
+// silently become an empty library).
+const defaultCmds = () => (Array.isArray(window.DEFAULT_CMDS) ? window.DEFAULT_CMDS : []);
 
 function getCmdLib() {
   try { return JSON.parse(safeStorage.getItem('wt-cmdlib')) || []; } catch(e) { return []; }
@@ -10172,6 +10502,7 @@ function toggleCmdLib() {
     loadHistMax();
     switchCmdTab('library');
     if (terms) terms.setAttribute('inert', '');
+    setBackdropInert(true);
     installFocusTrap(panel);
     setTimeout(() => {
       document.addEventListener('click', closeCmdLibOnClickOutside, true);
@@ -10179,6 +10510,7 @@ function toggleCmdLib() {
     }, 50);
   } else {
     if (terms) terms.removeAttribute('inert');
+    setBackdropInert(false);
     removeFocusTrap();
     document.removeEventListener('click', closeCmdLibOnClickOutside, true);
   }
@@ -10195,6 +10527,7 @@ function closeCmdLibOnClickOutside(e) {
   toggleCmdLib();
   const terms = document.getElementById('terminals');
   if (terms) terms.removeAttribute('inert');
+  setBackdropInert(false);
   removeFocusTrap();
 }
 
@@ -10202,7 +10535,7 @@ function renderCmdLib(filter) {
   const list = document.getElementById('cmd-lib-list');
   const custom = getCmdLib();
   const q = (filter || document.getElementById('cmd-lib-search').value || '').toLowerCase();
-  const all = DEFAULT_CMDS.concat(custom.map(c => ({ ...c, custom: true })));
+  const all = defaultCmds().concat(custom.map(c => ({ ...c, custom: true })));
   const filtered = q ? all.filter(c => c.name.toLowerCase().includes(q) || c.cmd.toLowerCase().includes(q) || (c.cat || '').toLowerCase().includes(q)) : all;
 
   if (filtered.length === 0) {
@@ -10287,7 +10620,7 @@ async function runCmdLib(cmd) {
     return;
   }
   // RCE guard: curl | bash requires confirmation (U91)
-  const needsConfirm = (typeof DEFAULT_CMDS !== 'undefined' && DEFAULT_CMDS.some(c => c.cmd === cmd && c.requiresConfirm)) || /\bcurl\b.*\|\s*bash/.test(cmd);
+  const needsConfirm = defaultCmds().some(c => c.cmd === cmd && c.requiresConfirm) || /\bcurl\b.*\|\s*bash/.test(cmd);
   if (needsConfirm) {
     const ok = await confirmDialog({ title: 'Confirm run', message: `Run sensitive command?\n\n${cmd}`, okText: 'Run', cancelText: 'Cancel', danger: true });
     if (!ok) return;
@@ -10522,12 +10855,28 @@ function resetSysIcon() {
   btn.setAttribute('title', 'System Stats');
   btn.setAttribute('aria-label', 'System Stats');
 }
+// One shared /api/system memo. Three independent pollers (launchpad pulse, header
+// sys icon, stats panel) each fired their own request on their own schedule, which
+// is what made the backend shell out to df/ps/nvidia-smi repeatedly. The TTL matches
+// the server-side cache window so both sides agree on what "fresh" means.
+const SYS_STATS_TTL_MS = 2000;
+let _sysStatsFetch = { at: 0, promise: null };
+function fetchSystemStats(force) {
+  const now = Date.now();
+  if (!force && _sysStatsFetch.promise && now - _sysStatsFetch.at < SYS_STATS_TTL_MS) {
+    return _sysStatsFetch.promise;
+  }
+  const p = api('/api/system').catch(() => null);
+  _sysStatsFetch = { at: now, promise: p };
+  return p;
+}
+
 async function updateSysIcon() {
   if (!window._appUnlocked || !authToken) return;
   if (typeof settings !== 'undefined' && settings.datasaver) return;
   if (document.hidden) return;
   try {
-    const s = await api('/api/system');
+    const s = await fetchSystemStats();
     if (!s || !s.cpu || !s.memory) return;
     paintSysIcon(s.cpu.usage, s.memory.percent);
   } catch {}
@@ -10578,7 +10927,8 @@ async function refreshSystemStats(showLoading) {
     document.getElementById('sys-loading').style.display = 'block';
     document.getElementById('sys-content').style.display = 'none';
   }
-  const data = await api('/api/system');
+  // A manual open should not wait on the shared memo.
+  const data = await fetchSystemStats(!!showLoading);
   if (showLoading) {
     document.getElementById('sys-loading').style.display = 'none';
     document.getElementById('sys-content').style.display = '';
@@ -10772,7 +11122,14 @@ function registerSW() {
 // ═══════════════════════════════════════════════════════
 // START
 // ═══════════════════════════════════════════════════════
-init().catch(e => console.error('Init failed:', e));
+// Wait for DOMContentLoaded: deferred scripts (public/commands.js, the CDN
+// bundles) run before it, and waiting lets the whole document finish parsing
+// and paint before the heavy init work starts.
+function startApp() {
+  init().catch(e => console.error('Init failed:', e));
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startApp, { once: true });
+else startApp();
 
 // Set version in About section (authed — call only after unlock; api() injects the token)
 function refreshVersion() {

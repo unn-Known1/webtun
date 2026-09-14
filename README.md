@@ -149,6 +149,8 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 | `ALLOW_FULL_FS` | Allow browsing outside `WORKSPACE_ROOT` (full FS) | `true` |
 | `TRUST_PROXY` | Trust `X-Forwarded-For` from first proxy | `false` |
 | `WEBTUN_SHELL` | Override shell on Windows | PowerShell |
+| `ALLOWED_ORIGINS` | Extra WebSocket origins (comma-separated) when served from another hostname | same-origin only |
+| `PREVIEW_PORTS` | Allow-list of ports the app preview may proxy (comma-separated) | any port except WebTun's own |
 
 ---
 

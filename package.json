@@ -14,6 +14,7 @@
   "files": [
     "bin/",
     "server.js",
+    "verify-version.js",
     "lib/",
     "public/",
     "postinstall.js"
@@ -25,12 +26,15 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "electron": "electron .",
+    "rebuild:electron": "electron-builder install-app-deps",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "dist:win": "electron-builder --win",
     "dist:linux": "electron-builder --linux",
     "dist:mac": "electron-builder --mac",
-    "postinstall": "node postinstall.js"
+    "postinstall": "node postinstall.js",
+    "version:check": "node verify-version.js",
+    "prepublishOnly": "npm run version:check"
   },
   "repository": {
     "type": "git",
@@ -101,6 +105,7 @@
       "allowToChangeInstallationDirectory": true
     }
   },
+  "//electron-build": "asarUnpack lists only node-pty because it is the only native (N-API) dependency shipped in the Electron bundle; every other dependency is pure JS and loads fine from inside app.asar. Adding a dependency with a prebuilt .node binary means adding an asarUnpack entry for it too, or require() fails at runtime. Resolution order for packaged builds lives in electron/main.js resolveNodeModules().",
   "dependencies": {
     "archiver": "^8.0.0",
     "express": "^4.22.2",

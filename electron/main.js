@@ -12,15 +12,16 @@ let PORT = (() => {
   const p = parseInt(process.env.PORT, 10);
   return Number.isFinite(p) && p > 0 && p <= 65535 ? p : 3000;
 })();
+// process.env.PIN is always a string when set, so no type check is needed here.
 const PIN = process.env.PIN || '';
-if (PIN && typeof PIN !== 'string') {
-  console.warn('Invalid PIN type — expected string');
-}
 
+// Where the forked server should look for dependencies, in order.
+// Packaged layout: app.asar contains node_modules, except whatever asarUnpack lists
+// (currently only node-pty) which lives under app.asar.unpacked. So the first two
+// candidates are asar-then-unpacked; the rest are fallbacks for portable/`--dir`
+// builds where the tree sits beside the executable. Only node-pty is native — see
+// the "//electron-build" note in package.json before adding dependencies.
 function resolveNodeModules() {
-  // Packaged app: deps live inside app.asar (native bindings under
-  // app.asar.unpacked via asarUnpack). Plain `require` from the forked
-  // server already finds them; NODE_PATH is just a fallback.
   if (app.isPackaged) {
     const candidates = [
       path.join(app.getAppPath(), 'node_modules'),
@@ -47,11 +48,14 @@ function serverLogPath() {
 
 // Probe 127.0.0.1 for a free port starting at `startPort` (up to 20 tries).
 // Lets the packaged app boot on 3001+ when 3000 is taken instead of
-// showing "Failed to start server".
+// showing "Failed to start server". Rejects when the range is exhausted —
+// resolving to `startPort` here used to guarantee an EADDRINUSE crash.
 function findFreePort(startPort, maxTries = 20) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const tryPort = (port, attempt) => {
-      if (attempt >= maxTries || port > 65535) return resolve(startPort);
+      if (attempt >= maxTries || port > 65535) {
+        return reject(new Error(`No free port found between ${startPort} and ${port}`));
+      }
       const tester = net.createServer();
       tester.once('error', () => {
         tester.close();
@@ -75,13 +79,10 @@ function startServer() {
       PORT: String(PORT),
       HOST: '127.0.0.1',
     };
-    // Validate PIN exists and is a non-empty string before passing to server
-    if (PIN && typeof PIN === 'string' && PIN.trim().length > 0) {
-      env.PIN = PIN.trim();
-    } else if (PIN) {
-      console.warn('Invalid PIN — starting without authentication');
-      delete env.PIN;
-    }
+    // Pass the PIN through verbatim: trimming here silently altered the secret
+    // (a PIN with intentional leading/trailing whitespace would no longer match).
+    if (PIN.length > 0) env.PIN = PIN;
+    else delete env.PIN;
     // Ensure forked server can resolve deps when packaged
     env.NODE_PATH = [nodeModules, env.NODE_PATH].filter(Boolean).join(path.delimiter);
 
@@ -129,6 +130,10 @@ function startServer() {
       if (code !== 0) {
         console.error(`Server exited with code ${code}`);
         fail(`Server exited with code ${code}`);
+      } else if (!settled) {
+        // Exited cleanly but never answered the healthcheck — don't sit here
+        // until the deadline, the port is free again right now.
+        fail('Server exited before it finished starting');
       }
     });
     serverProcess.on('error', err => fail(err.message));
@@ -137,12 +142,17 @@ function startServer() {
     const check = () => {
       if (settled) return;
       if (Date.now() > deadline) return fail('Server start timed out');
-      http.get(`http://127.0.0.1:${PORT}/api/auth/required`, res => {
+      const req = http.get(`http://127.0.0.1:${PORT}/api/auth/required`, res => {
+        res.resume(); // drain, or the socket lingers
+        if (settled) return;
         if (res.statusCode === 200) {
           settled = true;
           resolve();
         } else setTimeout(check, 200);
-      }).on('error', () => setTimeout(check, 200));
+      });
+      // A hung server must not leave this request open past the deadline.
+      req.setTimeout(2000, () => { try { req.destroy(); } catch {} });
+      req.on('error', () => { if (!settled) setTimeout(check, 200); });
     };
     setTimeout(check, 500);
   });
@@ -160,6 +170,10 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      webviewTag: false,
+      navigateOnDragDrop: false,
       preload: path.join(__dirname, 'preload.js')
     }
   });
@@ -215,6 +229,16 @@ if (!gotLock) {
   });
 }
 
+function isAddrInUse(err) {
+  return /EADDRINUSE|address already in use/i.test(String(err && err.message || ''));
+}
+
+function stopServerProcess() {
+  if (!serverProcess) return;
+  try { serverProcess.kill('SIGTERM'); } catch {}
+  serverProcess = null;
+}
+
 app.whenReady().then(async () => {
   if (!gotLock) return; // second instance — quitting, don't boot another server
   try {
@@ -223,7 +247,20 @@ app.whenReady().then(async () => {
     const free = await findFreePort(PORT);
     if (free !== PORT) console.log(`Port ${PORT} occupied — using ${free} instead`);
     PORT = free;
-    await startServer();
+    // findFreePort only *probed* the port (bind, close, hand over); something can
+    // grab it in that window. Retry on the next port instead of dying.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await startServer();
+        break;
+      } catch (e) {
+        stopServerProcess();
+        if (attempt >= 4 || !isAddrInUse(e)) throw e;
+        const next = await findFreePort(PORT + 1);
+        console.log(`Port ${PORT} was taken during startup — retrying on ${next}`);
+        PORT = next;
+      }
+    }
     createWindow();
   } catch (e) {
     dialog.showErrorBox('WebTun Error', `Failed to start server:\n${e.message}`);
@@ -241,8 +278,8 @@ app.on('before-quit', () => {
     // Windows SIGTERM is best-effort — fall back to taskkill so the port frees
     if (process.platform === 'win32' && serverProcess.pid) {
       try {
-        const { execSync } = require('child_process');
-        execSync(`taskkill /PID ${serverProcess.pid} /T /F`, { stdio: 'ignore' });
+        const { execFileSync } = require('child_process');
+        execFileSync('taskkill', ['/PID', String(serverProcess.pid), '/T', '/F'], { stdio: 'ignore' });
       } catch {}
     }
     serverProcess = null;

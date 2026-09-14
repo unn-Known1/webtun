@@ -1,16 +1,22 @@
-const CACHE = 'webtun-v5';
+const CACHE = 'webtun-v6';
 const PRECACHE = [
   '/',
   '/index.html',
   '/docs.html',
   '/manifest.json',
+  '/commands.js',
+  '/favicon.png',
+  '/icon.svg',
   '/icon-192.png',
   '/icon-512.png',
 ];
 
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(PRECACHE))
+    // Add individually: addAll() is atomic, so a single missing asset would leave the
+    // whole precache empty. One bad entry should degrade gracefully, not disable offline.
+    caches.open(CACHE)
+      .then(c => Promise.all(PRECACHE.map(u => c.add(u).catch(() => {}))))
     // Do not skipWaiting automatically — let activate wait for user prompt (F87)
   );
 });

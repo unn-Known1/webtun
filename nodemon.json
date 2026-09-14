@@ -1,0 +1,14 @@
+{
+  "watch": ["server.js", "lib", "bin", "public"],
+  "ext": "js,json,html,css",
+  "ignore": [
+    ".tunnels.json",
+    ".cmdhist.json",
+    "tunnel-url.txt",
+    "webtun.pid",
+    "*.log",
+    "dist",
+    "release"
+  ],
+  "delay": 300
+}
