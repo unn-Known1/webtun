@@ -193,6 +193,12 @@ const WORKSPACE_ROOT = (() => {
 app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// In-app user guide — single static page (public/docs.html, also published to GitHub Pages),
+// served like index.html (no CSP), reachable at /docs
+app.get('/docs', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'docs.html'));
+});
+
 // Handle malformed JSON gracefully
 app.use((err, req, res, next) => {
   if (err.type === 'entity.parse.failed') {

@@ -61,6 +61,14 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh
 
 ---
 
+## User Guide
+
+New here? Read the visual guide: **[unn-known1.github.io/webtun/public/docs.html](https://unn-known1.github.io/webtun/public/docs.html)** — every feature (terminal, editor, files, git, tunnels, sessions, shortcuts) in one page, ~5 minutes cover to cover.
+
+It's also built into the app: open `/docs` on any running instance, or Settings → About → **User guide & docs**.
+
+---
+
 ## Features
 
 ### Terminal
@@ -183,6 +191,10 @@ git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh
 ---
 
 ## Changelog
+
+### v2.0.5
+- In-app user guide — new `/docs` page (Settings → About → **User guide & docs**) covering terminal, editor, files, git, tunnels, sessions, shortcuts and troubleshooting; also published to GitHub Pages
+- User-guide upkeep is now part of the agent workflow (`AGENTS.md`): user-facing changes must update `/docs`
 
 ### v2.0.0
 - Launchpad home dashboard — zero-tab hero, recent commands with one-click or `1–6` keypress launch-and-run, places, live system pulse with sparkline, Today strip, optional screensaver

@@ -45,6 +45,7 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
 - `public/sw.js` enables PWA installability. Cache `webtun-v5`; client `registerSW()` toasts on `updatefound` + `skipWaiting` (no auto-reload — live terminal).
 - **Favicon/Icons**: `public/favicon.png` (32px), `public/icon-192.png` (192px), `public/icon-512.png` (512px), `public/icon.svg` — all generated from the same terminal SVG logo.
 - **Safe localStorage** (`public/index.html:979`): `safeStorage` wrapper catches errors when Edge Tracking Prevention blocks storage on Cloudflare tunnel domains. All `localStorage` calls go through this wrapper.
+- **User guide** (`public/docs.html`, served at `/docs`, published to GitHub Pages from repo root — root `.nojekyll` required, do not remove): whenever you add, change, or remove a user-facing feature, update `/docs` in the same change (new section/bullet/FAQ + TOC link + `data-title` keywords). Keep it single-file, zero-dependency, offline-safe (no CDN). Keep asset paths relative and app links on `a.app-link` with `href="/"` (auto-rewritten to the repo URL on `github.io`); no other root-absolute `/…` URLs in that file or they break on Pages.
 
 ## Frontend Architecture
 
