@@ -83,7 +83,7 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
   - Server→Client: `0x00` data, `0x01` exit (1B code), `0x02` error, `0x03` event (JSON: `new-login` alerts, `session-revoked` kicks — handled by `handleClientEvent()`)
   - Client→Server: `0x00` input (chunked ≤60KB via `sendWsInput()`), `0x01` resize (4B: cols/rows uint16LE), `0x02` ping
 - **xterm textarea**: Each terminal gets a unique `id="xterm-helper-{tabId}"` for accessibility.
-- **Editor preview iframe**: `sandbox="allow-scripts"` (opaque origin — no `allow-same-origin`). HTML/MD previews require DOMPurify (CDN); render is refused when it's missing.
+- **Editor preview iframe**: `sandbox="allow-scripts"` (opaque origin — no `allow-same-origin`). Markdown + Safe-mode HTML previews require DOMPurify (CDN); Safe render is refused when it's missing. Full HTML mode (`htmlFullPreview`, per-file, Safe default) renders raw bytes verbatim — scripts run, but the frame stays opaque-origin with no storage/popups/top-navigation, and asset URLs are still rewritten through the authed image endpoint.
 
 ### File tabs
 - **Third tab type**: `tabs[]` entries carry `type: 'term' | 'preview' | 'file'`; a file tab adds `path`, `viewer` (`text|image|pdf|epub|office` from `fileTabViewerKind()`), `cm`, `original`, `seed`, `viewState`, `dirty`. `newFileTab(path)` dedupes by path, caps at `MAX_FILE_TABS` (10), and persists via `saveTabState()` (`type:'file'` entries store `path`; restore reopens them parked and re-activates the last tab).

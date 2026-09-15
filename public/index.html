@@ -1790,6 +1790,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
             <button class="icon-btn" id="preview-refresh-btn" aria-label="Refresh preview" title="Refresh preview (Ctrl+Shift+R)" onclick="refreshPreview()" style="display:none">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
             </button>
+            <button class="btn btn-ghost" id="html-full-toggle" style="height:26px;padding:0 12px;font-size:12px;display:none" aria-pressed="false" title="Full preview — run this file's scripts in an isolated frame (no access to the app)" onclick="toggleFullHtmlPreview()">Full</button>
             <button class="icon-btn active" id="editor-split-toggle" aria-label="Toggle split orientation" onclick="toggleEditorSplit()" title="Switch to horizontal split">
               <svg id="split-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/></svg>
             </button>
@@ -6864,6 +6865,15 @@ async function uploadFileList(items) {
 const MAX_EDITOR_SIZE = 10 * 1024 * 1024; // 10MB
 let editor = null;
 let mdPreviewActive = false;
+// Full HTML preview: author's bytes verbatim (scripts run) inside the same
+// opaque-origin sandbox. Safe mode (default) stays sanitized. Reset per file.
+let htmlFullPreview = false;
+function setFullBtnVisible(v) {
+  const b = document.getElementById('html-full-toggle');
+  if (!b) return;
+  b.style.display = v ? '' : 'none';
+  if (!v) { htmlFullPreview = false; b.classList.remove('btn-primary'); b.classList.add('btn-ghost'); b.setAttribute('aria-pressed', 'false'); }
+}
 
 // Shared by the panel editor and every per-tab editor, so options can't drift apart.
 const CM_BASE_OPTIONS = {
@@ -7058,6 +7068,7 @@ function releasePanelSurface() {
   if (toggleBtn) toggleBtn.style.display = 'none';
   const refreshBtn = document.getElementById('preview-refresh-btn');
   if (refreshBtn) refreshBtn.style.display = 'none';
+  setFullBtnVisible(false);
   const iframe = document.getElementById('editor-preview-iframe');
   if (iframe) { iframe.style.display = 'none'; iframe.srcdoc = ''; }
   const mdContent = document.getElementById('md-preview-content');
@@ -7132,9 +7143,11 @@ async function showTextInPanel(path, content, original, history) {
     toggleBtn.style.display = '';
     toggleBtn.textContent = 'Preview';
     if (refreshBtn) refreshBtn.style.display = 'none';
+    setFullBtnVisible(false);
   } else {
     toggleBtn.style.display = 'none';
     if (refreshBtn) refreshBtn.style.display = 'none';
+    setFullBtnVisible(false);
   }
   document.getElementById('editor-filename').textContent = fileName + '  /  ' + path;
   document.getElementById('editor-status').textContent = '';
@@ -8229,6 +8242,7 @@ function toggleHtmlPreview() {
     if (iframe) iframe.style.display = 'none';
     btn.textContent = 'Preview';
     if (refreshBtn) refreshBtn.style.display = 'none';
+    setFullBtnVisible(false);
     mdPreviewActive = false;
     editor.focus();
     clearPreviewLiveReload();
@@ -8241,9 +8255,23 @@ function toggleHtmlPreview() {
     preview.classList.add('active');
     btn.textContent = 'Edit';
     if (refreshBtn) refreshBtn.style.display = '';
+    setFullBtnVisible(true);
     mdPreviewActive = true;
     startPreviewLiveReload();
   }
+}
+
+function toggleFullHtmlPreview() {
+  if (!/\.html?$/i.test(editorPath || '')) return;
+  htmlFullPreview = !htmlFullPreview;
+  const b = document.getElementById('html-full-toggle');
+  if (b) {
+    b.classList.toggle('btn-primary', htmlFullPreview);
+    b.classList.toggle('btn-ghost', !htmlFullPreview);
+    b.setAttribute('aria-pressed', String(htmlFullPreview));
+  }
+  if (htmlFullPreview) toast('Full preview: this file\u2019s scripts run in an isolated frame — no access to the app, its storage or your files', 'warning');
+  renderHtmlPreview();
 }
 
 function getHtmlBaseDir() {
@@ -8311,6 +8339,34 @@ function renderHtmlPreview() {
   const mdContent = document.getElementById('md-preview-content');
   const raw = editor ? editor.getValue() : '';
   if (!iframe) return;
+  if (mdContent) mdContent.style.display = 'none';
+  if (iframe) iframe.style.display = 'block';
+  const baseDir = getHtmlBaseDir();
+  const s = getComputedStyle(document.documentElement);
+  const isDark = !['#f9f9fb', '#ffffff', 'rgb(249, 249, 251)', 'rgb(255, 255, 255)'].includes(s.getPropertyValue('--bg').trim());
+  const isFullDoc = /<!DOCTYPE|<html[\s>]/i.test(raw);
+  const baseHref = `/api/files/image?path=${encodeURIComponent(baseDir + '/')}` + (authToken ? `&token=${encodeURIComponent(authToken)}` : '');
+  const injectHead = (doc, tags) => /<head[^>]*>/i.test(doc)
+    ? doc.replace(/<head[^>]*>/i, m => m + tags)
+    : doc.replace(/<html[^>]*>/i, m => m + '<head>' + tags + '</head>');
+  if (htmlFullPreview) {
+    // FULL mode: author's bytes verbatim — scripts run. Still confined to the
+    // opaque-origin sandbox (allow-scripts only): no parent DOM, no storage,
+    // no popups, no top navigation, no form submit. Needs no CDN.
+    let doc;
+    if (isFullDoc) {
+      doc = rewriteHtmlRelativeUrls(raw, baseDir);
+      if (!/<base\b/i.test(doc)) doc = injectHead(doc, `<base href="${escHtml(baseHref)}">`);
+      if (!/<meta[^>]*color-scheme/i.test(doc)) doc = injectHead(doc, `<meta name="color-scheme" content="${isDark ? 'dark' : 'light'}">`);
+    } else {
+      // Fragment: minimal shell, no theme CSS — the author's own styles rule,
+      // like opening the file in a real browser tab.
+      const frag = rewriteHtmlRelativeUrls(raw, baseDir);
+      doc = `<!DOCTYPE html>\n<html>\n<head>\n<meta charset="UTF-8">\n<meta name="color-scheme" content="${isDark ? 'dark' : 'light'}">\n<base href="${escHtml(baseHref)}">\n</head>\n<body>${frag}</body>\n</html>`;
+    }
+    iframe.srcdoc = doc;
+    return;
+  }
   // Never render unsanitized HTML: without the DOMPurify CDN the preview
   // stays off (scripts in the file could otherwise reach the app).
   if (typeof DOMPurify === 'undefined') {
@@ -8319,18 +8375,12 @@ function renderHtmlPreview() {
     toast('Preview unavailable: sanitizer failed to load', 'warning');
     return;
   }
-  if (mdContent) mdContent.style.display = 'none';
-  if (iframe) iframe.style.display = 'block';
-  const baseDir = getHtmlBaseDir();
-  const s = getComputedStyle(document.documentElement);
   const bg = s.getPropertyValue('--bg').trim();
   const fg = s.getPropertyValue('--fg').trim();
   const accent = s.getPropertyValue('--accent').trim();
   const bg2 = s.getPropertyValue('--bg2').trim();
   const border = s.getPropertyValue('--border').trim();
   const font = s.getPropertyValue('--font').trim();
-  const isDark = !['#f9f9fb', '#ffffff', 'rgb(249, 249, 251)', 'rgb(255, 255, 255)'].includes(bg);
-  const isFullDoc = /<!DOCTYPE|<html[\s>]/i.test(raw);
   let doc;
   if (isFullDoc) {
     let sanitized = DOMPurify.sanitize(raw, { WHOLE_DOCUMENT: true, USE_PROFILES: { html: true }, ADD_TAGS: ['base','style'], ADD_ATTR: ['target'] });
