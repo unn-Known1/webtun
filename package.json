@@ -16,8 +16,7 @@
     "server.js",
     "verify-version.js",
     "lib/",
-    "public/",
-    "scripts/rebuild-pty.js"
+    "public/"
   ],
   "engines": {
     "node": ">=18.0.0"
@@ -127,30 +126,6 @@
     "es-define-property": "npm:@socketregistry/es-define-property@^1",
     "es-set-tostringtag": "npm:@socketregistry/es-set-tostringtag@^1",
     "form-data": "4.0.6",
-    "function-bind": "npm:@socketregistry/function-bind@^1",
-    "globalthis": "npm:@socketregistry/globalthis@^1",
-    "gopd": "npm:@socketregistry/gopd@^1",
-    "has-property-descriptors": "npm:@socketregistry/has-property-descriptors@^1",
-    "has-symbols": "npm:@socketregistry/has-symbols@^1",
-    "has-tostringtag": "npm:@socketregistry/has-tostringtag@^1",
-    "hasown": "npm:@socketregistry/hasown@^1",
-    "isarray": "npm:@socketregistry/isarray@^1",
-    "ms": "2.1.3",
-    "object-keys": "npm:@socketregistry/object-keys@^1",
-    "qs": "6.16.0",
-    "safe-buffer": "npm:@socketregistry/safe-buffer@^1",
-    "safer-buffer": "npm:@socketregistry/safer-buffer@^1",
-    "side-channel": "npm:@socketregistry/side-channel@^1",
-    "typedarray": "npm:@socketregistry/typedarray@^1",
-    "ws": "^8.21.0"
-  },
-  "resolutions": {
-    "@electron/asar": "^4.3.0",
-    "@electron/get": "^5.1.0",
-    "array-flatten": "npm:@socketregistry/array-flatten@^1",
-    "define-properties": "npm:@socketregistry/define-properties@^1",
-    "es-define-property": "npm:@socketregistry/es-define-property@^1",
-    "es-set-tostringtag": "npm:@socketregistry/es-set-tostringtag@^1",
     "function-bind": "npm:@socketregistry/function-bind@^1",
     "globalthis": "npm:@socketregistry/globalthis@^1",
     "gopd": "npm:@socketregistry/gopd@^1",

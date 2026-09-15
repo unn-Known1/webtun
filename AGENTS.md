@@ -39,7 +39,7 @@ Optional env vars:
 PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means no auth. Quoted values in `.env` are stripped (e.g., `PIN="secret"` works).
 
 ## Key Details
-- **`scripts/rebuild-pty.js`** (manual `npm run rebuild:pty`) rebuilds `node-pty` if its native binding is missing. It never downloads anything and is deliberately not a postinstall hook, so the package ships zero install scripts.
+- **`scripts/rebuild-pty.js`** (manual `npm run rebuild:pty`, repo-only — not shipped in the tarball) rebuilds `node-pty` if its native binding is missing. It never downloads anything and is deliberately not a postinstall hook, so the package ships zero install scripts.
 - **cloudflared on demand** (`lib/cloudflared.js`): the binary is fetched on first tunnel use only (tunnel API / `webtun --tunnel`), HTTPS-only from official Cloudflare releases, with tar-slip + HTML-page validation. `findCloudflared()` is re-exported by `server.js` for back-compat.
 - **Tunnel cleanup** after server restart: `kill $(pgrep -f 'cloudflared tunnel')`
 - **System stats** (`GET /api/system`) are cached 2 s server-side (`SYS_STATS_TTL_MS`); the frontend has a matching client-side memo (`fetchSystemStats()`) shared by the launchpad pulse, the header sys icon and the stats panel. Poll them through that helper, never `api('/api/system')` directly.

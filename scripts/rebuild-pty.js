@@ -2,8 +2,9 @@ const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-// Manual node-pty rebuild: `npm run rebuild:pty` from a checkout, or
-// `node <prefix>/scripts/rebuild-pty.js` for a global install.
+// Manual node-pty rebuild for repo checkouts: `npm run rebuild:pty`.
+// Repo-only (not shipped in the npm tarball — see `files` in package.json);
+// global installs rely on the node-pty prebuild plus the server.js boot hint.
 // Deliberately NOT a postinstall hook (no install scripts ship, so scanners
 // stay quiet and npm's default script-blocking changes nothing): if the
 // binding is missing, server.js refuses to boot and prints the same fix.
