@@ -12,30 +12,7 @@
 // Linux-only (`free`, `ss`) — so Windows, which defaults to PowerShell (see WEBTUN_SHELL),
 // needs its own equivalents for those two groups.
 window.DEFAULT_CMDS = [
-
-  // ── Docker ── (cross-platform)
-  { name: 'Running containers', cmd: 'docker ps', cat: 'Docker' },
-  { name: 'All containers', cmd: 'docker ps -a', cat: 'Docker' },
-  { name: 'Images', cmd: 'docker images', cat: 'Docker' },
-  { name: 'Disk used by Docker', cmd: 'docker system df', cat: 'Docker' },
-  { name: 'Compose up (detached)', cmd: 'docker compose up -d', cat: 'Docker' },
-  { name: 'Compose status', cmd: 'docker compose ps', cat: 'Docker' },
-  { name: 'Compose logs (last 100)', cmd: 'docker compose logs --tail=100', cat: 'Docker' },
-
-  // ── Network ──
-  { name: 'Check a URL (headers)', cmd: 'curl -I https://example.com', cat: 'Network' },
-  { name: 'Ping host (4 packets)', cmd: 'ping -c 4 1.1.1.1', cat: 'Network' },
-  { name: 'Listening ports', cmd: 'ss -tulpn', cat: 'Network' },
-
-  // ── Files & system ── (Linux/macOS shell syntax)
-  { name: 'List files (detailed)', cmd: 'ls -lah', cat: 'Files & system' },
-  { name: 'Current directory', cmd: 'pwd', cat: 'Files & system' },
-  { name: 'Recently modified files', cmd: 'ls -lt | head -20', cat: 'Files & system' },
-  { name: 'Disk usage by folder', cmd: 'du -sh *', cat: 'Files & system' },
-  { name: 'Disk free', cmd: 'df -h', cat: 'Files & system' },
-  { name: 'Memory & load', cmd: 'free -h && uptime', cat: 'Files & system' },
-  { name: 'Top processes by CPU', cmd: 'ps aux --sort=-%cpu | head -15', cat: 'Files & system' },
-
+  
   // ── Project defaults ──
   { name: 'Install OpenCode AI', cmd: 'npm install -g opencode-ai', cat: 'AI Tools' },
   { name: 'GitHub TUI', cmd: 'npx github-tui', cat: 'Tools' },

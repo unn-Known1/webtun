@@ -11704,7 +11704,6 @@ function toggleCmdLib() {
     loadHistMax();
     switchCmdTab('library');
     if (terms) terms.setAttribute('inert', '');
-    setBackdropInert(true);
     installFocusTrap(panel);
     setTimeout(() => {
       document.addEventListener('click', closeCmdLibOnClickOutside, true);
@@ -11712,7 +11711,6 @@ function toggleCmdLib() {
     }, 50);
   } else {
     if (terms) terms.removeAttribute('inert');
-    setBackdropInert(false);
     removeFocusTrap();
     document.removeEventListener('click', closeCmdLibOnClickOutside, true);
   }
@@ -11729,7 +11727,6 @@ function closeCmdLibOnClickOutside(e) {
   toggleCmdLib();
   const terms = document.getElementById('terminals');
   if (terms) terms.removeAttribute('inert');
-  setBackdropInert(false);
   removeFocusTrap();
 }
 
