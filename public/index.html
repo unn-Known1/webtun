@@ -1510,7 +1510,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path class="steam s1" d="M7.5 8.5c-1.2-1.4 1.2-2.2 0-3.6"/><path class="steam s2" d="M11.5 8.5c-1.2-1.4 1.2-2.2 0-3.6"/><path class="steam s3" d="M15.5 8.5c-1.2-1.4 1.2-2.2 0-3.6"/><path d="M4 10.5h13V16a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4v-5.5z"/><path d="M17 11.5h1.5a2.5 2.5 0 0 1 0 5H17"/><text id="sess-cup-num" x="10" y="17" text-anchor="middle" font-size="7.5" font-weight="700" fill="var(--accent)" stroke="none" style="display:none"></text></svg>
       </span>
     </label>
-    <button class="icon-btn" id="transfers-btn" aria-label="Transfers" title="Transfers — uploads, downloads, copy/move" aria-haspopup="dialog" aria-expanded="false" onclick="toggleTransfersPanel(event)">
+    <button class="icon-btn" id="transfers-btn" aria-label="Transfers" title="Transfers — uploads, downloads, copy/move" aria-haspopup="dialog" aria-expanded="false" onclick="toggleTransfersPanel(event)" style="display:none">
       <svg class="tx-arrows" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="tx-up" d="M7 3v9"/><path class="tx-up" d="m4 6 3-3 3 3"/><path class="tx-down" d="M17 21v-9"/><path class="tx-down" d="m14 18 3 3 3-3"/><circle class="tx-pkt tx-p1" cx="7" cy="13" r="1.7" fill="currentColor" stroke="none"/><circle class="tx-pkt tx-p2" cx="17" cy="11" r="1.7" fill="currentColor" stroke="none"/></svg>
       <span id="transfers-count" aria-hidden="true">0</span>
     </button>
@@ -6643,6 +6643,13 @@ function txRender(force) {
   if (!btn || !list) return;
   const active = txActiveJobs();
   btn.classList.toggle('has-active', active.length > 0);
+  // The icon only exists when there is something to show: running jobs or
+  // undismissed finished ones. Clearing the last job hides it again.
+  btn.style.display = Transfers.jobs.size ? '' : 'none';
+  if (!Transfers.jobs.size) {
+    Transfers.pinned = false;
+    try { document.getElementById('transfers-panel').classList.remove('open'); } catch {}
+  }
   btn.setAttribute('aria-expanded', document.getElementById('transfers-panel').classList.contains('open') ? 'true' : 'false');
   if (count) { count.textContent = String(active.length); }
   if (sub) sub.textContent = active.length ? active.length + ' active' : '';
