@@ -1129,7 +1129,8 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 /* Simple git panel (Settings → Features): hide rarely-used actions until .show-rare */
 #git-panel.git-simple:not(.show-rare) .git-rare { display: none; }
 #git-adv-toggle { display: none; margin: 2px 8px 8px; }
-#git-panel.git-simple #git-adv-toggle { display: inline-block; }
+#git-panel.git-simple #git-adv-toggle { display: flex; }
+#git-log > .sidebar-action-btn { margin: 6px 8px 8px; }
 #git-identity-row { display: flex; gap: 4px; padding: 4px 6px; flex-wrap: wrap; }
 #git-identity-row input { flex: 1; min-width: 90px; height: 26px; font-size: 11px; }
 #git-reset-row { display: flex; gap: 4px; padding: 4px 6px; align-items: center; }
