@@ -1130,7 +1130,10 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 #git-panel.git-simple:not(.show-rare) .git-rare { display: none; }
 #git-adv-toggle { display: none; margin: 2px 8px 8px; }
 #git-panel.git-simple #git-adv-toggle { display: flex; }
-#git-log > .sidebar-action-btn { margin: 6px 8px 8px; }
+/* Shared footer row: "Show more" (log) and "Show advanced…" sit side by side,
+   equal halves. The row hides itself when neither button is present. */
+#git-foot-row { display: flex; gap: 6px; margin: 6px 8px 8px; }
+#git-foot-row > .sidebar-action-btn { flex: 1; min-width: 0; margin: 0; white-space: nowrap; overflow: hidden; }
 #git-identity-row { display: flex; gap: 4px; padding: 4px 6px; flex-wrap: wrap; }
 #git-identity-row input { flex: 1; min-width: 90px; height: 26px; font-size: 11px; }
 #git-reset-row { display: flex; gap: 4px; padding: 4px 6px; align-items: center; }
@@ -1665,7 +1668,9 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
           <div class="field-error" id="git-tag-error" role="alert" style="padding:0 8px"></div>
           <div id="git-tags-list" class="git-rare"></div>
           <div id="git-log"></div>
-          <button class="sidebar-action-btn" id="git-adv-toggle" onclick="toggleGitAdvanced()" aria-expanded="false" title="Show rarely-used git actions">Show advanced…</button>
+          <div id="git-foot-row" style="display:none">
+            <button class="sidebar-action-btn" id="git-adv-toggle" onclick="toggleGitAdvanced()" aria-expanded="false" title="Show rarely-used git actions">Show advanced…</button>
+          </div>
         </div>
       </div>
       <div id="sidebar-footer" role="toolbar" aria-label="File actions">
@@ -8874,6 +8879,16 @@ function updateGitAdvToggle() {
   const show = panel.classList.contains('show-rare');
   btn.textContent = show ? 'Show fewer' : 'Show advanced…';
   btn.setAttribute('aria-expanded', String(show));
+  try { updateGitFootRow(); } catch {}
+}
+function updateGitFootRow() {
+  const foot = document.getElementById('git-foot-row');
+  const adv = document.getElementById('git-adv-toggle');
+  if (!foot) return;
+  let advShown = false;
+  try { advShown = !!adv && getComputedStyle(adv).display !== 'none'; } catch {}
+  const moreShown = !!foot.querySelector('#git-log-more');
+  foot.style.display = (advShown || moreShown) ? '' : 'none';
 }
 
 function applyGitEnabled() {
@@ -11482,7 +11497,9 @@ async function refreshGitLog(myReq) {
   const r = await api(`/api/git/log?path=${encodeURIComponent(gitRoot)}&n=${n}`);
   if (myReq !== undefined && myReq !== _gitReq) return;
   box.innerHTML = '';
-  if (!r || !r.commits || !r.commits.length) return;
+  const foot = document.getElementById('git-foot-row');
+  if (foot) foot.querySelector('#git-log-more')?.remove();
+  if (!r || !r.commits || !r.commits.length) { updateGitFootRow(); return; }
   for (const c of r.commits) {
     const d = document.createElement('div');
     d.className = 'git-log-item';
@@ -11509,10 +11526,12 @@ async function refreshGitLog(myReq) {
   if (!gitLogFull && r.commits.length >= 5) {
     const more = document.createElement('button');
     more.className = 'sidebar-action-btn';
+    more.id = 'git-log-more';
     more.textContent = 'Show more';
     more.addEventListener('click', () => { gitLogFull = true; refreshGitLog(); });
-    box.appendChild(more);
+    (document.getElementById('git-foot-row') || box).appendChild(more);
   }
+  updateGitFootRow();
 }
 async function openGitShow(hash) {
   if (!gitRoot || !hash) return;
