@@ -4333,20 +4333,25 @@ function parsePreviewCookie(req) {
   } catch {}
   return '';
 }
-// Same gate as checkPin, but also accepts the short-lived preview cookie
-// (subresources inside the iframe can't send ?token= on every fetch).
+// Same gates as checkPin (query/header/cookie only differ as transport —
+// subresources inside the iframe can't send ?token= on every fetch, hence
+// the short-lived preview cookie). In particular the raw PIN is trusted
+// remotely only when nobody else is signed in (loopback always trusted);
+// the old blanket bypass let a leaked PIN drive the proxy from anywhere.
 function checkPreviewAuth(req, res, next) {
   if (!PIN) return next();
   const raw = req.headers['x-pin-token'] || (req.query && req.query.token) || parsePreviewCookie(req);
   const token = typeof raw === 'string' ? raw.trim() : '';
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
-  // Preview proxy bypasses rawPinAllowed() — iframe can't maintain session,
-  // user already authenticated to open the preview tab. Proxy is protected by PIN.
   if (constantTimeEqual(token, PIN)) {
+    if (!rawPinAllowed(req)) {
+      return res.status(403).json({ error: 'Approval required — sign in from the app so an existing session can approve this device', approvalRequired: true });
+    }
     req.authToken = token; req.authSession = null; return next();
   }
   const s = getSession(token);
-  if (!s || s.status !== 'active') return res.status(401).json({ error: 'Unauthorized' });
+  if (!s) return res.status(401).json({ error: 'Unauthorized' });
+  if (s.status !== 'active') return res.status(403).json({ error: 'Session awaiting approval from another device', pending: true });
   req.authToken = token; req.authSession = s; return next();
 }
 // Ports the preview proxy may dial. By default any port except WebTun's own:
@@ -4389,13 +4394,42 @@ function handlePreviewProxy(req, res) {
     suffix += u.search || '';
   } catch { suffix = '/'; }
   if (suffix.includes('\0')) return res.status(400).json({ error: 'bad path' });
+  // Strip only OUR bearer from the upstream query: the ?token= value(s)
+  // matching the credential that authenticated this request (query / header
+  // / cookie). Anything else belongs to the upstream app itself (Jupyter-
+  // style ?token= logins) — deleting it breaks the app, typically as an
+  // endless login redirect loop ("too many redirects").
+  try {
+    const ours = new Set();
+    const pushCred = (v) => {
+      if (Array.isArray(v)) v.forEach(pushCred);
+      else if (typeof v === 'string' && v.trim()) ours.add(v.trim());
+    };
+    pushCred(req.query && req.query.token);
+    pushCred(req.headers['x-pin-token']);
+    pushCred(parsePreviewCookie(req));
+    const qm = suffix.indexOf('?');
+    if (qm !== -1 && ours.size) {
+      const params = new URLSearchParams(suffix.slice(qm + 1));
+      if (params.getAll('token').some(v => ours.has(v))) {
+        const kept = params.getAll('token').filter(v => !ours.has(v));
+        params.delete('token');
+        for (const v of kept) params.append('token', v);
+        const rest = params.toString();
+        suffix = suffix.slice(0, qm) + (rest ? '?' + rest : '');
+      }
+    }
+  } catch {}
   // Mint preview cookie on first authed hit so subresources pass auth.
+  // Port-scoped path (one port's cookie never authenticates another),
+  // Secure when the request arrived over TLS, 12h cap on a stolen-URL window.
   try {
     const q = (req.query && req.query.token) || req.headers['x-pin-token'];
+    const secure = (req.secure || req.headers['x-forwarded-proto'] === 'https') ? '; Secure' : '';
     if (PIN && typeof q === 'string' && q.trim() && !parsePreviewCookie(req)) {
-      res.setHeader('Set-Cookie', `${PREVIEW_COOKIE}=${encodeURIComponent(q.trim())}; Path=/api/preview/; Max-Age=86400; HttpOnly; SameSite=Lax`);
+      res.setHeader('Set-Cookie', `${PREVIEW_COOKIE}=${encodeURIComponent(q.trim())}; Path=/api/preview/${targetPort}/; Max-Age=43200; HttpOnly; SameSite=Lax${secure}`);
     } else if (!PIN && !parsePreviewCookie(req)) {
-      res.setHeader('Set-Cookie', `${PREVIEW_COOKIE}=open; Path=/api/preview/; Max-Age=86400; HttpOnly; SameSite=Lax`);
+      res.setHeader('Set-Cookie', `${PREVIEW_COOKIE}=open; Path=/api/preview/${targetPort}/; Max-Age=43200; HttpOnly; SameSite=Lax${secure}`);
     }
   } catch {}
   const fwd = {};
