@@ -8270,7 +8270,16 @@ function toggleFullHtmlPreview() {
     b.classList.toggle('btn-ghost', !htmlFullPreview);
     b.setAttribute('aria-pressed', String(htmlFullPreview));
   }
-  if (htmlFullPreview) toast('Full preview: this file\u2019s scripts run in an isolated frame — no access to the app, its storage or your files', 'warning');
+  if (htmlFullPreview) {
+    // Warn once ever (persisted): the mode itself is per-file and Safe-default,
+    // but the explanation shouldn't nag on every toggle.
+    let warned = false;
+    try { warned = safeStorage.getItem('wt-full-preview-warned') === 'true'; } catch {}
+    if (!warned) {
+      toast('Full preview: this file\u2019s scripts run in an isolated frame — no access to the app, its storage or your files', 'warning');
+      try { safeStorage.setItem('wt-full-preview-warned', 'true'); } catch {}
+    }
+  }
   renderHtmlPreview();
 }
 
@@ -8282,15 +8291,22 @@ function getHtmlBaseDir() {
   return idx > 0 ? p.slice(0, idx) : p;
 }
 function isAbsoluteUrlForHtml(url) {
-  return /^(?:[a-z][a-z0-9+.-]*:|\/\/|data:|blob:|#)/i.test(url.trim()) || url.trim().startsWith('/');
+  // Truly external/unresolvable: schemes, protocol-relative, data/blob,
+  // fragments. A single leading "/" is NOT absolute here — a file preview has
+  // no web root (see toPreviewApiUrl), so "/x" resolves against the file dir.
+  return /^(?:[a-z][a-z0-9+.-]*:|\/\/|data:|blob:|#)/i.test(url.trim());
 }
 function toPreviewApiUrl(rel, baseDir) {
   if (!rel || isAbsoluteUrlForHtml(rel)) return rel;
   if (/^[A-Za-z]:[\\/]/.test(rel)) return rel;
+  let pathPart = rel;
+  // No web root exists in a file preview: root-absolute "/x" would resolve
+  // against the app itself and 404 (the classic blank page), so resolve it
+  // against the previewed file's directory instead.
+  if (pathPart.trim().startsWith('/')) pathPart = pathPart.trim().replace(/^\/+/, '');
   // keep query/hash part
   let hash = '';
   let query = '';
-  let pathPart = rel;
   const hIdx = pathPart.indexOf('#');
   if (hIdx !== -1) { hash = pathPart.slice(hIdx); pathPart = pathPart.slice(0, hIdx); }
   const qIdx = pathPart.indexOf('?');
@@ -8303,6 +8319,26 @@ function toPreviewApiUrl(rel, baseDir) {
   if (query) api += (query.startsWith('?') ? `&${query.slice(1)}` : query);
   if (hash) api += hash;
   return api;
+}
+// Rewrite attributes everywhere (including <script src=> tags) but never touch
+// script BODIES: JS string literals must stay byte-identical or scripted pages
+// break in subtle ways (blank or half-dead renders). Only Full mode needs
+// this — sanitized output has no scripts left to protect.
+function rewriteFullHtmlUrls(raw, baseDir) {
+  if (!baseDir) return raw;
+  const re = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script\s*>)/gi;
+  let out = '', last = 0, m;
+  for (;;) {
+    m = re.exec(raw);
+    if (!m) break;
+    out += rewriteHtmlRelativeUrls(raw.slice(last, m.index), baseDir);
+    out += rewriteHtmlRelativeUrls(m[1], baseDir); // opening tag: src rewritten
+    out += m[2]; // body: verbatim
+    out += m[3];
+    last = m.index + m[0].length;
+  }
+  out += rewriteHtmlRelativeUrls(raw.slice(last), baseDir);
+  return out;
 }
 function rewriteHtmlRelativeUrls(html, baseDir) {
   if (!baseDir) return html;
@@ -8327,7 +8363,7 @@ function rewriteHtmlRelativeUrls(html, baseDir) {
   // url(...) in style attributes and <style> tags
   html = html.replace(/url\(\s*(["']?)([^"'\)]+)\1\s*\)/gi, (m, q, url) => {
     const trimmed = url.trim();
-    if (!trimmed || isAbsoluteUrlForHtml(trimmed) || trimmed.startsWith('/')) return m;
+    if (!trimmed || isAbsoluteUrlForHtml(trimmed)) return m;
     if (/^[A-Za-z]:[\\/]/.test(trimmed)) return m;
     const newUrl = toPreviewApiUrl(trimmed, baseDir);
     return `url(${q}${newUrl}${q})`;
@@ -8335,10 +8371,31 @@ function rewriteHtmlRelativeUrls(html, baseDir) {
   return html;
 }
 function renderHtmlPreview() {
+  try { renderHtmlPreviewInner(); }
+  catch (e) {
+    // A preview must never die as a silent blank pane: surface the reason
+    // inside the frame (works over tunnel too — no console needed to see it).
+    console.warn('HTML preview failed:', e);
+    try {
+      const iframe = document.getElementById('editor-preview-iframe');
+      if (iframe) {
+        iframe.style.display = 'block';
+        iframe.srcdoc = '<p style="font-family:sans-serif;padding:16px">Preview failed: ' + escHtml((e && e.message) || 'unknown error') + '</p>';
+      }
+    } catch {}
+    try { toast('Preview failed: ' + ((e && e.message) || 'unknown error'), 'error'); } catch {}
+  }
+}
+function renderHtmlPreviewInner() {
   const iframe = document.getElementById('editor-preview-iframe');
   const mdContent = document.getElementById('md-preview-content');
   const raw = editor ? editor.getValue() : '';
   if (!iframe) return;
+  if (!editor || !raw) {
+    if (iframe) iframe.style.display = 'block';
+    iframe.srcdoc = '<p style="font-family:sans-serif;padding:16px">' + (!editor ? 'Nothing to preview — open a file first.' : 'Nothing to preview — the file is empty.') + '</p>';
+    return;
+  }
   if (mdContent) mdContent.style.display = 'none';
   if (iframe) iframe.style.display = 'block';
   const baseDir = getHtmlBaseDir();
@@ -8355,13 +8412,13 @@ function renderHtmlPreview() {
     // no popups, no top navigation, no form submit. Needs no CDN.
     let doc;
     if (isFullDoc) {
-      doc = rewriteHtmlRelativeUrls(raw, baseDir);
+      doc = rewriteFullHtmlUrls(raw, baseDir);
       if (!/<base\b/i.test(doc)) doc = injectHead(doc, `<base href="${escHtml(baseHref)}">`);
       if (!/<meta[^>]*color-scheme/i.test(doc)) doc = injectHead(doc, `<meta name="color-scheme" content="${isDark ? 'dark' : 'light'}">`);
     } else {
       // Fragment: minimal shell, no theme CSS — the author's own styles rule,
       // like opening the file in a real browser tab.
-      const frag = rewriteHtmlRelativeUrls(raw, baseDir);
+      const frag = rewriteFullHtmlUrls(raw, baseDir);
       doc = `<!DOCTYPE html>\n<html>\n<head>\n<meta charset="UTF-8">\n<meta name="color-scheme" content="${isDark ? 'dark' : 'light'}">\n<base href="${escHtml(baseHref)}">\n</head>\n<body>${frag}</body>\n</html>`;
     }
     iframe.srcdoc = doc;
