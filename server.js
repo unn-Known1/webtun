@@ -1709,6 +1709,10 @@ app.get('/api/files/download', checkPin, async (req, res) => {
       const safeName = path.basename(p).replace(/["\r\n;]/g, '_');
       res.setHeader('Content-Type', mimeType);
       res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+      // Transfer Center needs a known total for % / ETA: single files report
+      // their size up front (directory zips stay length-less → indeterminate).
+      try { if (Number.isFinite(st.size)) res.setHeader('Content-Length', String(st.size)); } catch {}
+      res.setHeader('Accept-Ranges', 'bytes');
       const stream = fs.createReadStream(p);
       req.on('close', () => { try { stream.destroy(); } catch {} });
       stream.on('error', err => {

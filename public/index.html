@@ -198,6 +198,7 @@ svg { display: block; }
 #app { display: flex; flex-direction: column; height: 100dvh; }
 #header { display: flex; align-items: center; height: var(--header-h); background: var(--bg2); border-bottom: 1px solid var(--border); padding: 0 8px; padding-top: max(0px, env(safe-area-inset-top, 0px)); gap: 6px; flex-shrink: 0; z-index: var(--z-header); position: relative; box-sizing: border-box; }
 
+#upload-progress { display: none !important; }
 /* Upload progress bar in header */
 #upload-progress { position: absolute; bottom: 0; left: 0; right: 0; height: 0; background: var(--bg3); z-index: calc(var(--z-header) + 1); overflow: visible; transition: height var(--transition-normal) ease; }
 #upload-progress.active { height: 6px; }
@@ -514,6 +515,63 @@ body.editor-docked #editor-resize-handle { display: none; }
 /* Persistent security alert (unreviewed login) next to the coffee cup */
 #security-alert-btn { position: relative; }
 #security-alert-btn svg { animation: secAlertPulse 1.6s ease-in-out infinite; }
+/* Transfer Center (next to the coffee cup): live up/down activity + jobs panel */
+#transfers-btn { position: relative; }
+#transfers-btn .tx-arrows { transition: color var(--transition-fast); }
+#transfers-btn.has-active { color: var(--accent); }
+#transfers-btn.has-active .tx-up { animation: txUp 1.4s ease-in-out infinite; }
+#transfers-btn.has-active .tx-down { animation: txDown 1.4s ease-in-out infinite; }
+/* Data packets ride the arrow shafts while a transfer runs; parked (hidden) at idle */
+#transfers-btn .tx-pkt { opacity: 0; }
+#transfers-btn.has-active .tx-p1 { animation: txPktUp 1.4s ease-in-out infinite; }
+#transfers-btn.has-active .tx-p2 { animation: txPktDown 1.4s ease-in-out infinite; animation-delay: .7s; }
+@keyframes txPktUp { 0% { opacity: 0; transform: translateY(7px); } 25% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; transform: translateY(-7px); } }
+@keyframes txPktDown { 0% { opacity: 0; transform: translateY(-7px); } 25% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; transform: translateY(7px); } }
+@keyframes txUp { 0%, 100% { opacity: 1; transform: translateY(0); } 50% { opacity: 0.35; transform: translateY(-1.5px); } }
+@keyframes txDown { 0%, 100% { opacity: 0.35; transform: translateY(1.5px); } 50% { opacity: 1; transform: translateY(0); } }
+#transfers-count { position: absolute; top: 2px; right: 0; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px; background: var(--accent); color: var(--bg); font-size: 9px; font-weight: 700; line-height: 15px; text-align: center; font-family: var(--font-ui); display: none; pointer-events: none; }
+#transfers-btn.has-active #transfers-count { display: block; }
+#transfers-livebar { position: absolute; bottom: 0; left: 0; right: 0; height: 0; background: var(--bg3); overflow: hidden; transition: height var(--transition-normal) ease; }
+#transfers-livebar.on { height: 3px; }
+#transfers-livebar > div { height: 100%; width: 0%; background: var(--accent); border-radius: 0 2px 2px 0; transition: width 0.25s ease; }
+#transfers-panel { position: absolute; top: calc(100% + 6px); right: 8px; width: min(360px, calc(100vw - 24px)); max-height: min(420px, calc(100dvh - 120px)); display: none; flex-direction: column; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 12px 40px var(--shadow-color); z-index: var(--z-popover); overflow: hidden; font-family: var(--font-ui); }
+#transfers-panel.open { display: flex; }
+.tx-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 700; color: var(--fg); }
+.tx-head .tx-sub { font-weight: 400; color: var(--fg3); font-size: 11px; }
+.tx-head .tx-spacer { flex: 1; }
+.tx-head button { font-size: 11px; color: var(--fg2); background: none; border: none; cursor: pointer; padding: 4px 6px; border-radius: var(--radius-sm); }
+.tx-head button:hover { background: var(--bg4); color: var(--fg); }
+#transfers-list { overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+.tx-empty { padding: 22px 12px; text-align: center; color: var(--fg3); font-size: 12px; }
+.tx-job { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 10px; display: flex; flex-direction: column; gap: 6px; }
+.tx-row1 { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tx-ico { width: 26px; height: 26px; min-width: 26px; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: var(--bg4); color: var(--accent); }
+.tx-ico.dl { color: var(--green); }
+.tx-ico.mv { color: var(--accent2); }
+.tx-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; color: var(--fg); font-family: var(--font); }
+.tx-pct { font-size: 11px; font-weight: 700; color: var(--fg2); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.tx-bar { height: 6px; background: var(--bg4); border-radius: 4px; overflow: hidden; }
+.tx-fill { height: 100%; width: 0%; background: var(--accent); border-radius: 4px; transition: width 0.25s ease; }
+.tx-job[data-status="done"] .tx-fill { background: var(--green); }
+.tx-job[data-status="error"] .tx-fill { background: var(--red); }
+.tx-job[data-status="waiting"] .tx-fill { background: var(--amber, #e5a50a); }
+.tx-fill.indet { width: 30% !important; animation: txSlide 1.1s ease-in-out infinite; }
+@keyframes txSlide { 0% { margin-left: -30%; } 100% { margin-left: 100%; } }
+/* Running cue: diagonal stripes sweep every active bar, so even a slow transfer
+   reads as alive (Windows-copy-dialog language). Waiting/done/error rows stay
+   static; the sweep dies with the other motion under reduced-motion/datasaver. */
+.tx-job[data-status="active"] .tx-fill { position: relative; overflow: hidden; }
+.tx-job[data-status="active"] .tx-fill::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(-55deg, rgba(255,255,255,0.22) 0 6px, transparent 6px 12px); animation: txStripes 0.9s linear infinite; }
+@keyframes txStripes { to { background-position: 17px 0; } }
+.tx-meta { font-size: 11px; color: var(--fg2); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tx-row2 { display: flex; align-items: center; gap: 6px; }
+.tx-row2 .tx-meta { flex: 1; min-width: 0; }
+.tx-act { font-size: 11px; padding: 3px 9px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg2); color: var(--fg2); cursor: pointer; flex-shrink: 0; }
+.tx-act:hover { background: var(--bg4); color: var(--fg); }
+.tx-act.danger:hover { color: var(--red); border-color: var(--red); }
+@media (max-width: 560px) { #transfers-panel { position: fixed; left: 8px; right: 8px; top: var(--header-h); width: auto; } }
+@media (prefers-reduced-motion: reduce) { #transfers-btn.has-active .tx-up, #transfers-btn.has-active .tx-down, #transfers-btn.has-active .tx-p1, #transfers-btn.has-active .tx-p2, .tx-fill.indet, .tx-job[data-status="active"] .tx-fill::after, #security-alert-btn svg { animation: none !important; } .tx-fill { transition: none; } }
+body.datasaver #transfers-btn.has-active .tx-up, body.datasaver #transfers-btn.has-active .tx-down, body.datasaver #transfers-btn.has-active .tx-p1, body.datasaver #transfers-btn.has-active .tx-p2, body.datasaver .tx-fill.indet, body.datasaver .tx-job[data-status="active"] .tx-fill::after { animation: none !important; }
 @keyframes secAlertPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 @keyframes awakeGlow { 0%, 100% { filter: drop-shadow(0 0 0 transparent); } 50% { filter: drop-shadow(0 0 5px var(--accent)); } }
 @keyframes steamRise { 0% { opacity: 0; transform: translateY(2px); } 35% { opacity: 1; } 100% { opacity: 0; transform: translateY(-2.5px); } }
@@ -1452,6 +1510,10 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path class="steam s1" d="M7.5 8.5c-1.2-1.4 1.2-2.2 0-3.6"/><path class="steam s2" d="M11.5 8.5c-1.2-1.4 1.2-2.2 0-3.6"/><path class="steam s3" d="M15.5 8.5c-1.2-1.4 1.2-2.2 0-3.6"/><path d="M4 10.5h13V16a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4v-5.5z"/><path d="M17 11.5h1.5a2.5 2.5 0 0 1 0 5H17"/><text id="sess-cup-num" x="10" y="17" text-anchor="middle" font-size="7.5" font-weight="700" fill="var(--accent)" stroke="none" style="display:none"></text></svg>
       </span>
     </label>
+    <button class="icon-btn" id="transfers-btn" aria-label="Transfers" title="Transfers — uploads, downloads, copy/move" aria-haspopup="dialog" aria-expanded="false" onclick="toggleTransfersPanel(event)">
+      <svg class="tx-arrows" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="tx-up" d="M7 3v9"/><path class="tx-up" d="m4 6 3-3 3 3"/><path class="tx-down" d="M17 21v-9"/><path class="tx-down" d="m14 18 3 3 3-3"/><circle class="tx-pkt tx-p1" cx="7" cy="13" r="1.7" fill="currentColor" stroke="none"/><circle class="tx-pkt tx-p2" cx="17" cy="11" r="1.7" fill="currentColor" stroke="none"/></svg>
+      <span id="transfers-count" aria-hidden="true">0</span>
+    </button>
     <button class="icon-btn" id="sidebar-toggle" aria-label="Toggle sidebar" title="Toggle Explorer (Ctrl+B)" onclick="toggleSidebar()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
     </button>
@@ -1482,6 +1544,11 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
       <button class="mm-item" role="menuitem" onclick="closeMoreMenu();openShortcuts()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 8h6M12 8v8"/><path d="m7 12 10-4"/><path d="m7 12 10 4"/></svg> Keyboard Shortcuts</button>
     </div>
     <div id="upload-progress"><div id="upload-progress-bar"></div><span id="upload-progress-text"></span><button id="upload-cancel-btn" aria-label="Cancel upload" title="Cancel upload" onclick="cancelUpload()">Cancel</button></div>
+    <div id="transfers-livebar" aria-hidden="true"><div></div></div>
+    <div id="transfers-panel" role="dialog" aria-modal="false" aria-label="File transfers">
+      <div class="tx-head"><span>Transfers</span><span class="tx-sub" id="transfers-sub"></span><span class="tx-spacer"></span><button onclick="clearFinishedTransfers()" title="Dismiss finished">Clear finished</button><button onclick="toggleTransfersPanel(event, true)" aria-label="Close transfers">✕</button></div>
+      <div id="transfers-list"></div>
+    </div>
   </div>
   <div id="reconnect-banner" style="display:none;padding:4px 12px;font-size:11px;background:var(--accent);color:#fff;text-align:center;flex-shrink:0"><span class="reconnect-spinner"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></span> Reconnecting…</div>
 
@@ -6037,48 +6104,106 @@ let _conflictResolve = null;
 let _pasteBusy = false;
 
 async function pasteFile(destDir, conflictMode, resumeFrom) {
-  if (!fsClipboard || _pasteBusy) return;
+  if (!fsClipboard) return;
+  const isResume = typeof resumeFrom === 'number';
+  if (_pasteBusy && !isResume) return;
   _pasteBusy = true;
   try {
     // Support both old single-file and new multi-file format
     const allFiles = fsClipboard.files || [{ path: fsClipboard.path, name: fsClipboard.name }];
     // Resume from the conflicted file instead of restarting at file 1
-    const files = resumeFrom ? allFiles.slice(resumeFrom) : allFiles;
-    const startIdx = resumeFrom || 0;
-    const label = fsClipboard.action === 'copy' ? 'Copying' : 'Moving';
-    const toastEl = toast(label + '…', 'info');
-    const ep = fsClipboard.action === 'copy' ? '/api/files/copy' : '/api/files/move';
-    let succeeded = 0, failed = 0;
+    const startIdx = isResume ? resumeFrom : 0;
+    const files = allFiles.slice(startIdx);
+    const isCopy = fsClipboard.action === 'copy';
+    const ep = isCopy ? '/api/files/copy' : '/api/files/move';
+    const kind = isCopy ? 'copy' : 'move';
+    // Reattach to the paused job after a conflict choice (Phase 2).
+    let job = (isResume && _resumeJobId && Transfers.jobs.get(_resumeJobId)) || null;
+    _resumeJobId = null;
+    if (job && job.status === 'waiting') { job.status = 'active'; job.sub = ''; }
+    if (!job) {
+      job = txCreate(kind, (isCopy ? 'Copy ' : 'Move ') + (allFiles.length === 1 ? allFiles[0].name : allFiles.length + ' items'), { filesTotal: allFiles.length });
+      job.sub = 'Calculating size…';
+      // Best-effort byte preflight via quick metadata calls; never blocks the op.
+      try {
+        let bytes = 0, ok = true;
+        for (const f of allFiles) {
+          const st = await api(`/api/files/stat?path=${encodeURIComponent(f.path)}`);
+          if (st && typeof st.size === 'number' && !st.isDirectory && !st.error) { f._size = st.size; bytes += st.size; }
+          else if (st && st.isDirectory && !st.error) {
+            const z = await api(`/api/files/size?path=${encodeURIComponent(f.path)}`);
+            if (z && typeof z.size === 'number' && !z.error) { f._size = z.size; bytes += z.size; } else ok = false;
+          } else ok = false;
+        }
+        if (ok && bytes > 0) job.total = bytes;
+        else job.sub = '';
+      } catch { job.sub = ''; }
+      txRender(true);
+    }
+    let succeeded = (isResume && job._ok) || 0;
+    let failed = (isResume && job._failed) || 0;
+    let bytesDone = (isResume && job._bytesDone) || 0;
     for (let fi = 0; fi < files.length; fi++) {
+      if (job.stopAfterCurrent) break;
       const file = files[fi];
+      job.sub = file.name;
+      txTick(job, bytesDone);
       const dest = joinPath(destDir, file.name);
       const body = { source: file.path, destination: dest };
       // Apply the chosen mode to the conflicted file only (first of a
       // resumed run); later conflicts re-prompt instead of inheriting it.
-      if (conflictMode && (fi === 0 || !resumeFrom)) body.conflict = conflictMode;
-      const r = await api(ep, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
+      if (conflictMode && (fi === 0 || !isResume)) body.conflict = conflictMode;
+      // Raw fetch with no client timeout: server-side copies of large trees
+      // outlive api()'s 30s cap (G2). Aborting only stops the wait, never the fs.
+      let r;
+      try {
+        const ctrl = new AbortController();
+        job.abort = () => { try { ctrl.abort(); } catch {} };
+        const resp = await fetch(ep, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-pin-token': authToken },
+          body: JSON.stringify(body),
+          signal: ctrl.signal
+        });
+        job.abort = null;
+        if (resp.status === 401) { try { showPinScreen(); } catch {} throw new Error('Session expired — sign in again'); }
+        try { r = await resp.json(); } catch { r = { error: 'Request failed (' + resp.status + ')' }; }
+      } catch (e) {
+        job.abort = null;
+        if ((e && e.name === 'AbortError') || job.stopAfterCurrent) break;
+        r = { error: (e && e.message) || 'Network error' };
+      }
+      if (job.stopAfterCurrent) break;
       if (r.conflict) {
-        toastEl.remove();
-        _conflictResolve = { destDir, conflictMode: null, resumeFrom: startIdx + fi, action: fsClipboard.action };
+        job._ok = succeeded; job._failed = failed; job._bytesDone = bytesDone;
+        job.status = 'waiting'; // pauses the speed/ETA clock (G4)
+        _conflictResolve = { destDir, conflictMode: null, resumeFrom: startIdx + fi, action: fsClipboard.action, jobId: job.id };
         document.getElementById('conflict-name').textContent = r.name;
         document.getElementById('conflict-dir-hint').style.display = r.isDir ? '' : 'none';
         document.getElementById('conflict-merge').style.display = r.isDir ? '' : 'none';
         openOverlay('conflict-overlay');
+        txRender(true);
         return;
       }
-      if (r.success) succeeded++;
+      if (r.success) { succeeded++; bytesDone += file._size || 0; }
       else failed++;
+      job.filesDone = succeeded;
+      job._ok = succeeded; job._failed = failed; job._bytesDone = bytesDone;
+      job.sub = file.name;
+      txTick(job, bytesDone);
     }
-    toastEl.remove();
-    const opLabel = fsClipboard.action === 'copy' ? 'Pasted' : 'Moved';
-    if (failed === 0) toast(opLabel + ` (${succeeded} item(s))`, 'success');
-    else if (succeeded === 0) toast(opLabel + ' failed', 'error');
-    else toast(`${opLabel} ${succeeded}, ${failed} failed`, 'warning');
-    if (fsClipboard.action === 'cut') { fsClipboard = null; updatePasteUI(); }
+    job.abort = null;
+    const opLabel = isCopy ? 'Pasted' : 'Moved';
+    if (job.stopAfterCurrent) {
+      txFinish(job, 'cancelled', succeeded ? succeeded + ' done' : '');
+      toast('Stopped after ' + succeeded + ' item(s)', 'warning');
+    } else if (failed === 0) {
+      txFinish(job, 'done', opLabel + ' ' + succeeded + ' item(s)');
+      toast(opLabel + ` (${succeeded} item(s))`, 'success');
+    }
+    else if (succeeded === 0) { txFinish(job, 'error', opLabel + ' failed'); toast(opLabel + ' failed', 'error'); }
+    else { txFinish(job, 'error', `${opLabel} ${succeeded}, ${failed} failed`); toast(`${opLabel} ${succeeded}, ${failed} failed`, 'warning'); }
+    if (fsClipboard.action === 'cut' && !job.stopAfterCurrent) { fsClipboard = null; updatePasteUI(); }
     refreshFiles();
   } finally {
     _pasteBusy = false;
@@ -6086,14 +6211,16 @@ async function pasteFile(destDir, conflictMode, resumeFrom) {
 }
 
 let _conflictBusy = false;
+let _resumeJobId = null; // paused Transfer Center job to reattach after a conflict choice
 function resolveConflict(mode) {
   // Guard double-fire (double-click/Enter+click) and stale state
   if (_conflictBusy || !fsClipboard || !_conflictResolve) return;
-  const { destDir, resumeFrom, action } = _conflictResolve;
+  const { destDir, resumeFrom, action, jobId } = _conflictResolve;
   // Clipboard changed since the conflict (e.g. new copy) — don't resume stale queue
   if (!destDir || fsClipboard.action !== action) { _conflictResolve = null; return; }
   _conflictBusy = true;
   closeOverlay('conflict-overlay');
+  _resumeJobId = jobId || null;
   _conflictResolve = null;
   pasteFile(destDir, mode, resumeFrom).finally(() => { _conflictBusy = false; });
 }
@@ -6152,25 +6279,84 @@ async function deleteFile(file) {
 }
 
 async function downloadFile(filePath) {
+  const name0 = filePath.split(/[\\/]/).pop() || 'download';
+  const job = txCreate('download', 'Download ' + name0, {});
+  const ctrl = new AbortController();
+  job.abort = () => { try { ctrl.abort(); } catch {} };
   try {
     const r = await fetch(`/api/files/download?path=${encodeURIComponent(filePath)}`, {
-      headers: { 'x-pin-token': authToken }
+      headers: { 'x-pin-token': authToken }, signal: ctrl.signal
     });
-    if (!r.ok) { toast('Download failed', 'error'); return; }
+    if (!r.ok) {
+      let msg = 'Download failed';
+      try { const j = await r.json(); if (j && j.error) msg = j.error; } catch {}
+      if (r.status === 401) { try { showPinScreen(); } catch {} msg = 'Session expired — sign in again'; }
+      txFinish(job, 'error', msg);
+      toast(msg, 'error');
+      return;
+    }
     const ct = r.headers.get('content-type') || '';
-    const blob = await r.blob();
+    let len = Number(r.headers.get('content-length') || 0);
+    if (!(len > 0)) {
+      // Fallback for the total: the header needs the restarted server, and a
+      // proxy/tunnel may strip it anyway. stat() reports the same file size,
+      // so % / ETA still work. Directory zips stay indeterminate (no total).
+      try {
+        const st = await api(`/api/files/stat?path=${encodeURIComponent(filePath)}`);
+        if (st && !st.error && !st.isDirectory && typeof st.size === 'number' && st.size > 0) len = st.size;
+      } catch {}
+    }
+    // Single files report Content-Length (server.js); directory zips stream
+    // length-less and stay indeterminate (bytes + speed only).
+    if (len > 0) job.total = len;
+    txRender(true);
+    // Stream the body so progress + speed are real. Chunks are still assembled
+    // into one Blob for the anchor download — same memory profile as before.
+    const reader = r.body && r.body.getReader ? r.body.getReader() : null;
+    const chunks = [];
+    let loaded = 0;
+    if (reader) {
+      for (;;) {
+        if (job.stopAfterCurrent) { try { await reader.cancel(); } catch {} break; }
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) { chunks.push(value); loaded += value.length; txTick(job, loaded); }
+      }
+    } else {
+      const blob = await r.blob();
+      loaded = blob.size;
+      txTick(job, loaded);
+      chunks.push(new Uint8Array(await blob.arrayBuffer()));
+    }
+    job.abort = null;
+    if (job.stopAfterCurrent) {
+      txFinish(job, 'cancelled', loaded ? formatSize(loaded) + ' received' : '');
+      toast('Download stopped', 'warning');
+      return;
+    }
+    const blob = new Blob(chunks, { type: ct || 'application/octet-stream' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    let name = filePath.split(/[\\/]/).pop() || 'download';
+    let name = name0;
     // Server returns application/zip for directories — append .zip if missing
     if (ct.includes('zip') && !name.endsWith('.zip')) name += '.zip';
     a.download = name;
     document.body.appendChild(a);
     a.click();
     a.remove();
-    URL.revokeObjectURL(url);
-  } catch(e) { console.warn('Download failed:', e); toast('Download failed', 'error'); }
+    setTimeout(() => { try { URL.revokeObjectURL(url); } catch {} }, 10000);
+    txFinish(job, 'done', formatSize(blob.size));
+  } catch(e) {
+    if (e && e.name === 'AbortError') {
+      txFinish(job, 'cancelled');
+      toast('Download stopped', 'warning');
+    } else {
+      console.warn('Download failed:', e);
+      txFinish(job, 'error', 'Download failed');
+      toast('Download failed', 'error');
+    }
+  }
 }
 
 function joinPath(parent, child) {
@@ -6344,58 +6530,246 @@ async function handleUploadInput() {
   try { await uploadFileList(files); } catch(e) { console.warn('Upload failed:', e); toast('Upload failed', 'error'); }
 }
 
+// ═══════════════════════════════════════════════════════
+// TRANSFER CENTER (Phase 1: upload/download, Phase 2: copy/move)
+// Single owner of all transfer progress. Jobs are in-memory only.
+// Honesty tiers: upload/download = real bytes+speed; copy/move =
+// bytes-if-size-known else n/m files; zip/unzip + delete stay toasts.
+// ═══════════════════════════════════════════════════════
+const Transfers = {
+  jobs: new Map(), seq: 0, pinned: false, _hoverT: null, _renderT: 0,
+};
+function txNow() { return Date.now(); }
+function txFmtSpeed(bps) {
+  if (!bps || bps <= 0) return '';
+  return formatSize(bps) + '/s';
+}
+function txFmtETA(sec) {
+  if (!isFinite(sec) || sec < 0) return '';
+  if (sec < 2) return 'a moment left';
+  if (sec < 60) return Math.round(sec) + 's left';
+  const m = Math.floor(sec / 60), s = Math.round(sec % 60);
+  return m + 'm ' + (s < 10 ? '0' : '') + s + 's left';
+}
+function txFmtDur(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  if (s < 60) return s + 's';
+  return Math.floor(s / 60) + 'm ' + String(s % 60).padStart(2, '0') + 's';
+}
+function txCreate(type, label, opts = {}) {
+  const id = 'tx' + (++Transfers.seq) + '-' + txNow().toString(36);
+  const job = {
+    id, type, label, sub: opts.sub || '',
+    total: opts.total || 0, loaded: 0,
+    filesTotal: opts.filesTotal || 0, filesDone: 0,
+    status: 'active', speed: 0, _lastT: txNow(), _lastLoaded: 0,
+    startedAt: txNow(), stalledSince: 0, error: '',
+    abort: null, stopAfterCurrent: false,
+  };
+  Transfers.jobs.set(id, job);
+  // Cap memory: keep at most 10 finished jobs.
+  const done = [...Transfers.jobs.values()].filter(j => j.status !== 'active' && j.status !== 'waiting');
+  if (done.length > 10) {
+    done.sort((a, b) => a.startedAt - b.startedAt);
+    for (let i = 0; i < done.length - 10; i++) Transfers.jobs.delete(done[i].id);
+  }
+  txRender(true);
+  return job;
+}
+function txTick(job, loaded) {
+  const now = txNow();
+  job.loaded = loaded;
+  const dt = (now - job._lastT) / 1000;
+  if (dt >= 0.4) {
+    const inst = (loaded - job._lastLoaded) / dt;
+    if (inst >= 0) job.speed = job.speed ? job.speed * 0.6 + inst * 0.4 : inst;
+    job._lastT = now; job._lastLoaded = loaded;
+    if (inst > 512) job.stalledSince = 0;
+    else if (!job.stalledSince) job.stalledSince = now;
+  }
+  txRender();
+}
+function txFinish(job, status, msg) {
+  job.status = status;
+  if (status === 'done') { if (job.total) job.loaded = job.total; if (job.filesTotal) job.filesDone = job.filesTotal; }
+  if (msg) job.error = msg;
+  job.abort = null;
+  txRender(true);
+}
+function txActiveJobs() {
+  return [...Transfers.jobs.values()].filter(j => j.status === 'active' || j.status === 'waiting');
+}
+function txJobLine(job) {
+  if (job.status === 'waiting') return 'Waiting for conflict choice…';
+  if (job.status === 'done') return job.error || 'Done';
+  if (job.status === 'cancelled') return 'Stopped' + (job.error ? ' — ' + job.error : '');
+  if (job.status === 'error') return job.error || 'Failed';
+  const parts = [];
+  if (job.total > 0 && job.loaded > 0) {
+    parts.push(formatSize(job.loaded) + ' of ' + formatSize(job.total));
+    const sp = txFmtSpeed(job.speed);
+    if (sp && job.loaded < job.total) {
+      if (job.stalledSince && txNow() - job.stalledSince > 3000) parts.push('Stalled…');
+      else { parts.push(sp); parts.push(txFmtETA((job.total - job.loaded) / job.speed)); }
+    }
+  } else if (job.filesTotal > 1) {
+    parts.push(job.filesDone + ' of ' + job.filesTotal + ' files');
+    const sp = txFmtSpeed(job.speed);
+    if (sp) parts.push(sp);
+  } else {
+    // Single server-side file (copy/move): one atomic POST carries no
+    // intra-file signal, so a 0% bar would sit dead until the jump to done.
+    // Show honest activity + size context + elapsed instead of a fake 0%.
+    const verb = job.type === 'download' ? 'Downloading' : job.type === 'upload' ? 'Uploading' : job.type === 'copy' ? 'Copying' : job.type === 'move' ? 'Moving' : 'Working';
+    parts.push(verb + '…');
+    if (job.total > 0) parts.push(formatSize(job.total));
+    parts.push(txFmtDur(txNow() - job.startedAt) + ' elapsed');
+  }
+  if (job.sub) parts.push(job.sub);
+  return parts.filter(Boolean).join(' · ');
+}
+function txRender(force) {
+  const now = txNow();
+  if (!force && now - Transfers._renderT < 250) return;
+  Transfers._renderT = now;
+  try { document.body.classList.toggle('datasaver', !!(typeof settings !== 'undefined' && settings.datasaver)); } catch {}
+  const btn = document.getElementById('transfers-btn');
+  const count = document.getElementById('transfers-count');
+  const live = document.querySelector('#transfers-livebar > div');
+  const liveWrap = document.getElementById('transfers-livebar');
+  const list = document.getElementById('transfers-list');
+  const sub = document.getElementById('transfers-sub');
+  if (!btn || !list) return;
+  const active = txActiveJobs();
+  btn.classList.toggle('has-active', active.length > 0);
+  btn.setAttribute('aria-expanded', document.getElementById('transfers-panel').classList.contains('open') ? 'true' : 'false');
+  if (count) { count.textContent = String(active.length); }
+  if (sub) sub.textContent = active.length ? active.length + ' active' : '';
+  // Aggregate live bar over active jobs with known totals.
+  let tl = 0, tt = 0;
+  for (const j of active) { if (j.total > 0) { tl += Math.min(j.loaded, j.total); tt += j.total; } }
+  if (live && liveWrap) {
+    if (tt > 0) { liveWrap.classList.add('on'); live.style.width = Math.min(100, (tl / tt) * 100) + '%'; }
+    else liveWrap.classList.toggle('on', active.length > 0 && active.some(j => j.status === 'active'));
+  }
+  const jobs = [...Transfers.jobs.values()].sort((a, b) => b.startedAt - a.startedAt);
+  if (!jobs.length) { list.innerHTML = '<div class="tx-empty">No transfers yet.<br>Uploads, downloads and copy/move show here with speed.</div>'; return; }
+  const ico = (t) => t === 'download'
+    ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>'
+    : t === 'upload'
+    ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>'
+    : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  list.innerHTML = jobs.map(j => {
+    // Determinate only with real movement: multi-file n/m, or bytes actually
+    // flowing. A single in-flight server file shows the shimmer instead of a
+    // dead 0% (there is no intra-file signal to report).
+    const measurable = (j.total > 0 && j.loaded > 0) || (j.filesTotal > 1 && j.filesDone > 0);
+    const pct = (j.total > 0 && j.loaded > 0) ? Math.min(100, Math.round((j.loaded / j.total) * 100)) : (j.filesTotal > 1 ? Math.round((j.filesDone / j.filesTotal) * 100) : 0);
+    const showPct = (j.total > 0 && j.loaded > 0) || j.filesTotal > 1;
+    const st = j.status === 'done' ? 'done' : j.status === 'error' ? 'error' : j.status === 'waiting' ? 'waiting' : 'active';
+    const canCancel = j.status === 'active';
+    const btn2 = canCancel ? `<button class="tx-act danger" onclick="cancelTransfer('${j.id}')">Stop</button>`
+      : (j.status !== 'active' && j.status !== 'waiting') ? `<button class="tx-act" onclick="dismissTransfer('${j.id}')">Dismiss</button>` : '';
+    return `<div class="tx-job" data-status="${st}"><div class="tx-row1"><span class="tx-ico ${j.type === 'download' ? 'dl' : j.type === 'copy' || j.type === 'move' ? 'mv' : ''}">${ico(j.type)}</span><span class="tx-name" title="${escHtml(j.label)}">${escHtml(j.label)}</span><span class="tx-pct">${showPct ? pct + '%' : ''}</span></div>`
+      + `<div class="tx-bar" role="progressbar" aria-label="${escHtml(j.label)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><div class="tx-fill ${(j.status === 'active' && !measurable && j.filesTotal <= 1) ? 'indet' : ''}" style="${showPct ? 'width:' + pct + '%' : ''}"></div></div>`
+      + `<div class="tx-row2"><span class="tx-meta" aria-live="off">${escHtml(txJobLine(j))}</span>${btn2}</div></div>`;
+  }).join('');
+}
+function toggleTransfersPanel(e, forceClose) {
+  if (e) { try { e.stopPropagation(); } catch {} }
+  const p = document.getElementById('transfers-panel');
+  if (!p) return;
+  const willOpen = forceClose ? false : !p.classList.contains('open');
+  if (willOpen && e && e.type === 'click') Transfers.pinned = true;
+  if (!willOpen) Transfers.pinned = false;
+  p.classList.toggle('open', willOpen);
+  txRender(true);
+}
+function dismissTransfer(id) { Transfers.jobs.delete(id); txRender(true); }
+function clearFinishedTransfers() {
+  for (const [id, j] of Transfers.jobs) { if (j.status !== 'active' && j.status !== 'waiting') Transfers.jobs.delete(id); }
+  txRender(true);
+}
+function cancelTransfer(id) {
+  const job = Transfers.jobs.get(id);
+  if (!job || (job.status !== 'active')) return;
+  // Honest cancel: network ops abort now and their handlers finish the job;
+  // copy/move loops stop after the current file (the in-flight request cannot
+  // be un-done server-side, so "Stop" never claims server work halted).
+  job.stopAfterCurrent = true;
+  if (job.type === 'copy' || job.type === 'move') job.sub = 'Stopping after current file…';
+  try { if (job.abort) job.abort(); } catch {}
+  txRender(true);
+}
+(function initTransfersPanel() {
+  const fine = window.matchMedia && window.matchMedia('(pointer: fine)').matches;
+  const btn = document.getElementById('transfers-btn');
+  const panel = document.getElementById('transfers-panel');
+  if (!btn || !panel) return;
+  if (fine) {
+    btn.addEventListener('mouseenter', () => {
+      clearTimeout(Transfers._hoverT);
+      if (!panel.classList.contains('open')) { Transfers.pinned = false; panel.classList.add('open'); txRender(true); }
+    });
+    btn.addEventListener('mouseleave', () => {
+      clearTimeout(Transfers._hoverT);
+      Transfers._hoverT = setTimeout(() => { if (!Transfers.pinned) { panel.classList.remove('open'); txRender(true); } }, 250);
+    });
+    panel.addEventListener('mouseenter', () => clearTimeout(Transfers._hoverT));
+    panel.addEventListener('mouseleave', () => {
+      clearTimeout(Transfers._hoverT);
+      Transfers._hoverT = setTimeout(() => { if (!Transfers.pinned) { panel.classList.remove('open'); txRender(true); } }, 250);
+    });
+  }
+  document.addEventListener('click', (e) => {
+    if (!Transfers.pinned) return;
+    if (panel.classList.contains('open') && !panel.contains(e.target) && !btn.contains(e.target)) {
+      Transfers.pinned = false; panel.classList.remove('open'); txRender(true);
+    }
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && panel.classList.contains('open') && !document.querySelector('.overlay.open')) {
+      Transfers.pinned = false; panel.classList.remove('open'); txRender(true);
+    }
+  });
+})();
+
 let _uploadProgressTimeout = null;
 let _currentUploadXhr = null;
 let _uploadCancelled = false;
+// Legacy shims: the old header bar is retired (hidden); progress lives in the
+// Transfer Center. Kept so any missed caller degrades to a toast, not a crash.
 function setUploadProgress(pct, status, text) {
-  const bar = document.getElementById('upload-progress');
-  const barFill = document.getElementById('upload-progress-bar');
-  const barText = document.getElementById('upload-progress-text');
-  if (!bar) return;
-  bar.className = status || '';
-  if (pct >= 0) {
-    bar.classList.add('active');
-    barFill.style.width = Math.min(pct, 100) + '%';
-  }
-  if (text != null) barText.textContent = text;
+  if (text) { try { toast(text, status === 'error' ? 'error' : status === 'success' ? 'success' : 'info'); } catch {} }
 }
-function clearUploadProgress(delay = 1500) {
-  clearTimeout(_uploadProgressTimeout);
-  _uploadProgressTimeout = setTimeout(() => {
-    const bar = document.getElementById('upload-progress');
-    if (bar) {
-      bar.classList.remove('active', 'success', 'error');
-      bar.querySelector('#upload-progress-bar').style.width = '0%';
-      bar.querySelector('#upload-progress-text').textContent = '';
-      _currentUploadXhr = null;
-      _uploadCancelled = false;
-    }
-  }, delay);
-}
+function clearUploadProgress(delay = 1500) { clearTimeout(_uploadProgressTimeout); }
 function cancelUpload() {
   _uploadCancelled = true;
-  if (_currentUploadXhr) {
-    try { _currentUploadXhr.abort(); } catch {}
-    _currentUploadXhr = null;
+  for (const j of Transfers.jobs.values()) {
+    if (j.type === 'upload' && j.status === 'active') { cancelTransfer(j.id); break; }
   }
-  setUploadProgress(100, 'error', 'Upload cancelled');
-  clearUploadProgress(1500);
+  try { if (_currentUploadXhr) _currentUploadXhr.abort(); } catch {}
+  _currentUploadXhr = null;
   toast('Upload cancelled', 'warning');
 }
 
 async function uploadFileList(items) {
   const path = encodeURIComponent(currentPath);
-  const total = items.length;
+  const files = items.map(item => ({ file: item.file || item, name: item.path || item.webkitRelativePath || item.name }));
+  const total = files.length;
+  if (!total) return;
+  const totalBytes = files.reduce((n, f) => n + ((f.file && f.file.size) || 0), 0);
+  const job = txCreate('upload', total === 1 ? 'Upload ' + files[0].name : 'Upload ' + total + ' files', { total: totalBytes, filesTotal: total });
   let completed = 0;
   let failedItems = [];
+  let baseLoaded = 0;
   _uploadCancelled = false;
+  job.abort = () => { _uploadCancelled = true; try { if (_currentUploadXhr) _currentUploadXhr.abort(); } catch {} };
   
-  setUploadProgress(0, '', `0/${total}`);
-  
-  for (const item of items) {
-    if (_uploadCancelled) break;
-    const file = item.file || item;
-    const fileName = item.path || item.webkitRelativePath || item.name;
+  for (const item of files) {
+    if (_uploadCancelled || job.stopAfterCurrent) break;
+    const file = item.file;
+    const fileName = item.name;
     const formData = new FormData();
     formData.append('files', file, fileName);
     
@@ -6406,22 +6780,15 @@ async function uploadFileList(items) {
         xhr.open('POST', `/api/files/upload?path=${path}`);
         xhr.setRequestHeader('x-pin-token', authToken);
         
-        // Progress fires per network chunk (dozens per second) and each event used to
-        // write style.width + textContent. Coalesce layout work into a frame, and
-        // rate-limit the text update to ~4 Hz.
-        let _progRaf = 0, _progLastText = 0, _progPct = 0;
-        const paintUploadProgress = () => {
-          _progRaf = 0;
-          const now = Date.now();
-          const showText = now - _progLastText >= 250;
-          if (showText) _progLastText = now;
-          const overallPct = ((completed + (_progPct / 100)) / total) * 100;
-          setUploadProgress(overallPct, '', showText ? `${fileName} (${_progPct}%)` : undefined);
-        };
+        // Progress fires per network chunk (dozens per second). txTick() feeds
+        // txRender(), which already throttles DOM writes to ~4 Hz — so paint
+        // directly: the old requestAnimationFrame gate froze the % in a
+        // background tab (rAF never fires when hidden), exactly when a big
+        // upload runs longest.
         xhr.upload.addEventListener('progress', e => {
           if (!e.lengthComputable) return;
-          _progPct = Math.round((e.loaded / e.total) * 100);
-          if (!_progRaf) _progRaf = requestAnimationFrame(paintUploadProgress);
+          job.sub = fileName;
+          txTick(job, baseLoaded + e.loaded);
         });
         
         xhr.onload = () => {
@@ -6431,7 +6798,10 @@ async function uploadFileList(items) {
               const resp = JSON.parse(xhr.responseText);
               if (resp.success) {
                 completed++;
-                setUploadProgress((completed / total) * 100, '', `${completed}/${total} uploaded`);
+                job.filesDone = completed;
+                baseLoaded += (file && file.size) || 0;
+                job.sub = fileName;
+                txTick(job, baseLoaded);
                 resolve();
               } else {
                 failedItems.push(fileName);
@@ -6461,30 +6831,28 @@ async function uploadFileList(items) {
         xhr.send(formData);
       });
     } catch (e) {
-      if (_uploadCancelled) break;
+      if (_uploadCancelled || job.stopAfterCurrent) break;
       console.warn('Upload item failed:', e);
     }
   }
   
   _currentUploadXhr = null;
-  // Final result — keep error visible longer (no auto-clear 1500ms for errors)
-  if (_uploadCancelled) {
-    // already handled in cancelUpload
+  job.abort = null;
+  if (_uploadCancelled || job.stopAfterCurrent) {
+    txFinish(job, 'cancelled', completed ? completed + '/' + total + ' uploaded' : '');
+    toast('Upload stopped', 'warning');
     refreshFiles();
     return;
   }
   if (failedItems.length === 0) {
-    setUploadProgress(100, 'success', `${completed}/${total} uploaded`);
-    if (failedItems.length) toast(`${failedItems.length} failed`, 'error');
-    clearUploadProgress(2000);
+    txFinish(job, 'done', completed + '/' + total + ' uploaded');
+    toast('Upload complete (' + completed + '/' + total + ')', 'success');
   } else if (completed > 0) {
-    setUploadProgress(100, 'error', `${completed} ok, ${failedItems.length} failed`);
-    toast(`${failedItems.length} failed`, 'error');
-    clearUploadProgress(3000);
+    txFinish(job, 'error', completed + ' ok, ' + failedItems.length + ' failed');
+    toast(failedItems.length + ' upload(s) failed', 'error');
   } else {
-    setUploadProgress(100, 'error', `All ${total} failed`);
-    toast(`All ${total} failed`, 'error');
-    clearUploadProgress(3000);
+    txFinish(job, 'error', 'All ' + total + ' failed');
+    toast('All ' + total + ' uploads failed', 'error');
   }
   
   refreshFiles();
