@@ -17,7 +17,7 @@
     "verify-version.js",
     "lib/",
     "public/",
-    "postinstall.js"
+    "scripts/rebuild-pty.js"
   ],
   "engines": {
     "node": ">=18.0.0"
@@ -32,7 +32,7 @@
     "dist:win": "electron-builder --win",
     "dist:linux": "electron-builder --linux",
     "dist:mac": "electron-builder --mac",
-    "postinstall": "node postinstall.js",
+    "rebuild:pty": "node scripts/rebuild-pty.js",
     "version:check": "node verify-version.js",
     "prepublishOnly": "npm run version:check"
   },

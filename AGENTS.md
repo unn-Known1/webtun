@@ -17,6 +17,7 @@
 | Dev (nodemon) | `npm run dev` — honours `nodemon.json`, which ignores runtime state files (`.tunnels.json`/`.cmdhist.json`) so their writes don't restart the server |
 | Stop server | `./stop.sh` |
 | Setup (first time) | `./setup.sh` (installs Node ≥18, cloudflared, npm deps, optional systemd) |
+| Rebuild node-pty | `npm run rebuild:pty` (manual — no install hook runs it) |
 | Electron dev | `npm run electron` |
 | Build Electron (Linux) | `npm run dist:linux` |
 | Build Electron (Windows) | `npm run dist:win` |
@@ -38,7 +39,7 @@ Optional env vars:
 PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means no auth. Quoted values in `.env` are stripped (e.g., `PIN="secret"` works).
 
 ## Key Details
-- **`postinstall.js`** rebuilds `node-pty` if its native binding is missing. It never downloads anything (install-time remote-binary fetch was removed for supply-chain hygiene).
+- **`scripts/rebuild-pty.js`** (manual `npm run rebuild:pty`) rebuilds `node-pty` if its native binding is missing. It never downloads anything and is deliberately not a postinstall hook, so the package ships zero install scripts.
 - **cloudflared on demand** (`lib/cloudflared.js`): the binary is fetched on first tunnel use only (tunnel API / `webtun --tunnel`), HTTPS-only from official Cloudflare releases, with tar-slip + HTML-page validation. `findCloudflared()` is re-exported by `server.js` for back-compat.
 - **Tunnel cleanup** after server restart: `kill $(pgrep -f 'cloudflared tunnel')`
 - **System stats** (`GET /api/system`) are cached 2 s server-side (`SYS_STATS_TTL_MS`); the frontend has a matching client-side memo (`fetchSystemStats()`) shared by the launchpad pulse, the header sys icon and the stats panel. Poll them through that helper, never `api('/api/system')` directly.

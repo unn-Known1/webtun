@@ -2,6 +2,13 @@ const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
+// Manual node-pty rebuild: `npm run rebuild:pty` from a checkout, or
+// `node <prefix>/scripts/rebuild-pty.js` for a global install.
+// Deliberately NOT a postinstall hook (no install scripts ship, so scanners
+// stay quiet and npm's default script-blocking changes nothing): if the
+// binding is missing, server.js refuses to boot and prints the same fix.
+const ROOT = path.join(__dirname, '..');
+
 // ── Rebuild node-pty if native module is missing ─────────────────────
 function rebuildNodePty() {
   try {
@@ -9,7 +16,7 @@ function rebuildNodePty() {
     return; // Already working
   } catch {}
 
-  const ptyDir = path.join(__dirname, 'node_modules', 'node-pty');
+  const ptyDir = path.join(ROOT, 'node_modules', 'node-pty');
   if (!fs.existsSync(ptyDir)) {
     // Reaching here means require('node-pty') already failed AND the package is
     // absent — i.e. a genuinely broken tree (--ignore-scripts, --omit=optional,
@@ -26,7 +33,7 @@ function rebuildNodePty() {
     // On Windows npm is npm.cmd — bare 'npm' without shell raises ENOENT
     const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
     const r = spawnSync(NPM, ['rebuild', 'node-pty'], {
-      cwd: __dirname,
+      cwd: ROOT,
       stdio: 'pipe',
       timeout: 120000
     });
@@ -64,7 +71,7 @@ rebuildNodePty();
 // fetched on first tunnel use instead (server tunnel API / `webtun --tunnel`,
 // see lib/cloudflared.js). Just inform when it's missing.
 try {
-  const { findCloudflared } = require('./lib/cloudflared');
+  const { findCloudflared } = require('../lib/cloudflared');
   if (!findCloudflared()) {
     console.log('  cloudflared not found — it will be downloaded on first tunnel use.');
   }

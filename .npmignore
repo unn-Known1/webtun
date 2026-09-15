@@ -1,5 +1,5 @@
 # NOTE: the real gate is `files` in package.json — a whitelist, so nothing outside
-# bin/, server.js, verify-version.js, lib/, public/ and postinstall.js ships regardless of
+# bin/, server.js, verify-version.js, lib/, public/ and scripts/rebuild-pty.js ships regardless of
 # what is listed below. This file is defence-in-depth for when that whitelist is widened.
 # npm force-includes README.md, LICENSE and package.json no matter what is ignored here.
 # Current tarball: 18 files — check with `npm pack --dry-run`.
