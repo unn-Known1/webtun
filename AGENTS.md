@@ -100,7 +100,7 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
 - **Server-side storage**: `POST /api/history` saves to `cmdHistory` array (max configurable). `GET /api/history` returns list.
 
 ### Session Persistence
-- **tmux sessions**: When tmux is available, WS `session` query param attaches to a `wt-webtun-{id}` tmux session. Cleaned on server exit and startup (`cleanupOrphanTmuxSessions`, namespaced prefix only).
+- **tmux sessions**: When tmux is available, WS `session` query param attaches to a `wt-webtun-<port>-{id}` tmux session (`tmuxOwnName()` — the port makes it per-instance, so a repo checkout and a global/npx server never adopt or kill each other's sessions). Legacy `wt-webtun-{id}` / `wt-{id}` names are still adopted for reconnect; both sweeps kill legacy names only when clientless and never touch a foreign port-namespace. Crafted ids can't escape the namespace (`tmuxAdoptableNames()` filters foreign names on attach/resize/delete). Caveats: protection is mutual only once every instance on the box runs this build, and changing an instance's port strands its old-namespace sessions (clean once with `tmux kill-session`). Cleaned on server exit and startup (`cleanupOrphanTmuxSessions`).
 - **In-memory PTY persistence**: When tmux is unavailable (e.g. Windows), the server keeps PTY processes alive in a `ptySessions` Map across WebSocket disconnects and reattaches on reconnect. Same lifecycle as tmux: sessions are lost on server restart.
 
 ## Architecture Notables
@@ -136,6 +136,6 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
   - `POST /api/git/pull` — `{path, mode: merge|rebase|ff-only}`; `POST /api/git/push` — `{path, upstream?}` (`push -u origin HEAD` on consent); `POST /api/git/fetch` — 60s timeout (frontend uses 90s raw fetch, `api()` caps at 30s)
   - `GET /api/git/branches`, `POST /api/git/switch` / `branch` (names via `check-ref-format`); `GET /api/git/tags`, `POST /api/git/tag` / `untag` (tags via `check-ref-format refs/tags/…`)
   - `GET /api/git/stash`, `POST /api/git/stash`, `POST /api/git/stash/pop` (`{ref?}` validated `stash@{n}`); `POST /api/git/reset` (`{mode: mixed|soft|hard, ref?}` verified to a commit); `POST /api/git/init`
-- **Startup cleanup**: loads persisted tunnels, kills orphan `wt-webtun-*` tmux sessions.
+- **Startup cleanup**: loads persisted tunnels, kills orphan `wt-webtun-*` tmux sessions (own port-namespace + clientless legacy only — foreign instances' sessions are left alone).
 - **Filesystem access**: full filesystem by design (`ALLOW_FULL_FS` defaults to `true`; set `ALLOW_FULL_FS=false` to restrict the File API to `WORKSPACE_ROOT` via `pathContained()`). Terminal shells are always unconfined.
 - **Cross-platform**: All file operations, process management, and system commands have Windows (PowerShell), macOS (BSD tools), and Linux (GNU tools) code paths.

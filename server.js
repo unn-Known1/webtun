@@ -3232,6 +3232,35 @@ function getTMUX() {
   if (!TMUX) { try { TMUX = execSync('command -v tmux', { stdio: ['ignore','pipe','ignore'] }).toString().trim(); } catch { TMUX = null; } }
   return TMUX;
 }
+// Per-instance namespace: two servers on one box (repo checkout + global/npx
+// on another port, …) must never adopt or kill each other's sessions, so own
+// sessions live under `wt-webtun-<port>-<id>` — PORT is unique per box.
+// Legacy `wt-webtun-<id>` / `wt-<id>` sessions (pre-namespacing) are still
+// adopted for reconnect, but the sweeps below only kill legacy sessions with
+// no attached clients: a live foreign session always has its owner attached
+// and is therefore spared. Foreign port-namespaced sessions are never killed.
+function tmuxOwnName(id) { return `${TMUX_PREFIX}${Number(PORT)}-${id}`; }
+function tmuxLegacyNames(id) { return [TMUX_PREFIX + id, 'wt-' + id]; }
+// Names this server may attach to / resize / explicitly kill for an id: its
+// own plus legacy fallbacks — never a foreign port-namespace, even when a
+// crafted session id spells one out (id `5253-x` on a :5252 server would
+// otherwise resolve the legacy fallback to a sibling's live session).
+function tmuxAdoptableNames(id) {
+  return [tmuxOwnName(id), ...tmuxLegacyNames(id).filter(n => tmuxKind(n) !== 'foreign')];
+}
+// 'ours' | 'legacy' | 'foreign' | null (not a WebTun session at all)
+function tmuxKind(name) {
+  if (typeof name !== 'string' || !name.startsWith(TMUX_PREFIX)) return null;
+  const m = /^(\d+)-/.exec(name.slice(TMUX_PREFIX.length));
+  if (!m) return 'legacy';
+  return Number(m[1]) === Number(PORT) ? 'ours' : 'foreign';
+}
+function tmuxHasClients(name) {
+  try {
+    const out = execFileSync(getTMUX(), ['list-clients', '-t', name], { stdio: 'pipe', encoding: 'utf8' }).trim();
+    return out.length > 0;
+  } catch { return false; }
+}
 
 // In-memory PTY session store — enables persistence without tmux (Windows + Linux)
 const ptySessions = new Map(); // sessionId -> { proc, exited, createdAt, lastActive, attached }
@@ -3279,10 +3308,12 @@ function cleanupOrphanTmuxSessions() {
   if (!TMUX) return;
   try {
     const out = execFileSync(TMUX, ['list-sessions', '-F', '#{session_name}'], { encoding: 'utf8' }).trim();
-    // Only our namespaced prefix — never bare 'wt-', which may belong to the user
-    const sessions = out.split('\n').filter(s => s.startsWith(TMUX_PREFIX));
+    // Only our namespaced prefix — never bare 'wt-', which may belong to the user.
+    // Within our family: own port-namespace + legacy names, clientless only.
+    // Foreign port-namespaced sessions belong to a sibling server — never ours.
+    const sessions = out.split('\n').filter(s => { const k = tmuxKind(s); return k === 'ours' || k === 'legacy'; });
     for (const s of sessions) {
-      if (!s.startsWith(TMUX_PREFIX)) continue;
+      if (tmuxKind(s) === null) continue;
       try {
         const clients = execFileSync(TMUX, ['list-clients', '-t', s], { stdio: 'pipe', encoding: 'utf8' }).trim();
         if (!clients) {
@@ -3303,9 +3334,14 @@ app.get('/api/sessions', checkPin, (req, res) => {
     try {
       const out = execFileSync(tmuxBin, ['list-sessions', '-F', '#{session_name}'], { encoding: 'utf8' }).trim();
       const sessions = out.split('\n')
-        .filter(s => s.startsWith(TMUX_PREFIX))
+        .filter(s => { const k = tmuxKind(s); return k === 'ours' || k === 'legacy'; })
         .map(s => {
-          return { id: s.slice(TMUX_PREFIX.length), name: s };
+          // Strip our port segment so ids stay stable reconnect tokens;
+          // legacy names slice the family prefix as before.
+          const id = tmuxKind(s) === 'ours'
+            ? s.slice((TMUX_PREFIX + Number(PORT) + '-').length)
+            : s.slice(TMUX_PREFIX.length);
+          return { id, name: s };
         });
       return res.json({ tmux: true, sessions });
     } catch {
@@ -3315,7 +3351,7 @@ app.get('/api/sessions', checkPin, (req, res) => {
   // In-memory sessions (no tmux)
   const sessions = [];
   for (const [id] of ptySessions) {
-    sessions.push({ id, name: TMUX_PREFIX + id });
+    sessions.push({ id, name: tmuxOwnName(id) });
   }
   res.json({ tmux: false, sessions });
 });
@@ -3327,8 +3363,10 @@ app.delete('/api/sessions/:id', checkPin, (req, res) => {
     return res.status(400).json({ error: 'invalid session id' });
   }
   if (TMUX) {
-    // Try new prefix first, then legacy wt- for migration
-    const tryNames = [TMUX_PREFIX + id, 'wt-' + id];
+    // Own namespace first, then legacy names for migration. An explicit
+    // user-requested kill; foreign namespaces are excluded even for crafted
+    // ids (see tmuxAdoptableNames).
+    const tryNames = tmuxAdoptableNames(id);
     for (const n of tryNames) { try { execFileSync(TMUX, ['kill-session', '-t', n], { stdio: 'ignore' }); } catch {} }
     return res.json({ success: true });
   }
@@ -3552,11 +3590,17 @@ wss.on('connection', (ws, req) => {
         });
       }
     } else if (TMUX && sessionId) {
-      const tmuxName = TMUX_PREFIX + sessionId;
-      const exists   = tmuxSessionExists(tmuxName) || tmuxSessionExists('wt-' + sessionId);
-      // Migrate old wt- to new prefix if exists
+      const tmuxName = tmuxOwnName(sessionId);
+      const candidates = tmuxAdoptableNames(sessionId);
+      const exists = candidates.some(tmuxSessionExists);
+      // Adopt a legacy session (pre-namespacing) when ours doesn't exist yet.
+      // Migration window only: foreign namespaces are excluded above, and ids
+      // are per-tab tokens, so a cross-instance collision is negligible.
       let effectiveName = tmuxName;
-      if (!tmuxSessionExists(tmuxName) && tmuxSessionExists('wt-' + sessionId)) effectiveName = 'wt-' + sessionId;
+      if (!tmuxSessionExists(tmuxName)) {
+        const found = candidates.slice(1).find(tmuxSessionExists);
+        if (found) effectiveName = found;
+      }
 
       if (exists) {
         try { execFileSync(TMUX, ['resize-window', '-t', effectiveName, '-x', String(cols), '-y', String(rows)], { stdio: 'ignore' }); } catch {}
@@ -3662,9 +3706,9 @@ wss.on('connection', (ws, req) => {
         if (!c || !r) return;
         proc.resize(c, r);
         if (TMUX && sessionId) {
-          // Try new prefix first, fallback to legacy
-          try { execFileSync(TMUX, ['resize-window', '-t', TMUX_PREFIX + sessionId, '-x', String(c), '-y', String(r)], { stdio: 'ignore' }); } catch {
-            try { execFileSync(TMUX, ['resize-window', '-t', 'wt-' + sessionId, '-x', String(c), '-y', String(r)], { stdio: 'ignore' }); } catch {}
+          // Own namespace first, then (non-foreign) legacy fallbacks.
+          for (const n of tmuxAdoptableNames(sessionId)) {
+            try { execFileSync(TMUX, ['resize-window', '-t', n, '-x', String(c), '-y', String(r)], { stdio: 'ignore' }); break; } catch {}
           }
         }
       }
@@ -4662,8 +4706,13 @@ function cleanup() {
       const out = execFileSync(TMUX, ['list-sessions', '-F', '#{session_name}'], { encoding: 'utf8' }).trim();
       // Only OUR namespaced sessions: the previous `|| startsWith('wt-')`
       // killed the user's own `wt-*` tmux sessions on every SIGTERM.
-      const sessions = out.split('\n').filter(s => s.startsWith(TMUX_PREFIX));
-      for (const s of sessions) {
+      // Same rule one level down: never a sibling server's port-namespace.
+      // Own sessions die unconditionally; legacy names only when clientless
+      // (a live foreign session always has its owner attached).
+      for (const s of out.split('\n')) {
+        const k = tmuxKind(s);
+        if (k === null || k === 'foreign') continue;
+        if (k === 'legacy' && tmuxHasClients(s)) continue;
         try { execFileSync(TMUX, ['kill-session', '-t', s], { stdio: 'ignore' }); } catch {}
       }
     } catch {}
@@ -4710,6 +4759,10 @@ process.on('unhandledRejection', e => {
 
 process.on('SIGTERM', () => { try { cleanup(); } catch {}; process.exit(0); });
 process.on('SIGINT', () => { try { cleanup(); } catch {}; process.exit(0); });
+// Closing the terminal sends SIGHUP, not SIGINT — without this, shut terminals
+// skipped cleanup entirely and orphaned tunnels/tmux sessions (which is how
+// duplicate cloudflared processes accumulate for the same backend port).
+process.on('SIGHUP', () => { try { cleanup(); } catch {}; process.exit(0); });
 process.on('exit', () => { try { cleanup(); } catch {} });
 
 module.exports = { app, server, startServer, PORT, WORKSPACE_ROOT, findCloudflared };
