@@ -215,8 +215,8 @@ const WORKSPACE_ROOT = (() => {
 // middleware ran after it, every static response (index.html at /, /docs,
 // icons, manifest, sw.js) was served with no CSP / X-Frame-Options /
 // Referrer-Policy / Permissions-Policy at all.
-// script-src keeps 'unsafe-inline': the single-file frontend depends on an
-// inline boot script plus ~100 inline handlers (no bundler — see AGENTS.md).
+// script-src keeps 'unsafe-inline': the frontend has no inline scripts left,
+// but ~100 inline handlers (no bundler — see AGENTS.md) still need it.
 // It still restricts script origins to self + jsDelivr + blob:, which
 // previously was not enforced for the app shell at all.
 app.use((req, res, next) => {
@@ -4438,29 +4438,27 @@ function handlePreviewProxy(req, res) {
     suffix += u.search || '';
   } catch { suffix = '/'; }
   if (suffix.includes('\0')) return res.status(400).json({ error: 'bad path' });
-  // Strip only OUR bearer from the upstream query: the ?token= value(s)
-  // matching the credential that authenticated this request (query / header
-  // / cookie). Anything else belongs to the upstream app itself (Jupyter-
-  // style ?token= logins) — deleting it breaks the app, typically as an
-  // endless login redirect loop ("too many redirects").
+  // Strip only OUR bearer from the upstream query: a ?token= value that is a
+  // live credential (the PIN or a known session token) is ours — it already
+  // completed auth above, and the dev app's logs would harvest it. Anything
+  // else belongs to the upstream app itself (Jupyter-style ?token= logins)
+  // and passes through; deleting it breaks the app, typically as an endless
+  // login redirect loop ("too many redirects"). Note the values must be
+  // classified individually: Express merges ?token=A&token=B into one array,
+  // so "the query token" can't tell ours from foreign.
   try {
-    const ours = new Set();
-    const pushCred = (v) => {
-      if (Array.isArray(v)) v.forEach(pushCred);
-      else if (typeof v === 'string' && v.trim()) ours.add(v.trim());
-    };
-    pushCred(req.query && req.query.token);
-    pushCred(req.headers['x-pin-token']);
-    pushCred(parsePreviewCookie(req));
     const qm = suffix.indexOf('?');
-    if (qm !== -1 && ours.size) {
+    if (qm !== -1) {
       const params = new URLSearchParams(suffix.slice(qm + 1));
-      if (params.getAll('token').some(v => ours.has(v))) {
-        const kept = params.getAll('token').filter(v => !ours.has(v));
-        params.delete('token');
-        for (const v of kept) params.append('token', v);
-        const rest = params.toString();
-        suffix = suffix.slice(0, qm) + (rest ? '?' + rest : '');
+      const vals = params.getAll('token');
+      if (vals.length) {
+        const foreign = vals.filter(v => !v || (!constantTimeEqual(v, PIN) && !getSession(v)));
+        if (foreign.length !== vals.length) {
+          params.delete('token');
+          for (const v of foreign) params.append('token', v);
+          const rest = params.toString();
+          suffix = suffix.slice(0, qm) + (rest ? '?' + rest : '');
+        }
       }
     }
   } catch {}

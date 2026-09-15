@@ -8,7 +8,7 @@
 - **Server**: `node server.js` (Express + WebSocket + node-pty)
 - **CLI**: `bin/webtun.js` — parses flags (`--port`, `--host`, `--pin`, `--tunnel`, `--help`, `--version`), loads `.env`, spawns `server.js`
 - **Electron**: `electron/main.js` (forks `server.js` as child process, `HOST=127.0.0.1`)
-- **Frontend**: `public/index.html` — vanilla HTML/CSS/JS, no bundler. xterm.js + CodeMirror loaded from CDN (all `<script defer>`).
+- **Frontend**: `public/index.html` + `public/css/styles.css` + `public/js/app.js` (+ tiny `public/js/theme-init.js` first in `<body>` against theme flash) — vanilla, split by asset type, no bundler. xterm.js + CodeMirror loaded from CDN (all `<script defer>`).
 
 ## Commands
 | Action | Command |
@@ -52,10 +52,10 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
 - **Systemd**: `setup.sh` optionally creates `/etc/systemd/system/webtun.service`.
 - **CSP** in `server.js` allows CDN scripts from `cdn.jsdelivr.net`.
 - **File API** workspace root: `WORKSPACE_ROOT` env var, falls back to `os.homedir()`.
-- `public/sw.js` enables PWA installability. Cache `webtun-v6` (precaches `/`, `/index.html`, `/docs.html`, `/manifest.json`, `/commands.js`, `/favicon.png`, `/icon.svg`, `/icon-192.png`, `/icon-512.png`, added per-entry so one missing asset can't empty the cache); client `registerSW()` toasts on `updatefound` + `skipWaiting` (no auto-reload — live terminal). Bump `CACHE` whenever `PRECACHE` changes, or the new entries never install.
+- `public/sw.js` enables PWA installability. Cache `webtun-v7` (precaches `/`, `/index.html`, `/css/styles.css`, `/js/app.js`, `/js/theme-init.js`, `/docs.html`, `/manifest.json`, `/commands.js`, `/favicon.png`, `/icon.svg`, `/icon-192.png`, `/icon-512.png`, added per-entry so one missing asset can't empty the cache); client `registerSW()` toasts on `updatefound` + `skipWaiting` (no auto-reload — live terminal). Bump `CACHE` whenever `PRECACHE` changes, or the new entries never install.
 - **Favicon/Icons**: `public/favicon.png` (32px), `public/icon-192.png` (192px), `public/icon-512.png` (512px), `public/icon.svg` — all generated from the same terminal SVG logo.
-- **Safe localStorage** (`public/index.html:979`): `safeStorage` wrapper catches errors when Edge Tracking Prevention blocks storage on Cloudflare tunnel domains. All `localStorage` calls go through this wrapper.
-- **Editor drafts** (`public/index.html`): autosave writes `wt-draft:<path>` 2 s after an edit; `openFileEditor()` offers to restore it when it differs from disk; `saveFile()` and an explicit discard in `closeEditor()` purge it. Do not remove any of those three without also dropping the auto-draft claim in `/docs`.
+- **Safe localStorage** (`public/js/theme-init.js`): `safeStorage` wrapper catches errors when Edge Tracking Prevention blocks storage on Cloudflare tunnel domains. All `localStorage` calls go through this wrapper.
+- **Editor drafts** (`public/js/app.js`): autosave writes `wt-draft:<path>` 2 s after an edit; `openFileEditor()` offers to restore it when it differs from disk; `saveFile()` and an explicit discard in `closeEditor()` purge it. Do not remove any of those three without also dropping the auto-draft claim in `/docs`.
 - **Crash semantics** (`server.js`): both `uncaughtException` and `unhandledRejection` log, run `cleanup()`, and `exit(1)` — an unhandled rejection deliberately no longer swallows the error and keeps running.
 - **User guide** (`public/docs.html`, served at `/docs`, published to GitHub Pages from repo root — root `.nojekyll` required, do not remove): whenever you add, change, or remove a user-facing feature, update `/docs` in the same change (new section/bullet/FAQ + TOC link + `data-title` keywords). Keep it single-file, zero-dependency, offline-safe (no CDN). Keep asset paths relative and app links on `a.app-link` with `href="/"` (auto-rewritten to the repo URL on `github.io`); no other root-absolute `/…` URLs in that file or they break on Pages.
 
@@ -65,7 +65,7 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
 - **Fonts**: `--font-ui` = IBM Plex Sans (chrome: buttons, inputs, labels, panels), `--font` = JetBrains Mono (code/path surfaces: `.file-name`, `#path-input`, `#file-breadcrumb`, `#editor-filename`, `.tunnel-url`, `.cmd-lib-cmd`, `.cmd-hist-cmd`).
 - **CDN scripts are deferred** (`<script defer>`). Don't rely on them at parse time; lazy-init (CodeMirror via `initCodeMirror()`, `marked` guarded by `typeof marked !== 'undefined'`). Terminal init happens after async unlock, so xterm is available.
 - **Themes**: all 6 themes define explicit `color-scheme`. `:root`/`data-theme="tokyonight"` share the same palette. Keep every theme's `--fg1/2/3` WCAG-AA readable.
-- **Shared UI helpers** (all in `public/index.html`):
+- **Shared UI helpers** (all in `public/js/app.js`):
   - `setBtnBusy(btn, busy)` + `.btn.loading` — spinner state for async buttons
   - `showFieldError(id, msg)` / `clearFieldError(id)` + `.field-error` — inline field errors
   - `updateEditorDirty()` + `.editor-dirty` dot on `#editor-filename-wrap`
@@ -75,7 +75,7 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
   - `setupMoreMenuKeyboard()` — arrow/Home/End/Escape nav in overflow menu
 - **Dialogs**: `openOverlay(id)` sets `role="dialog"`, `aria-modal="true"`, `aria-labelledby` from the modal `h2`. Overlays without an `h2` need `aria-label`.
 - **Toasts**: `toast(msg, type)` supports `info|success|warning|error` with icons; stack capped at 4.
-- **Security header UI** (all in `public/index.html`): `#security-alert-btn` + `#security-alert-count` — persistent triangle for unreviewed logins (`wt-security-alerts` in storage, cleared by `openSecurityReview()`); `#sess-cup-num` — live session count drawn on the keep-awake cup (`updateSessionCupCount()`); `handleClientEvent()` handles `0x03` pushes (approve/deny modals via `confirmDialog`, pending rows in `refreshSessions()`).
+- **Security header UI** (all in `public/js/app.js`): `#security-alert-btn` + `#security-alert-count` — persistent triangle for unreviewed logins (`wt-security-alerts` in storage, cleared by `openSecurityReview()`); `#sess-cup-num` — live session count drawn on the keep-awake cup (`updateSessionCupCount()`); `handleClientEvent()` handles `0x03` pushes (approve/deny modals via `confirmDialog`, pending rows in `refreshSessions()`).
 
 ### Terminal
 - **xterm.js** with addons: fit, search, web-links, unicode11, webgl (canvas fallback)
