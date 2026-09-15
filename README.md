@@ -195,6 +195,11 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 
 ## Changelog
 
+### v2.1.1
+- **Transfer Center** — new up/down icon next to the coffee cup with live uploads, downloads and copy/move jobs: real bytes, speed and ETA, per-job Stop/Dismiss, hover-to-peek / click-to-pin panel with running-stripe bars. Single-file downloads report `Content-Length` for a true percent; copy/move pause while a conflict dialog waits and stop after the current file; zip/unzip and delete stay as toasts
+- **Full HTML preview** — the editor HTML preview gains a **Full** mode next to Safe: the file renders verbatim with its own scripts running inside the same isolated opaque-origin frame (no app access, storage, popups or navigation); relative and root-absolute asset URLs resolve against the file's folder; works without the sanitizer CDN; the isolation notice shows once
+- **Preview robustness** — URL rewriting no longer touches `<script>` bodies; a failed render explains itself in the pane instead of a silent blank; single-file server ops show activity + elapsed instead of a stuck 0%
+
 ### v2.1.0
 > **First release since v2.0.4.** The 2.0.5 working tree was never tagged or published, so its changes ship here too — nothing was released under 2.0.5, so this upgrade path skips nothing.
 
