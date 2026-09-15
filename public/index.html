@@ -7077,7 +7077,7 @@ function releasePanelSurface() {
   if (refreshBtn) refreshBtn.style.display = 'none';
   setFullBtnVisible(false);
   const iframe = document.getElementById('editor-preview-iframe');
-  if (iframe) { iframe.style.display = 'none'; iframe.srcdoc = ''; }
+  clearPreviewDoc(iframe);
   const mdContent = document.getElementById('md-preview-content');
   if (mdContent) { mdContent.style.display = 'none'; mdContent.innerHTML = ''; }
   const nameEl = document.getElementById('editor-filename');
@@ -7142,7 +7142,7 @@ async function showTextInPanel(path, content, original, history) {
   const previewIframe = document.getElementById('editor-preview-iframe');
   const mdContent = document.getElementById('md-preview-content');
   preview.classList.remove('active');
-  if (previewIframe) { previewIframe.style.display = 'none'; previewIframe.srcdoc = ''; }
+  if (previewIframe) clearPreviewDoc(previewIframe);
   if (mdContent) { mdContent.style.display = 'none'; mdContent.innerHTML = ''; }
   mdPreviewActive = false;
   clearPreviewLiveReload();
@@ -7261,7 +7261,7 @@ async function closeEditor() {
   document.getElementById('md-preview-toggle').style.display = 'none';
   document.getElementById('preview-refresh-btn').style.display = 'none';
   const previewIframe = document.getElementById('editor-preview-iframe');
-  if (previewIframe) { previewIframe.style.display = 'none'; previewIframe.srcdoc = ''; }
+  if (previewIframe) clearPreviewDoc(previewIframe);
   const mdContent = document.getElementById('md-preview-content');
   if (mdContent) { mdContent.style.display = 'none'; mdContent.innerHTML = ''; }
   const cm = document.querySelector('.CodeMirror');
@@ -7378,7 +7378,7 @@ async function openPdfViewer(path) {
   if (cm) cm.style.display = 'none';
   document.getElementById('editor-preview').classList.remove('active');
   const iframe = document.getElementById('editor-preview-iframe');
-  if (iframe) { iframe.style.display = 'none'; iframe.srcdoc = ''; }
+  clearPreviewDoc(iframe);
   const mdContent = document.getElementById('md-preview-content');
   if (mdContent) { mdContent.style.display = 'none'; }
   mdPreviewActive = false;
@@ -7819,7 +7819,7 @@ async function openEpubViewer(path) {
   if (cm) cm.style.display = 'none';
   document.getElementById('editor-preview').classList.remove('active');
   const iframe = document.getElementById('editor-preview-iframe');
-  if (iframe) { iframe.style.display = 'none'; iframe.srcdoc = ''; }
+  clearPreviewDoc(iframe);
   const mdContent2 = document.getElementById('md-preview-content');
   if (mdContent2) { mdContent2.style.display = 'none'; }
   mdPreviewActive = false;
@@ -7987,7 +7987,7 @@ async function openOfficeViewer(path) {
   if (cm) cm.style.display = 'none';
   document.getElementById('editor-preview').classList.remove('active');
   const iframe = document.getElementById('editor-preview-iframe');
-  if (iframe) { iframe.style.display = 'none'; iframe.srcdoc = ''; }
+  clearPreviewDoc(iframe);
   const mdContent = document.getElementById('md-preview-content');
   if (mdContent) { mdContent.style.display = 'none'; }
   mdPreviewActive = false;
@@ -8377,6 +8377,33 @@ function rewriteHtmlRelativeUrls(html, baseDir) {
   });
   return html;
 }
+// Preview frame transport: blob URLs instead of srcdoc. Some browsers refuse
+// to paint a sandboxed srcdoc frame (healthy rect, correct document delivered,
+// blank pixels), while blob: is explicitly allowed by the CSP frame-src and
+// paints everywhere. The sandbox attribute (opaque origin, scripts-only)
+// applies identically — only the delivery changes. Previous blob revoked
+// on every swap so long sessions don't hoard object URLs.
+let _previewDocUrl = null;
+function setPreviewDoc(iframe, doc) {
+  try { if (_previewDocUrl) URL.revokeObjectURL(_previewDocUrl); } catch {}
+  _previewDocUrl = null;
+  if (!iframe) return;
+  try {
+    _previewDocUrl = URL.createObjectURL(new Blob([doc], { type: 'text/html;charset=utf-8' }));
+    iframe.removeAttribute('srcdoc');
+    iframe.src = _previewDocUrl;
+  } catch (e) {
+    try { iframe.srcdoc = doc; } catch {} // pre-Blob browsers
+  }
+  iframe.style.display = 'block';
+}
+function clearPreviewDoc(iframe) {
+  try { if (_previewDocUrl) URL.revokeObjectURL(_previewDocUrl); } catch {}
+  _previewDocUrl = null;
+  if (!iframe) return;
+  try { iframe.removeAttribute('srcdoc'); iframe.src = 'about:blank'; } catch {}
+  iframe.style.display = 'none';
+}
 function renderHtmlPreview() {
   try { renderHtmlPreviewInner(); }
   catch (e) {
@@ -8385,10 +8412,7 @@ function renderHtmlPreview() {
     console.warn('HTML preview failed:', e);
     try {
       const iframe = document.getElementById('editor-preview-iframe');
-      if (iframe) {
-        iframe.style.display = 'block';
-        iframe.srcdoc = '<p style="font-family:sans-serif;padding:16px">Preview failed: ' + escHtml((e && e.message) || 'unknown error') + '</p>';
-      }
+      setPreviewDoc(iframe, '<p style="font-family:sans-serif;padding:16px">Preview failed: ' + escHtml((e && e.message) || 'unknown error') + '</p>');
     } catch {}
     try { toast('Preview failed: ' + ((e && e.message) || 'unknown error'), 'error'); } catch {}
   }
@@ -8399,8 +8423,7 @@ function renderHtmlPreviewInner() {
   const raw = editor ? editor.getValue() : '';
   if (!iframe) return;
   if (!editor || !raw) {
-    if (iframe) iframe.style.display = 'block';
-    iframe.srcdoc = '<p style="font-family:sans-serif;padding:16px">' + (!editor ? 'Nothing to preview — open a file first.' : 'Nothing to preview — the file is empty.') + '</p>';
+    setPreviewDoc(iframe, '<p style="font-family:sans-serif;padding:16px">' + (!editor ? 'Nothing to preview — open a file first.' : 'Nothing to preview — the file is empty.') + '</p>');
     return;
   }
   if (mdContent) mdContent.style.display = 'none';
@@ -8428,14 +8451,13 @@ function renderHtmlPreviewInner() {
       const frag = rewriteFullHtmlUrls(raw, baseDir);
       doc = `<!DOCTYPE html>\n<html>\n<head>\n<meta charset="UTF-8">\n<meta name="color-scheme" content="${isDark ? 'dark' : 'light'}">\n<base href="${escHtml(baseHref)}">\n</head>\n<body>${frag}</body>\n</html>`;
     }
-    iframe.srcdoc = doc;
+    setPreviewDoc(iframe, doc);
     return;
   }
   // Never render unsanitized HTML: without the DOMPurify CDN the preview
   // stays off (scripts in the file could otherwise reach the app).
   if (typeof DOMPurify === 'undefined') {
-    iframe.srcdoc = '<p style="font-family:sans-serif;padding:16px">Preview unavailable — sanitizer failed to load (CDN blocked?).</p>';
-    iframe.style.display = 'block';
+    setPreviewDoc(iframe, '<p style="font-family:sans-serif;padding:16px">Preview unavailable — sanitizer failed to load (CDN blocked?).</p>');
     toast('Preview unavailable: sanitizer failed to load', 'warning');
     return;
   }
@@ -8507,8 +8529,7 @@ function renderHtmlPreviewInner() {
 <body>${fragment}</body>
 </html>`;
   }
-  iframe.srcdoc = doc;
-  iframe.style.display = 'block';
+  setPreviewDoc(iframe, doc);
 }
 
 function renderMdPreview() {
@@ -11537,7 +11558,7 @@ function openGitReadonly(title, content, status) {
   const preview = document.getElementById('editor-preview');
   preview.classList.remove('active');
   const previewIframe = document.getElementById('editor-preview-iframe');
-  if (previewIframe) { previewIframe.style.display = 'none'; previewIframe.srcdoc = ''; }
+  if (previewIframe) clearPreviewDoc(previewIframe);
   const mdContent = document.getElementById('md-preview-content');
   if (mdContent) { mdContent.style.display = 'none'; mdContent.innerHTML = ''; }
   mdPreviewActive = false;
