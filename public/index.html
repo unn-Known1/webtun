@@ -3715,6 +3715,16 @@ function createPreviewWrapper(tab) {
 function previewNavigate(tab, port, pth) {
   const n = parseInt(String(port).trim(), 10);
   if (!Number.isInteger(n) || n < 1 || n > 65535) { toast('Port must be 1–65535', 'error'); return; }
+  // The proxy refuses WebTun's own port (self-framing loop) — catch it here
+  // with words instead of a raw JSON frame. Covers Go, prompt, suggestion
+  // and tab-restore in one choke point.
+  try {
+    if (n === webtunSelfPort()) {
+      try { tab.loadingEl.classList.add('hidden'); } catch {}
+      toast("That's WebTun itself — enter your app's port, not " + n, 'warning');
+      return;
+    }
+  } catch {}
   let p = String(pth == null ? (tab.previewPath || '/') : pth).trim() || '/';
   if (!p.startsWith('/')) p = '/' + p;
   tab.port = n;
@@ -3759,6 +3769,9 @@ function confirmNewPreview() {
   const raw = (document.getElementById('preview-port-input').value || '').trim();
   const n = parseInt(raw, 10);
   if (!Number.isInteger(n) || n < 1 || n > 65535) { showFieldError('preview-error', 'Port must be 1–65535'); return; }
+  try {
+    if (n === webtunSelfPort()) { showFieldError('preview-error', "That's WebTun itself — enter your app's port"); return; }
+  } catch {}
   clearFieldError('preview-error');
   closeOverlay('preview-overlay');
   newPreviewTab(n, '/');
@@ -3801,10 +3814,10 @@ function scanPreviewHint(tab, text) {
   }
   const port = parseInt(m[1], 10);
   if (!Number.isInteger(port) || port < 1 || port > 65535) return;
-  // Never suggest WebTun itself as a preview target.
+  // Never suggest WebTun itself as a preview target. location.port is empty
+  // behind a tunnel (guesses 443), so the server's real port is authoritative.
   try {
-    const selfPort = Number(location.port) || (location.protocol === 'https:' ? 443 : 80);
-    if (port === selfPort) return;
+    if (port === webtunSelfPort()) return;
   } catch {}
   let pth = '/';
   try { pth = (m[2] || '/').replace(/["'\),;\]]+$/, '') || '/'; if (!pth.startsWith('/')) pth = '/'; } catch { pth = '/'; }
@@ -12331,10 +12344,15 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
 else startApp();
 
 // Set version in About section (authed — call only after unlock; api() injects the token)
+let serverPort = 0; // real WebTun port — location.port lies behind a tunnel (empty → 443)
+function webtunSelfPort() {
+  return serverPort || Number(location.port) || (location.protocol === 'https:' ? 443 : 80);
+}
 function refreshVersion() {
   api('/api/version').then(d => {
     const el = document.getElementById('about-version');
     if (el && d && d.version) el.textContent = 'v' + d.version;
+    if (d && Number.isInteger(d.port)) serverPort = d.port;
   }).catch(() => {});
 }
 

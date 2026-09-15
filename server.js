@@ -487,7 +487,7 @@ app.get('/api/auth/required', (req, res) => {
 // Version is authed (no free recon for targeted exploits); /api/auth/required
 // stays public for the unlock flow. The About fetch sends the token header.
 app.get('/api/version', checkPin, (req, res) => {
-  res.json({ version: require('./package.json').version });
+  res.json({ version: require('./package.json').version, port: PORT });
 });
 
 app.post('/api/auth', authRateLimiter, (req, res) => {
@@ -4382,7 +4382,7 @@ function previewError(res, port, msg) {
 }
 function handlePreviewProxy(req, res) {
   const port = req.params.port;
-  if (!validPreviewPort(port)) return res.status(400).json({ error: 'invalid port (1024-65535, not WebTun itself)' });
+  if (!validPreviewPort(port)) return res.status(400).json({ error: 'invalid port (1-65535, not WebTun itself)' });
   const targetPort = Number(port);
   // Strip prefix /api/preview/<port>, keep trailing path + query.
   let suffix = '';
