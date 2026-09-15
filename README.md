@@ -195,6 +195,13 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 
 ## Changelog
 
+### v2.1.2
+- **Zero install scripts** — the `postinstall` hook is gone (manual `npm run rebuild:pty`, repo-only, out of the tarball); the dead Yarn-only `resolutions` block is out of `package.json`; 17 files ship with nothing executable at install time
+- **App preview hardening** — the `?token=` bearer is stripped (selectively, so apps with their own token logins keep working) before anything reaches your app; preview auth matches the main gate (raw-PIN approval, pending sessions); cookies are port-scoped, `Secure`-aware and shorter-lived; upstream dials die with the client; docs no longer claim proxied WebSocket hot-reload
+- **Previewing WebTun itself is refused up front** — the terminal watcher, New Preview prompt and navigation compare against the server's real port (tunnel-safe), instead of serving a raw JSON frame
+- **Per-instance tmux sessions** — `wt-webtun-<port>-<id>` so a repo checkout and a global/npx server never adopt or kill each other's sessions (crafted ids can't escape the namespace); closed terminals (SIGHUP) now run exit cleanup instead of orphaning tunnels
+- **Fixes** — command library panel was inert (it sits inside `#content`, which it inertted); HTML preview renders through blob URLs with `<script>` bodies exempt from URL rewriting; root-absolute assets resolve against the file's folder; Git panel `Show more` / `Show advanced…` share one row; default command set trimmed to project entries
+
 ### v2.1.1
 - **Transfer Center** — new up/down icon next to the coffee cup with live uploads, downloads and copy/move jobs: real bytes, speed and ETA, per-job Stop/Dismiss, hover-to-peek / click-to-pin panel with running-stripe bars. Single-file downloads report `Content-Length` for a true percent; copy/move pause while a conflict dialog waits and stop after the current file; zip/unzip and delete stay as toasts
 - **Full HTML preview** — the editor HTML preview gains a **Full** mode next to Safe: the file renders verbatim with its own scripts running inside the same isolated opaque-origin frame (no app access, storage, popups or navigation); relative and root-absolute asset URLs resolve against the file's folder; works without the sanitizer CDN; the isolation notice shows once
