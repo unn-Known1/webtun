@@ -1066,6 +1066,8 @@ function releaseFileTabResources(tab) {
   if (_dockedFileTabId === tab.id) { tab.mountedOnce = false; try { cleanupDocViewers(); } catch (_) {} }
   try { if (tab.imgUrl) { URL.revokeObjectURL(tab.imgUrl); tab.imgUrl = null; } } catch (_) {}
   clearTimeout(tab.draftTimer);
+  clearTimeout(tab.previewTimer);
+  try { if (tab.previewDocUrl) { URL.revokeObjectURL(tab.previewDocUrl); tab.previewDocUrl = null; } } catch (_) {}
   // Drop the CodeMirror instance along with the tab; removing the wrapper disposes of
   // its DOM, and this releases our last reference to the view.
   tab.cm = null;
@@ -1114,9 +1116,58 @@ function buildTabEditorChrome(tab) {
   reload.title = 'Discard edits and re-read the file from disk';
   reload.addEventListener('click', () => reloadTabFile(tab));
   bar.append(dot, name, status, spacer, save, panel, reload);
+  // Markdown / HTML tabs get a Preview toggle (+ Full for HTML), mirroring
+  // the panel. The renderers below reuse the panel's pure helpers
+  // (toPreviewApiUrl, rewriteFullHtmlUrls, rewriteHtmlRelativeUrls) but keep
+  // their own DOM + blob URLs — the panel globals stay untouched.
+  const pvKind = tabPreviewKind(tab);
+  if (pvKind) {
+    const pv = document.createElement('button');
+    pv.className = 'btn fte-btn';
+    pv.type = 'button';
+    pv.textContent = 'Preview';
+    pv.title = pvKind === 'html' ? 'Preview rendered page' : 'Preview rendered markdown';
+    pv.addEventListener('click', () => toggleTabPreview(tab));
+    bar.append(pv);
+    tab.ftePreviewBtn = pv;
+    if (pvKind === 'html') {
+      const full = document.createElement('button');
+      full.className = 'btn btn-ghost fte-btn';
+      full.type = 'button';
+      full.textContent = 'Full';
+      full.title = 'Full preview — run this file\u2019s scripts in an isolated frame (no access to the app)';
+      full.setAttribute('aria-pressed', 'false');
+      full.style.display = 'none';
+      full.addEventListener('click', () => toggleTabFullPreview(tab));
+      bar.append(full);
+      tab.fteFullBtn = full;
+    }
+  }
   const host = document.createElement('div');
   host.className = 'fte-host';
   body.append(bar, host);
+  if (pvKind) {
+    const prev = document.createElement('div');
+    prev.className = 'fte-preview';
+    prev.hidden = true;
+    if (pvKind === 'md') {
+      const md = document.createElement('div');
+      md.className = 'fte-md';
+      prev.appendChild(md);
+      tab.fteMd = md;
+    } else {
+      const frame = document.createElement('iframe');
+      frame.className = 'fte-frame';
+      frame.setAttribute('sandbox', 'allow-scripts');
+      frame.setAttribute('referrerpolicy', 'no-referrer');
+      frame.setAttribute('title', 'Preview of ' + fileTabName(tab.path));
+      frame.style.display = 'none';
+      prev.appendChild(frame);
+      tab.fteFrame = frame;
+    }
+    body.append(prev);
+    tab.ftePreview = prev;
+  }
   tab.fteDot = dot; tab.fteName = name; tab.fteStatus = status; tab.fteHost = host; tab.fteSaveBtn = save;
 }
 
@@ -1141,7 +1192,7 @@ async function ensureTabEditor(tab, seed) {
   tab.original = data.original != null ? data.original : data.content;
   if (data.history) { try { cm.setHistory(data.history); } catch (e) { console.warn('Undo history restore failed:', e); } }
   if (data.cursor) { try { cm.setCursor(data.cursor); } catch {} }
-  cm.on('change', () => { markTabDirty(tab); scheduleTabDraft(tab); });
+  cm.on('change', () => { markTabDirty(tab); scheduleTabDraft(tab); scheduleTabPreview(tab); });
   markTabDirty(tab);
   try { cm.setOption('mode', await resolveCMmode(fileTabName(tab.path))); } catch (e) { console.warn('Mode resolve failed:', e); }
   return !tab.closed;
@@ -1152,6 +1203,234 @@ function showTabEditor(tab) {
   if (tab.cardEl) tab.cardEl.hidden = true;
   // A tile that was hidden has a stale viewport, so re-measure.
   requestAnimationFrame(() => { try { tab.cm?.refresh(); } catch {} });
+}
+
+function showTabEditor(tab) {
+  if (tab.bodyEl) tab.bodyEl.style.display = 'flex';
+  if (tab.cardEl) tab.cardEl.hidden = true;
+  // A tile that was hidden has a stale viewport, so re-measure.
+  requestAnimationFrame(() => { try { tab.cm?.refresh(); } catch {} });
+}
+
+// ── Per-tab preview (markdown + HTML) ──────────────────────────────────────
+// Same output contract as the panel preview, but tab-local: own toggle state,
+// own debounced live render, own blob URL. Supported kinds only — other text
+// files keep the code-only tab (Preview button hidden).
+function tabPreviewKind(tab) {
+  if (!tab || tab.type !== 'file' || tab.viewer !== 'text' || !tab.path) return null;
+  if (/\.html?$/i.test(tab.path)) return 'html';
+  if (/\.md$|\.markdown$|\.mdown$/i.test(tab.path)) return 'md';
+  return null;
+}
+function tabBaseDir(p) {
+  p = p || '';
+  if (!p) return '';
+  const sep = p.includes('\\') ? '\\' : '/';
+  const idx = p.lastIndexOf(sep);
+  return idx > 0 ? p.slice(0, idx) : p;
+}
+function toggleTabPreview(tab) {
+  if (!tab || tab.viewer !== 'text' || !tab.cm || !tabPreviewKind(tab)) return;
+  tab.previewOn = !tab.previewOn;
+  if (tab.previewOn) renderTabPreview(tab);
+  paintTabPreview(tab);
+}
+function toggleTabFullPreview(tab) {
+  if (!tab || tabPreviewKind(tab) !== 'html') return;
+  tab.htmlFull = !tab.htmlFull;
+  if (tab.fteFullBtn) {
+    tab.fteFullBtn.classList.toggle('btn-primary', !!tab.htmlFull);
+    tab.fteFullBtn.classList.toggle('btn-ghost', !tab.htmlFull);
+    tab.fteFullBtn.setAttribute('aria-pressed', String(!!tab.htmlFull));
+  }
+  if (tab.htmlFull) {
+    let warned = false;
+    try { warned = safeStorage.getItem('wt-full-preview-warned') === 'true'; } catch {}
+    if (!warned) {
+      toast('Full preview: this file\u2019s scripts run in an isolated frame — no access to the app, its storage or your files', 'warning');
+      try { safeStorage.setItem('wt-full-preview-warned', 'true'); } catch {}
+    }
+  }
+  if (tab.previewOn) renderTabPreview(tab);
+}
+function paintTabPreview(tab) {
+  const on = !!tab.previewOn;
+  try {
+    if (tab.fteHost) tab.fteHost.style.display = on ? 'none' : '';
+    if (tab.ftePreview) tab.ftePreview.hidden = !on;
+    if (tab.ftePreviewBtn) {
+      tab.ftePreviewBtn.textContent = on ? 'Edit' : 'Preview';
+      tab.ftePreviewBtn.classList.toggle('btn-primary', on);
+    }
+    if (tab.fteFullBtn) tab.fteFullBtn.style.display = (on && tabPreviewKind(tab) === 'html') ? '' : 'none';
+    if (!on && tab.fteFrame) { try { tab.fteFrame.style.display = 'none'; } catch {} }
+    // Either surface was display:none — re-measure after the flip.
+    requestAnimationFrame(() => { try { tab.cm?.refresh(); } catch {} });
+  } catch {}
+}
+function setTabPreviewDoc(tab, iframe, doc) {
+  try { if (tab.previewDocUrl) URL.revokeObjectURL(tab.previewDocUrl); } catch {}
+  tab.previewDocUrl = null;
+  if (!iframe) return;
+  try {
+    tab.previewDocUrl = URL.createObjectURL(new Blob([doc], { type: 'text/html;charset=utf-8' }));
+    iframe.removeAttribute('srcdoc');
+    iframe.src = tab.previewDocUrl;
+  } catch (e) {
+    try { iframe.srcdoc = doc; } catch {}
+  }
+  iframe.style.display = 'block';
+}
+function tabMdCss() {
+  const s = getComputedStyle(document.documentElement);
+  const cssVar = n => (s.getPropertyValue(n) || '').trim();
+  const bg = cssVar('--bg'), fg = cssVar('--fg'), accent = cssVar('--accent');
+  const bg2 = cssVar('--bg2'), bg3 = cssVar('--bg3'), border = cssVar('--border');
+  const fg2 = cssVar('--fg2'), font = cssVar('--font');
+  return `<style>
+    .md-rendered { max-width: 800px; margin: 0 auto; }
+    .md-rendered h1, .md-rendered h2, .md-rendered h3, .md-rendered h4, .md-rendered h5, .md-rendered h6 { color: ${fg}; margin: 1.2em 0 0.5em; font-weight: 700; }
+    .md-rendered h1 { font-size: 1.8em; border-bottom: 1px solid ${border}; padding-bottom: 0.3em; }
+    .md-rendered h2 { font-size: 1.5em; border-bottom: 1px solid ${border}; padding-bottom: 0.25em; }
+    .md-rendered h3 { font-size: 1.25em; }
+    .md-rendered h4 { font-size: 1.1em; }
+    .md-rendered p { margin: 0.75em 0; line-height: 1.7; }
+    .md-rendered ul, .md-rendered ol { margin: 0.5em 0; padding-left: 2em; }
+    .md-rendered li { margin: 0.25em 0; }
+    .md-rendered blockquote { margin: 0.75em 0; padding: 4px 16px; border-left: 4px solid ${accent}; background: ${bg2}; color: ${fg2}; border-radius: 0 6px 6px 0; }
+    .md-rendered code { font-family: ${font}; background: ${bg3}; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+    .md-rendered pre { background: ${bg2}; border: 1px solid ${border}; border-radius: 6px; padding: 12px; overflow-x: auto; margin: 0.75em 0; }
+    .md-rendered pre code { background: none; padding: 0; border-radius: 0; font-size: 0.85em; }
+    .md-rendered table { border-collapse: collapse; width: 100%; margin: 0.75em 0; }
+    .md-rendered th, .md-rendered td { border: 1px solid ${border}; padding: 8px 12px; text-align: left; }
+    .md-rendered th { background: ${bg3}; font-weight: 600; }
+    .md-rendered hr { border: none; border-top: 1px solid ${border}; margin: 1.5em 0; }
+    .md-rendered a { color: ${accent}; text-decoration: none; }
+    .md-rendered a:hover { text-decoration: underline; }
+    .md-rendered img { max-width: 100%; border-radius: 6px; }
+  </style>`;
+}
+function tabHtmlShell(content, baseHref, isDark) {
+  const s = getComputedStyle(document.documentElement);
+  const cssVar = n => (s.getPropertyValue(n) || '').trim();
+  const bg = cssVar('--bg'), fg = cssVar('--fg'), accent = cssVar('--accent');
+  const bg2 = cssVar('--bg2'), border = cssVar('--border'), font = cssVar('--font');
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="color-scheme" content="${isDark ? 'dark' : 'light'}">
+<base href="${escHtml(baseHref)}">
+<style>
+  :root { color-scheme: ${isDark ? 'dark' : 'light'}; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px 24px; font-family: ${font}; font-size: 14px; line-height: 1.6; background: ${bg}; color: ${fg}; }
+  a { color: ${accent}; }
+  img { max-width: 100%; height: auto; }
+  pre { background: ${bg2}; border: 1px solid ${border}; border-radius: 6px; padding: 12px; overflow-x: auto; }
+  code { font-family: ${font}; font-size: 0.9em; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid ${border}; padding: 8px 12px; text-align: left; }
+  th { background: ${bg2}; }
+  blockquote { margin: 0.75em 0; padding: 4px 16px; border-left: 4px solid ${accent}; background: ${bg2}; border-radius: 0 6px 6px 0; }
+  h1, h2, h3 { margin: 1em 0 0.5em; font-weight: 700; }
+  p { margin: 0.75em 0; }
+</style>
+</head>
+<body>${content}</body>
+</html>`;
+}
+function tabIsDark() {
+  try {
+    const s = getComputedStyle(document.documentElement);
+    return !['#f9f9fb', '#ffffff', 'rgb(249, 249, 251)', 'rgb(255, 255, 255)'].includes(s.getPropertyValue('--bg').trim());
+  } catch { return true; }
+}
+function renderTabPreview(tab) {
+  if (!tab || !tab.cm || !tab.previewOn) return;
+  const kind = tabPreviewKind(tab);
+  if (!kind) return;
+  const raw = tab.cm.getValue();
+  const baseDir = tabBaseDir(tab.path);
+  const isDark = tabIsDark();
+  if (kind === 'md') {
+    const md = tab.fteMd;
+    if (!md) return;
+    if (typeof DOMPurify === 'undefined' || typeof marked === 'undefined') {
+      md.innerHTML = '<p style="padding:16px">Preview unavailable — preview libraries failed to load (CDN blocked?).</p>';
+      return;
+    }
+    try {
+      const html = marked.parse(raw, { breaks: true, gfm: true, langPrefix: 'language-' });
+      let sanitized = DOMPurify.sanitize(html);
+      sanitized = rewriteHtmlRelativeUrls(sanitized, baseDir);
+      md.innerHTML = tabMdCss() + `<div class="md-rendered">${sanitized}</div>`;
+    } catch (e) {
+      console.warn('Tab markdown preview error:', e);
+      md.textContent = 'Error rendering markdown preview';
+    }
+    return;
+  }
+  const frame = tab.fteFrame;
+  if (!frame) return;
+  try {
+    if (!raw) {
+      setTabPreviewDoc(tab, frame, '<p style="font-family:sans-serif;padding:16px">Nothing to preview — the file is empty.</p>');
+      return;
+    }
+    const baseHref = `/api/files/image?path=${encodeURIComponent(baseDir + '/')}` + (authToken ? `&token=${encodeURIComponent(authToken)}` : '');
+    const injectHead = (doc, tags) => /<head[^>]*>/i.test(doc)
+      ? doc.replace(/<head[^>]*>/i, m => m + tags)
+      : doc.replace(/<html[^>]*>/i, m => m + '<head>' + tags + '</head>');
+    const isFullDoc = /<!DOCTYPE|<html[\s>]/i.test(raw);
+    if (tab.htmlFull) {
+      // FULL mode mirrors the panel: author's bytes verbatim inside the same
+      // opaque-origin sandbox (allow-scripts only). Needs no sanitizer CDN.
+      let doc;
+      if (isFullDoc) {
+        doc = rewriteFullHtmlUrls(raw, baseDir);
+        if (!/<base\b/i.test(doc)) doc = injectHead(doc, `<base href="${escHtml(baseHref)}">`);
+        if (!/<meta[^>]*color-scheme/i.test(doc)) doc = injectHead(doc, `<meta name="color-scheme" content="${isDark ? 'dark' : 'light'}">`);
+      } else {
+        doc = `<!DOCTYPE html>\n<html>\n<head>\n<meta charset="UTF-8">\n<meta name="color-scheme" content="${isDark ? 'dark' : 'light'}">\n<base href="${escHtml(baseHref)}">\n</head>\n<body>${rewriteFullHtmlUrls(raw, baseDir)}</body>\n</html>`;
+      }
+      setTabPreviewDoc(tab, frame, doc);
+      return;
+    }
+    if (typeof DOMPurify === 'undefined') {
+      setTabPreviewDoc(tab, frame, '<p style="font-family:sans-serif;padding:16px">Preview unavailable — sanitizer failed to load (CDN blocked?).</p>');
+      toast('Preview unavailable: sanitizer failed to load', 'warning');
+      return;
+    }
+    let doc;
+    if (isFullDoc) {
+      let sanitized = DOMPurify.sanitize(raw, { WHOLE_DOCUMENT: true, USE_PROFILES: { html: true }, ADD_TAGS: ['base', 'style'], ADD_ATTR: ['target'] });
+      sanitized = rewriteHtmlRelativeUrls(sanitized, baseDir);
+      if (!/<base\b/i.test(sanitized)) sanitized = injectHead(sanitized, `<base href="${escHtml(baseHref)}">`);
+      if (!/<meta[^>]*color-scheme/i.test(sanitized)) sanitized = injectHead(sanitized, `<meta name="color-scheme" content="${isDark ? 'dark' : 'light'}">`);
+      doc = sanitized;
+    } else {
+      const fragment = rewriteHtmlRelativeUrls(DOMPurify.sanitize(raw, { USE_PROFILES: { html: true }, ADD_ATTR: ['target'] }), baseDir);
+      doc = tabHtmlShell(fragment, baseHref, isDark);
+    }
+    setTabPreviewDoc(tab, frame, doc);
+  } catch (e) {
+    console.warn('Tab HTML preview failed:', e);
+    try { setTabPreviewDoc(tab, frame, '<p style="font-family:sans-serif;padding:16px">Preview failed: ' + escHtml((e && e.message) || 'unknown error') + '</p>'); } catch {}
+  }
+}
+// Debounced live re-render while editing with preview open (mirrors the
+// panel's 350ms / 200KB policy).
+function scheduleTabPreview(tab) {
+  if (!tab || !tab.previewOn || !tab.cm) return;
+  try {
+    if (tab.cm.getValue().length > PREVIEW_MAX_LIVE_BYTES) return;
+  } catch { return; }
+  clearTimeout(tab.previewTimer);
+  tab.previewTimer = setTimeout(() => {
+    tab.previewTimer = null;
+    try { renderTabPreview(tab); } catch {}
+  }, 350);
 }
 
 function markTabDirty(tab) {
@@ -1235,6 +1514,7 @@ async function moveTabToPanel(tab) {
   const history = tab.cm ? tab.cm.getHistory() : null;
   const cursor = tab.cm ? tab.cm.getCursor() : null;
   clearTimeout(tab.draftTimer);
+  clearTimeout(tab.previewTimer);
   // Crash-safety net for the handover: if the tab goes away but the panel never opens,
   // the draft still holds the text.
   if (content !== original) safeStorage.setItem('wt-draft:' + path, content);
