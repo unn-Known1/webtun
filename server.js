@@ -3235,6 +3235,54 @@ function tmuxHasClients(name) {
   } catch { return false; }
 }
 
+// ── Instance ownership: tracked, never inferred ─────────────────────────
+// The port-namespace alone cannot tell two same-port servers apart (e.g. a
+// throwaway test instance and a live one both "own" wt-webtun-3000-* by
+// name — and the namespace follows $PORT, not the effective listen port, so
+// even different-port CLI instances can collide). Guessing ownership from
+// the name let one instance reap another's live sessions. Instead:
+//  - every tmux session THIS process creates is recorded in ownTmuxSessions;
+//    shutdown kills exactly those, never the whole namespace;
+//  - a box-shared claim file (pid + token, in os.tmpdir so repo checkouts
+//    and global installs see the same claim) records the live owner of this
+//    port-namespace; both sweeps stand down while another live process holds
+//    the claim;
+//  - the startup sweep runs only after the port binds successfully, so a
+//    process that cannot bind does nothing destructive.
+const ownTmuxSessions = new Set();
+let tmuxSweepsArmed = true; // false while a live sibling owns this namespace
+let tmuxClaimToken = null;
+function tmuxClaimPath(port = PORT) { return path.join(os.tmpdir(), `webtun-tmux-${Number(port)}.json`); }
+function readTmuxClaim(port = PORT) {
+  try {
+    const c = JSON.parse(fs.readFileSync(tmuxClaimPath(port), 'utf8'));
+    if (c && Number.isInteger(c.pid) && c.pid > 0 && typeof c.token === 'string') return c;
+  } catch {}
+  return null;
+}
+function tmuxClaimLive(c) {
+  if (!c) return false;
+  try { process.kill(c.pid, 0); } catch { return false; } // no such process
+  // Guard PID reuse: the claimant must still be a WebTun server.
+  try {
+    const cmd = fs.readFileSync(`/proc/${c.pid}/cmdline`, 'utf8').replace(/\0/g, ' ');
+    return /server\.js|webtun/i.test(cmd);
+  } catch { return true; } // non-Linux: kill-0 is the best signal available
+}
+function writeTmuxClaim(port = PORT) {
+  tmuxClaimToken = crypto.randomBytes(16).toString('hex');
+  const c = { pid: process.pid, token: tmuxClaimToken, startedAt: Date.now() };
+  try { fs.writeFileSync(tmuxClaimPath(port), JSON.stringify(c)); } catch {}
+  return c;
+}
+function releaseTmuxClaim(port = PORT) {
+  // Release only what we hold: a sibling may have taken over since.
+  try {
+    const cur = readTmuxClaim(port);
+    if (cur && cur.pid === process.pid && cur.token === tmuxClaimToken) fs.unlinkSync(tmuxClaimPath(port));
+  } catch {}
+}
+
 // In-memory PTY session store — enables persistence without tmux (Windows + Linux)
 const ptySessions = new Map(); // sessionId -> { proc, exited, createdAt, lastActive, attached }
  // TTL sweep every 5min: delete sessions with no attached ws idle over 30min (F73).
@@ -3279,6 +3327,7 @@ function isValidPID(pid) {
 // Clean up dead tmux sessions from previous runs on startup
 function cleanupOrphanTmuxSessions() {
   if (!TMUX) return;
+  if (!tmuxSweepsArmed) return; // a live sibling owns this namespace — hands off
   try {
     const out = execFileSync(TMUX, ['list-sessions', '-F', '#{session_name}'], { encoding: 'utf8' }).trim();
     // Only our namespaced prefix — never bare 'wt-', which may belong to the user.
@@ -3586,6 +3635,7 @@ wss.on('connection', (ws, req) => {
           name: 'xterm-256color', cols, rows, cwd,
           env: { ...sessionEnv, SHELL }
         });
+        ownTmuxSessions.add(tmuxName);
       }
     } else {
       const shellArgs = os.platform() === 'win32' ? ['-NoLogo'] : ['-l'];
@@ -4740,16 +4790,22 @@ function cleanup() {
       // Only OUR namespaced sessions: the previous `|| startsWith('wt-')`
       // killed the user's own `wt-*` tmux sessions on every SIGTERM.
       // Same rule one level down: never a sibling server's port-namespace.
-      // Own sessions die unconditionally; legacy names only when clientless
-      // (a live foreign session always has its owner attached).
+      // Sessions this process created die unconditionally; anything else is
+      // only reaped when no live sibling owns the namespace (clientless
+      // legacy orphans) — a live sibling's sessions, and any session with
+      // attached clients that we did not create, are always spared.
       for (const s of out.split('\n')) {
         const k = tmuxKind(s);
         if (k === null || k === 'foreign') continue;
-        if (k === 'legacy' && tmuxHasClients(s)) continue;
-        try { execFileSync(TMUX, ['kill-session', '-t', s], { stdio: 'ignore' }); } catch {}
+        if (ownTmuxSessions.has(s)) {
+          try { execFileSync(TMUX, ['kill-session', '-t', s], { stdio: 'ignore' }); } catch {}
+        } else if (tmuxSweepsArmed && k === 'legacy' && !tmuxHasClients(s)) {
+          try { execFileSync(TMUX, ['kill-session', '-t', s], { stdio: 'ignore' }); } catch {}
+        }
       }
     } catch {}
   }
+  releaseTmuxClaim();
   // Kill all in-memory PTY sessions
   for (const [id, entry] of ptySessions) {
     try { entry.proc.kill(); } catch {}
@@ -4763,7 +4819,8 @@ function startServer(opts = {}) {
 
   migrateLegacyState();
   loadTunnels();
-  cleanupOrphanTmuxSessions();
+  // NOTE: no orphan sweep here — it runs after the port binds (below), so a
+  // process that cannot bind never destroys another instance's sessions.
 
   return new Promise((resolve, reject) => {
     server.once('error', reject);
@@ -4771,6 +4828,14 @@ function startServer(opts = {}) {
       console.log(`\n  WebTun running → http://localhost:${port}`);
       if (PIN) console.log(`  PIN protection enabled`);
       console.log('');
+      const prior = readTmuxClaim();
+      if (prior && prior.pid !== process.pid && tmuxClaimLive(prior)) {
+        tmuxSweepsArmed = false;
+        console.log(`  tmux namespace owned by live PID ${prior.pid} — orphan sweeps disabled`);
+      } else {
+        writeTmuxClaim();
+        cleanupOrphanTmuxSessions();
+      }
       resolve(server);
     });
   });
@@ -4798,7 +4863,8 @@ process.on('SIGINT', () => { try { cleanup(); } catch {}; process.exit(0); });
 process.on('SIGHUP', () => { try { cleanup(); } catch {}; process.exit(0); });
 process.on('exit', () => { try { cleanup(); } catch {} });
 
-module.exports = { app, server, startServer, PORT, WORKSPACE_ROOT, findCloudflared };
+module.exports = { app, server, startServer, PORT, WORKSPACE_ROOT, findCloudflared,
+  tmuxKind, tmuxClaimPath, readTmuxClaim, writeTmuxClaim, releaseTmuxClaim, tmuxClaimLive };
 // PIN is mutable at runtime (POST /api/pin). Exporting it by value handed
 // consumers a snapshot, so embedders kept seeing the secret from boot time.
 Object.defineProperty(module.exports, 'PIN', { get: () => PIN, enumerable: true });
