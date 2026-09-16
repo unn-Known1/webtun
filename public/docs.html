@@ -600,10 +600,13 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
           <li><b>One heavy document at a time.</b> PDF, EPUB and Office tabs share a single viewer — they hold whole documents in memory, so a pile of them would be expensive. Switching away <b>parks</b> the previous one behind an <b>Open</b> card, and activating it again restores your page, zoom, sheet and scroll position.</li>
         </ul>
         <h3>App preview tabs <a class="hash" href="#editor" aria-label="Link to this section">#</a></h3>
-        <p class="body rv">Running a dev server? Open a <b>New Preview</b> from the overflow menu (or the toolbar button), type its port — say <code class="inl">5173</code> — and your app renders in a tab right beside the code. Edit path, refresh, or copy a shareable preview URL from the toolbar.</p>
+        <p class="body rv">Running a dev server? Open a <b>New Preview</b> from the overflow menu (or the toolbar button), type its port — say <code class="inl">5173</code> — and your app renders in a tab right beside the code. Edit path, refresh, open it in a new tab, or copy a shareable preview URL from the toolbar.</p>
         <ul class="tight rv">
-          <li><b>Zero setup:</b> when your terminal prints <code class="inl">localhost:5173</code>, a toast offers to open it right away; the port field also autocompletes detected listeners. Any port works — even 80 or 443.</li>
-          <li><b>Streams and downloads proxy through;</b> dev-server WebSocket channels (hot-reload sockets) do not — the proxy is HTTP-only, so refresh the tab to see changes.</li>
+          <li><b>Zero setup:</b> when your terminal prints <code class="inl">localhost:5173</code>, a toast offers to open it right away; the port field also autocompletes detected listeners (with process names) plus your recent ports. You can paste a full <code class="inl">localhost:5173/docs</code> URL into the port or path field. Any port works — even 80 or 443.</li>
+          <li><b>Back/forward, live address bar, status dot:</b> the toolbar follows in-page navigation, the dot shows whether the app is answering (click to retry), and a dead-then-restarted dev server reloads itself automatically.</li>
+          <li><b>Auto-reload on save, width presets, recent ports:</b> tick <b>Auto</b> to refresh the preview when you save a file, narrow the frame to 375/768px to eyeball mobile layouts, and reopen where you left off — port, path and recent ports survive reloads.</li>
+          <li><b>Streams and downloads proxy through;</b> dev-server WebSocket channels (hot-reload sockets) do not — the proxy is HTTP-only, so refresh the tab to see changes. Slow first boots get a 30s cold-start budget, and only page navigations skip compression so assets stay gzipped.</li>
+          <li><b>Actionable errors:</b> a dead preview names the cause (bad port, WebTun's own port, allow-list block, nothing listening, slow start) with the <code class="inl">curl 127.0.0.1:PORT</code> check and a Retry button.</li>
         </ul>
         <div class="call warn rv"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" style="stroke:var(--ye)" stroke-width="2" stroke-linecap="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><p><b>Copied preview links carry your access token.</b> Anyone opening one browses as you — share them like passwords, never publicly.</p></div>
         <div class="call info rv"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" style="stroke:var(--tl)" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><p><b>The token authenticates the first hit only.</b> After that a short-lived, port-scoped cookie takes over for subresources — your token is stripped before anything reaches your app (a <code class="inl">?token=</code> of the app's own, e.g. Jupyter logins, passes through untouched), and raw-PIN access follows the same approval gate as everywhere else.</p></div>
@@ -628,7 +631,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
         <div class="feat rv">
           <div><h4>Move &amp; organize</h4><p>Rename, copy, cut, paste, delete, new file/folder. Clashes offer replace, merge, skip, or keep-both.</p></div>
           <div><h4>Upload &amp; download</h4><p>Drag-and-drop upload (up to 500&nbsp;MB × 100 files), download single files or whole folders as a zip.</p></div>
-          <div><h4>Zip in place</h4><p>Compress and extract archives without touching the terminal.</p></div>
+          <div><h4>Zip in place</h4><p>Zip (stored, uncompressed) and extract archives without touching the terminal.</p></div>
           <div><h4>Instant search</h4><p>Find files by name from the search box — capped for speed on giant trees.</p></div>
         </div>
         <ul class="tight rv">

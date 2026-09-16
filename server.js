@@ -65,25 +65,10 @@ const os = require('os');
 const crypto = require('crypto');
 const dns = require('dns');
 const { execSync, execFileSync, execFile, spawn } = require('child_process');
-// archiver v8 is ESM-only. Top-level require() of ESM works on modern plain
-// Node but can fail under the packaged Electron loader (asar), crashing the
-// server at startup — so load it lazily, only when zipping is requested.
-let _ZipArchive = null;
-function getZipArchive() {
-  if (!_ZipArchive) {
-    let mod;
-    try {
-      mod = require('archiver');
-    } catch (e) {
-      throw new Error('Zip support unavailable: failed to load archiver module (' + e.message + ')');
-    }
-    _ZipArchive = mod.ZipArchive || (mod.default && mod.default.ZipArchive) || mod.default || mod;
-    if (typeof _ZipArchive !== 'function') {
-      throw new Error('Zip support unavailable: unexpected archiver exports');
-    }
-  }
-  return _ZipArchive;
-}
+// Zip creation is stdlib-only (lib/zip-store.js, STORE/no-compression writer)
+// so zipping works identically on Linux, macOS and Windows with no native
+// modules, no shell-outs and no extra dependencies.
+const { ZipStoreWriter } = require('./lib/zip-store');
 const yauzl = require('yauzl');
 const https = require('https');
 const http = require('http');
@@ -979,12 +964,11 @@ async function dirSize(dir, maxDepth = 10) {
 const ZIP_MAX_TOTAL = 1 * 1024 * 1024 * 1024;
 const ZIP_MAX_ENTRIES = 50000;
 
-// Walk the requested roots ourselves instead of handing directories to
-// archiver's directory(). archiver's glob follows symlinked directories, and
-// the previous version stat'ed twice (lstatSync then statSync) around an
-// async dirSize() — a TOCTOU window where the checked size was not the size
-// sent. Here every entry is lstat'ed once, links are skipped outright, and the
-// running total is the authoritative cap.
+// Walk the requested roots ourselves instead of handing directories to a zip
+// library's recursive helper: the previous version stat'ed twice (lstatSync
+// then statSync) around an async dirSize() — a TOCTOU window where the checked
+// size was not the size sent. Here every entry is lstat'ed once, links are
+// skipped outright, and the running total is the authoritative cap.
 async function collectZipEntries(roots) {
   const items = [];
   let totalBytes = 0;
@@ -1035,11 +1019,10 @@ async function collectZipEntries(roots) {
   return items;
 }
 
-function addEntriesToArchive(archive, items) {
-  for (const it of items) {
-    if (it.type === 'dir') archive.append(Buffer.alloc(0), { name: it.name + '/' });
-    else archive.file(it.path, { name: it.name });
-  }
+// Stream collected entries through the STORE writer (no compression —
+// downloads stay universally readable and dependency-free).
+async function writeItemsToZip(writer, items) {
+  await writer.writeAll(items);
 }
 
 async function createZipArchive(entries, zipPath) {
@@ -1047,60 +1030,45 @@ async function createZipArchive(entries, zipPath) {
   if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, zipPath)) {
     const e = new Error('Access denied: zip destination outside workspace'); e.status = 403; throw e;
   }
-  const ZipArchive = getZipArchive();
   // Collected before the stream opens, so a rejected archive never leaves a
   // truncated .zip behind.
   const items = await collectZipEntries(entries);
-  const archive = new ZipArchive({ zlib: { level: 6 } });
   const output = fs.createWriteStream(zipPath);
+  const writer = new ZipStoreWriter(output);
   await new Promise((resolve, reject) => {
     let settled = false;
     const fail = err => {
       if (settled) return;
       settled = true;
-      try { archive.abort(); } catch {}
       try { output.destroy(); } catch {}
       try { fs.unlinkSync(zipPath); } catch {}
       reject(err);
     };
     output.on('close', () => { if (!settled) { settled = true; resolve(); } });
     output.on('error', fail);
-    archive.on('error', fail);
-    archive.on('warning', () => {});
-    archive.pipe(output);
-    addEntriesToArchive(archive, items);
-    const fin = archive.finalize();
-    if (fin && typeof fin.catch === 'function') fin.catch(fail);
+    writeItemsToZip(writer, items).then(() => { try { output.end(); } catch (e) { fail(e); } }, fail);
   });
   return zipPath;
 }
 
 function streamZipDirectory(dirPath, res) {
-  const ZipArchive = getZipArchive(); // throws → caller try/catch answers 500
-  const archive = new ZipArchive({ zlib: { level: 6 } });
+  const writer = new ZipStoreWriter(res);
   // Returned immediately (not a promise) so the caller can still abort it on
   // client disconnect; the walk itself is async and link-free.
   (async () => {
     try {
       const items = await collectZipEntries([{ fullPath: dirPath, nameInZip: path.basename(dirPath) }]);
-      if (res.writableEnded) { try { archive.abort(); } catch {} return; }
-      archive.on('error', err => {
-        try { console.warn('[webtun] zip stream error:', err && err.message); } catch {}
-        if (!res.headersSent) { const r = safeErr(err); res.status(r.status).json(r.body); }
-        else { try { res.end(); } catch {} }
-      });
-      archive.pipe(res);
-      addEntriesToArchive(archive, items);
-      const fin = archive.finalize();
-      if (fin && typeof fin.catch === 'function') fin.catch(() => { try { res.end(); } catch {} });
+      if (res.writableEnded || writer.aborted) return;
+      await writeItemsToZip(writer, items);
+      if (!res.writableEnded) { try { res.end(); } catch {} }
     } catch (e) {
+      if (e && e.aborted) { try { res.end(); } catch {} return; }
       const r = safeErr(e);
-      try { archive.abort(); } catch {}
       if (res.headersSent) { try { res.end(); } catch {} }
       else { try { res.status(r.status).json(r.body); } catch {} }
     }
   })();
-  return archive;
+  return writer;
 }
 
 function extractZip(zipPath, destDir) {
@@ -1701,7 +1669,7 @@ app.get('/api/files/download', checkPin, async (req, res) => {
       res.setHeader('Content-Type', 'application/zip');
       res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
       const arch = streamZipDirectory(p, res);
-      // Cleanup archiver when client aborts (F58)
+      // Stop the zip writer when the client goes away (F58)
       res.on('close', () => { try { if (arch) arch.abort(); } catch {} });
       return;
     } else {
@@ -4419,14 +4387,34 @@ function validPreviewPort(p) {
   return n !== (Number(PORT) || 3000);
 }
 const HOP_HEADERS = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade', 'content-length']);
-function previewError(res, port, msg) {
-  res.status(502).setHeader('Content-Type', 'text/html; charset=utf-8');
+// Why this port was refused before any dial (caller-visible config, not a
+// loopback probe signal — no listener state is revealed).
+function previewPortRejectReason(p) {
+  const n = Number(p);
+  if (!Number.isInteger(n) || n < 1 || n > 65535) return 'invalid';
+  if (n === (Number(PORT) || 3000)) return 'self';
+  if (PREVIEW_PORTS && !PREVIEW_PORTS.has(n)) return 'blocked';
+  return null;
+}
+function previewError(res, port, msg, opts = {}) {
+  const status = opts.status || 502;
+  const title = opts.title || `Preview :${port} unreachable`;
+  const hint = opts.hint || 'Is the app listening on 127.0.0.1:PORT?'.replace('PORT', port);
+  res.status(status).setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-  res.end(`<!DOCTYPE html><html><body style="font-family:sans-serif;padding:24px;background:#1a1b26;color:#c0caf5"><h3>Preview :${port} unreachable</h3><p style="color:#787c99">${msg}. Is the app listening on 127.0.0.1:${port}?</p></body></html>`);
+  // Synthetic-error marker so the tab health dot can tell "no listener"
+  // apart from an upstream app's own 5xx via a body-less HEAD poll.
+  res.setHeader('X-WebTun-Preview-Error', '1');
+  res.end(`<!DOCTYPE html><html><body style="font-family:sans-serif;padding:24px;background:#1a1b26;color:#c0caf5"><h3>${title}</h3><p style="color:#787c99">${msg}. ${hint}</p><p style="color:#787c99">Check with: <code>curl -v 127.0.0.1:${port}/</code> (bind 127.0.0.1, not just localhost).</p><p><button onclick="location.reload()" style="padding:8px 16px;cursor:pointer">Retry</button></p></body></html>`);
 }
 function handlePreviewProxy(req, res) {
   const port = req.params.port;
-  if (!validPreviewPort(port)) return res.status(400).json({ error: 'invalid port (1-65535, not WebTun itself)' });
+  if (!validPreviewPort(port)) {
+    const reason = previewPortRejectReason(port);
+    if (reason === 'self') return previewError(res, port, "That's WebTun itself", { status: 400, title: `Preview :${port} unavailable`, hint: "Enter your app's port, not WebTun's." });
+    if (reason === 'blocked') return previewError(res, port, 'Port not in PREVIEW_PORTS allow-list', { status: 400, title: `Preview :${port} unavailable`, hint: 'Ask the server admin to allow this port.' });
+    return previewError(res, port, 'Port must be 1-65535', { status: 400, title: 'Preview unavailable', hint: 'Check the port number.' });
+  }
   const targetPort = Number(port);
   // Strip prefix /api/preview/<port>, keep trailing path + query.
   let suffix = '';
@@ -4484,7 +4472,13 @@ function handlePreviewProxy(req, res) {
     fwd[k] = v;
   }
   fwd['Host'] = `localhost:${targetPort}`;
-  fwd['Accept-Encoding'] = 'identity'; // allow <base> injection without gunzip
+  // Only page navigations (Accept: text/html) force identity encoding so the
+  // <base> + nav-report injection below sees plain bytes. Every other asset
+  // (JS/CSS/img/XHR) keeps the client's gzip/br and streams through untouched.
+  try {
+    const acc = String((req.headers && req.headers.accept) || '');
+    if (req.method === 'GET' && acc.includes('text/html')) fwd['Accept-Encoding'] = 'identity';
+  } catch {}
   fwd['Referrer-Policy'] = 'no-referrer';
   // Forward browser cookies except our preview token (never leak it upstream).
   try {
@@ -4495,10 +4489,13 @@ function handlePreviewProxy(req, res) {
     }
   } catch {}
   let upReq;
+  let upResponded = false;
   try {
     // Dial 127.0.0.1 (not 'localhost'): dev servers usually bind IPv4-only and
     // 'localhost' often resolves to ::1 first → refused. Loopback either way.
-    upReq = http.request({ host: '127.0.0.1', port: targetPort, method: req.method, path: suffix, headers: fwd, timeout: 10000, agent: previewAgent }, upRes => {
+    // 30s first-byte budget: slow Vite/Next cold starts exceed the old 10s.
+    upReq = http.request({ host: '127.0.0.1', port: targetPort, method: req.method, path: suffix, headers: fwd, timeout: 30000, agent: previewAgent }, upRes => {
+      upResponded = true;
       // Upstream answered — idle timeout no longer applies. Long-lived SSE /
       // log-tail / token streams must not be killed after 10s of quiet.
       try { upReq.setTimeout(0); } catch {}
@@ -4540,13 +4537,18 @@ function handlePreviewProxy(req, res) {
         res.setHeader('Content-Security-Policy', "sandbox allow-scripts allow-forms allow-popups allow-downloads allow-modals; frame-ancestors 'self'");
       } catch {}
       const ctype = (upRes.headers['content-type'] || '').toString().toLowerCase();
-      if (ctype.includes('text/html') && req.method === 'GET') {
+      const cenc = (upRes.headers['content-encoding'] || '').toString().toLowerCase();
+      const canInject = !/gzip|br|deflate|zstd/.test(cenc);
+      if (ctype.includes('text/html') && req.method === 'GET' && canInject) {
         // Bounded <head> scan: inject <base> so relative URLs resolve through
-        // the proxy, then stream the body — huge pages no longer buffer fully
+        // the proxy, plus a tiny nav reporter so the tab address bar follows
+        // in-iframe navigation (opaque origin — postMessage only, no DOM access).
+        // Then stream the body — huge pages no longer buffer fully
         // (or lose the injection past the old 2MB cliff). Byte-level surgery
         // with a latin1 needle (ASCII-safe) so multibyte text is never mangled.
         const HEAD_MAX = 512 * 1024;
         const baseTag = Buffer.from(`<base href="/api/preview/${targetPort}/">`, 'latin1');
+        const navTag = Buffer.from(`<script>try{(function(){var s=function(){try{parent.postMessage({wtPreviewNav:location.pathname+location.search},'*')}catch(e){}};try{s()}catch(e){}try{addEventListener('popstate',s)}catch(e){}try{['pushState','replaceState'].forEach(function(k){try{var o=history[k];history[k]=function(){try{return o.apply(this,arguments)}finally{try{s()}catch(e){}}}}catch(e){})}catch(e){}try{setTimeout(s,800)}catch(e){}})()}catch(e){}</script>`, 'latin1');
         let buf = [], bytes = 0, headSent = false;
         const sendHead = (raw) => {
           headSent = true;
@@ -4557,7 +4559,7 @@ function handlePreviewProxy(req, res) {
               const m = /<head[^>]*>/i.exec(s);
               if (m) {
                 const at = m.index + m[0].length;
-                out = Buffer.concat([raw.subarray(0, at), baseTag, raw.subarray(at)]);
+                out = Buffer.concat([raw.subarray(0, at), baseTag, navTag, raw.subarray(at)]);
               }
             }
           } catch {}
@@ -4584,11 +4586,10 @@ function handlePreviewProxy(req, res) {
       }
     });
   } catch (e) { return previewError(res, targetPort, 'proxy error'); }
-  // One message for every dial failure. Distinguishing "refused" from
-  // "timed out" told an authenticated caller which loopback ports have a
-  // listener; the timing still differs, so this removes the explicit signal
-  // rather than making the probe impossible.
-  upReq.on('timeout', () => { try { upReq.destroy(); } catch {} if (!res.headersSent) previewError(res, targetPort, 'no application is answering there'); else try { res.end(); } catch {} });
+  // Timeout before any response = slow app / cold start; socket error =
+  // nothing listening. Messages stay generic (no refused-vs-timeout oracle
+  // beyond timing), but the timeout hint names the cold-start case.
+  upReq.on('timeout', () => { try { upReq.destroy(); } catch {} if (!res.headersSent) previewError(res, targetPort, upResponded ? 'upstream went quiet' : 'no application is answering there (slow cold start?)'); else try { res.end(); } catch {} });
   upReq.on('error', () => { if (!res.headersSent) previewError(res, targetPort, 'no application is answering there'); else try { res.end(); } catch {} });
   req.pipe(upReq);
 }
@@ -4601,33 +4602,47 @@ app.all('/api/preview/:port/*', checkPreviewAuth, handlePreviewProxy);
 // Loopback listeners for the preview address-bar autocomplete (best-effort).
 app.get('/api/ports', checkPin, (req, res) => {
   const found = new Map();
-  const add = (addr, port) => {
+  const add = (addr, port, proc) => {
     const p = Number(port);
     if (!Number.isInteger(p) || p < 1 || p > 65535) return;
     if (addr && addr !== '127.0.0.1' && addr !== '::1' && addr !== '0.0.0.0' && addr !== '::') return;
     if (!found.has(p)) found.set(p, { port: p, loopback: true });
+    if (proc && !found.get(p).proc) found.get(p).proc = String(proc).slice(0, 64);
   };
   try {
     let out = '';
     if (os.platform() === 'win32') {
       out = execSync('netstat -ano -p tcp', { encoding: 'utf8', timeout: 5000 }).toString();
       for (const line of out.split('\n')) {
-        const m = line.match(/TCP\s+(\S+):(\d+)\s+\S+\s+LISTENING/i);
-        if (m) add(m[1], m[2]);
+        const m = line.match(/TCP\s+(\S+):(\d+)\s+\S+\s+LISTENING\s+(\d+)/i) || line.match(/TCP\s+(\S+):(\d+)\s+\S+\s+LISTENING/i);
+        if (m) add(m[1], m[2], m[3] ? 'pid ' + m[3] : null);
       }
     } else {
       try {
+        // -p surfaces users:(("node",pid=123,fd=..)) so the picker can name the owner.
+        out = execSync('ss -tlnp', { encoding: 'utf8', timeout: 5000 }).toString();
+        for (const line of out.split('\n')) {
+          if (!/LISTEN/i.test(line)) continue;
+          const m = line.match(/(?:127\.0\.0\.1|::1|0\.0\.0\.0|\*):(\d+)/);
+          if (!m) continue;
+          const pm = line.match(/users:\(\("([^"]+)",pid=(\d+)/);
+          add('127.0.0.1', m[1], pm ? `${pm[1]}:${pm[2]}` : null);
+        }
+      } catch {
         out = execSync('ss -tln', { encoding: 'utf8', timeout: 5000 }).toString();
         for (const line of out.split('\n')) {
           const m = line.match(/(?:127\.0\.0\.1|::1|0\.0\.0\.0|\*):(\d+)/);
           if (m && /LISTEN/i.test(line)) add('127.0.0.1', m[1]);
         }
-      } catch {
-        out = execSync('netstat -an -p tcp', { encoding: 'utf8', timeout: 5000 }).toString();
-        for (const line of out.split('\n')) {
-          const m = line.match(/(127\.0\.0\.1|0\.0\.0\.0)\.(\d+).*LISTEN/i) || line.match(/tcp\d?\s+\S+\s+(\S+)[.:](\d+).*LISTEN/i);
-          if (m) add(m[1] && m[1].includes('.') ? m[1] : '127.0.0.1', m[2]);
-        }
+      }
+      if (found.size === 0) {
+        try {
+          out = execSync('netstat -an -p tcp', { encoding: 'utf8', timeout: 5000 }).toString();
+          for (const line of out.split('\n')) {
+            const m = line.match(/(127\.0\.0\.1|0\.0\.0\.0)\.(\d+).*LISTEN/i) || line.match(/tcp\d?\s+\S+\s+(\S+)[.:](\d+).*LISTEN/i);
+            if (m) add(m[1] && m[1].includes('.') ? m[1] : '127.0.0.1', m[2]);
+          }
+        } catch {}
       }
     }
   } catch {}

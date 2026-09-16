@@ -163,7 +163,7 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 | Backend | Node.js, Express, node-pty |
 | Tunnel | Cloudflare Tunnel (cloudflared) |
 | Desktop | Electron + electron-builder |
-| Archives | archiver v8 + yauzl |
+| Archives | stdlib STORE zip writer (`lib/zip-store.js`) + yauzl |
 
 ---
 
