@@ -4110,7 +4110,9 @@ function restartTunnel(id, entry, onSuccess) {
   if (!entry.localUrl) return;
   try { if (entry.proc) entry.proc.kill('SIGTERM'); } catch {}
   try { if (sameCloudflaredProcess(entry)) killPid(entry.pid); } catch {}
-  tunnels.delete(id);
+  // The old id stays mapped until the replacement URL arrives (or the spawn
+  // fails and the sweep retries later). Deleting it up front orphaned the
+  // settings row: Stop then 404'd and a dead entry could never be removed.
 
   const url = entry.localUrl;
   let proc;
@@ -4133,8 +4135,17 @@ function restartTunnel(id, entry, onSuccess) {
       proc.stderr.removeAllListeners('data');
       proc.stdout.resume();
       proc.stderr.resume();
+      // Stopped while the replacement was starting: honor the stop — kill
+      // the newcomer instead of resurrecting a tunnel the user just removed.
+      // (Also settles double-restart races: only the first URL wins.)
+      if (tunnels.get(id) !== entry) {
+        try { proc.kill('SIGTERM'); } catch {}
+        try { if (proc.pid) killPid(proc.pid); } catch {}
+        return;
+      }
       const fresh = { proc, pid: proc.pid, localUrl: url, tunnelUrl: newUrl, createdAt: Date.now(), startKey: processStartKey(proc.pid) };
       proc.on('exit', () => { fresh.exited = true; });
+      tunnels.delete(id);
       tunnels.set(newId, fresh);
       saveTunnels();
       updateTunnelUrlFile();
@@ -4316,7 +4327,11 @@ app.delete('/api/tunnel', checkPin, (req, res) => {
   // Accept id from body or query (DELETE body may be stripped by proxies)
   const raw = (req.body && req.body.id) || req.query.id;
   const id = typeof raw === 'string' ? raw.trim() : '';
-  if (!id || !tunnels.has(id)) return res.status(404).json({ error: 'tunnel not found' });
+  if (!id) return res.status(400).json({ error: 'id required' });
+  // Idempotent: the entry may already be gone (failed auto-restart drops the
+  // id, a sibling tab stopped it first). Deleting nothing is still success —
+  // otherwise the settings row can never be removed.
+  if (!tunnels.has(id)) return res.json({ success: true, alreadyGone: true });
   const entry = tunnels.get(id);
   try {
     if (entry.proc) {

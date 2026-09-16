@@ -6739,6 +6739,9 @@ function openSettings() {
     setupSettingsSections();
     updateSecurityUI();
     try { refreshSessions(); } catch {}
+    // Tunnel ids change on auto-restart and dead rows otherwise linger until
+    // reload — resync every time the panel opens, like sessions above.
+    try { restoreTunnels(); } catch {}
     // Replay staggered card entrance on every open
     panel.classList.remove('sec-anim');
     void panel.offsetWidth;
@@ -7343,8 +7346,13 @@ async function stopTunnelById(id) {
   if (r.success) {
     tunnelList = tunnelList.filter(t => t.id !== id);
     renderTunnels();
+    // Re-sync from the server: an auto-restart renames the id (new public
+    // URL), so the list may hold rows the server no longer knows and vice
+    // versa. The failed-stop 404 path is gone (DELETE is idempotent now),
+    // this just clears anything else stale.
+    try { await restoreTunnels(); } catch {}
     document.getElementById('tunnel-status').textContent = '';
-    toast('Tunnel stopped', 'info');
+    toast(r.alreadyGone ? 'Tunnel entry removed' : 'Tunnel stopped', 'info');
   } else {
     document.getElementById('tunnel-status').textContent = '';
     toast(r.error || 'Failed to stop tunnel', 'error');
