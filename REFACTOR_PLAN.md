@@ -3,7 +3,7 @@
 **Date:** 2026-09-16 · **Status:** IMPLEMENTED 2026-09-16 (commits `20e16fd`, `e89ce6b`, `787585d`)
 **Decisions locked:** 15-file split (as below) · shared state as top-level `let` in `core.js` · phased extraction starting with `ui.js` + `core.js`
 **Reviewed 2026-09-16:** verified CSP, `sw.js`, script tags, duplicate declarations, top-level side effects, inline-handler inventory — gaps fixed below. Guarantees in §7.
-**Post-implementation review:** all checks green, see §8. Two deviations from the table: (a) keyboard-shortcuts + terminal select/scroll/clipboard/mobile-keys section lives in `terminal.js`, not `settings.js` (more coherent — terminal-input behaviors); (b) `escHtml()` moved into `core.js` (universal util).
+**Post-implementation review:** all checks green, see §7. Two deviations from the table: (a) keyboard-shortcuts + terminal select/scroll/clipboard/mobile-keys section lives in `terminal.js`, not `settings.js` (more coherent — terminal-input behaviors); (b) `escHtml()` moved into `core.js` (universal util).
 
 ## 1. Current shape
 
@@ -72,7 +72,7 @@
 - **SW staleness:** forgetting the `CACHE` bump serves old `app.js` + new files. Mitigation: checklist item in every phase.
 - **Scope creep:** do not fix bugs or rename while moving. Move verbatim; improvements get their own commits.
 
-## 8. Post-implementation review (2026-09-16, static only — no server started)
+## 7. Post-implementation review (2026-09-16, static only — no server started)
 
 1. **Byte-equivalence:** every phase proved moved bytes identical to `git HEAD` before writing; `app.js` diffs show pure deletions.
 2. **Definition inventory:** all 481 top-level functions + all top-level `const`/`let` present exactly once across the 16 scripts — zero lost, zero duplicated (vs pre-refactor `app.js`).
@@ -81,7 +81,7 @@
 5. **Wiring:** `index.html` has 15 ordered `<script>` tags (no `defer`, same as before); `sw.js` is `webtun-v8` with all 15 precached; zero remaining references to `js/app.js` (checked `public/`, `electron/`, `server.js`, `bin/`).
 6. **Testing constraint:** the user forbade starting the app (a second server disturbs their live WebTun instances via shared startup cleanup), so verification is static-only. **Browser smoke test still owed:** terminal connect, file list, open/save editor file, git panel, preview tab — run when the user can afford a restart.
 
-## 7. Why functionality cannot change
+## 8. Why functionality cannot change
 
 1. Classic scripts share one scope — a top-level `function`/`let` in `core.js` is visible to `misc.js` exactly as if it were line 1–530 of the same file.
 2. Execution order is preserved (ordered `<script>` tags = original line order), so hoisting, duplicate win-order, and load-time statements behave identically.
