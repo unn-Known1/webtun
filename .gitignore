@@ -1,12 +1,12 @@
 node_modules/
 .env
 *.log
+*.tgz
 webtun.pid
 webtun.log
 cloudflared.log
 .tunnels.json
 .cmdhist.json
-.mimocode
 .opencode
 dist/
 release/
