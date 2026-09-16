@@ -106,14 +106,14 @@
   },
   "//electron-build": "asarUnpack lists only node-pty because it is the only native (N-API) dependency shipped in the Electron bundle; every other dependency is pure JS and loads fine from inside app.asar. Adding a dependency with a prebuilt .node binary means adding an asarUnpack entry for it too, or require() fails at runtime. Resolution order for packaged builds lives in electron/main.js resolveNodeModules().",
   "dependencies": {
-    "express": "^4.22.2",
-    "multer": "^2.0.0",
+    "express": "^4.22.3",
+    "multer": "^2.4.0",
     "node-pty": "^1.0.0",
     "ws": "^8.21.0",
     "yauzl": "^3.4.0"
   },
   "devDependencies": {
-    "electron": "^44.2.0",
+    "electron": "^44.4.1",
     "electron-builder": "^26.16.0",
     "nodemon": "^3.1.14"
   },
@@ -139,7 +139,6 @@
     "safe-buffer": "npm:@socketregistry/safe-buffer@^1",
     "safer-buffer": "npm:@socketregistry/safer-buffer@^1",
     "side-channel": "npm:@socketregistry/side-channel@^1",
-    "typedarray": "npm:@socketregistry/typedarray@^1",
     "ws": "^8.21.0"
   },
   "allowScripts": {
