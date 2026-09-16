@@ -69,7 +69,7 @@ const { execSync, execFileSync, execFile, spawn } = require('child_process');
 // so zipping works identically on Linux, macOS and Windows with no native
 // modules, no shell-outs and no extra dependencies.
 const { ZipStoreWriter } = require('./lib/zip-store');
-const yauzl = require('yauzl');
+const { ZipArchiveReader } = require('./lib/zip-read');
 const https = require('https');
 const http = require('http');
 
@@ -1072,82 +1072,87 @@ function streamZipDirectory(dirPath, res) {
 }
 
 function extractZip(zipPath, destDir) {
-  return new Promise((resolve, reject) => {
+  return (async () => {
     // Validate zip magic (PK header) before extraction (F64)
+    const fd = fs.openSync(zipPath, 'r');
     try {
-      const fd = fs.openSync(zipPath, 'r');
       const buf = Buffer.alloc(4);
       const bytes = fs.readSync(fd, buf, 0, 4, 0);
-      fs.closeSync(fd);
       if (bytes < 4 || !(buf[0] === 0x50 && buf[1] === 0x4B && (buf[2] === 0x03 || buf[2] === 0x05 || buf[2] === 0x07) && (buf[3] === 0x04 || buf[3] === 0x06 || buf[3] === 0x08))) {
-        return reject(Object.assign(new Error('Not a zip file (bad magic)'), { status: 400 }));
+        throw Object.assign(new Error('Not a zip file (bad magic)'), { status: 400 });
       }
-    } catch (e) { return reject(e); }
-    yauzl.open(zipPath, { lazyEntries: true }, (err, zipfile) => {
-      if (err) return reject(err);
-      let entryCount = 0;
-      let totalUncompressed = 0; // from archive metadata (attacker-controlled hint)
-      let liveTotal = 0;        // bytes actually decompressed — the authoritative cap
-      const MAX_ENTRIES = 1000;
-      const MAX_TOTAL = 1 * 1024 * 1024 * 1024;
-      zipfile.readEntry();
-      zipfile.on('entry', entry => {
-        entryCount++;
-        if (entryCount > MAX_ENTRIES) {
-          zipfile.close();
-          const e = new Error('Too many entries in zip (max 1000)'); e.status = 413; return reject(e);
-        }
-        totalUncompressed += entry.uncompressedSize;
-        if (totalUncompressed > MAX_TOTAL) {
-          zipfile.close();
-          const e = new Error('Uncompressed size exceeds 1GB'); e.status = 413; return reject(e);
-        }
-        const entryName = entry.fileName.replace(/\\/g, '/');
-        const entryPath = path.normalize(entryName);
-        if (entryPath.startsWith('..') || path.isAbsolute(entryPath) || entryName.includes('\0')) {
-          zipfile.close();
-          return reject(new Error('Invalid zip entry: ' + entry.fileName));
-        }
-        const target = path.join(destDir, entryPath);
-        if (!pathContained(destDir, target)) {
-          zipfile.close();
-          return reject(new Error('Zip entry escapes destination directory'));
-        }
-        if (/\/$/.test(entryName)) {
-          fs.mkdirSync(target, { recursive: true });
-          zipfile.readEntry();
-          return;
-        }
-        fs.mkdirSync(path.dirname(target), { recursive: true });
-        zipfile.openReadStream(entry, (err2, readStream) => {
-          if (err2) { zipfile.close(); return reject(err2); }
-          const writeStream = fs.createWriteStream(target);
-          let aborted = false;
-          readStream.on('data', chunk => {
-            // Count REAL decompressed bytes: entry.uncompressedSize comes from
-            // the archive header, so a lying header (the classic zip-bomb)
-            // sailed past the cap above while the disk filled anyway.
-            liveTotal += chunk.length;
-            if (liveTotal > MAX_TOTAL) {
-              aborted = true;
-              try { readStream.destroy(); } catch {}
-              try { writeStream.destroy(); } catch {}
-              try { fs.unlinkSync(target); } catch {}
-              zipfile.close();
-              const e = new Error('Uncompressed size exceeds 1GB'); e.status = 413;
-              reject(e);
-            }
-          });
-          readStream.on('error', (e) => { if (!aborted) { zipfile.close(); reject(e); } });
-          writeStream.on('error', (e) => { if (!aborted) { zipfile.close(); reject(e); } });
-          writeStream.on('close', () => { if (!aborted) zipfile.readEntry(); });
-          readStream.pipe(writeStream);
+    } finally {
+      try { fs.closeSync(fd); } catch {}
+    }
+    const MAX_ENTRIES = 1000;
+    const MAX_TOTAL = 1 * 1024 * 1024 * 1024;
+    let reader;
+    try {
+      reader = await ZipArchiveReader.open(zipPath, { maxEntries: MAX_ENTRIES });
+    } catch (e) {
+      throw mapZipOpenError(e);
+    }
+    let totalUncompressed = 0; // from archive metadata (attacker-controlled hint)
+    let liveTotal = 0;        // bytes actually decompressed — the authoritative cap
+    for (const entry of reader.entries) {
+      totalUncompressed += entry.uncompressedSize;
+      if (totalUncompressed > MAX_TOTAL) {
+        const e = new Error('Uncompressed size exceeds 1GB'); e.status = 413; throw e;
+      }
+      const entryName = entry.fileName.replace(/\\/g, '/');
+      const entryPath = path.normalize(entryName);
+      if (entryPath.startsWith('..') || path.isAbsolute(entryPath) || entryName.includes('\0')) {
+        throw new Error('Invalid zip entry: ' + entry.fileName);
+      }
+      const target = path.join(destDir, entryPath);
+      if (!pathContained(destDir, target)) {
+        throw new Error('Zip entry escapes destination directory');
+      }
+      if (/\/$/.test(entryName)) {
+        fs.mkdirSync(target, { recursive: true });
+        continue;
+      }
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      let readStream;
+      try {
+        readStream = await reader.openEntryStream(entry);
+      } catch (e) {
+        throw mapZipOpenError(e);
+      }
+      await new Promise((resolve, reject) => {
+        const writeStream = fs.createWriteStream(target);
+        let aborted = false;
+        readStream.on('data', chunk => {
+          // Count REAL decompressed bytes: entry.uncompressedSize comes from
+          // the archive header, so a lying header (the classic zip-bomb)
+          // sailed past the cap above while the disk filled anyway.
+          liveTotal += chunk.length;
+          if (liveTotal > MAX_TOTAL) {
+            aborted = true;
+            try { readStream.destroy(); } catch {}
+            try { writeStream.destroy(); } catch {}
+            try { fs.unlinkSync(target); } catch {}
+            const e = new Error('Uncompressed size exceeds 1GB'); e.status = 413;
+            reject(e);
+          }
         });
+        readStream.on('error', (e) => { if (!aborted) reject(e); });
+        writeStream.on('error', (e) => { if (!aborted) reject(e); });
+        writeStream.on('close', () => { if (!aborted) resolve(); });
+        readStream.pipe(writeStream);
       });
-      zipfile.on('end', () => resolve());
-      zipfile.on('error', reject);
-    });
-  });
+    }
+  })();
+}
+
+// Reader errors carry short codes; map the user-facing ones to the same
+// messages (and HTTP statuses) the yauzl path produced. Anything else keeps
+// its message and surfaces as a 500 via safeErr, as before.
+function mapZipOpenError(e) {
+  if (e && e.code === 'ENTRY_LIMIT') return Object.assign(new Error('Too many entries in zip (max 1000)'), { status: 413 });
+  if (e && e.code === 'ENCRYPTED') return Object.assign(new Error('Encrypted zips are not supported'), { status: 400 });
+  if (e && e.code === 'BAD_METHOD') return Object.assign(new Error('Unsupported compression method in zip'), { status: 400 });
+  return e;
 }
 
 const { findCloudflared, ensureCloudflared } = require('./lib/cloudflared');

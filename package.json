@@ -109,8 +109,7 @@
     "express": "^4.22.3",
     "multer": "^2.4.0",
     "node-pty": "^1.0.0",
-    "ws": "^8.21.0",
-    "yauzl": "^3.4.0"
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "electron": "^44.4.1",
