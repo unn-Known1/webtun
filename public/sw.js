@@ -1,8 +1,10 @@
-const CACHE = 'webtun-v7';
+const CACHE = 'webtun-v8';
 const PRECACHE = [
   '/',
   '/index.html',
   '/css/styles.css',
+  '/js/core.js',
+  '/js/ui.js',
   '/js/app.js',
   '/js/theme-init.js',
   '/docs.html',
