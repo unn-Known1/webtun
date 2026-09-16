@@ -3346,10 +3346,9 @@ async function _loadFilesInner(dir) {
       delete existing.dataset.isParent;
       // Update name/meta/icon if changed (without recreating DOM)
       const nameEl = existing.querySelector('.file-name');
-      if (nameEl && nameEl.textContent !== f.name) {
-        nameEl.textContent = f.name;
+      if (nameEl && nameEl.dataset.raw !== f.name) {
+        paintFileName(nameEl, f.name, f.isDir);
         nameEl.title = key;
-        nameEl.className = 'file-name' + (f.isDir ? ' file-dir' : '');
       }
       const iconEl = existing.querySelector('.file-icon');
       if (iconEl) {
@@ -3542,6 +3541,37 @@ function thumbUrlFor(f) {
   return `/api/files/image?path=${encodeURIComponent(f.path)}&token=${encodeURIComponent(authToken || '')}&v=${v}`;
 }
 
+// Long names truncate in the MIDDLE (head…tail) so the file extension — the
+// most identifying part — stays visible. The raw name rides on data-raw:
+// never read .file-name textContent for logic (it contains the … marker).
+const FIT_HEAD = 22, FIT_TAIL = 18;
+function fitFileName(name) {
+  const n = String(name == null ? '' : name);
+  if (n.length <= FIT_HEAD + FIT_TAIL + 1) return escHtml(n);
+  const dot = n.lastIndexOf('.');
+  let tail;
+  if (dot > 0 && n.length - dot <= 12) {
+    const stem = n.slice(0, dot);
+    tail = stem.slice(-Math.max(0, FIT_TAIL - (n.length - dot))) + n.slice(dot);
+  } else {
+    tail = n.slice(-FIT_TAIL);
+  }
+  return escHtml(n.slice(0, FIT_HEAD)) + '<span class="fn-ellipsis" aria-hidden="true">…</span>' + escHtml(tail);
+}
+function fileRowName(row, fallbackPath) {
+  try {
+    const el = row && row.querySelector('.file-name');
+    if (el && el.dataset && el.dataset.raw) return el.dataset.raw;
+    if (el && el.textContent && el.textContent.indexOf('…') === -1) return el.textContent;
+  } catch {}
+  const p = fallbackPath || (row && row.dataset && row.dataset.path) || '';
+  return (p.split(/[\\/]/).pop() || p);
+}
+function paintFileName(nameEl, name, isDir) {
+  nameEl.innerHTML = fitFileName(name);
+  nameEl.dataset.raw = String(name);
+  nameEl.className = 'file-name' + (isDir ? ' file-dir' : '');
+}
 function makeFileItem(name, isDir, fullPath, o) {
   o = o || {};
   const div = document.createElement('div');
@@ -3555,7 +3585,7 @@ function makeFileItem(name, isDir, fullPath, o) {
     <span class="file-select-check" data-path="${escHtml(fullPath)}"></span>
     <span class="file-icon k-${o.kind || 'file'}">${o.icon || ''}${o.thumb ? `<img class="file-thumb" data-src="${escHtml(o.thumb)}" alt="" onload="this.classList.add('ld')" onerror="this.remove()">` : ''}</span>
     <span class="file-text">
-      <span class="file-name ${isDir ? 'file-dir' : ''}" title="${escHtml(fullPath)}">${escHtml(name)}</span>
+      <span class="file-name ${isDir ? 'file-dir' : ''}" data-raw="${escHtml(name)}" title="${escHtml(fullPath)}">${fitFileName(name)}</span>
       ${o.meta ? `<span class="file-meta">${escHtml(o.meta)}</span>` : ''}
     </span>
     ${o.download ? `<button class="file-quick" tabindex="-1" aria-label="Download ${escHtml(name)}" title="Download"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>` : ''}
@@ -3574,7 +3604,7 @@ function setupFileListClicks() {
   const rowInfo = (row) => {
     const curPath = row.dataset.path;
     const curIsDir = row.dataset.isDir === 'true';
-    const curName = (row.querySelector('.file-name')?.textContent || curPath.split(/[\\/]/).pop() || curPath);
+    const curName = fileRowName(row, curPath);
     const m = curPath.match(/\.([^.]+)$/);
     return { curPath, curIsDir, curName, ext: m ? '.' + m[1].toLowerCase() : '' };
   };
@@ -3644,8 +3674,8 @@ function setupFileListKeyboard() {
       clearTimeout(list._typeAheadTimer);
       list._typeAheadTimer = setTimeout(() => { list._typeAhead = ''; }, 500);
       const found = items.findIndex(el => {
-        const nm = el.querySelector('.file-name');
-        return nm && nm.textContent.toLowerCase().startsWith(prefix);
+        const nm = fileRowName(el, '');
+        return nm && nm.toLowerCase().startsWith(prefix);
       });
       if (found >= 0) focusIdx(found);
     }
@@ -3661,7 +3691,7 @@ function setupFileListContextMenu() {
     if (!item || !item.dataset.path) return;
     const curPath = item.dataset.path;
     const curIsDir = item.dataset.isDir === 'true';
-    const curName = (item.querySelector('.file-name')?.textContent || curPath.split(/[\\/]/).pop() || curPath);
+    const curName = fileRowName(item, curPath);
     const m = curPath.match(/\.([^.]+)$/);
     const ext = m ? '.' + m[1].toLowerCase() : '';
     showCtxMenu(e, { path: curPath, name: curName, isDir: curIsDir, ext });
@@ -3808,7 +3838,7 @@ function renderBreadcrumb(fullPath) {
     } else {
       html = segments.map((seg, i) => {
         const isLast = i === segments.length - 1;
-        if (isLast) return `<button type="button" class="path-current" data-edit="1" title="Edit path" aria-current="page">${escHtml(seg.label)}</button>`;
+        if (isLast) return `<button type="button" class="path-current" data-edit="1" title="${escHtml(seg.label)} — click to edit" aria-current="page">${escHtml(seg.label)}</button>`;
         return `<a href="#" data-path="${escHtml(seg.path)}" style="color:var(--accent);text-decoration:none;display:inline-flex;align-items:center;height:24px;padding:2px 6px;border-radius:var(--radius-sm)">${escHtml(seg.label)}</a>` +
           `<span style="color:var(--fg2);margin:0 2px;display:inline-flex;align-items:center">\\</span>`;
       }).join('');
@@ -3820,7 +3850,7 @@ function renderBreadcrumb(fullPath) {
       accumulated += '/' + part;
       const isLast = part === parts[parts.length - 1];
       if (isLast) {
-        html += `<button type="button" class="path-current" data-edit="1" title="Edit path" aria-current="page">${escHtml(part)}</button>`;
+        html += `<button type="button" class="path-current" data-edit="1" title="${escHtml(part)} — click to edit" aria-current="page">${escHtml(part)}</button>`;
       } else {
         html += `<a href="#" data-path="${escHtml(accumulated)}" style="color:var(--accent);text-decoration:none;display:inline-flex;align-items:center;height:24px;padding:2px 6px;border-radius:var(--radius-sm)">${escHtml(part)}</a>`;
         html += `<span style="color:var(--fg2);margin:0 2px;display:inline-flex;align-items:center">/</span>`;
@@ -3832,6 +3862,8 @@ function renderBreadcrumb(fullPath) {
   }
 
   el.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--fg2);flex-shrink:0;vertical-align:middle"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>' + html;
+  // Deep paths overflow: keep the current (rightmost) end in view.
+  try { el.scrollLeft = el.scrollWidth; } catch {}
 
   if (!el.dataset.delegated) {
     el.addEventListener('click', e => {
@@ -8794,7 +8826,7 @@ function setupFileListTouch() {
     const touch = e.touches[0];
     const file = {
       path: item.dataset.path,
-      name: (item.querySelector('.file-name') || {}).textContent || '',
+      name: fileRowName(item, item.dataset.path),
       isDir: item.dataset.isDir === 'true' || !!item.querySelector('.file-dir'),
       ext: (() => { const m = item.dataset.path.match(/\.([^.]+)$/); return m ? '.' + m[1].toLowerCase() : ''; })()
     };

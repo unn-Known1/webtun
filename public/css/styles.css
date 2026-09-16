@@ -621,7 +621,7 @@ body.datasaver #transfers-btn.has-active .tx-up, body.datasaver #transfers-btn.h
 #path-bar.editing #path-segments, #path-bar.editing #path-edit-btn { display: none; }
 #path-segments a { transition: background var(--transition-fast), color var(--transition-fast); border-radius: var(--radius-sm); padding: 2px 6px !important; display: inline-flex !important; align-items: center; height: 26px; line-height: 1; font-weight: 500; }
 #path-segments a:hover { background: var(--bg3); color: var(--fg); }
-#path-segments .path-current { color: var(--fg); font-weight: 700; display: inline-flex; align-items: center; height: 26px; padding: 2px 10px; background: var(--bg3); border: 1px solid var(--border); font-size: 12px; cursor: text; border-radius: var(--radius-sm); white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
+#path-segments .path-current { color: var(--fg); font-weight: 700; display: inline-flex; align-items: center; height: 26px; padding: 2px 10px; background: var(--bg3); border: 1px solid var(--border); font-size: 12px; cursor: text; border-radius: var(--radius-sm); white-space: nowrap; flex-shrink: 0; }
 #path-segments .path-current:hover { background: var(--bg4); border-color: var(--accent); }
 @media (pointer: coarse) {
   #path-segments .path-current { font-size: 13px; }
@@ -645,6 +645,10 @@ body.datasaver #transfers-btn.has-active .tx-up, body.datasaver #transfers-btn.h
 .file-icon.k-file { color: var(--fg2); background: var(--bg4); }
 .file-text { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; line-height: 1.35; }
 .file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; -webkit-user-select: text; }
+.fn-ellipsis { color: var(--fg3); }
+/* Selected / keyboard-focused row unwraps the full name (middle-truncation
+   already rendered every character, so wrapping reveals all of it). */
+.file-item.selected .file-name, .file-item.focused .file-name { white-space: normal; word-break: break-all; }
 .file-meta { font-size: 10px; color: var(--fg3); font-family: var(--font-ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .file-dir { color: var(--accent); }
 .file-item .file-quick { display: none; align-items: center; justify-content: center; width: 26px; height: 26px; min-width: 26px; border-radius: var(--radius-sm); color: var(--fg2); background: none; border: none; cursor: pointer; flex-shrink: 0; }
