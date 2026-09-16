@@ -39,7 +39,7 @@
     "type": "git",
     "url": "git+https://github.com/unn-Known1/webtun.git"
   },
-  "homepage": "https://github.com/unn-Known1/webtun#readme",
+  "homepage": "https://unn-known1.github.io/webtun/public/docs.html",
   "bugs": {
     "url": "https://github.com/unn-Known1/webtun/issues"
   },
@@ -61,50 +61,6 @@
     "git",
     "devtools"
   ],
-  "build": {
-    "appId": "com.webtun.app",
-    "productName": "WebTun",
-    "asar": true,
-    "files": [
-      "electron/**/*",
-      "server.js",
-      "lib/**/*",
-      "public/**/*",
-      "LICENSE",
-      "package.json"
-    ],
-    "asarUnpack": [
-      "node_modules/node-pty/**/*"
-    ],
-    "win": {
-      "target": [
-        "nsis",
-        "portable"
-      ],
-      "icon": "public/icon-512.png"
-    },
-    "mac": {
-      "target": [
-        "dmg",
-        "zip"
-      ],
-      "icon": "public/icon-512.png",
-      "category": "Utility"
-    },
-    "linux": {
-      "target": [
-        "AppImage",
-        "deb"
-      ],
-      "icon": "public/icon-512.png",
-      "category": "Utility"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true
-    }
-  },
-  "//electron-build": "asarUnpack lists only node-pty because it is the only native (N-API) dependency shipped in the Electron bundle; every other dependency is pure JS and loads fine from inside app.asar. Adding a dependency with a prebuilt .node binary means adding an asarUnpack entry for it too, or require() fails at runtime. Resolution order for packaged builds lives in electron/main.js resolveNodeModules().",
   "dependencies": {
     "express": "^4.22.3",
     "multer": "^2.4.0",

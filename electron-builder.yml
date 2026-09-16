@@ -1,0 +1,41 @@
+# WebTun desktop build config (electron-builder auto-discovers this file —
+# no -c flag needed in package.json scripts or CI).
+#
+# asarUnpack lists only node-pty because it is the only native (N-API)
+# dependency shipped in the Electron bundle; every other dependency is pure
+# JS and loads fine from inside app.asar. Adding a dependency with a prebuilt
+# .node binary means adding an asarUnpack entry for it too, or require()
+# fails at runtime. Resolution order for packaged builds lives in
+# electron/main.js resolveNodeModules().
+appId: com.webtun.app
+productName: WebTun
+asar: true
+files:
+  - electron/**/*
+  - server.js
+  - lib/**/*
+  - public/**/*
+  - LICENSE
+  - package.json
+asarUnpack:
+  - node_modules/node-pty/**/*
+win:
+  target:
+    - nsis
+    - portable
+  icon: public/icon-512.png
+mac:
+  target:
+    - dmg
+    - zip
+  icon: public/icon-512.png
+  category: Utility
+linux:
+  target:
+    - AppImage
+    - deb
+  icon: public/icon-512.png
+  category: Utility
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
