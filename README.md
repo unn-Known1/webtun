@@ -195,6 +195,16 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 
 ## Changelog
 
+### v2.2.0
+> **First release since v2.0.4.** v2.1.0–v2.1.2 were bumped and documented but never tagged or published, so everything since v2.0.4 ships here (the v2.1.x sections below are kept as-is for history). New since the 2.1.2 tree:
+
+- **Frontend split** — the 10,491-line `public/js/app.js` is now 15 concern-sized scripts (`core`, `ui`, `tabs`, `terminal`, `files`, `transfers`, `editor-panel`, `file-tabs`, `preview`, `viewers`, `launchpad`, `settings`, `security`, `git`, `misc`), moved byte-verbatim with zero behavior change; Service Worker cache bumped to `webtun-v8`
+- **tmux ownership tracking** — shutdown kills exactly the sessions this process created (recorded, never inferred from the name); a box-shared claim file arbitrates the orphan sweeps between live same-namespace siblings; the startup sweep runs only after the port binds
+- **Long filenames stay readable** — file rows truncate in the middle so the extension is always visible; selecting a row unwraps the full name; the breadcrumb auto-scrolls to the current folder with no width cap
+- **Per-tab previews, un-scoped theme** — markdown/HTML preview state is per file tab; the editor theme no longer leaks across tabs
+- **Dependency slimming** — `archiver` and `yauzl` replaced with stdlib zip code (4 prod deps left); express/multer/electron bumped; `typedarray` override pruned; `npm audit` clean
+- **Fixes** — stuck tunnel rows (id kept across restarts, idempotent stop, panel resync); build config moved to `electron-builder.yml`; ignore files trimmed; stale `hasInstallScript` dropped from the lockfile
+
 ### v2.1.2
 - **Zero install scripts** — the `postinstall` hook is gone (manual `npm run rebuild:pty`, repo-only, out of the tarball); the dead Yarn-only `resolutions` block is out of `package.json`; 17 files ship with nothing executable at install time
 - **App preview hardening** — the `?token=` bearer is stripped (selectively, so apps with their own token logins keep working) before anything reaches your app; preview auth matches the main gate (raw-PIN approval, pending sessions); cookies are port-scoped, `Secure`-aware and shorter-lived; upstream dials die with the client; docs no longer claim proxied WebSocket hot-reload
