@@ -121,6 +121,8 @@ function dockEditorToTab(tab) {
   const content = document.getElementById('content');
   if (content) content.classList.remove('editor-open');
   requestAnimationFrame(() => { try { editor?.refresh(); } catch (_) {} });
+  // One-shot handoff flag: consumed above, never sticky for later docks.
+  try { tab._cameFromPanel = false; } catch (_) {}
 }
 
 // Give the panel back to its park position. `keepCard` false hides the outgoing
@@ -161,6 +163,12 @@ function captureFileTabState(tab) {
     // Text tabs keep their own live CodeMirror, so there is nothing to snapshot here.
     if (tab.viewer === 'pdf') {
       tab.viewState = { page: _pdfCurrentPage, scale: _pdfScale };
+    } else if (tab.viewer === 'epub') {
+      try {
+        const loc = _epubRendition && _epubRendition.location;
+        const cfi = loc && loc.start && loc.start.cfi ? loc.start.cfi : null;
+        tab.viewState = cfi ? { cfi } : null;
+      } catch { tab.viewState = null; }
     } else if (tab.viewer === 'office') {
       const w = document.getElementById('office-wrap');
       const sel = document.getElementById('office-sheet-sel');
@@ -242,6 +250,10 @@ async function mountFileTab(tab) {
       await openPdfViewer(tab.path);
     } else if (tab.viewer === 'epub') {
       await openEpubViewer(tab.path);
+      // Restore the reading position captured by captureFileTabState.
+      if (s && s.cfi && _epubRendition) {
+        try { await _epubRendition.display(s.cfi); } catch (_) {}
+      }
     } else if (tab.viewer === 'office') {
       await openOfficeViewer(tab.path);
     }
@@ -252,10 +264,13 @@ async function mountFileTab(tab) {
   if (editorPath !== tab.path) { abandonFileTab(tab); return; }
   tab.mountedOnce = true;
   if (tab.viewer === 'pdf' && s && s.page > 1) {
-    setTimeout(() => { try { document.getElementById('pdf-wrap-' + s.page)?.scrollIntoView(); } catch (_) {} }, 450);
+    const sid = tab.id;
+    setTimeout(() => { try { if (tab.closed || _dockedFileTabId !== sid) return; document.getElementById('pdf-wrap-' + s.page)?.scrollIntoView(); } catch (_) {} }, 450);
   } else if (tab.viewer === 'office' && s) {
+    const sid = tab.id;
     setTimeout(() => {
       try {
+        if (tab.closed || _dockedFileTabId !== sid) return;
         if (s.sheet != null) officeSheetChanged(s.sheet);
         const w = document.getElementById('office-wrap');
         if (w) w.scrollTop = s.scroll || 0;
@@ -543,13 +558,27 @@ function tabIsDark() {
     return !['#f9f9fb', '#ffffff', 'rgb(249, 249, 251)', 'rgb(255, 255, 255)'].includes(s.getPropertyValue('--bg').trim());
   } catch { return true; }
 }
-function renderTabPreview(tab) {
+async function renderTabPreview(tab) {
   if (!tab || !tab.cm || !tab.previewOn) return;
   const kind = tabPreviewKind(tab);
   if (!kind) return;
   const raw = tab.cm.getValue();
   const baseDir = tabBaseDir(tab.path);
   const isDark = tabIsDark();
+  // Like the panel: frame-readable preview DOM carries a scoped preview token,
+  // never the session. Fail closed when authed but minting fails.
+  let ptok = null;
+  try {
+    ptok = await mintPreviewFileToken(tab.path);
+  } catch (e) {
+    try { toast('Preview unavailable: ' + ((e && e.message) || 'unknown error'), 'error'); } catch {}
+    if (kind === 'md') {
+      try { if (tab.fteMd) tab.fteMd.innerHTML = '<p style="padding:16px">Preview unavailable — could not authorize file assets (' + escHtml((e && e.message) || 'unknown error') + ').</p>'; } catch {}
+    } else {
+      try { if (tab.fteFrame) setTabPreviewDoc(tab, tab.fteFrame, '<p style="font-family:sans-serif;padding:16px">Preview unavailable — could not authorize file assets (' + escHtml((e && e.message) || 'unknown error') + ').</p>'); } catch {}
+    }
+    return;
+  }
   if (kind === 'md') {
     const md = tab.fteMd;
     if (!md) return;
@@ -560,7 +589,7 @@ function renderTabPreview(tab) {
     try {
       const html = marked.parse(raw, { breaks: true, gfm: true, langPrefix: 'language-' });
       let sanitized = DOMPurify.sanitize(html);
-      sanitized = rewriteHtmlRelativeUrls(sanitized, baseDir);
+      sanitized = rewriteHtmlRelativeUrls(sanitized, baseDir, ptok);
       md.innerHTML = tabMdCss() + `<div class="md-rendered">${sanitized}</div>`;
     } catch (e) {
       console.warn('Tab markdown preview error:', e);
@@ -575,7 +604,7 @@ function renderTabPreview(tab) {
       setTabPreviewDoc(tab, frame, '<p style="font-family:sans-serif;padding:16px">Nothing to preview — the file is empty.</p>');
       return;
     }
-    const baseHref = `/api/files/image?path=${encodeURIComponent(baseDir + '/')}` + (authToken ? `&token=${encodeURIComponent(authToken)}` : '');
+    const baseHref = `/api/files/image?path=${encodeURIComponent(baseDir + '/')}` + (ptok ? `&ptoken=${encodeURIComponent(ptok)}` : '');
     const injectHead = (doc, tags) => /<head[^>]*>/i.test(doc)
       ? doc.replace(/<head[^>]*>/i, m => m + tags)
       : doc.replace(/<html[^>]*>/i, m => m + '<head>' + tags + '</head>');
@@ -585,11 +614,11 @@ function renderTabPreview(tab) {
       // opaque-origin sandbox (allow-scripts only). Needs no sanitizer CDN.
       let doc;
       if (isFullDoc) {
-        doc = rewriteFullHtmlUrls(raw, baseDir);
+        doc = rewriteFullHtmlUrls(raw, baseDir, ptok);
         if (!/<base\b/i.test(doc)) doc = injectHead(doc, `<base href="${escHtml(baseHref)}">`);
         if (!/<meta[^>]*color-scheme/i.test(doc)) doc = injectHead(doc, `<meta name="color-scheme" content="${isDark ? 'dark' : 'light'}">`);
       } else {
-        doc = `<!DOCTYPE html>\n<html>\n<head>\n<meta charset="UTF-8">\n<meta name="color-scheme" content="${isDark ? 'dark' : 'light'}">\n<base href="${escHtml(baseHref)}">\n</head>\n<body>${rewriteFullHtmlUrls(raw, baseDir)}</body>\n</html>`;
+        doc = `<!DOCTYPE html>\n<html>\n<head>\n<meta charset="UTF-8">\n<meta name="color-scheme" content="${isDark ? 'dark' : 'light'}">\n<base href="${escHtml(baseHref)}">\n</head>\n<body>${rewriteFullHtmlUrls(raw, baseDir, ptok)}</body>\n</html>`;
       }
       setTabPreviewDoc(tab, frame, doc);
       return;
@@ -602,12 +631,12 @@ function renderTabPreview(tab) {
     let doc;
     if (isFullDoc) {
       let sanitized = DOMPurify.sanitize(raw, { WHOLE_DOCUMENT: true, USE_PROFILES: { html: true }, ADD_TAGS: ['base', 'style'], ADD_ATTR: ['target'] });
-      sanitized = rewriteHtmlRelativeUrls(sanitized, baseDir);
+      sanitized = rewriteHtmlRelativeUrls(sanitized, baseDir, ptok);
       if (!/<base\b/i.test(sanitized)) sanitized = injectHead(sanitized, `<base href="${escHtml(baseHref)}">`);
       if (!/<meta[^>]*color-scheme/i.test(sanitized)) sanitized = injectHead(sanitized, `<meta name="color-scheme" content="${isDark ? 'dark' : 'light'}">`);
       doc = sanitized;
     } else {
-      const fragment = rewriteHtmlRelativeUrls(DOMPurify.sanitize(raw, { USE_PROFILES: { html: true }, ADD_ATTR: ['target'] }), baseDir);
+      const fragment = rewriteHtmlRelativeUrls(DOMPurify.sanitize(raw, { USE_PROFILES: { html: true }, ADD_ATTR: ['target'] }), baseDir, ptok);
       doc = tabHtmlShell(fragment, baseHref, isDark);
     }
     setTabPreviewDoc(tab, frame, doc);
@@ -658,13 +687,18 @@ function scheduleTabDraft(tab) {
 async function saveTabFile(tab) {
   if (!tab || !tab.cm) return;
   setBtnBusy(tab.fteSaveBtn, true);
-  const content = tab.cm.getValue();
-  const r = await api('/api/files/write', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: tab.path, content }),
-  });
-  setBtnBusy(tab.fteSaveBtn, false);
+  let r = null, content = '';
+  try {
+    content = tab.cm.getValue();
+    r = await api('/api/files/write', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: tab.path, content }),
+    });
+  } finally {
+    // Always release the busy state, even if the request throws.
+    setBtnBusy(tab.fteSaveBtn, false);
+  }
   if (r && r.success) {
     tab.original = content;
     clearTimeout(tab.draftTimer);

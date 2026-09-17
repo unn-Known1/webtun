@@ -304,6 +304,32 @@ const authSessionSweep = setInterval(() => {
 // Maintenance timers must not keep the process alive on their own — the HTTP
 // listener is what should own the lifecycle.
 if (authSessionSweep.unref) authSessionSweep.unref();
+// Short-lived single-purpose tokens for file-preview subresources, so the live
+// session secret never lands in frame-readable preview DOM (audit run-1 F1).
+// token (64-hex) -> { dir (absolute base dir), exp }. Accepted ONLY by
+// GET /api/files/image, and ONLY for paths contained in dir. A stolen preview
+// token discloses at most that directory's files via the image endpoint —
+// never the session, shell, or any other API.
+const previewFileTokens = new Map();
+const PREVIEW_FILE_TOKEN_TTL_MS = 10 * 60 * 1000;
+const PREVIEW_FILE_TOKEN_MAX = 200;
+function prunePreviewFileTokens(now) {
+  for (const [t, r] of previewFileTokens) {
+    if (!r || r.exp <= now) { try { previewFileTokens.delete(t); } catch {} }
+  }
+}
+function mintPreviewFileToken(dir) {
+  const now = Date.now();
+  prunePreviewFileTokens(now);
+  while (previewFileTokens.size >= PREVIEW_FILE_TOKEN_MAX) {
+    const oldest = previewFileTokens.keys().next().value;
+    if (oldest === undefined) break;
+    try { previewFileTokens.delete(oldest); } catch { break; }
+  }
+  const t = crypto.randomBytes(32).toString('hex');
+  previewFileTokens.set(t, { dir, exp: now + PREVIEW_FILE_TOKEN_TTL_MS });
+  return t;
+}
 function clearSessionTimer(s) { try { if (s && s.timer) clearTimeout(s.timer); } catch {} if (s) s.timer = null; }
 // Arm the deny-by-default expiry for a pending session. Shared by first-issue
 // and by the bootstrap demotion path (see /api/auth) so both behave identically.
@@ -413,6 +439,9 @@ function rawPinAllowed(req) {
 }
 function checkPin(req, res, next) {
   if (!PIN) return next();
+  // Single-purpose preview-file tokens (set by checkPreviewFileToken on the
+  // image route only) already proved dir-scoped read authority — no session needed.
+  if (req.previewFileToken) return next();
   // Validate token is string to prevent array injection (?token=a&token=b) (F45)
   const raw = req.headers['x-pin-token'] || req.query.token;
   const token = typeof raw === 'string' ? raw.trim() : '';
@@ -1626,8 +1655,41 @@ app.post('/api/files/write', checkPin, async (req, res) => {
   }
 });
 
+// Mint a dir-scoped preview token for the file-preview frame's subresources.
+// The client resolves the previewed file, takes its directory, and embeds
+// `ptoken` (never the session) in <base href> and rewritten asset URLs.
+app.post('/api/files/preview-token', rateLimiter, checkPin, async (req, res) => {
+  try {
+    const p = realPath(req.body && req.body.path);
+    const lst = await fsPromises.lstat(p).catch(() => null);
+    if (!lst) return res.status(404).json({ error: 'Not found' });
+    const st = await fsPromises.stat(p).catch(() => null);
+    if (!st || !st.isFile()) return res.status(400).json({ error: 'Not a file' });
+    res.json({ token: mintPreviewFileToken(path.dirname(p)) });
+  } catch (e) {
+    sendErr(res, e);
+  }
+});
+// Accept a valid preview-file token on the image route only. The requested
+// path must resolve inside the token's directory; anything else falls through
+// to checkPin unchanged (so a token can never launder wider access).
+function checkPreviewFileToken(req, res, next) {
+  try {
+    const t = req.query && req.query.ptoken;
+    if (typeof t !== 'string' || !t) return next();
+    const rec = previewFileTokens.get(t);
+    if (!rec) return next();
+    if (!rec.dir || rec.exp <= Date.now()) { try { previewFileTokens.delete(t); } catch {} return next(); }
+    let p;
+    try { p = realPath(req.query.path); } catch { return next(); }
+    if (!pathContained(rec.dir, p)) return next();
+    req.previewFileToken = true;
+  } catch {}
+  next();
+}
+
 // Serve image files for inline viewing (not as download)
-app.get('/api/files/image', checkPin, async (req, res) => {
+app.get('/api/files/image', checkPreviewFileToken, checkPin, async (req, res) => {
   try {
     const p = resolvePath(req.query.path);
     // Stat before streaming: refuse directories, cap at 100MB
@@ -1639,8 +1701,10 @@ app.get('/api/files/image', checkPin, async (req, res) => {
     if (st.size > 100 * 1024 * 1024) return res.status(413).json({ error: 'File too large to preview inline' });
     const mimeType = mimeLookup(p);
     res.setHeader('Content-Type', mimeType);
-    // Avoid caching secrets served as octet-stream (F57)
-    if (mimeType === 'application/octet-stream') {
+    // Avoid caching secrets served as octet-stream (F57). Preview-token
+    // responses are never cached either: the token is short-lived and the
+    // URL must not outlive it in any cache.
+    if (mimeType === 'application/octet-stream' || req.previewFileToken) {
       res.setHeader('Cache-Control', 'no-store');
     } else {
       res.setHeader('Cache-Control', 'private, max-age=3600');
@@ -4729,7 +4793,12 @@ function previewUpgradeAuth(req, params) {
   if (!PIN) return true;
   const t = typeof params.get('token') === 'string' ? params.get('token').trim() : parsePreviewCookie(req);
   if (!t) return false;
-  if (constantTimeEqual(t, PIN)) return true; // bypass rawPinAllowed for iframe WS
+  if (constantTimeEqual(t, PIN)) {
+    // Same gate as HTTP preview (checkPreviewAuth) and terminal WS: a remote
+    // raw PIN is trusted only when nobody else is signed in (loopback always
+    // trusted). Session tokens remain the normal path for iframe WS.
+    return rawPinAllowed({ socket: req.socket, headers: req.headers, get ip() { return req.socket.remoteAddress; } });
+  }
   const s = getSession(t);
   return !!(s && s.status === 'active');
 }

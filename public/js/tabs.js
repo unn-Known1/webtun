@@ -69,6 +69,9 @@ function setupTabInlineRename(tabTitleSpan, tab) {
       newSpan.className = 'tab-title';
       newSpan.textContent = val;
       input.replaceWith(newSpan);
+      // The replacement span is a fresh node: re-wire rename onto it, or the
+      // renamed tab silently loses dblclick/long-press rename.
+      try { setupTabInlineRename(newSpan, tab); } catch {}
       saveTabState();
     };
     input.addEventListener('blur', done);
@@ -86,6 +89,9 @@ function setupTabInlineRename(tabTitleSpan, tab) {
     renameTimer = setTimeout(() => { renameTimer = null; startRename(tabTitleSpan); }, 400);
   }, { passive: true });
   tabTitleSpan.addEventListener('touchend', () => {
+    if (renameTimer) { clearTimeout(renameTimer); renameTimer = null; }
+  }, { passive: true });
+  tabTitleSpan.addEventListener('touchcancel', () => {
     if (renameTimer) { clearTimeout(renameTimer); renameTimer = null; }
   }, { passive: true });
   tabTitleSpan.addEventListener('touchmove', () => {

@@ -165,7 +165,9 @@ async function startTunnel(port) {
 
   const stop = () => {
     try { proc.kill('SIGTERM'); } catch {}
-    process.exit(0);
+    // Preserve a failure recorded earlier (tunnel URL timeout, non-zero
+    // cloudflared exit) instead of always reporting success.
+    process.exit(process.exitCode || 0);
   };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
@@ -203,6 +205,14 @@ function waitForServer(port, timeoutMs = 5000) {
     const check = () => {
       const req = http.get(`http://127.0.0.1:${port}/api/auth/required`, res => {
         res.resume();
+        // A 5xx means the port answers but the app is broken — that is not
+        // "ready". Keep polling until the deadline rather than tunneling at
+        // an error page.
+        if (res.statusCode >= 500 && res.statusCode <= 599) {
+          if (Date.now() > deadline) resolve(false);
+          else setTimeout(check, 200);
+          return;
+        }
         resolve(true);
       });
       req.setTimeout(2000, () => { try { req.destroy(); } catch {} });

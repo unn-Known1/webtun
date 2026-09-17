@@ -80,6 +80,7 @@ function openShortcuts() {
 function openOverlay(id) {
   lastFocusedElement = document.activeElement;
   const overlay = document.getElementById(id);
+  if (!overlay) return;
   overlay.classList.add('open');
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
@@ -98,12 +99,13 @@ function openOverlay(id) {
 }
 function closeOverlay(id) {
   const overlay = document.getElementById(id);
+  if (!overlay) return;
   overlay.classList.remove('open');
   removeFocusTrap();
-  if (lastFocusedElement) {
-    setTimeout(() => lastFocusedElement?.focus(), 50);
-    lastFocusedElement = null;
-  }
+  // Capture before nulling: the timeout fires after this function returns.
+  const lf = lastFocusedElement;
+  lastFocusedElement = null;
+  if (lf) setTimeout(() => { try { lf.focus(); } catch {} }, 50);
 }
 let _focusTrapContainer = null;
 function installFocusTrap(container) {
@@ -165,7 +167,9 @@ function confirmDialog({ title = 'Confirm', message = '', okText = 'OK', cancelT
       ov.classList.remove('open');
       ov.removeEventListener('keydown', onKey);
       removeFocusTrap();
-      if (lastFocusedElement) { setTimeout(() => lastFocusedElement?.focus(), 50); lastFocusedElement = null; }
+      const lf = lastFocusedElement;
+      lastFocusedElement = null;
+      if (lf) setTimeout(() => { try { lf.focus(); } catch {} }, 50);
       // Dequeue next pending dialog
       if (_confirmQueue.length) {
         const next = _confirmQueue.shift();

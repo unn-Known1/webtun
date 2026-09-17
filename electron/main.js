@@ -106,21 +106,23 @@ function startServer() {
         total += serverLog[i].length;
         if (total > 65536) { serverLog.splice(0, i); break; }
       }
-      try {
-        // Bound disk: rotate to the last 256KB once the file passes 1MB, so a
-        // chatty server can never fill the disk via this log.
-        const lp = serverLogPath();
-        if (_logBytes < 0) { try { _logBytes = fs.statSync(lp).size; } catch { _logBytes = 0; } }
-        if (_logBytes > 1024 * 1024) {
-          try {
-            const tail = fs.readFileSync(lp, 'utf8').slice(-262144);
-            fs.writeFileSync(lp, tail);
-            _logBytes = tail.length;
-          } catch {}
-        }
-        fs.appendFileSync(lp, text);
-        _logBytes += text.length;
-      } catch {}
+    try {
+      // Bound disk: rotate to the last 256KB once the file passes 1MB, so a
+      // chatty server can never fill the disk via this log.
+      const lp = serverLogPath();
+      if (_logBytes < 0) { try { _logBytes = fs.statSync(lp).size; } catch { _logBytes = 0; } }
+      if (_logBytes > 1024 * 1024) {
+        try {
+          // Slice the raw bytes before decoding: slicing a decoded JS string
+          // can split a UTF-16 surrogate pair and corrupt the log.
+          const tail = fs.readFileSync(lp).slice(-262144).toString('utf8');
+          fs.writeFileSync(lp, tail);
+          _logBytes = Buffer.byteLength(tail);
+        } catch {}
+      }
+      fs.appendFileSync(lp, text);
+      _logBytes += Buffer.byteLength(text);
+    } catch {}
     };
     serverProcess.stdout.on('data', d => pushLog(d, '[server]'));
     serverProcess.stderr.on('data', d => pushLog(d, '[server:err]'));
@@ -142,6 +144,13 @@ function startServer() {
     serverProcess.on('exit', code => {
       if (code !== 0) {
         console.error(`Server exited with code ${code}`);
+        if (settled) {
+          // Post-startup crash: without this the window shows a dead app.
+          // Surface it and quit instead of idling on a broken backend.
+          try { dialog.showErrorBox('WebTun server stopped', `The WebTun server exited with code ${code}.${serverOutputTail()}\n\nFull log: ${serverLogPath()}`); } catch {}
+          try { app.quit(); } catch {}
+          return;
+        }
         fail(`Server exited with code ${code}`);
       } else if (!settled) {
         // Exited cleanly but never answered the healthcheck — don't sit here
@@ -161,6 +170,10 @@ function startServer() {
         if (res.statusCode === 200) {
           settled = true;
           resolve();
+        } else if (res.statusCode === 404 || (res.statusCode >= 500 && res.statusCode <= 599)) {
+          // Wrong service (404) or a broken one (5xx) owns this port — retrying
+          // for 30s cannot help. Fail fast instead of a blind timeout.
+          fail(`Server answered with HTTP ${res.statusCode} — something else may own port ${PORT}`);
         } else setTimeout(check, 200);
       });
       // A hung server must not leave this request open past the deadline.

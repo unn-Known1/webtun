@@ -44,7 +44,11 @@ if [ -f "$PID_FILE" ]; then
   # Always clear the pidfile: leaving it behind made a later run target a
   # recycled PID.
   rm -f "$PID_FILE"
-elif command -v pkill &>/dev/null; then
+fi
+# Fallback when there was no pidfile, or the pidfile was stale (wrong PID, PID
+# reuse): a live server is still caught by the checkout-scoped pattern instead
+# of dead-ending with "not running".
+if [ "$stopped" != true ] && command -v pkill &>/dev/null; then
   # Scoped to this checkout (setup.sh uses the same pattern)
   if pkill -f "$SCRIPT_DIR/server\\.js" 2>/dev/null; then
     echo "✓ WebTun stopped"
@@ -62,7 +66,9 @@ fi
 # that happens to share the port (orphans from a crashed server are reaped by
 # the next boot's tunnel validation instead).
 if [ "$stopped" = true ] && command -v pkill &>/dev/null; then
-  if pkill -f "cloudflared tunnel --url http://localhost:$PORT" 2>/dev/null; then
+  # Anchor the port: without ($|[[:space:]]) PORT=300 would also match
+  # a tunnel on :3000.
+  if pkill -f "cloudflared tunnel --url http://localhost:$PORT($|[[:space:]])" 2>/dev/null; then
     echo "✓ Tunnel for port $PORT stopped"
   fi
 fi

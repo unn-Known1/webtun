@@ -6,7 +6,9 @@
 function previewBuildUrl(port, pth) {
   let p = String(pth || '/');
   if (!p.startsWith('/')) p = '/' + p;
-  return `/api/preview/${port}${p}?token=${encodeURIComponent(authToken)}`;
+  // Encode the path (spaces/unicode in dev routes); the token stays a
+  // separate query parameter appended after.
+  return `/api/preview/${port}${encodeURI(p)}?token=${encodeURIComponent(authToken)}`;
 }
 // Accept a pasted dev URL in either field: "http://localhost:5173/docs?a=1",
 // "127.0.0.1:5173/docs", ":5173/docs" or "5173/docs" → { port, path }.
@@ -16,6 +18,7 @@ function parsePreviewTarget(portRaw, pathRaw) {
   let m = combined.match(/(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::(\d{2,5}))?(\/\S*)?/i);
   if (m && m[1]) {
     const port = parseInt(m[1], 10);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) return { error: 'Port must be 1–65535' };
     let pth = (m[2] || '').replace(/["'\),;\]]+$/, '') || '';
     if (!pth || pth === '/') {
       // URL had no path — keep whatever plain path the other field held.
@@ -25,7 +28,11 @@ function parsePreviewTarget(portRaw, pathRaw) {
     return { port, path: pth || '/' };
   }
   m = String(portRaw == null ? '' : portRaw).trim().match(/^:?(\d{2,5})(\/\S*)?$/);
-  if (m) return { port: parseInt(m[1], 10), path: (m[2] || String(pathRaw == null ? '' : pathRaw)).trim() || '/' };
+  if (m) {
+    const port = parseInt(m[1], 10);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) return { error: 'Port must be 1–65535' };
+    return { port, path: (m[2] || String(pathRaw == null ? '' : pathRaw)).trim() || '/' };
+  }
   const n = parseInt(String(portRaw).trim(), 10);
   if (!Number.isInteger(n) || n < 1 || n > 65535) return { error: 'Port must be 1–65535' };
   return { port: n, path: String(pathRaw == null ? '/' : pathRaw).trim() || '/' };
@@ -217,7 +224,8 @@ function previewNavigate(tab, port, pth) {
   setPreviewStatus(tab, 'unknown');
   rememberPreviewRecent(n, p);
   // Cache-bust so Reload/Go always hits the live app, then hide spinner on load.
-  try { tab.iframe.src = previewBuildUrl(n, p) + (previewBuildUrl(n, p).includes('?') ? '&' : '?') + '_t=' + Date.now(); } catch {}
+  // previewBuildUrl always carries ?token=, so the cache-buster joins with &.
+  try { tab.iframe.src = previewBuildUrl(n, p) + '&_t=' + Date.now(); } catch {}
   try { if (tab.portInput) tab.portInput.value = n; if (tab.pathInput) tab.pathInput.value = p; } catch {}
   saveTabState();
 }
@@ -343,6 +351,13 @@ function scanPreviewHint(tab, text) {
   const key = `${tab.id}:${port}`;
   if (_previewHintSeen.has(key) && Date.now() - _previewHintSeen.get(key) < 60000) return;
   _previewHintSeen.set(key, Date.now());
+  // Bound memory: drop the oldest entries past a few hundred tab:port pairs.
+  if (_previewHintSeen.size > 500) {
+    for (const k of _previewHintSeen.keys()) {
+      if (_previewHintSeen.size <= 400) break;
+      _previewHintSeen.delete(k);
+    }
+  }
   previewSuggestToast(port, pth);
 }
 function previewSuggestToast(port, pth) {

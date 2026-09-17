@@ -285,9 +285,12 @@ async function uploadFileList(items) {
                 reject(new Error(resp.error || 'Upload failed'));
               }
             } catch(e) {
+              // A 2xx with an unparseable body is NOT success: the server
+              // did not confirm the write. Count it as failed so the batch
+              // summary and retry path see it.
               console.warn('Upload XHR response parse error:', e);
-              completed++;
-              resolve();
+              failedItems.push(fileName);
+              reject(new Error('Upload failed (bad server response)'));
             }
           } else {
             failedItems.push(fileName);

@@ -49,6 +49,10 @@ async function _loadFilesInner(dir) {
   if (loadFilesAbortController) loadFilesAbortController.abort();
   loadFilesAbortController = new AbortController();
 
+  // Selection belongs to the directory it was made in: stale entries would
+  // otherwise act on files the user is no longer looking at.
+  try { if (typeof clearSelection === 'function') clearSelection(); } catch {}
+
   const prevPath = currentPath;
   const shouldPushHistory = !skipHistoryPush && currentPath && currentPath !== dir;
   skipHistoryPush = false;

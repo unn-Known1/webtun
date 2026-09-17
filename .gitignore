@@ -1,13 +1,12 @@
 node_modules/
 .env
+.env.*
 *.log
 *.tgz
 webtun.pid
-webtun.log
-cloudflared.log
 .tunnels.json
 .cmdhist.json
-.opencode
+.opencode/
 dist/
 release/
 tunnel-url.txt

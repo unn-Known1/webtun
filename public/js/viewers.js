@@ -280,8 +280,11 @@ function pdfQueuePage(pageNum, myGen, doc, priority) {
   if (!slot || slot.dataset.rendered === '1' || _pdfRendering.has(pageNum) || _pdfQueued.has(pageNum)) return;
   if (priority) _pdfQueue.unshift({ pageNum, myGen });
   else _pdfQueue.push({ pageNum, myGen });
+  _pdfQueued.add(pageNum);
   // cap queue so fast scrolling doesn't pile up hundreds of pending renders
-  if (_pdfQueue.length > 30) _pdfQueue.splice(30);
+  if (_pdfQueue.length > 30) {
+    for (const dropped of _pdfQueue.splice(30)) _pdfQueued.delete(dropped.pageNum);
+  }
   pumpPdfQueue(doc);
 }
 async function pumpPdfQueue(doc) {
@@ -291,7 +294,7 @@ async function pumpPdfQueue(doc) {
     while (_pdfQueue.length) {
       const job = _pdfQueue.shift();
       _pdfQueued.delete(job.pageNum);
-      if (job.myGen !== _pdfRenderGen || _pdfDoc !== doc) { _pdfQueue.length = 0; break; }
+      if (job.myGen !== _pdfRenderGen || _pdfDoc !== doc) { _pdfQueue.length = 0; _pdfQueued.clear(); break; }
       try { await pdfRenderPageInto(job.pageNum, job.myGen, doc); }
       catch (e) { /* placeholder keeps retry-on-visible */ }
       // breathe between background pages so scrolling stays smooth
@@ -1030,7 +1033,26 @@ function isAbsoluteUrlForHtml(url) {
   // no web root (see toPreviewApiUrl), so "/x" resolves against the file dir.
   return /^(?:[a-z][a-z0-9+.-]*:|\/\/|data:|blob:|#)/i.test(url.trim());
 }
-function toPreviewApiUrl(rel, baseDir) {
+// Single-purpose preview token so frame-readable preview DOM never carries the
+// live session secret (audit run-1 F1). Returns null in open mode (nothing to
+// protect); throws when authed but minting fails, and every preview renderer
+// toasts and treats that as fail-closed (no preview, never a session-bearing one).
+async function mintPreviewFileToken(path) {
+  if (!authToken || authToken === 'open') return null;
+  let r;
+  try {
+    r = await fetch('/api/files/preview-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-pin-token': authToken },
+      body: JSON.stringify({ path }),
+    });
+  } catch (e) { throw new Error('preview auth unavailable'); }
+  if (!r.ok) throw new Error('preview auth refused (' + r.status + ')');
+  const j = await r.json().catch(() => null);
+  if (!j || typeof j.token !== 'string' || !j.token) throw new Error('preview auth refused');
+  return j.token;
+}
+function toPreviewApiUrl(rel, baseDir, ptok) {
   if (!rel || isAbsoluteUrlForHtml(rel)) return rel;
   if (/^[A-Za-z]:[\\/]/.test(rel)) return rel;
   let pathPart = rel;
@@ -1049,7 +1071,11 @@ function toPreviewApiUrl(rel, baseDir) {
   if (!pathPart) return rel;
   const abs = joinPath(baseDir || '', pathPart);
   let api = `/api/files/image?path=${encodeURIComponent(abs)}`;
-  if (authToken) api += `&token=${encodeURIComponent(authToken)}`;
+  // Scoped preview token (ptoken) when the renderer minted one; legacy session
+  // token only as a fallback so open-mode/older flows keep working. Frame-
+  // delivered documents must always pass ptok — never the session.
+  if (ptok) api += `&ptoken=${encodeURIComponent(ptok)}`;
+  else if (authToken) api += `&token=${encodeURIComponent(authToken)}`;
   if (query) api += (query.startsWith('?') ? `&${query.slice(1)}` : query);
   if (hash) api += hash;
   return api;
@@ -1058,23 +1084,23 @@ function toPreviewApiUrl(rel, baseDir) {
 // script BODIES: JS string literals must stay byte-identical or scripted pages
 // break in subtle ways (blank or half-dead renders). Only Full mode needs
 // this — sanitized output has no scripts left to protect.
-function rewriteFullHtmlUrls(raw, baseDir) {
+function rewriteFullHtmlUrls(raw, baseDir, ptok) {
   if (!baseDir) return raw;
   const re = /(<script\b(?:[^>"']|"[^"]*"|'[^']*')*>)([\s\S]*?)(<\/script\s*>)/gi;
   let out = '', last = 0, m;
   for (;;) {
     m = re.exec(raw);
     if (!m) break;
-    out += rewriteHtmlRelativeUrls(raw.slice(last, m.index), baseDir);
-    out += rewriteHtmlRelativeUrls(m[1], baseDir); // opening tag: src rewritten
+    out += rewriteHtmlRelativeUrls(raw.slice(last, m.index), baseDir, ptok);
+    out += rewriteHtmlRelativeUrls(m[1], baseDir, ptok); // opening tag: src rewritten
     out += m[2]; // body: verbatim
     out += m[3];
     last = m.index + m[0].length;
   }
-  out += rewriteHtmlRelativeUrls(raw.slice(last), baseDir);
+  out += rewriteHtmlRelativeUrls(raw.slice(last), baseDir, ptok);
   return out;
 }
-function rewriteHtmlRelativeUrls(html, baseDir) {
+function rewriteHtmlRelativeUrls(html, baseDir, ptok) {
   if (!baseDir) return html;
   // src/href/srcset/poster/data/action/cite/background
   html = html.replace(/\b(src|href|srcset|poster|data|cite|action|background)\s*=\s*(["'])([^"']+)\2/gi, (m, attr, q, val) => {
@@ -1085,12 +1111,12 @@ function rewriteHtmlRelativeUrls(html, baseDir) {
         const sp = seg.split(/\s+/);
         const url = sp[0];
         const desc = sp.slice(1).join(' ');
-        const newUrl = toPreviewApiUrl(url, baseDir);
+        const newUrl = toPreviewApiUrl(url, baseDir, ptok);
         return desc ? `${newUrl} ${desc}` : newUrl;
       });
       return `${attr}=${q}${parts.join(', ')}${q}`;
     }
-    const newVal = toPreviewApiUrl(val, baseDir);
+    const newVal = toPreviewApiUrl(val, baseDir, ptok);
     if (newVal === val) return m;
     return `${attr}=${q}${newVal}${q}`;
   });
@@ -1099,7 +1125,7 @@ function rewriteHtmlRelativeUrls(html, baseDir) {
     const trimmed = url.trim();
     if (!trimmed || isAbsoluteUrlForHtml(trimmed)) return m;
     if (/^[A-Za-z]:[\\/]/.test(trimmed)) return m;
-    const newUrl = toPreviewApiUrl(trimmed, baseDir);
+    const newUrl = toPreviewApiUrl(trimmed, baseDir, ptok);
     return `url(${q}${newUrl}${q})`;
   });
   return html;
@@ -1131,8 +1157,8 @@ function clearPreviewDoc(iframe) {
   try { iframe.removeAttribute('srcdoc'); iframe.src = 'about:blank'; } catch {}
   iframe.style.display = 'none';
 }
-function renderHtmlPreview() {
-  try { renderHtmlPreviewInner(); }
+async function renderHtmlPreview() {
+  try { await renderHtmlPreviewInner(); }
   catch (e) {
     // A preview must never die as a silent blank pane: surface the reason
     // inside the frame (works over tunnel too — no console needed to see it).
@@ -1144,7 +1170,7 @@ function renderHtmlPreview() {
     try { toast('Preview failed: ' + ((e && e.message) || 'unknown error'), 'error'); } catch {}
   }
 }
-function renderHtmlPreviewInner() {
+async function renderHtmlPreviewInner() {
   const iframe = document.getElementById('editor-preview-iframe');
   const mdContent = document.getElementById('md-preview-content');
   const raw = editor ? editor.getValue() : '';
@@ -1155,27 +1181,39 @@ function renderHtmlPreviewInner() {
   }
   if (mdContent) mdContent.style.display = 'none';
   if (iframe) iframe.style.display = 'block';
+  // Frame-readable preview DOM must never carry the session secret: mint a
+  // dir-scoped token for this file's assets, and fail closed (no preview)
+  // when authed but minting fails.
+  let ptok = null;
+  try {
+    ptok = await mintPreviewFileToken(editorPath);
+  } catch (e) {
+    setPreviewDoc(iframe, '<p style="font-family:sans-serif;padding:16px">Preview unavailable — could not authorize file assets (' + escHtml((e && e.message) || 'unknown error') + ').</p>');
+    try { toast('Preview unavailable: ' + ((e && e.message) || 'unknown error'), 'error'); } catch {}
+    return;
+  }
   const baseDir = getHtmlBaseDir();
   const s = getComputedStyle(document.documentElement);
   const isDark = !['#f9f9fb', '#ffffff', 'rgb(249, 249, 251)', 'rgb(255, 255, 255)'].includes(s.getPropertyValue('--bg').trim());
   const isFullDoc = /<!DOCTYPE|<html[\s>]/i.test(raw);
-  const baseHref = `/api/files/image?path=${encodeURIComponent(baseDir + '/')}` + (authToken ? `&token=${encodeURIComponent(authToken)}` : '');
+  const baseHref = `/api/files/image?path=${encodeURIComponent(baseDir + '/')}` + (ptok ? `&ptoken=${encodeURIComponent(ptok)}` : '');
   const injectHead = (doc, tags) => /<head[^>]*>/i.test(doc)
     ? doc.replace(/<head[^>]*>/i, m => m + tags)
     : doc.replace(/<html[^>]*>/i, m => m + '<head>' + tags + '</head>');
   if (htmlFullPreview) {
     // FULL mode: author's bytes verbatim — scripts run. Still confined to the
     // opaque-origin sandbox (allow-scripts only): no parent DOM, no storage,
-    // no popups, no top navigation, no form submit. Needs no CDN.
+    // no popups, no top navigation, no form submit. Needs no CDN. The frame-
+    // readable document carries only the scoped preview token, never the session.
     let doc;
     if (isFullDoc) {
-      doc = rewriteFullHtmlUrls(raw, baseDir);
+      doc = rewriteFullHtmlUrls(raw, baseDir, ptok);
       if (!/<base\b/i.test(doc)) doc = injectHead(doc, `<base href="${escHtml(baseHref)}">`);
       if (!/<meta[^>]*color-scheme/i.test(doc)) doc = injectHead(doc, `<meta name="color-scheme" content="${isDark ? 'dark' : 'light'}">`);
     } else {
       // Fragment: minimal shell, no theme CSS — the author's own styles rule,
       // like opening the file in a real browser tab.
-      const frag = rewriteFullHtmlUrls(raw, baseDir);
+      const frag = rewriteFullHtmlUrls(raw, baseDir, ptok);
       doc = `<!DOCTYPE html>\n<html>\n<head>\n<meta charset="UTF-8">\n<meta name="color-scheme" content="${isDark ? 'dark' : 'light'}">\n<base href="${escHtml(baseHref)}">\n</head>\n<body>${frag}</body>\n</html>`;
     }
     setPreviewDoc(iframe, doc);
@@ -1197,10 +1235,10 @@ function renderHtmlPreviewInner() {
   let doc;
   if (isFullDoc) {
     let sanitized = DOMPurify.sanitize(raw, { WHOLE_DOCUMENT: true, USE_PROFILES: { html: true }, ADD_TAGS: ['base','style'], ADD_ATTR: ['target'] });
-    sanitized = rewriteHtmlRelativeUrls(sanitized, baseDir);
+    sanitized = rewriteHtmlRelativeUrls(sanitized, baseDir, ptok);
     // Inject base tag if missing for any remaining relative URLs
     if (!/<base\b/i.test(sanitized)) {
-      const baseHref = `/api/files/image?path=${encodeURIComponent(baseDir + '/')}` + (authToken ? `&token=${encodeURIComponent(authToken)}` : '');
+      const baseHref = `/api/files/image?path=${encodeURIComponent(baseDir + '/')}` + (ptok ? `&ptoken=${encodeURIComponent(ptok)}` : '');
       sanitized = sanitized.replace(/<head[^>]*>/i, m => m + `<base href="${escHtml(baseHref)}">`);
     }
     // Ensure color-scheme meta
@@ -1210,8 +1248,8 @@ function renderHtmlPreviewInner() {
     doc = sanitized;
   } else {
     let fragment = DOMPurify.sanitize(raw, { USE_PROFILES: { html: true }, ADD_ATTR: ['target'] });
-    fragment = rewriteHtmlRelativeUrls(fragment, baseDir);
-    const baseHrefFrag = `/api/files/image?path=${encodeURIComponent(baseDir + '/')}` + (authToken ? `&token=${encodeURIComponent(authToken)}` : '');
+    fragment = rewriteHtmlRelativeUrls(fragment, baseDir, ptok);
+    const baseHrefFrag = `/api/files/image?path=${encodeURIComponent(baseDir + '/')}` + (ptok ? `&ptoken=${encodeURIComponent(ptok)}` : '');
     doc = `<!DOCTYPE html>
 <html>
 <head>

@@ -12,6 +12,8 @@ install.sh
 stop.sh
 scripts/
 .env
+.env.*
+.npmrc
 *.log
 *.tgz
 webtun.pid

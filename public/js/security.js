@@ -62,6 +62,8 @@ async function changePin() {
     storeSessionToken('');
   } else {
     try {
+      // Raw fetch on purpose: api() would attach the pre-rotation (now dead)
+      // session token and checkPin would 401 before the PIN is even read.
       const lr = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -226,7 +228,7 @@ async function revokeOtherSessions() {
   const results = await Promise.allSettled(others.map(s =>
     api(`/api/auth/sessions/${encodeURIComponent(s.id)}`, { method: 'DELETE' })
   ));
-  done = results.filter(x => x.status === 'fulfilled' && x.value && x.value.success).length;
+  const done = results.filter(x => x.status === 'fulfilled' && x.value && x.value.success).length;
   const failed = others.length - done;
   if (failed) console.warn(`Failed to revoke ${failed} session(s)`);
   toast(failed ? `Signed out ${done} session(s), ${failed} failed` : `Signed out ${done} session(s)`, failed ? 'warning' : 'success');
@@ -240,6 +242,13 @@ async function approvePinChange() {
       authToken = r.token;
       storeSessionToken(r.token);
       toast('PIN change approved and applied', 'success');
+    } else if (r && r.success) {
+      // Rotation applied server-side (all sessions wiped) but no fresh token
+      // came back: the pre-rotation token is dead — never keep using it.
+      authToken = '';
+      storeSessionToken('');
+      showPinScreen();
+      toast('PIN change applied — sign in again', 'info');
     } else {
       toast((r && r.error) || 'Approve failed', 'error');
     }
@@ -319,7 +328,8 @@ async function restoreTunnels() {
     const tu = document.getElementById('tunnel-url');
     if (tu && (!tu.value || /localhost:3000\b/.test(tu.value))) tu.value = location.origin;
   } catch {}
-  const r = await api('/api/tunnel');
+  const r = await api('/api/tunnel').catch(() => null);
+  if (!r) return;
   tunnelList = r.tunnels || [];
   renderTunnels();
 }
@@ -333,6 +343,7 @@ function mkSvg(w, h, view, inner) {
 }
 function renderTunnels() {
   const list = document.getElementById('tunnel-list');
+  if (!list) return;
   list.innerHTML = '';
   if (tunnelList.length === 0) { list.style.display = 'none'; return; }
   list.style.display = 'block';

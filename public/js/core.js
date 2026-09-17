@@ -208,9 +208,14 @@ function clientDeviceLabel() {
     return (br ? br + ' · ' : '') + os;
   } catch { return ''; }
 }
+function isSessionToken(t) {
+  return typeof t === 'string' && /^[0-9a-f]{64}$/.test(t);
+}
 function storeSessionToken(t) {
   try {
-    if (t && t !== 'open') safeStorage.setItem('wt-session-token', t);
+    // Persist only well-formed session tokens (or clear): a malformed value
+    // in storage must never become a credential attempt.
+    if (isSessionToken(t)) safeStorage.setItem('wt-session-token', t);
     else safeStorage.removeItem('wt-session-token');
   } catch {}
 }
@@ -218,7 +223,7 @@ function storeSessionToken(t) {
 async function tryResumeSession() {
   let t = null;
   try { t = safeStorage.getItem('wt-session-token'); } catch {}
-  if (!t || t === 'open') return false;
+  if (!isSessionToken(t)) { try { safeStorage.removeItem('wt-session-token'); } catch {} return false; }
   authToken = t;
   try {
     const r = await fetch('/api/auth/me', { headers: { 'x-pin-token': t } }).then(r => r.json());
@@ -521,7 +526,7 @@ async function api(url, opts = {}) {
   if (userSignal) {
     userSignal.addEventListener('abort', () => timeoutCtrl.abort(), { once: true });
   }
-  const combinedSignal = opts.signal = timeoutCtrl.signal;
+  opts.signal = timeoutCtrl.signal;
   try {
     const r = await fetch(url, opts);
     clearTimeout(timeoutId);

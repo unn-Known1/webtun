@@ -59,8 +59,9 @@ self.addEventListener('fetch', e => {
   if (!e.request.url.startsWith('http://') && !e.request.url.startsWith('https://')) return;
 
   const url = new URL(e.request.url);
-  if (url.pathname.startsWith('/api')) return;
-  if (url.pathname === '/ws' || url.pathname.startsWith('/ws')) return;
+  // Exact path-segment matches: '/api' must not over-match a future '/apidocs'.
+  if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return;
+  if (url.pathname === '/ws' || url.pathname.startsWith('/ws/')) return;
   if (url.searchParams.has('token')) return;
   // Credentialed non-API GETs (Authorization header) must never be cached.
   try { if (e.request.headers.has('authorization')) return; } catch {}
@@ -84,18 +85,21 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Cache-First for static assets with stale-while-revalidate (max-age 7d via version bump)
+  // Cache-First for static assets with background revalidation. There is no
+  // TTL eviction: entries live until the versioned cache name changes.
   // CDN resources are fetched from network (not precached) to avoid opaque response failures
   e.respondWith(
     caches.match(e.request).then(cached => {
       if (cached) {
-        // Background revalidate without blocking
-        fetch(e.request).then(res => {
+        // Background revalidate without blocking. extendLifetime keeps the
+        // worker alive for the put — respondWith alone does not cover work
+        // issued after the cached response is returned.
+        e.waitUntil(fetch(e.request).then(res => {
           if (res && res.status === 200 && res.type !== 'opaque') {
             const clone = res.clone();
-            caches.open(CACHE).then(c => { try { c.put(e.request, clone); } catch {} });
+            return caches.open(CACHE).then(c => c.put(e.request, clone).catch(() => {}));
           }
-        }).catch(()=>{});
+        }).catch(() => {}));
         return cached;
       }
       return fetch(e.request).then(res => {
@@ -105,7 +109,18 @@ self.addEventListener('fetch', e => {
           caches.open(CACHE).then(c => { try { c.put(e.request, clone); } catch {} });
         }
         return res;
-      }).catch(() => cached || new Response('Offline', { status: 503 }));
+      }).catch(() => cached || offlineFallback(e.request));
     })
   );
 });
+
+function offlineFallback(request) {
+  // Serve the right shape for the request: an HTML shell for navigations,
+  // plain text otherwise.
+  try {
+    if (request.destination === 'document' || (request.headers.get('accept') || '').includes('text/html')) {
+      return new Response('<p style="font-family:sans-serif;padding:16px">Offline — WebTun needs a connection for this page.</p>', { status: 503, headers: { 'Content-Type': 'text/html' } });
+    }
+  } catch {}
+  return new Response('Offline', { status: 503 });
+}
