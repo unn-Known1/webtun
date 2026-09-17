@@ -322,11 +322,24 @@ function openSecurityReview() {
 let tunnelList = [];
 
 async function restoreTunnels() {
-  // The app may auto-pick a free port (3001+ when 3000 is taken), so default
-  // the target input to the actual origin instead of the baked-in :3000.
+  // Default the tunnel *target* input to a localhost URL. location.origin is
+  // right on loopback (it also keeps auto-picked ports), but when the app
+  // itself is reached through a tunnel/proxy URL that origin is NOT a valid
+  // target — cloudflared must forward to the local server, not back at the
+  // tunnel. Never overwrite a value the user already typed.
   try {
     const tu = document.getElementById('tunnel-url');
-    if (tu && (!tu.value || /localhost:3000\b/.test(tu.value))) tu.value = location.origin;
+    if (tu && (!tu.value || /localhost:3000\b/.test(tu.value))) {
+      const host = location.hostname || '';
+      const loopback = host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
+      if (loopback) {
+        tu.value = location.origin;
+      } else {
+        try { await refreshVersion(); } catch {}
+        const port = (typeof webtunSelfPort === 'function' && webtunSelfPort()) || 3000;
+        tu.value = `http://localhost:${port}`;
+      }
+    }
   } catch {}
   const r = await api('/api/tunnel').catch(() => null);
   if (!r) return;
