@@ -88,11 +88,11 @@ async function _refreshGitPanelInner(section, dir, manual) {
     const b = await api(`/api/git/branches?path=${encodeURIComponent(st.root)}`);
     if (myReq !== _gitReq) return;
     renderGitBranches((b && b.branches) || [], st);
-  } catch {}
+  } catch (e) { console.warn('Git branches refresh failed:', e); }
   refreshGitStash(myReq);
   refreshGitLog(myReq);
-  refreshGitIdentity();
-  refreshGitTags();
+  refreshGitIdentity(false, myReq);
+  refreshGitTags(myReq);
 }
 function renderGitBranches(branches, st) {
   const sel = document.getElementById('git-branch-sel');
@@ -457,10 +457,11 @@ function gitFetch() { gitPushPull('fetch'); }
 function gitIdentityError(msg) {
   return /identity|user\.name|user\.email|Author identity|empty ident/i.test(msg || '');
 }
-async function refreshGitIdentity(force) {
+async function refreshGitIdentity(force, myReq) {
   const row = document.getElementById('git-identity-row');
   if (!row || !gitRoot) return;
   const r = await api(`/api/git/identity?path=${encodeURIComponent(gitRoot)}`);
+  if (myReq !== undefined && myReq !== _gitReq) return;
   const missing = !r || r.error || !r.name || !r.email;
   if (missing || force) {
     row.style.display = 'flex';
@@ -520,10 +521,11 @@ async function gitReset() {
   toast('Reset (' + r.mode + ') to ' + r.hash, 'success');
   refreshGitPanel(currentPath);
 }
-async function refreshGitTags() {
+async function refreshGitTags(myReq) {
   const box = document.getElementById('git-tags-list');
   if (!box || !gitRoot) return;
   const r = await api(`/api/git/tags?path=${encodeURIComponent(gitRoot)}`);
+  if (myReq !== undefined && myReq !== _gitReq) return;
   box.innerHTML = '';
   const tags = ((r && r.tags) || []).slice(0, 10);
   for (const name of tags) {

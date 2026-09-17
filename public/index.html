@@ -7,6 +7,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#1a1b26">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
+<!-- NOTE: no SRI on the Google Fonts CSS above: it is UA-sniffed per browser,
+     so a pinned hash would break rendering. All version-pinned jsdelivr
+     assets below carry integrity+crossorigin. -->
 <title>WebTun</title>
 <link rel="icon" href="/favicon.png" type="image/png">
 <link rel="manifest" href="/manifest.json">
@@ -14,32 +19,32 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css">
-<script defer src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/@xterm/addon-search@0.15.0/lib/addon-search.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0.11.0/lib/addon-web-links.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/@xterm/addon-unicode11@0.7.0/lib/addon-unicode11.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/@xterm/addon-webgl@0.18.0/lib/addon-webgl.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/lib/codemirror.min.css">
-<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/lib/codemirror.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/addon/edit/matchbrackets.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/javascript/javascript.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/python/python.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/htmlmixed/htmlmixed.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/xml/xml.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/css/css.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/clike/clike.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/shell/shell.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/markdown/markdown.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/yaml/yaml.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/sql/sql.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/go/go.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/addon/mode/simple.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/rust/rust.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/properties/properties.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css" integrity="sha384-tStR1zLfWgsiXCF3IgfB3lBa8KmBe/lG287CL9WCeKgQYcp1bjb4/+mwN6oti4Co" crossorigin="anonymous">
+<script defer src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js" integrity="sha384-J4qzUjBl1FxyLsl/kQPQIOeINsmp17OHYXDOMpMxlKX53ZfYsL+aWHpgArvOuof9" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js" integrity="sha384-XGqKrV8Jrukp1NITJbOEHwg01tNkuXr6uB6YEj69ebpYU3v7FvoGgEg23C1Gcehk" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@xterm/addon-search@0.15.0/lib/addon-search.min.js" integrity="sha384-rZV6rh0SoMasxn3Q4xrTEgBKArJ47qXr2bxeT0S4mf6sqQCkvv99FnFKawCQUqUR" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0.11.0/lib/addon-web-links.min.js" integrity="sha384-S1biLeI8L/bFduIVvCxbn/l4EtaG4nTqQjGF7qCYTbsGXGFe8KgIKXtw4+UWxprv" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@xterm/addon-unicode11@0.7.0/lib/addon-unicode11.min.js" integrity="sha384-exTEMxNHLX1A0MtReXfNULfIa0ExAdUCJ0rWQjGF5Sa2LgRHGVvKDTEzHVHrWcJd" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@xterm/addon-webgl@0.18.0/lib/addon-webgl.min.js" integrity="sha384-suTk5GfzCaPxAJRzhqzQQvM81UskMll+stLgqXpay997ORTnMRm1IAJi143VfhXU" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js" integrity="sha384-H+hy9ULve6xfxRkWIh/YOtvDdpXgV2fmAGQkIDTxIgZwNoaoBal14Di2YTMR6MzR" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js" integrity="sha384-eEu5CTj3qGvu9PdJuS+YlkNi7d2XxQROAFYOr59zgObtlcux1ae1Il3u7jvdCSWu" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/lib/codemirror.min.css" integrity="sha384-EAMaqTIrSR3wOlf2EQj7Kkx5ZCHPjHmlYJsFof5IB8dzXMASyR8eIwXgp+IGz/rs" crossorigin="anonymous">
+<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/lib/codemirror.min.js" integrity="sha384-t/C99Ss9npjVCqOGZhNjaRnafXAhKyPyhSP+cSSP0CWoFTfMXG4+impqZ6WfgO0a" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/addon/edit/matchbrackets.min.js" integrity="sha384-c2/cRkbFRtiSARCZBcAuEPadlD3ZqkEFyGrzjOjKiYF0uoEI9uSbLrqAAse2i+Ln" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/javascript/javascript.min.js" integrity="sha384-9WXBgfPaWP2zA74XYJo/qmYSaQuy6wy1FyptaVjcRrEdBZagvms/3mIBuPWPqsgg" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/python/python.min.js" integrity="sha384-pDK1U71enibhvubouPV8yOSMzAYYng1sTCOoyNBupeCw6Kc1WhLTj1MOHELyfUQ9" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/htmlmixed/htmlmixed.min.js" integrity="sha384-nnRtko7qx63c9J5j91B/RQCjb0BAI5YTk52i//DQPTtzbhxVWM3mMJRA/sYXb7bb" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/xml/xml.min.js" integrity="sha384-734BUqh46zYyCG83mVdU8abxou4rFhd1f1bRhH1q340YwC9wx81DAn9UHcAgseFP" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/css/css.min.js" integrity="sha384-1D3aLZ8+ARdwtJ9rFZfH5CPVGk0RsMBXSiHuEPFDzybCkB3mrcCGb1FVsXsOBR6m" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/clike/clike.min.js" integrity="sha384-dENbVzvZp+2GvWXl9u09GIaKt6+rGIkvmK997v+zI4Pzwbz0XAouQqGdogfyk7Ey" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/shell/shell.min.js" integrity="sha384-aec/Hks7KfLS/qwSLYi1OfIjPyIRwqWaXb0oHBkE2P01Aa20K9GP79xzYwmX7UE3" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/markdown/markdown.min.js" integrity="sha384-n04h9Gi6L8HyI+Xs9bOsNBdP9/Oo6HtQ6x+a7KFxgoZ267JCOoEZzP2YEAanxMTX" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/yaml/yaml.min.js" integrity="sha384-131Ong53rCgUDHHluJOESiyk8FRC3j7cL7INdfB2n4SVkOoI87gNHb0B23LKlrMp" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/sql/sql.min.js" integrity="sha384-zWy9uD4Uq7LbesG8bqb5whfdIU5Aj9Xi4W/Ta/oHTSCl6PqbxKH3mySxdA94fhg6" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/go/go.min.js" integrity="sha384-vMnEMsyfcHNp3FSWJYqftrKzSg2eyN5kO0nQ8iZ+Dr1DIdMD/DuhLQTTYyrjwIXa" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/addon/mode/simple.min.js" integrity="sha384-MesPXXu70Ii6cdGMtvSIrbXpJJ4CQblh4D3wz8urB99oe//IL2WkP7ddH8LqDUm7" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/rust/rust.min.js" integrity="sha384-lNTWBy5RwsghnmTZiBIhu62eWEx+Wp8gCFuMxX0CDud8118E5X5PoPHhZn6EQ6ri" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/properties/properties.min.js" integrity="sha384-nMlVwwMJm4U2Kd2KgxU3uI3Y30qul7/8auh6MbzqQyGNMSLV8BNsTRd5MehfrRCW" crossorigin="anonymous"></script>
 <link rel="stylesheet" href="css/styles.css">
 </head>
 <body data-theme="light">

@@ -23,6 +23,7 @@
   },
   "scripts": {
     "start": "node server.js",
+    "test": "npm run version:check && node -e \"require('./server.js'); console.log('smoke ok')\"",
     "dev": "nodemon server.js",
     "electron": "electron .",
     "rebuild:electron": "electron-builder install-app-deps",
@@ -93,8 +94,7 @@
     "qs": "6.16.0",
     "safe-buffer": "npm:@socketregistry/safe-buffer@^1",
     "safer-buffer": "npm:@socketregistry/safer-buffer@^1",
-    "side-channel": "npm:@socketregistry/side-channel@^1",
-    "ws": "^8.21.3"
+    "side-channel": "npm:@socketregistry/side-channel@^1"
   },
   "allowScripts": {
     "node-pty": true

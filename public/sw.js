@@ -47,7 +47,9 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('message', e => {
-  if (e.data === 'skipWaiting') {
+  // Only our own pages may trigger activation — a same-origin top-level
+  // preview page must not be able to swap the worker under the app.
+  if (e.data === 'skipWaiting' && e.origin === self.location.origin) {
     self.skipWaiting();
   }
 });
@@ -60,6 +62,8 @@ self.addEventListener('fetch', e => {
   if (url.pathname.startsWith('/api')) return;
   if (url.pathname === '/ws' || url.pathname.startsWith('/ws')) return;
   if (url.searchParams.has('token')) return;
+  // Credentialed non-API GETs (Authorization header) must never be cached.
+  try { if (e.request.headers.has('authorization')) return; } catch {}
 
   // Network-First for HTML/navigation
   const isNavigation = e.request.mode === 'navigate' || (url.pathname === '/') || (url.pathname.endsWith('.html') && e.request.mode === 'same-origin');

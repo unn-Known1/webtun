@@ -95,6 +95,7 @@ function startServer() {
     // Keep the tail of server output so startup failures show the real
     // error (not just an exit code). Also mirrored to a log file.
     const serverLog = [];
+    let _logBytes = -1; // lazily stat'ed; rotation keeps the file ≤1MB
     const pushLog = (chunk, tag) => {
       const text = chunk.toString();
       try { console.log(tag, text.trim()); } catch {}
@@ -106,7 +107,19 @@ function startServer() {
         if (total > 65536) { serverLog.splice(0, i); break; }
       }
       try {
-        fs.appendFileSync(serverLogPath(), text);
+        // Bound disk: rotate to the last 256KB once the file passes 1MB, so a
+        // chatty server can never fill the disk via this log.
+        const lp = serverLogPath();
+        if (_logBytes < 0) { try { _logBytes = fs.statSync(lp).size; } catch { _logBytes = 0; } }
+        if (_logBytes > 1024 * 1024) {
+          try {
+            const tail = fs.readFileSync(lp, 'utf8').slice(-262144);
+            fs.writeFileSync(lp, tail);
+            _logBytes = tail.length;
+          } catch {}
+        }
+        fs.appendFileSync(lp, text);
+        _logBytes += text.length;
       } catch {}
     };
     serverProcess.stdout.on('data', d => pushLog(d, '[server]'));
@@ -301,8 +314,11 @@ ipcMain.handle('get-autostart', () => {
 });
 
 ipcMain.handle('set-autostart', (_event, enabled) => {
+  // IPC is renderer-reachable: accept a strict boolean only, so a compromised
+  // renderer can't smuggle unexpected values into the login-item settings.
+  const open = enabled === true;
   app.setLoginItemSettings({
-    openAtLogin: enabled,
+    openAtLogin: open,
     path: process.execPath,
     args: process.argv.slice(1).filter(a => !a.startsWith('--'))
   });

@@ -11,3 +11,11 @@ cloudflared.log
 dist/
 release/
 tunnel-url.txt
+# OS / editor artifacts
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+# Test / coverage output
+coverage/
+.nyc_output/

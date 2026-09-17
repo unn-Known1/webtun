@@ -16,5 +16,7 @@ window.DEFAULT_CMDS = [
   // ── Project defaults ──
   { name: 'Install OpenCode AI', cmd: 'npm install -g opencode-ai', cat: 'AI Tools' },
   { name: 'GitHub TUI', cmd: 'npx github-tui', cat: 'Tools' },
-  { name: 'Colab Setup', cmd: 'curl -fsSL https://raw.githubusercontent.com/unn-Known1/unn-Known1/main/colab_setup.sh | bash', cat: 'Setup', requiresConfirm: true },
+  // Pinned to this repo (not a placeholder owner) and gated by the danger
+  // dialog; inspect the script URL before confirming.
+  { name: 'Colab Setup', cmd: 'curl -fsSL https://raw.githubusercontent.com/unn-Known1/webtun/main/colab_setup.sh | bash', cat: 'Setup', requiresConfirm: true },
 ];

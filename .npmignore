@@ -1,3 +1,6 @@
+# npm tarball excludes — runtime files only (plus npm's always-included
+# package.json, README.md, LICENSE and the main entry). GitHub Pages docs
+# assets (robots.txt, sitemap.xml, .nojekyll) stay out of the tarball.
 .opencode/
 .github/
 nodemon.json
@@ -17,6 +20,6 @@ tunnel-url.txt
 .nojekyll
 robots.txt
 sitemap.xml
-dist/
-release/
+/dist/
+/release/
 /*.md

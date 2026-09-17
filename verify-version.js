@@ -23,11 +23,16 @@ const path = require('path');
 const root = __dirname;
 const problems = [];
 
-let pkg;
-try {
-  pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-} catch (e) {
-  console.error('✗ cannot read package.json: ' + (e.message || e));
+const pkg = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+  } catch (e) {
+    console.error('✗ cannot read package.json: ' + (e.message || e));
+    process.exit(1);
+  }
+})();
+if (typeof pkg.version !== 'string' || !pkg.version) {
+  console.error('✗ package.json has no usable "version" string');
   process.exit(1);
 }
 const version = pkg.version;

@@ -51,11 +51,14 @@ install_nodesource() {
   local url="$1" tmp
   tmp="$(mktemp)" || die "mktemp failed"
   info "Fetching NodeSource setup script ($url)…"
-  if ! curl -fsSL --proto '=https' --tlsv1.2 "$url" -o "$tmp"; then
+  if ! curl -fsSL --proto '=https' --tlsv1.2 --max-filesize 262144 "$url" -o "$tmp"; then
     rm -f "$tmp"
     die "Could not download $url — check your network, then install Node.js ≥18 manually: https://nodejs.org"
   fi
-  if ! grep -qi nodesource "$tmp"; then
+  # Sanity-check the payload before running it as root: a bare `grep nodesource`
+  # passes any file containing that word. Require the repo-setup markers too —
+  # a tampered/generic script still fails closed here.
+  if ! grep -qi nodesource "$tmp" || ! grep -qE 'deb\.nodesource\.com|rpm\.nodesource\.com' "$tmp" || ! grep -qE 'apt-get|dnf|yum' "$tmp"; then
     rm -f "$tmp"
     die "Downloaded setup script does not look like NodeSource's — refusing to run it as root"
   fi
@@ -181,8 +184,11 @@ else
       printf 'HOST=0.0.0.0\n'
       # Quoted: systemd's EnvironmentFile parses this file with its own rules,
       # and an unquoted PIN containing spaces truncated the value there. The
-      # runtime loader strips surrounding quotes.
-      printf 'PIN="%s"\n' "$INPUT_PIN"
+      # runtime loader strips surrounding quotes. Backslashes and quotes are
+      # escaped first so a PIN containing " doesn't break the assignment.
+      _esc_pin="${INPUT_PIN//\\/\\\\}"
+      _esc_pin="${_esc_pin//\"/\\\"}"
+      printf 'PIN="%s"\n' "$_esc_pin"
       printf '# SHELL=/bin/bash  # override shell if needed\n'
     } > "$ENV_FILE"
   )

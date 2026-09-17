@@ -155,8 +155,7 @@ svg { display: block; }
 #app { display: flex; flex-direction: column; height: 100dvh; }
 #header { display: flex; align-items: center; height: var(--header-h); background: var(--bg2); border-bottom: 1px solid var(--border); padding: 0 8px; padding-top: max(0px, env(safe-area-inset-top, 0px)); gap: 6px; flex-shrink: 0; z-index: var(--z-header); position: relative; box-sizing: border-box; }
 
-#upload-progress { display: none !important; }
-/* Upload progress bar in header */
+/* Upload progress bar in header (JS owns visibility via .active) */
 #upload-progress { position: absolute; bottom: 0; left: 0; right: 0; height: 0; background: var(--bg3); z-index: calc(var(--z-header) + 1); overflow: visible; transition: height var(--transition-normal) ease; }
 #upload-progress.active { height: 6px; }
 #upload-progress-bar { height: 100%; width: 0%; background: var(--accent); transition: width var(--transition-slow) ease; border-radius: 0 2px 2px 0; }

@@ -243,6 +243,7 @@ async function _loadFilesInner(dir) {
             if (tileEl) tileEl.appendChild(im);
           }
           im.classList.remove('ld');
+          dropThumbUrl(im);
           im.dataset.src = thumb;
           im.removeAttribute('src');
           if (_thumbObserver) _thumbObserver.observe(im);
@@ -251,7 +252,7 @@ async function _loadFilesInner(dir) {
       } else {
         delete existing.dataset.thumb;
         const stale = existing.querySelector('img.file-thumb');
-        if (stale) stale.remove();
+        if (stale) { dropThumbUrl(stale); stale.remove(); }
       }
       existing.dataset.isDir = String(f.isDir);
       existing.dataset.path = key;
@@ -378,7 +379,7 @@ function ensureThumbObserver() {
       if (!en.isIntersecting) continue;
       const img = en.target;
       _thumbObserver.unobserve(img);
-      if (img.dataset.src) { img.src = img.dataset.src; img.removeAttribute('data-src'); }
+      if (img.dataset.src) { const u = img.dataset.src; img.removeAttribute('data-src'); loadThumbImg(img, u); }
     }
   }, { root: wrap, rootMargin: '200px 0px' });
 }
@@ -387,7 +388,7 @@ function observeThumbs() {
     ensureThumbObserver();
     const imgs = document.querySelectorAll('#file-list img.file-thumb[data-src]');
     if (!_thumbObserver) {
-      imgs.forEach(img => { img.src = img.dataset.src; img.removeAttribute('data-src'); });
+      imgs.forEach(img => { const u = img.dataset.src; img.removeAttribute('data-src'); loadThumbImg(img, u); });
       return;
     }
     imgs.forEach(img => _thumbObserver.observe(img));
@@ -400,7 +401,24 @@ function thumbUrlFor(f) {
   if (_thumbBudget <= 0) return null;
   _thumbBudget--;
   const v = (f.modified && Date.parse(f.modified)) || 0;
-  return `/api/files/image?path=${encodeURIComponent(f.path)}&token=${encodeURIComponent(authToken || '')}&v=${v}`;
+  // No token in the URL (history/server-log leak): the loader below sends
+  // auth via the x-pin-token header and swaps in a blob URL instead.
+  return `/api/files/image?path=${encodeURIComponent(f.path)}&v=${v}`;
+}
+// Thumbnail loader: <img> can't send headers, so fetch with x-pin-token and
+// hand the element a blob URL. Revokes the previous blob to avoid leaks.
+function loadThumbImg(img, url) {
+  if (!img || !url) return;
+  dropThumbUrl(img);
+  img.removeAttribute('src');
+  fetch(url, { headers: authToken ? { 'x-pin-token': authToken } : {} })
+    .then(r => { if (!r.ok) throw new Error('thumb ' + r.status); return r.blob(); })
+    .then(b => { img._blobUrl = URL.createObjectURL(b); img.src = img._blobUrl; })
+    .catch(() => { img.remove(); });
+}
+function dropThumbUrl(img) {
+  try { if (img && img._blobUrl) URL.revokeObjectURL(img._blobUrl); } catch {}
+  if (img) img._blobUrl = null;
 }
 
 // Long names truncate in the MIDDLE (head…tail) so the file extension — the

@@ -8,6 +8,12 @@ PID_FILE="$SCRIPT_DIR/webtun.pid"
 PORT="$(grep -E '^[[:space:]]*(export[[:space:]]+)?PORT[[:space:]]*=' "$SCRIPT_DIR/.env" 2>/dev/null \
   | tail -1 | sed -E 's/^[[:space:]]*(export[[:space:]]+)?PORT[[:space:]]*=[[:space:]]*//; s/^["'\'']//; s/["'\'']$//' || true)"
 PORT="${PORT:-3000}"
+# .env is hand-edited: a non-numeric PORT would interpolate into the pkill
+# pattern below, so fail closed to the default.
+if ! [[ "$PORT" =~ ^[0-9]+$ ]] || [ "$PORT" -lt 1 ] || [ "$PORT" -gt 65535 ]; then
+  echo "⚠ Invalid PORT in .env — using 3000"
+  PORT=3000
+fi
 
 stopped=false
 
@@ -51,10 +57,11 @@ else
   echo "⚠ pkill not found and no PID file — try: kill \$(pgrep -f \"$SCRIPT_DIR/server.js\")"
 fi
 
-# Tunnel children: scoped to THIS instance's port. The old pattern
-# ("cloudflared tunnel.*localhost:") killed every localhost tunnel on the box,
-# including ones belonging to other WebTun installs.
-if command -v pkill &>/dev/null; then
+# Tunnel children: scoped to THIS instance's port, and only when we actually
+# stopped a server — otherwise this could kill another live instance's tunnel
+# that happens to share the port (orphans from a crashed server are reaped by
+# the next boot's tunnel validation instead).
+if [ "$stopped" = true ] && command -v pkill &>/dev/null; then
   if pkill -f "cloudflared tunnel --url http://localhost:$PORT" 2>/dev/null; then
     echo "✓ Tunnel for port $PORT stopped"
   fi

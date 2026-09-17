@@ -292,25 +292,32 @@ async function fillPreviewPorts() {
   try {
     const ports = await refreshPortsCache(false);
     const seen = new Set();
-    const rows = [];
+    dl.textContent = '';
+    const addOpt = (n, label) => {
+      const o = document.createElement('option');
+      o.value = String(n);
+      o.label = label;
+      dl.appendChild(o);
+    };
     for (const p of (ports || [])) {
       const n = Number(p && p.port != null ? p.port : p);
       if (!Number.isInteger(n) || seen.has(n)) continue;
       seen.add(n);
+      // Process name is untrusted (other users' processes on shared boxes):
+      // assigned via .label, never interpolated into HTML.
       const proc = p && p.proc ? ` — ${String(p.proc).slice(0, 32)}` : '';
-      rows.push(`<option value="${n}" label="${n}${proc}">`);
-      if (rows.length >= 30) break;
+      addOpt(n, `${n}${proc}`);
+      if (seen.size >= 30) break;
     }
     try {
       for (const r of getPreviewRecent()) {
         const n = Number(r.port);
         if (!Number.isInteger(n) || seen.has(n)) continue;
         seen.add(n);
-        rows.push(`<option value="${n}" label="${n} — recent">`);
-        if (rows.length >= 30) break;
+        addOpt(n, `${n} — recent`);
+        if (seen.size >= 30) break;
       }
     } catch {}
-    dl.innerHTML = rows.join('');
   } catch {}
 }
 // Terminal-output scan: suggest "Open preview" when a loopback URL appears.

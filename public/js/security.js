@@ -6,7 +6,7 @@ async function updateSecurityUI() {
   try {
     const r = await api('/api/auth/required');
     if (r && r.required !== undefined) prot = !!r.required;
-  } catch {}
+  } catch (e) { console.warn('Auth status check failed:', e); }
   const label = document.getElementById('pin-state-label');
   const pill = document.getElementById('sec-pin-status');
   const cur = document.getElementById('pin-current');
@@ -34,6 +34,9 @@ async function changePin() {
   const next = (newEl.value || '').trim();
   if (/[\r\n\0]/.test(next)) { showFieldError('pin-field-error', 'PIN contains invalid characters'); return; }
   if (next.length > 64) { showFieldError('pin-field-error', 'PIN must be 64 characters or less'); return; }
+  // Short PINs fall to trivial guessing: floor new PINs at 4 characters.
+  // (Server accepts any length for back-compat with existing setups.)
+  if (next && next.length < 4) { showFieldError('pin-field-error', 'PIN must be at least 4 characters'); newEl.focus(); return; }
   const prot = await updateSecurityUI();
   if (prot && !cur) { showFieldError('pin-field-error', 'Enter the current PIN'); curEl.focus(); return; }
   if (!next) {
@@ -104,6 +107,16 @@ async function updateSessionCupCount() {
     }
   } catch { /* leave last state on failure */ }
 }
+// Static fallback lines via textContent (never innerHTML), so a future edit
+// can't accidentally turn these into an injection sink.
+function setListMessage(list, msg) {
+  if (!list) return;
+  list.textContent = '';
+  const d = document.createElement('div');
+  d.style.cssText = 'font-size:11px;color:var(--fg3)';
+  d.textContent = msg;
+  list.appendChild(d);
+}
 async function refreshSessions() {
   try { updateSessionCupCount(); } catch {}
   const list = document.getElementById('sessions-list');
@@ -111,7 +124,7 @@ async function refreshSessions() {
   if (!list) return;
   const r = await api('/api/auth/sessions');
   if (!r || !Array.isArray(r.sessions)) {
-    list.innerHTML = '<div style="font-size:11px;color:var(--fg3)">Sign in to view sessions.</div>';
+    setListMessage(list, 'Sign in to view sessions.');
     if (count) count.textContent = '';
     return;
   }
@@ -146,7 +159,7 @@ async function refreshSessions() {
     list.appendChild(banner);
   }
   if (!r.sessions.length) {
-    list.innerHTML = '<div style="font-size:11px;color:var(--fg3)">No other sessions. This device only.</div>';
+    setListMessage(list, 'No other sessions. This device only.');
     return;
   }
   for (const s of r.sessions) {
@@ -210,11 +223,13 @@ async function revokeOtherSessions() {
   if (!others.length) { toast('No other sessions', 'info'); return; }
   const ok = await confirmDialog({ title: 'Sign out others?', message: `End ${others.length} other session(s)? This device stays signed in.`, okText: 'Sign out others', danger: true });
   if (!ok) return;
-  let done = 0;
-  for (const s of others) {
-    try { const dr = await api(`/api/auth/sessions/${encodeURIComponent(s.id)}`, { method: 'DELETE' }); if (dr && dr.success) done++; } catch {}
-  }
-  toast(`Signed out ${done} session(s)`, 'success');
+  const results = await Promise.allSettled(others.map(s =>
+    api(`/api/auth/sessions/${encodeURIComponent(s.id)}`, { method: 'DELETE' })
+  ));
+  done = results.filter(x => x.status === 'fulfilled' && x.value && x.value.success).length;
+  const failed = others.length - done;
+  if (failed) console.warn(`Failed to revoke ${failed} session(s)`);
+  toast(failed ? `Signed out ${done} session(s), ${failed} failed` : `Signed out ${done} session(s)`, failed ? 'warning' : 'success');
   refreshSessions();
 }
 async function approvePinChange() {

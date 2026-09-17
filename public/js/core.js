@@ -296,6 +296,13 @@ async function submitPin() {
   const pinError = document.getElementById('pin-error');
   const pinBox = document.getElementById('pin-box');
   const pinBtn = document.getElementById('pin-unlock-btn');
+  if (pinBtn && pinBtn.disabled) return;
+  // Client-side brute-force brake (server also rate-limits auth at 5 req/10s).
+  if (Date.now() < _pinLockedUntil) {
+    const wait = Math.ceil((_pinLockedUntil - Date.now()) / 1000);
+    if (pinError) pinError.textContent = `Too many attempts — try again in ${wait}s`;
+    return;
+  }
   const pin = pinInput.value;
   pinBox.classList.remove('shake');
   stopPendingPoll();
@@ -307,6 +314,7 @@ async function submitPin() {
       body: JSON.stringify({ pin, device: clientDeviceLabel() })
     }).then(r => r.json());
     if (r.success) {
+      _pinFails = 0; _pinLockedUntil = 0;
       authToken = r.token;
       // Persist session tokens (trusted device); 'open' needs nothing stored.
       // Fresh logins while others are active come back pending — wait it out.
@@ -323,6 +331,11 @@ async function submitPin() {
       pinInput.focus();
       void pinBox.offsetWidth;
       pinBox.classList.add('shake');
+      // Progressive lockout: 3+ failures → 5s brake, doubling to a 30s cap.
+      _pinFails++;
+      if (_pinFails >= 3) {
+        _pinLockedUntil = Date.now() + Math.min(5000 * 2 ** (_pinFails - 3), 30000);
+      }
     }
   } catch(e) {
     pinError.textContent = 'Connection failed. Is the server running?';
@@ -330,8 +343,10 @@ async function submitPin() {
     void pinBox.offsetWidth;
     pinBox.classList.add('shake');
   }
-  setBtnBusy(pinBtn, false);
+  if (pinBtn) { setBtnBusy(pinBtn, false); }
 }
+// Wrong-PIN counter + lockout deadline for the client-side brake above.
+let _pinFails = 0, _pinLockedUntil = 0;
 
 async function unlockApp() {
   if (window._appUnlocked) return;

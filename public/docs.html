@@ -817,7 +817,6 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
   'use strict';
   var root = document.documentElement;
   var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var memTheme = null;
 
   /* ── theme: light by default, matching the app (which also defaults to light) ── */
   var segLight = document.getElementById('theme-light'),
@@ -830,7 +829,6 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
     if (segDark) segDark.setAttribute('aria-pressed', String(t === 'dark'));
     // Keep the browser/OS chrome (mobile address bar) in step with the page.
     if (metaTheme) metaTheme.setAttribute('content', t === 'dark' ? '#1a1b26' : '#f9f9fb');
-    memTheme = t;
     try { localStorage.setItem('wt-docs-theme', t); } catch(e){}
   }
   // A return visit keeps the choice; a first visit gets light. Storage can throw

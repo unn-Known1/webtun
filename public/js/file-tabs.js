@@ -409,13 +409,6 @@ function showTabEditor(tab) {
   requestAnimationFrame(() => { try { tab.cm?.refresh(); } catch {} });
 }
 
-function showTabEditor(tab) {
-  if (tab.bodyEl) tab.bodyEl.style.display = 'flex';
-  if (tab.cardEl) tab.cardEl.hidden = true;
-  // A tile that was hidden has a stale viewport, so re-measure.
-  requestAnimationFrame(() => { try { tab.cm?.refresh(); } catch {} });
-}
-
 // ── Per-tab preview (markdown + HTML) ──────────────────────────────────────
 // Same output contract as the panel preview, but tab-local: own toggle state,
 // own debounced live render, own blob URL. Supported kinds only — other text
