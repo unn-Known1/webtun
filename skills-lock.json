@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "brag": {
+      "source": "latent-spaces/brag",
+      "sourceType": "github",
+      "skillPath": "skills/brag/SKILL.md",
+      "computedHash": "bfa006908e7389adc592000980b99638f4db108286679ccd454a2d378709790b"
+    },
     "security-audit": {
       "source": "cloudflare/security-audit-skill",
       "sourceType": "github",
