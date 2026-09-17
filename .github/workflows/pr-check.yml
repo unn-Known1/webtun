@@ -1,0 +1,33 @@
+name: PR check
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Version + lockfile sync
+        run: npm run version:check
+
+      - name: Packaging smoke test
+        run: npm pack --dry-run
+
+      - name: Server entry loads
+        run: node -e "require('./server.js'); console.log('require ok'); process.exit(0)"
+
+      - name: Dependency audit (production only)
+        run: npm audit --omit=dev

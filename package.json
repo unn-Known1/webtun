@@ -62,10 +62,10 @@
     "devtools"
   ],
   "dependencies": {
-    "express": "^4.22.3",
+    "express": "^5.2.1",
     "multer": "^2.4.0",
-    "node-pty": "^1.0.0",
-    "ws": "^8.21.0"
+    "node-pty": "^1.1.0",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "electron": "^44.4.1",
@@ -94,7 +94,7 @@
     "safe-buffer": "npm:@socketregistry/safe-buffer@^1",
     "safer-buffer": "npm:@socketregistry/safer-buffer@^1",
     "side-channel": "npm:@socketregistry/side-channel@^1",
-    "ws": "^8.21.0"
+    "ws": "^8.21.3"
   },
   "allowScripts": {
     "node-pty": true

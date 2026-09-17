@@ -4667,7 +4667,7 @@ function handlePreviewProxy(req, res) {
 // asset requests and would 429 constantly. Auth (PIN/session) + loopback-only
 // target is the real gate; brute force still throttled at the auth endpoints.
 app.all('/api/preview/:port', checkPreviewAuth, handlePreviewProxy);
-app.all('/api/preview/:port/*', checkPreviewAuth, handlePreviewProxy);
+app.all('/api/preview/:port/{*splat}', checkPreviewAuth, handlePreviewProxy);
 
 // Loopback listeners for the preview address-bar autocomplete (best-effort).
 app.get('/api/ports', checkPin, (req, res) => {

@@ -1,0 +1,27 @@
+# CodeRabbit review config — https://docs.coderabbit.ai
+reviews:
+  profile: chill
+  auto_review: true
+  request_changes_workflow: false
+  high_level_summary: true
+chat:
+  auto_reply: true
+path_instructions:
+  - path: server.js
+    instructions: >
+      Security-sensitive Express server. Flag unsanitized filesystem errors
+      (route handlers must use sendErr, never raw e.message), path-traversal
+      risks outside pathContained()/realPath(), auth bypasses around checkPin,
+      and unbounded body/buffer growth (global JSON limit is 2mb; only
+      /api/files/write gets 12mb via LARGE_JSON_ROUTES).
+  - path: public/docs.html
+    instructions: >
+      Single-file, zero-dependency, offline-safe user guide. Any user-facing
+      feature change must update this file (section + TOC link + data-title
+      keywords). Asset paths must stay relative; app links use a.app-link
+      with href="/".
+  - path: public/js/app.js
+    instructions: >
+      Vanilla JS, no bundler; CDN scripts are deferred. System stats must go
+      through fetchSystemStats(), never api('/api/system') directly.
+      localStorage must go through the safeStorage wrapper.

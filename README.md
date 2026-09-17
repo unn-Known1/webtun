@@ -195,6 +195,11 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 
 ## Changelog
 
+### v2.2.1
+- **Express 5** — `express` 4 → 5.2.1; the app-preview wildcard route migrated to the new `{*splat}` syntax (handler unchanged, it slices `originalUrl`); smoke-tested (`/`, `/docs`, file/git/system APIs, preview proxy)
+- **Latest dependencies** — `node-pty` 1.1.0, `ws` 8.21.3 (spec + override), `debug` 4.4.3 via the new tree; `npm audit` clean
+- **Automation** — weekly Dependabot (npm + GitHub Actions), a PR check workflow running the CI `verify` steps on every pull request, and a CodeRabbit review config with repo-specific instructions for `server.js`, `docs.html` and `app.js`
+
 ### v2.2.0
 > **First release since v2.0.4.** v2.1.0–v2.1.2 were bumped and documented but never tagged or published, so everything since v2.0.4 ships here (the v2.1.x sections below are kept as-is for history). New since the 2.1.2 tree:
 
