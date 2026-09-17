@@ -1,90 +1,164 @@
 # Hyperframes Composition Brief: WebTun
 
 ## Objective
-Create a short launch-style brag video for WebTun.
+Create a 60-second 4K/60fps product showcase video for WebTun, a self-hosted web terminal.
 
 ## Output
 - Composition directory: `brag-output/composition/`
 - Rendered video: `brag-output/brag.mp4`
-- Format: landscape — 1280x720
-- Duration: ~20 seconds
+- Format: landscape 4K (3840×2160) @ 60fps
+- Duration: 60 seconds
+- Render command: `npx hyperframes render --fps 60 --resolution landscape-4k --quality delivery`
 
 ## Source Material
 - Project root: `/content/webtun`
-- Primary files read: `public/index.html`, `public/css/styles.css`, `README.md`, `package.json`
+- Primary files read: `public/index.html`, `public/css/styles.css`, `public/docs.html`
 - Product name: WebTun
-- Tagline / strongest claim: "Your server, one tab away."
-- Key UI or visual moment to recreate: Launchpad with radial gradient aura and animated terminal logo, terminal tabs, file explorer sidebar, code editor, git panel, tunnel URL row, PWA home screen
-- Copy that must appear verbatim:
-  - "WebTun"
-  - "Your server, one tab away."
-  - "npx webtun"
-  - "localhost:3000"
+- Tagline: Your server, one tab away.
+- All 6 theme palettes extracted from real `styles.css` CSS variables
 
 ## Creative Direction
-- Tone preset: `polished`
-- Creative direction: "Developer tool launch film — premium, restrained, no gimmicks"
-- Interpretation: Wide type, long holds, confident reveals. The product speaks. Clean crossfades, soft transitions.
-- Angle: WebTun is a real server terminal in a browser tab. No VPN. No SSH client. No install. The impressiveness is in the capability, not the pitch.
-- Hook: Terminal types `npx webtun` character by character, settles on `localhost:3000`, cuts to WebTun running in a browser.
-- Outro / punchline: "WebTun. Your server, one tab away." — logo slams, tagline holds, silence.
-- Avoid:
-  - Generic SaaS language
-  - Abstract filler visuals
-  - Unrelated visual redesign
+- Tone preset: `default` — clean, polished, developer-focused
+- Angle: Show the full power of a self-hosted terminal: real shells, code editor, git, files, tunnels — all behind one PIN, in any browser
+- Hook: Terminal window with `npx webtun` typing animation
+- Outro / punchline: WebTun logo + tagline + GitHub URL → fade to black
+- Avoid: Generic SaaS language, abstract filler, showing features that don't exist
 
 ## Visual Identity
-- Background: `#1a1b26` (Tokyo Night dark theme)
-- Text: `#c0caf5` (light periwinkle)
-- Accent: `#7aa2f7` (soft blue)
-- Display font: IBM Plex Sans (Google Fonts)
-- Body font: JetBrains Mono (Google Fonts)
-- Visual references from the project:
-  - Launchpad: radial blue gradient aura (`#7aa2f7` at 11% opacity, blur 14px), animated terminal logo draw, sparkline
-  - Terminal: xterm.js with dark theme, colored output
-  - File explorer: sidebar with file icons, breadcrumb
-  - CodeMirror editor with syntax highlighting
+- All colors from real WebTun `styles.css` CSS variables
+- Background: `#1a1b26` (Tokyo Night dark)
+- Text: `#c0caf5`
+- Accent: `#7aa2f7`
+- Fonts: IBM Plex Sans (UI), JetBrains Mono (code/terminal)
+- Visual references: macOS-style terminal window, xterm.js terminal, Tokyo Night color scheme
 
-## Storyboard
-Use the storyboard in `brag-output/brag-plan.md` as the creative contract.
+## Storyboard (scene-by-scene)
 
-Scene summary:
-1. Hook / Terminal Arrives — 3s — `npx webtun` types character by character, ends on `localhost:3000`
-2. WebTun UI Reveal — 4s — Launchpad with logo draw, title, tagline, system sparkline, cards slide in
-3. Terminal in Action — 4s — Two terminal tabs side by side, file explorer sidebar visible
-4. Editor + Git + Tunnel — 5s — Code editor, git panel, live tunnel URL with green dot
-5. PWA + Outro — 4s — PWA home screen mockup → WebTun logo slam + tagline → fade to black
+### Scene 1: Terminal Hook (0–4s)
+- macOS-style window (red/yellow/green dots, "Terminal" title)
+- Dark background (`#1a1b26`)
+- Prompt: `~/Sites/webtun` in blue-green (`#7aa2f7`)
+- `npx webtun` types char-by-char (10 chars × ~0.07s = 0.7s total typing)
+- Blinking cursor after typing
+- `→ localhost:3000` fades in at 2.5s
+
+### Scene 2: Launchpad Tokyo Night (4–10s)
+- Full dashboard with:
+  - Accent-colored logo tile (60×60px, `#7aa2f7`, terminal SVG icon)
+  - "WebTun" title (30px, bold)
+  - "Your server, one tab away." tagline
+  - Host badge: `localhost:3000` (pill badge, bg3 background)
+  - Pulse: green dot + "Server online"
+  - Two cards: Recent commands (npm run dev, git status), Places (~/Sites/webtun, /content/webtun)
+- Grid dot background pattern
+- Radial glow behind logo
+
+### Scene 3: Theme Showcase (10–18s)
+- Same launchpad layout
+- 6 themes cycle through (1.3s each):
+  - Tokyo Night (0s) → Light (1.3s) → Solarized Dark (2.6s) → Gruvbox (3.9s) → Dracula (5.2s) → Monokai (6.5s) → back to Tokyo Night (7.8s hold)
+- CSS variables `--bg`, `--accent`, `--fg`, `--green` update per theme
+- Background color transitions smoothly
+- Elements that use accent color (logo, title, icons) update too
+
+### Scene 4: Multi-Terminal + Tabs (18–25s)
+- Header bar: WebTun logo, session badge
+- Tab bar with 3 terminal tabs (2 visible + 1 overflow indicator)
+- Tile view: 2 terminal panes side-by-side
+- Left pane: `~/Sites/webtun` prompt, `npm run dev` command, output "Starting nodemon...", "Server running at http://localhost:3000"
+- Right pane: `git status` output showing clean repo
+- File explorer sidebar (collapsed, small)
+
+### Scene 5: Editor + Git Panel (25–33s)
+- Editor header: filename with dirty dot, "JavaScript" badge, Save button
+- Code in editor:
+  ```
+  const express = require('express');   (purple: const)
+  const WebSocket = require('ws');      (purple: const)
+  const pty = require('node-pty');      (purple: const)
+
+  const app = express();                (purple: const)
+  const PORT = 3000;                   (orange: 3000)
+
+  // WebTun: self-hosted web terminal
+  app.listen(PORT, () => {
+    console.log(`Ready on :${PORT}`);
+  });
+  ```
+- Git panel sidebar:
+  - "main" branch header (red git icon)
+  - Staged: server.js (blue dot)
+  - Modified: app.js (yellow dot)
+  - Untracked: new-file.js (green dot)
+- Tunnel row: green live dot + `a1b2c3d4.trycloudflare.com`
+
+### Scene 6: File Manager (33–39s)
+- Header: WebTun logo, session badge
+- Tab bar: "Files" tab active
+- Breadcrumb: `~/Sites/webtun`
+- File list:
+  - `node_modules/` (folder, blue icon)
+  - `public/` (folder, blue icon)
+  - `server.js` (file, GIT badge)
+  - `package.json` (file, EDIT badge)
+  - `README.md` (file, VIEW badge)
+- Right-click context menu:
+  - Open, Edit, Open in Tab, Download, Zip, Extract, Folder Size, Copy Path, Copy, Cut, Rename, Delete
+- Select mode toggle active (checkboxes visible)
+
+### Scene 7: Command Palette + Shortcuts (39–46s)
+- Command palette overlay:
+  - Dark scrim (55% opacity)
+  - White pill dialog with search input
+  - Shows: "server.js", "package.json", "public/", "node_modules/", etc.
+- Keyboard shortcuts grid (6 shortcuts):
+  - Ctrl+P → File finder
+  - Ctrl+T → New terminal tab
+  - Ctrl+B → Toggle file explorer
+  - Ctrl+F → Search in terminal
+  - Ctrl+S → Save editor file
+  - Esc → Close menus
+
+### Scene 8: System Stats + Settings (46–52s)
+- Header: WebTun logo, session badge
+- Overflow menu → System Stats panel:
+  - CPU gauge (circular, 67%, teal)
+  - Memory gauge (circular, 4.2 GB / 16 GB, purple)
+  - Disk gauge (circular, 45%, green)
+  - Uptime: "3 days 14h"
+  - Top Processes table: PID, User, CPU%, Mem%, Command, Kill
+- Settings → Appearance panel:
+  - Theme selector showing all 6 theme options
+  - Tokyo Night selected (current)
+  - Font size slider, font family dropdown
+
+### Scene 9: PWA + Tunnel (52–57s)
+- Left: Phone mockup (200×380px, rounded corners, notch)
+  - Home screen with WebTun icon, Safari icon
+  - "Add to Home Screen" banner below phone
+- Right: Large tunnel URL display
+  - Green live dot
+  - `*.trycloudflare.com` in monospace blue
+  - "Your server, accessible worldwide"
+- Security triangle badge in header
+
+### Scene 10: Outro (57–60s)
+- Center: Large logo tile (80×80px, accent blue, terminal SVG)
+- "WebTun" in large text below logo
+- "Your server, one tab away." tagline
+- "github.com/unn-Known1/webtun" in small mono text
+- Fade to black over final 3 seconds
 
 ## Audio
-- Audio role: warm professional bed — understated, supports the product
-- Audio arc: Bed fades in over scene 1, holds at low volume, fades under final logo
+- Audio role: warm bed — confident, not overpowering
 - Music: `happy-beats-business-moves-vol-12-by-ende-dot-app.mp3`
-- Music treatment: Fade in at 2s, volume 0.25, fade out under final logo slam
-- Music cue guidance: Bundled preset — strong cues at ~5.2s, ~11.8s, ~17.6s (target scene transitions); beat grid available for sequential reveals
-- Audio-reactive treatment: subtle; hero glow breathes with RMS, product card presence on bass
-- Audio-coupled moments:
-  - Scene 1 — per-character keyboard typing animation — random keypress sounds from `keyboard/` set
-  - Scene 2 — logo draw + card reveals — `drop_002` on title, sequential cards on beats
-  - Scene 3 — tab reveal — `click_002`
-  - Scene 5 — logo slam — `impactBell_heavy_000`
-- SFX selection guidance: Sparse. Keyboard typing on entry, one drop on product name, one bell on final logo. Professional restraint.
-- SFX analysis guidance: use `skills/brag/assets/sfx/sfx-analysis.md`
-- Exact SFX choice: Hyperframes should choose filenames, timestamps, density, and volume based on the implemented animation.
-- Audio files: copy the chosen music into `brag-output/composition/assets/music/`
+- Music treatment: Fade out at 58s as logo appears, zero music under final 3s
+- No SFX
 
 ## Hyperframes Instructions
-Load the composition-building Hyperframes domain skills — `hyperframes-core`, `hyperframes-animation`, `hyperframes-creative`, `hyperframes-keyframes`, and `hyperframes-cli`. /brag is its own workflow: do not enter the `hyperframes` entry-point intent interview or route into its generic promo / launch-video workflow.
-
-Requirements:
-- Show at least one real UI, copy, or visual element from the source project.
-- Keep all text readable in the final render.
-- Keep the video within 15-25 seconds.
-- Include the planned music/SFX layer.
-- Treat `/brag` audio notes as guidance, not a fixed cue sheet. Choose SFX after the visual animation exists.
-- Treat music cue metadata as optional timing hints. Hyperframes decides exact animation timing and should ignore cues that hurt readability, scene pacing, or the product story.
-- Major reveals may move toward nearby strong cues within about 0.15s. Use 1-3 strong cue locks in a 15-25s video.
-- Use SFX to support motion and interaction: keyboard sounds for typing, drop sounds for reveals, bell for logo slam.
-- Honor planned music treatment: fade-in over scene 1, hold at low volume, fade under final logo.
-- When music is present, consider Hyperframes audio-reactive workflow: extract audio data and use RMS/frequency bands for subtle visual properties (glow, depth, card presence). Avoid waveform/equalizer visuals.
-- Use local assets for audio and any required runtime/media dependencies when possible.
-- Run `hyperframes check` before render — it is brag's single gate.
+- Use GSAP for all animations
+- CSS variables for theme switching in Scene 3 — use GSAP to tween between theme colors
+- Per-character typing animation via individual `<span>` elements (not tl.call DOM hacks)
+- All timed elements need `data-start` and duration
+- Register root timeline on `window.__timelines`
+- Lint check must pass before render

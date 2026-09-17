@@ -1,97 +1,96 @@
-# Brag Plan: WebTun
+# WebTun 60-Second 4K/60fps Video Plan
 
-## What is this app?
-WebTun is a self-hosted web terminal — a full xterm.js terminal, file explorer, git panel, and Cloudflare Tunnel manager that runs in your browser. No VPN, no SSH client, no install. One `npx webtun` and you're in.
+## Product
+- **Name:** WebTun
+- **Tagline:** Your server, one tab away.
+- **Website:** `github.com/unn-Known1/webtun`
+- **Creator:** Gaurang Patel
 
-## The angle
-Not a demo. A real server, right there in your browser — with file editing, git ops, session persistence, and a public tunnel link you can share. The joke (if there is one) is that something this capable runs in a browser tab with zero friction.
+## Hook
+Terminal window zooms in: `npx webtun` types out char-by-char → `→ localhost:3000` fades in. Clean, fast, confident.
 
-## Hook (first 2-3 seconds)
-A terminal window appears. A shell prompt blinks. A command types itself: `npx webtun`. The cursor sits at `localhost:3000`. Cut to WebTun running in a browser.
-
-## Key moments
-- Multi-tab terminal with real PTY backing — multiple shell sessions side-by-side
-- File explorer with thumbnails, git panel, and a CodeMirror editor — all inside the browser
-- Cloudflare Tunnel: one click, public URL — the server is now globally accessible
-- PWA installable: add to home screen, works offline with last session state
-- Session persistence: tabs survive page reload via tmux or in-memory PTY
-
-## Outro / punchline
-"WebTun. Your server, one tab away."
-
-## User flow worth showing
-Open WebTun → new terminal tab → type a command → see output → switch to file explorer → open a file → edit and save → open tunnel → share the URL.
+## Creative angle
+Developer-focused showcase: WebTun is a self-hosted web terminal with real shells, a code editor, file manager, git panel, and Cloudflare tunnels. The video cycles through all 6 themes to show it's a polished product you'd want to use daily.
 
 ## Tone
-- Preset: `polished`
-- Creative Direction: "Developer tool launch film — premium, restrained, no gimmicks"
-- Interpretation: Wide type, long holds, confident reveals. The product speaks. Nothing screams. Clean crossfades, soft transitions. The capability IS the impressiveness.
+`default` — clean, polished, confident. Not a joke. Not over-produced. Just a really good tool.
 
-## Format: landscape — 1280x720
-## Duration: ~20 seconds
+---
 
-## Visual identity (from the project)
-- Background: `#1a1b26` (Tokyo Night dark)
-- Accent: `#7aa2f7` (soft blue)
-- Text: `#c0caf5` (light periwinkle)
-- Display font: IBM Plex Sans (800 weight for titles)
-- Body font: JetBrains Mono (for terminal/code surfaces)
-- Strongest visual element: The launchpad — radial gradient aura, animated terminal logo draw, live system pulse sparkline
+## Storyboard (60 seconds)
 
-## Share copy (draft)
-WebTun turns any server into a shareable web terminal. File explorer, git ops, Cloudflare Tunnel, PWA — no VPN, no SSH client, no install required.
+| # | Time | Scene | What must be seen / read |
+|---|------|-------|--------------------------|
+| 1 | 0–4s | **Terminal Hook** | macOS-style window, dark theme. `npx webtun` types char-by-char → `→ localhost:3000` fades in |
+| 2 | 4–10s | **Launchpad — Tokyo Night** | Logo tile, "WebTun" title, tagline, host badge (`localhost:3000`), pulse dot "Server online", Recent commands card, Places card |
+| 3 | 10–18s | **Theme Showcase** | Same launchpad layout, themes cycle: Tokyo Night → Light → Solarized Dark → Gruvbox → Dracula → Monokai → back to Tokyo Night. Background crossfades, accent color changes per theme |
+| 4 | 18–25s | **Multi-Terminal + Tabs** | 3 terminal tabs visible, tile view showing 2 terminals side-by-side, `git status` output, `npm run dev` output showing server running |
+| 5 | 25–33s | **Editor + Git Panel** | Code editor with JS syntax highlighting (purple keywords, green strings, blue functions), dirty dot on filename, Save button. Git panel: staged (blue), modified (yellow), untracked (green) files. Live Cloudflare tunnel URL |
+| 6 | 33–39s | **File Manager** | Sidebar with folder hierarchy, breadcrumb, file badges (GIT/EDIT/VIEW), right-click context menu with actions |
+| 7 | 39–46s | **Command Palette + Shortcuts** | Ctrl+P fuzzy-finder palette overlay. Keyboard shortcuts grid showing Ctrl+P, Ctrl+T, Ctrl+B, Ctrl+F, Ctrl+S etc. |
+| 8 | 46–52s | **System Stats + Settings** | CPU/Memory/Disk gauges with live values, Top Processes table with Kill buttons. Settings panel showing all 6 theme options with current selection |
+| 9 | 52–57s | **PWA + Tunnel** | Phone mockup with "Add to Home Screen" banner. Large tunnel URL: `*.trycloudflare.com`. Security triangle badge |
+| 10 | 57–60s | **Outro** | WebTun logo (accent blue tile) + "Your server, one tab away." + "github.com/unn-Known1/webtun" → fade to black |
 
-## Audio direction
-- Role: Warm professional bed — understated, supports the product not the pitch
-- Music: `happy-beats-business-moves-vol-12-by-ende-dot-app.mp3` — steady and clean, fits `polished` tone
-- Music treatment: Fade in at 2s, stay low (0.25 volume), fade out under final logo
-- Music cue guidance: Bundled preset — strong cues at ~5.2s, ~11.8s, ~17.6s for scene transitions
-- Audio-reactive treatment: subtle; hero glow breathes with RMS, product card presence on bass
-- SFX posture: Minimal. One drop sound on logo arrival. One soft click on tab reveal.
-- Audio-coupled moments: Logo drop → `impactSoft_medium_002`; terminal tab reveal → `interface/drop_001`
-- Restraint rule: No sound competes with the product. If in doubt, leave it out.
+---
 
-## Storyboard
+## Visual Identity (from real `styles.css` tokens)
 
-### Scene 1 — Hook / Terminal Arrives — 3s
-Dark background. A terminal window scales in (from 0.9→1.0, 0.4s ease-out). The prompt types character by character: `npx webtun`. Cursor blinks. Text settles. Soft `drop_001` at 0.3s. At 2s the URL `localhost:3000` fades in below. Hold. Hard cut at 3s.
-Sequential/interaction: yes — command types character by character with keyboard sounds
-Audio intent: Clean arrival. Sets the tone.
-Audio-coupled idea: per-character keyboard sounds, random from the keypress set
-Music: low bed fades in
-Transition mood: hard cut → Scene 2
+### Tokyo Night (primary)
+| Variable | Value |
+|----------|-------|
+| `--bg` | `#1a1b26` |
+| `--bg2` | `#16161e` |
+| `--bg3` | `#24283b` |
+| `--bg4` | `#2a2d3e` |
+| `--border` | `#3b3f52` |
+| `--fg` | `#c0caf5` |
+| `--fg2` | `#787c99` |
+| `--fg3` | `#565f89` |
+| `--accent` | `#7aa2f7` |
+| `--accent2` | `#bb9af7` |
+| `--green` | `#9ece6a` |
+| `--red` | `#f7768e` |
+| `--yellow` | `#e0af68` |
+| `--cyan` | `#7dcfff` |
 
-### Scene 2 — WebTun UI Reveal — 4s
-WebTun's launchpad in full glory — the radial blue glow, animated terminal logo draws in, title "WebTun" and tagline "Your server, one tab away." System pulse sparkline animates. The launchpad cards (Recent Commands, Places) slide in one by one. `drop_002` on title. `impactSoft_medium_002` on tagline.
-Sequential/interaction: yes — logo draw animation, then cards arrive one by one
-Audio intent: Product arriving. Safe landing.
-Audio-coupled idea: Cards arrive on beats — ~0.4s apart (120 BPM); logo draw synced to intro swell
-Music: bed at 0.25 volume
-Transition mood: soft slide → Scene 3
+### Theme cycle colors
+| Theme | `--bg` | `--accent` | `--fg` | `--green` |
+|-------|--------|-----------|--------|-----------|
+| Tokyo Night | `#1a1b26` | `#7aa2f7` | `#c0caf5` | `#9ece6a` |
+| Light | `#f9f9fb` | `#4060d0` | `#1f1f30` | `#2f7d1f` |
+| Solarized Dark | `#002b36` | `#268bd2` | `#93a1a1` | `#859900` |
+| Gruvbox | `#282828` | `#83a598` | `#ebdbb2` | `#b8bb26` |
+| Dracula | `#282a36` | `#bd93f9` | `#f8f8f2` | `#50fa7b` |
+| Monokai | `#272822` | `#a6e22e` | `#f8f8f2` | `#a6e22e` |
 
-### Scene 3 — Terminal in Action — 4s
-A terminal tab with a visible session. Some command output (e.g. `ls -la` with colorized output). A second tab appears. The tab bar shows two terminals side by side. File explorer sidebar visible with a file selected.
-Sequential/interaction: yes — second tab slides in from right
-Audio intent: Working product. Not a demo — the real thing.
-Audio-coupled idea: Tab arrival gets a soft `click_002`
-Music: steady bed continues
-Transition mood: clean wipe → Scene 4
+### Fonts
+- **UI Font:** IBM Plex Sans (400, 600, 700)
+- **Code Font:** JetBrains Mono (400, 700)
 
-### Scene 4 — Editor + Git + Tunnel — 5s
-File editor open with syntax-highlighted code (JetBrains Mono visible). Git panel in sidebar showing staged/unstaged files. Tunnel row visible in settings with a green "live" dot and a shareable `*.trycloudflare.com` URL. Camera icon pulses.
-Sequential/interaction: none (rich static frame showing depth of product)
-Audio intent: The feature wall. Depth revealed.
-Audio-coupled idea: `switch_001` if tunnel URL appears to animate in
-Music: bed holds, slight swell at 5s
-Transition mood: soft crossfade → Scene 5
+---
 
-### Scene 5 — PWA + Outro — 4s
-Phone mockup with WebTun installed on home screen (PWA). "Add to Home Screen" banner visible. Then the WebTun logo — large, centered, full-screen. Below it: "Your server, one tab away." Logo drops in with `impactBell_heavy_000`. Tagline settles. Hold 1.5s. Fade to black.
-Sequential/interaction: none
-Audio intent: Final payoff. Product name lands. Tagline holds. Silence.
-Audio-coupled idea: `impactBell_heavy_000` on logo slam; final 0.5s silence before fade
-Music: fade out under logo
-Transition mood: fade to black
+## Audio
+- **Track:** `happy-beats-business-moves-vol-12-by-ende-dot-app.mp3` (already in `assets/music/`)
+- **Treatment:** Fade music out at 58s as logo appears, silence under outro
+- **No SFX** (clean product showcase)
 
-**Music mood for this video:** Upbeat but restrained — professional bed, not a celebration
-**Audio summary:** One low music bed throughout. Three tasteful SFX: keyboard on type, drop on logo, bell on final slam. Nothing competes with the product.
+---
+
+## Transitions
+- Scene changes: 0.25s opacity fade via GSAP
+- Theme cycling (Scene 3): 1.3s per theme, background color crossfades via CSS variable animation
+- All other transitions: natural GSAP easing
+
+---
+
+## Copy that must appear verbatim
+- "WebTun" (title)
+- "Your server, one tab away." (tagline)
+- "npx webtun" (terminal command)
+- "→ localhost:3000" (URL indicator)
+- "Server online" (pulse label)
+- "localhost:3000" (host badge)
+- "*.trycloudflare.com" (tunnel URL — anonymized)
+- "github.com/unn-Known1/webtun"
+- All keyboard shortcut labels
