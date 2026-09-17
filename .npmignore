@@ -3,6 +3,7 @@
 # assets (robots.txt, sitemap.xml, .nojekyll) stay out of the tarball.
 .opencode/
 .github/
+.agents/
 nodemon.json
 .gitignore
 electron/
@@ -25,3 +26,4 @@ sitemap.xml
 /dist/
 /release/
 /*.md
+/brag-output/
