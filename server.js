@@ -3691,7 +3691,13 @@ wss.on('connection', (ws, req) => {
       }
 
       if (exists) {
-        try { execFileSync(TMUX, ['resize-window', '-t', effectiveName, '-x', String(cols), '-y', String(rows)], { stdio: 'ignore' }); } catch {}
+        // Never force the window size here. resize-window flips the session
+        // to window-size manual AND over-claims tmux's status-bar row: the
+        // pane ends up as tall as the client, so the inner app's last row
+        // hides underneath the status bar (e.g. a TUI footer). tmux auto-fits
+        // attached clients on its own (window minus status line); just make
+        // sure sessions stuck in manual by older builds go back to auto-fit.
+        try { execFileSync(TMUX, ['set-option', '-t', effectiveName, 'window-size', 'latest'], { stdio: 'ignore' }); } catch {}
         proc = pty.spawn(TMUX, ['attach-session', '-t', effectiveName], {
           name: 'xterm-256color', cols, rows, cwd,
           env: sessionEnv
@@ -3702,6 +3708,10 @@ wss.on('connection', (ws, req) => {
           env: { ...sessionEnv, SHELL }
         });
         ownTmuxSessions.add(tmuxName);
+        // Pin auto-fit on our own sessions so a global tmux.conf
+        // (window-size largest/manual) can't reintroduce the covered-row
+        // bug described above.
+        try { execFileSync(TMUX, ['set-option', '-t', tmuxName, 'window-size', 'latest'], { stdio: 'ignore' }); } catch {}
       }
     } else {
       const shellArgs = os.platform() === 'win32' ? ['-NoLogo'] : ['-l'];
@@ -3794,12 +3804,12 @@ wss.on('connection', (ws, req) => {
         r = Math.min(Math.max(2, r), 500);
         if (!c || !r) return;
         proc.resize(c, r);
-        if (TMUX && sessionId) {
-          // Own namespace first, then (non-foreign) legacy fallbacks.
-          for (const n of tmuxAdoptableNames(sessionId)) {
-            try { execFileSync(TMUX, ['resize-window', '-t', n, '-x', String(c), '-y', String(r)], { stdio: 'ignore' }); break; } catch {}
-          }
-        }
+        // NOTE: no resize-window here, deliberately. Forcing the window to
+        // the full client size flips the session to window-size manual and
+        // hides the inner app's last row under tmux's status bar (the client
+        // only shows window rows minus the status line). tmux auto-fits
+        // attached clients itself (window-size latest is enforced for our
+        // sessions at connect); the pty resize above is all it needs.
       }
     } catch (e) {
       console.error('WS message error:', e.message);
