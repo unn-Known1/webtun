@@ -6,6 +6,13 @@
 const MAX_EDITOR_SIZE = 10 * 1024 * 1024; // 10MB
 let editor = null;
 let mdPreviewActive = false;
+// On-disk snapshot for external-change detection: the mtime/size the open
+// buffer was read from (or last saved to). The open-file watcher compares fresh
+// stats against these; null means unknown — adopt silently, never flag.
+let editorDiskMtime = null;
+let editorDiskSize = null;
+let editorExtChanged = false;
+let _panelStatusTimer = null;
 // Full HTML preview: author's bytes verbatim (scripts run) inside the same
 // opaque-origin sandbox. Safe mode (default) stays sanitized. Reset per file.
 let htmlFullPreview = false;
@@ -180,7 +187,7 @@ async function readTextForEditor(path) {
     if (restore) content = draft;
     else removeDraft(path);
   }
-  return { content, original: r.content };
+  return { content, original: r.content, mtime: r.mtime != null ? String(r.mtime) : null, size: typeof r.length === 'number' ? r.length : null };
 }
 
 // Forget the panel's file without prompting. Used when a text buffer has been handed
@@ -189,6 +196,9 @@ async function readTextForEditor(path) {
 function releasePanelSurface() {
   editorPath = '';
   editorOriginalContent = '';
+  editorDiskMtime = null;
+  editorDiskSize = null;
+  setPanelExtChanged(false);
   clearTimeout(_autoSaveTimer);
   clearPreviewLiveReload();
   mdPreviewActive = false;
@@ -236,15 +246,19 @@ async function openFileEditor(path) {
   if (!canOpenInEditor(path)) { toast('Preview not supported for this file type — use Download', 'warning'); return; }
   const data = await readTextForEditor(path);
   if (!data) return;
-  await showTextInPanel(path, data.content, data.original);
+  await showTextInPanel(path, data.content, data.original, null, data.mtime, data.size);
 }
 
 // Put a text buffer into the split panel. `original` is the on-disk text the dirty
 // check compares against (so a restored draft still reads as modified), and
 // `history` carries undo state when a buffer moves from a file tab into the panel.
-async function showTextInPanel(path, content, original, history) {
+// `mtime`/`size` snapshot the disk revision the buffer came from, for the watcher.
+async function showTextInPanel(path, content, original, history, mtime, size) {
   editorPath = path;
   editorOriginalContent = original != null ? original : content;
+  editorDiskMtime = mtime != null ? String(mtime) : null;
+  editorDiskSize = typeof size === 'number' ? size : null;
+  editorExtChanged = false;
   const openContent = content;
   const sep = path.includes('\\') ? '\\' : '/';
   const fileName = path.split(sep).pop() || path;
@@ -285,7 +299,7 @@ async function showTextInPanel(path, content, original, history) {
     setFullBtnVisible(false);
   }
   document.getElementById('editor-filename').textContent = fileName + '  /  ' + path;
-  document.getElementById('editor-status').textContent = '';
+  setPanelExtChanged(false);
 
   // Desktop: split layout; Mobile: overlay (handled by CSS)
   if (window.innerWidth > 768) {
@@ -349,12 +363,13 @@ async function saveFile() {
     editorOriginalContent = content;
     removeDraft(editorPath);
     clearTimeout(_autoSaveTimer);
+    await refreshPanelDiskSnapshot();
+    setPanelExtChanged(false);
     updateEditorDirty();
-    document.getElementById('editor-status').textContent = 'Saved';
+    flashPanelStatus('Saved');
     toast('Saved', 'success');
     if (mdPreviewActive) refreshPreview();
     try { notifyPreviewFileSaved(); } catch {}
-    setTimeout(() => document.getElementById('editor-status').textContent = '', 2000);
   } else toast(r.error, 'error');
 }
 
@@ -398,7 +413,216 @@ async function closeEditor() {
   mdPreviewActive = false;
   editorPath = '';
   editorOriginalContent = '';
+  editorDiskMtime = null;
+  editorDiskSize = null;
+  setPanelExtChanged(false);
   requestAnimationFrame(() => {
     tabs.forEach(tab => { try { fitTerm(tab); tab?.term?.focus(); } catch(e) { console.warn(e); } });
   });
+}
+
+// ═══════════════════════════════════════════════════════
+// EXTERNAL-CHANGE WATCHER
+// ═══════════════════════════════════════════════════════
+// Nothing used to notice when a file changed on disk after opening: a clean
+// buffer sat stale forever, and Save silently overwrote the other writer.
+// Every 10s (plus on refocus) the open text buffers are statted. A clean
+// buffer auto-reloads; a dirty one keeps the user's edits and raises a
+// persistent "Changed on disk" indicator instead — clicking it reloads.
+const EXT_CHANGED_MSG = 'Changed on disk — click to reload, Save to overwrite';
+const EXT_MISSING_MSG = 'Deleted on disk — Save to recreate it';
+
+function setPanelExtChanged(on, msg) {
+  on = !!on;
+  const was = editorExtChanged;
+  editorExtChanged = on;
+  const view = document.getElementById('editor-view');
+  if (view) view.classList.toggle('editor-ext', on);
+  const dot = document.getElementById('editor-ext-dot');
+  if (dot) dot.setAttribute('aria-label', on ? 'File changed on disk' : 'No external changes');
+  const st = document.getElementById('editor-status');
+  if (!st) return;
+  if (on) {
+    const text = msg || EXT_CHANGED_MSG;
+    if (!was || st.textContent !== text) st.textContent = text;
+    st.classList.add('ext');
+    st.title = 'Re-read the file from disk (asks before discarding edits)';
+    st.setAttribute('role', 'button');
+    st.tabIndex = 0;
+    st.onclick = () => reloadPanelFile();
+  } else {
+    if (was || st.classList.contains('ext')) st.textContent = '';
+    st.classList.remove('ext');
+    st.title = '';
+    st.removeAttribute('role');
+    st.tabIndex = -1;
+    st.onclick = null;
+  }
+}
+
+// Transient status word that never wipes the persistent external-change note.
+function flashPanelStatus(text) {
+  if (editorExtChanged) return;
+  const el = document.getElementById('editor-status');
+  if (!el) return;
+  el.textContent = text;
+  clearTimeout(_panelStatusTimer);
+  _panelStatusTimer = setTimeout(() => { if (!editorExtChanged) el.textContent = ''; }, 2000);
+}
+
+async function refreshPanelDiskSnapshot() {
+  if (!editorPath) return;
+  try {
+    const s = await api(`/api/files/stat?path=${encodeURIComponent(editorPath)}`);
+    if (s && !s.error && s.mtime !== undefined) {
+      editorDiskMtime = String(s.mtime);
+      editorDiskSize = s.size;
+    }
+  } catch {}
+}
+
+// Raw disk read for refresh flows: Reload means disk, so it must never offer
+// the crash draft again (same contract as reloadTabFile).
+async function fetchDiskContent(path) {
+  const r = await api(`/api/files/read?path=${encodeURIComponent(path)}`);
+  if (r.error) return { error: r.error };
+  return { content: r.content, mtime: r.mtime != null ? String(r.mtime) : null, size: typeof r.length === 'number' ? r.length : null };
+}
+
+// The panel never had a Reload button; the "Changed on disk" status is its
+// reload affordance (mirrors reloadTabFile, confirm-for-dirty included).
+async function reloadPanelFile() {
+  if (!editorPath) return;
+  const cur = editor ? editor.getValue() : '';
+  if (cur !== editorOriginalContent) {
+    const ok = await confirmDialog({ title: 'Discard changes', message: 'Re-read this file from disk and discard your unsaved changes?', okText: 'Discard', cancelText: 'Keep Editing', danger: true });
+    if (!ok) return;
+  }
+  const r = await fetchDiskContent(editorPath);
+  if (r.error) { toast(r.error, 'error'); return; }
+  editorOriginalContent = r.content;
+  if (r.mtime != null) editorDiskMtime = r.mtime;
+  if (r.size != null) editorDiskSize = r.size;
+  try { editor?.setValue(r.content); } catch {}
+  clearTimeout(_autoSaveTimer);
+  removeDraft(editorPath);
+  setPanelExtChanged(false);
+  updateEditorDirty();
+  flashPanelStatus('Reloaded');
+  if (mdPreviewActive) { try { refreshPreview(); } catch {} }
+}
+
+let openFileWatchTimer = null;
+function startOpenFileWatcher() {
+  if (openFileWatchTimer) return;
+  const tick = () => { try { checkOpenFiles(); } catch (e) { console.warn(e); } };
+  openFileWatchTimer = setInterval(tick, 10000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
+  window.addEventListener('focus', tick);
+}
+
+async function checkOpenFiles() {
+  if (document.hidden) return;
+  const targets = [];
+  try {
+    const isDocPreview = !!(_pdfDoc || _epubBook || _officePath);
+    if (editorPath && !isDocPreview && document.getElementById('editor-view')?.classList.contains('open')) {
+      targets.push({ kind: 'panel', path: editorPath });
+    }
+  } catch {}
+  try {
+    for (const t of tabs) {
+      if (t && t.type === 'file' && t.viewer === 'text' && !t.closed && t.cm && t.path) {
+        targets.push({ kind: 'tab', tab: t, path: t.path });
+      }
+    }
+  } catch {}
+  if (!targets.length) return;
+  await Promise.all(targets.map(checkOneOpenFile));
+}
+
+async function checkOneOpenFile(target) {
+  let st = null;
+  try {
+    const r = await api(`/api/files/stat?path=${encodeURIComponent(target.path)}`);
+    if (r && !r.error && r.mtime !== undefined) st = r;
+    else if (r && r.error && /not found/i.test(r.error)) { markOpenFileMissing(target); return; }
+    else return; // transient error — retry next round, never flag
+  } catch { return; }
+  const mtime = String(st.mtime);
+  if (target.kind === 'panel') {
+    if (editorPath !== target.path) return; // user moved on mid-flight
+    if (editorDiskMtime == null) { editorDiskMtime = mtime; editorDiskSize = st.size; return; }
+    if (mtime === String(editorDiskMtime) && st.size === editorDiskSize) return;
+    const cur = editor ? editor.getValue() : '';
+    // Clean means no user edits to lose — re-read whatever disk says now
+    // (this also heals a stale "Deleted on disk" note when the file returns).
+    if (cur === editorOriginalContent) {
+      await autoRefreshPanelFile(target.path, mtime, st.size);
+    } else if (!editorExtChanged) {
+      setPanelExtChanged(true);
+      toast('Changed on disk: ' + target.path.split(/[\\/]/).pop(), 'warning');
+    }
+  } else {
+    const tab = target.tab;
+    if (!tab || tab.closed || !tab.cm || tab.path !== target.path) return;
+    if (tab.diskMtime == null) { tab.diskMtime = mtime; tab.diskSize = st.size; return; }
+    if (mtime === String(tab.diskMtime) && st.size === tab.diskSize) return;
+    const cur = tab.cm.getValue();
+    if (cur === tab.original) {
+      await autoRefreshTabFile(tab, mtime, st.size);
+    } else if (!tab.extChanged) {
+      setTabExtChanged(tab, true);
+      toast('Changed on disk: ' + fileTabName(tab.path), 'warning');
+    }
+  }
+}
+
+function markOpenFileMissing(target) {
+  if (target.kind === 'panel') {
+    if (editorPath !== target.path || editorExtChanged) return;
+    setPanelExtChanged(true, EXT_MISSING_MSG);
+    toast('Deleted on disk: ' + target.path.split(/[\\/]/).pop(), 'warning');
+  } else {
+    const tab = target.tab;
+    if (!tab || tab.closed || !tab.cm || tab.extChanged) return;
+    setTabExtChanged(tab, true, EXT_MISSING_MSG);
+    toast('Deleted on disk: ' + fileTabName(tab.path), 'warning');
+  }
+}
+
+async function autoRefreshPanelFile(path, mtime, size) {
+  const r = await fetchDiskContent(path);
+  if (editorPath !== path) return;
+  if (r.error) { toast(r.error, 'error'); return; }
+  let cursor = null;
+  try { cursor = editor?.getCursor(); } catch {}
+  editorDiskMtime = r.mtime != null ? r.mtime : mtime;
+  editorDiskSize = r.size != null ? r.size : size;
+  editorOriginalContent = r.content;
+  try { editor?.setValue(r.content); if (cursor) editor.setCursor(cursor); } catch {}
+  // The buffer was clean, so no draft can hold newer user text; leave any
+  // crash draft alone — it is still offered on the next fresh open.
+  setPanelExtChanged(false);
+  updateEditorDirty();
+  flashPanelStatus('Updated from disk');
+  if (mdPreviewActive) { try { refreshPreview(); } catch {} }
+  toast('Updated from disk: ' + path.split(/[\\/]/).pop(), 'info');
+}
+
+async function autoRefreshTabFile(tab, mtime, size) {
+  const r = await fetchDiskContent(tab.path);
+  if (!tab || tab.closed || !tab.cm) return;
+  if (r.error) { toast(r.error, 'error'); return; }
+  let cursor = null;
+  try { cursor = tab.cm.getCursor(); } catch {}
+  tab.diskMtime = r.mtime != null ? r.mtime : mtime;
+  tab.diskSize = r.size != null ? r.size : size;
+  tab.original = r.content;
+  try { tab.cm.setValue(r.content); if (cursor) tab.cm.setCursor(cursor); } catch {}
+  setTabExtChanged(tab, false);
+  markTabDirty(tab);
+  flashTabStatus(tab, 'Updated from disk');
+  if (tab.previewOn) { try { scheduleTabPreview(tab); } catch {} }
+  toast('Updated from disk: ' + fileTabName(tab.path), 'info');
 }

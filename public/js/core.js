@@ -416,6 +416,7 @@ async function unlockApp() {
     setupTabBarDnD();
     setupKeyboardShortcuts();
     startFileWatcher();
+    startOpenFileWatcher();
     const onResizeMobileKeys = () => { clearTimeout(window._resizeMkTimer); window._resizeMkTimer = setTimeout(setupMobileKeys, 150); };
     window.addEventListener('resize', onResizeMobileKeys);
     window._cleanups.push(() => window.removeEventListener('resize', onResizeMobileKeys));

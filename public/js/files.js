@@ -612,9 +612,26 @@ function navigateForward() {
     loadFiles(navForwardHistory.pop());
   }
 }
-function goToTerminalDir() {
+async function getLiveTerminalCwd(tab) {
+  // tab.cwd is only refreshed by OSC 7, which most shells never emit — so a
+  // plain `cd` left it pointing at the launch dir. Ask the server for the
+  // session's CURRENT directory; fall back to the cached value on any failure
+  // (unknown session, unsupported platform) so the button never goes dead.
+  if (!tab || tab.type === 'preview' || tab.type === 'file') return (tab && tab.cwd) || null;
+  if (tab.sessionId) {
+    try {
+      const r = await api(`/api/sessions/${encodeURIComponent(tab.sessionId)}/cwd`);
+      if (r && r.cwd) { tab.cwd = r.cwd; return r.cwd; }
+    } catch {}
+  }
+  return tab.cwd || null;
+}
+async function goToTerminalDir() {
   const tab = getActiveTab();
-  if (tab && tab.cwd) loadFiles(tab.cwd);
+  if (!tab) return;
+  const target = (await getLiveTerminalCwd(tab)) || tab.cwd;
+  if (target) loadFiles(target);
+  else if (typeof toast === 'function') toast('No terminal directory yet — open a terminal first', 'info');
 }
 function updateBackBtn() {
   const back = document.getElementById('back-btn');
@@ -852,14 +869,14 @@ document.getElementById('term-ctx-zoom-out').addEventListener('click', () => {
   applyFontSize((settings.fontSize || 14) - 1);
   hideTermCtxMenu();
 });
-document.getElementById('term-ctx-new-tab').addEventListener('click', () => {
+document.getElementById('term-ctx-new-tab').addEventListener('click', async () => {
   const t = getActiveTab();
-  newTab(null, null, t?.cwd || currentPath);
+  newTab(null, null, (await getLiveTerminalCwd(t)) || t?.cwd || currentPath);
   hideTermCtxMenu();
 });
-document.getElementById('term-ctx-copy-cwd').addEventListener('click', () => {
+document.getElementById('term-ctx-copy-cwd').addEventListener('click', async () => {
   const t = getActiveTab();
-  const cwd = t?.cwd || currentPath;
+  const cwd = (await getLiveTerminalCwd(t)) || t?.cwd || currentPath;
   if (cwd) {
     navigator.clipboard.writeText(cwd).then(() => {
       toast('Path copied', 'success');
@@ -870,9 +887,9 @@ document.getElementById('term-ctx-copy-cwd').addEventListener('click', () => {
   }
   hideTermCtxMenu();
 });
-document.getElementById('term-ctx-bookmark').addEventListener('click', () => {
+document.getElementById('term-ctx-bookmark').addEventListener('click', async () => {
   const t = getActiveTab();
-  const cwd = t?.cwd || currentPath;
+  const cwd = (await getLiveTerminalCwd(t)) || t?.cwd || currentPath;
   if (cwd) {
     const bm = getBookmarks();
     if (bm.some(b => b.path === cwd)) { toast('Already bookmarked', 'info'); }

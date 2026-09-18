@@ -1629,7 +1629,7 @@ app.get('/api/files/read', checkPin, async (req, res) => {
       return res.status(415).json({ error: 'Preview not supported for binary files - use download', isBinary: true });
     }
     const content = buf.toString('utf8');
-    res.json({ content, length: st.size });
+    res.json({ content, length: st.size, mtime: st.mtime });
   } catch (e) {
     sendErr(res, e);
   }
@@ -3465,6 +3465,168 @@ app.delete('/api/sessions/:id', checkPin, (req, res) => {
     ptySessions.delete(id);
   }
   res.json({ success: true });
+});
+
+// ── Live terminal cwd ───────────────────────────────────────────────────
+// `tab.cwd` on the client is only refreshed by OSC 7, which most shells never
+// emit — so `cd` left "Go to terminal directory" pointing at the stale launch
+// dir. This endpoint resolves the session's CURRENT directory on demand, so
+// the button always lands where the shell actually is when pressed.
+const PTY_SHELL_NAMES = new Set(['sh', 'bash', 'dash', 'ash', 'zsh', 'fish', 'ksh', 'mksh',
+  'lksh', 'tcsh', 'csh', 'yash', 'elvish', 'nu', 'nushell', 'oil', 'osh', 'powershell', 'pwsh']);
+function isShellComm(name) {
+  if (!name) return false;
+  return PTY_SHELL_NAMES.has(String(name).split('/').pop().toLowerCase());
+}
+// /proc/<pid>/stat: `pid (comm) state ppid … starttime(22)`. comm may hold
+// spaces/parens, so split off the trailing `) ` before tokenising.
+function procStatInfo(pid) {
+  try {
+    // trim(): the file ends with '\n', and JS `$` (no /m) matches end-of-input
+    // only — without this every parse failed and the scan found nothing.
+    const s = fs.readFileSync(`/proc/${pid}/stat`, 'utf8').trim();
+    const m = /^(\d+) \((.*)\) (.*)$/.exec(s);
+    if (!m) return null;
+    const parts = m[3].split(' ');
+    return { pid, comm: m[2], ppid: parseInt(parts[1], 10), starttime: parseInt(parts[19], 10) || 0 };
+  } catch { return null; }
+}
+function procChildrenMap(info) {
+  const children = new Map();
+  for (const [p, s] of info) {
+    if (!Number.isInteger(s.ppid)) continue;
+    if (!children.has(s.ppid)) children.set(s.ppid, []);
+    children.get(s.ppid).push(p);
+  }
+  return children;
+}
+function bfsDescendants(rootPid, children, cap = 2000) {
+  const depth = new Map([[rootPid, 0]]);
+  const queue = [rootPid];
+  const desc = [];
+  while (queue.length && desc.length < cap) {
+    const cur = queue.shift();
+    for (const k of children.get(cur) || []) {
+      if (depth.has(k)) continue;
+      depth.set(k, depth.get(cur) + 1);
+      queue.push(k);
+      desc.push(k);
+    }
+  }
+  return { depth, desc };
+}
+// A bare `cd` changes the shell itself, but `bash`/`zsh` subshells (and
+// `sudo -i`) move only a descendant — so prefer the deepest descendant shell
+// (youngest wins ties) and fall back to the session shell itself.
+function linuxDescendantShellCwd(rootPid) {
+  let entries;
+  try { entries = fs.readdirSync('/proc'); } catch { return null; }
+  const pids = entries.filter(e => /^\d+$/.test(e)).map(Number).filter(n => n > 0);
+  if (pids.length > 8000) return null; // be kind on huge boxes — caller falls back
+  const info = new Map();
+  for (const p of pids) { const st = procStatInfo(p); if (st) info.set(p, st); }
+  if (!info.has(rootPid)) return null;
+  const { depth, desc } = bfsDescendants(rootPid, procChildrenMap(info));
+  let best = null;
+  for (const d of desc) {
+    const s = info.get(d);
+    if (!s) continue;
+    let exe = '';
+    try { exe = path.basename(fs.readlinkSync(`/proc/${d}/exe`)); } catch {}
+    if (!isShellComm(s.comm) && !isShellComm(exe)) continue;
+    const cand = { pid: d, depth: depth.get(d) || 0, starttime: s.starttime || 0 };
+    if (!best || cand.depth > best.depth ||
+        (cand.depth === best.depth && (cand.starttime > best.starttime ||
+          (cand.starttime === best.starttime && cand.pid > best.pid)))) best = cand;
+  }
+  if (!best) return null;
+  try {
+    const cwd = fs.readlinkSync(`/proc/${best.pid}/cwd`);
+    if (fs.statSync(cwd).isDirectory()) return cwd;
+  } catch {}
+  return null;
+}
+function darwinProcCwd(pid) {
+  try {
+    const out = execFileSync('lsof', ['-a', '-d', 'cwd', '-p', String(pid), '-F', 'n'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 });
+    const lines = String(out).split('\n');
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (lines[i].startsWith('n') && lines[i].length > 1) return lines[i].slice(1);
+    }
+  } catch {}
+  return null;
+}
+function darwinDescendantShellCwd(rootPid) {
+  try {
+    const out = execFileSync('ps', ['-eo', 'pid,ppid,comm'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 });
+    const info = new Map();
+    for (const r of String(out).split('\n').slice(1)) {
+      const m = r.trim().match(/^(\d+)\s+(\d+)\s+(.+)$/);
+      if (!m) continue;
+      info.set(Number(m[1]), { ppid: Number(m[2]), comm: path.basename(m[3].trim()) });
+    }
+    if (!info.has(rootPid) && rootPid !== 1) {
+      // `ps` snapshot raced the lookup — still try the root pid itself below.
+    }
+    const { depth, desc } = bfsDescendants(rootPid, procChildrenMap(info));
+    const shells = desc
+      .filter(d => isShellComm((info.get(d) || {}).comm))
+      .sort((a, b) => ((depth.get(b) || 0) - (depth.get(a) || 0)) || (b - a))
+      .slice(0, 10); // one lsof spawn each — bound the cost
+    for (const p of shells) {
+      const cwd = darwinProcCwd(p);
+      if (cwd) { try { if (fs.statSync(cwd).isDirectory()) return cwd; } catch {} }
+    }
+  } catch {}
+  return null;
+}
+function resolvePtyCwd(pid) {
+  const plat = os.platform();
+  if (plat === 'win32') return null; // no /proc or lsof — client keeps its OSC 7 cache
+  if (plat === 'darwin') {
+    return darwinDescendantShellCwd(pid) || darwinProcCwd(pid);
+  }
+  try {
+    const nested = linuxDescendantShellCwd(pid);
+    if (nested) return nested;
+    const cwd = fs.readlinkSync(`/proc/${pid}/cwd`);
+    if (fs.statSync(cwd).isDirectory()) return cwd;
+  } catch {}
+  return null;
+}
+
+app.get('/api/sessions/:id/cwd', checkPin, (req, res) => {
+  const raw = req.params.id || '';
+  const id = raw.replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!id || id.length > 64) {
+    return res.status(400).json({ error: 'invalid session id' });
+  }
+  // tmux sessions report the active pane's directory directly, whatever the
+  // shell is (no OSC 7 cooperation needed). Names stay in the adoptable set
+  // so a crafted id can never query a foreign port-namespace.
+  const tmuxBin = getTMUX();
+  if (tmuxBin) {
+    for (const n of tmuxAdoptableNames(id)) {
+      try {
+        const out = execFileSync(tmuxBin, ['display-message', '-p', '-t', n, '-F', '#{pane_current_path}'],
+          { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).trim();
+        if (out && fs.statSync(out).isDirectory()) return res.json({ cwd: out });
+      } catch {}
+    }
+    // A ptySession under the same id (pre-tmux sibling) still answers below.
+    if (!ptySessions.has(id)) return res.status(404).json({ error: 'session not found' });
+  }
+  const entry = ptySessions.get(id);
+  if (!entry || !entry.proc || entry.exited) return res.status(404).json({ error: 'session not found' });
+  if (!isValidPID(entry.proc.pid)) return res.status(404).json({ error: 'session not found' });
+  if (os.platform() === 'win32') {
+    return res.status(501).json({ error: 'live directory lookup not supported on this platform' });
+  }
+  const cwd = resolvePtyCwd(entry.proc.pid);
+  if (!cwd) return res.status(404).json({ error: 'directory unavailable' });
+  return res.json({ cwd });
 });
 
 // ── WebSocket terminal ────────────────────────────────────────────────

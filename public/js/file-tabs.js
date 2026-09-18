@@ -409,12 +409,70 @@ async function ensureTabEditor(tab, seed) {
   }));
   tab.cm = cm;
   tab.original = data.original != null ? data.original : data.content;
+  // Disk revision this buffer came from — the open-file watcher compares fresh
+  // stats against it (null = unknown, adopt silently on first poll).
+  tab.diskMtime = data.mtime != null ? String(data.mtime) : null;
+  tab.diskSize = typeof data.size === 'number' ? data.size : null;
+  tab.extChanged = false;
   if (data.history) { try { cm.setHistory(data.history); } catch (e) { console.warn('Undo history restore failed:', e); } }
   if (data.cursor) { try { cm.setCursor(data.cursor); } catch {} }
   cm.on('change', () => { markTabDirty(tab); scheduleTabDraft(tab); scheduleTabPreview(tab); });
   markTabDirty(tab);
+  if (data.extChanged) setTabExtChanged(tab, true);
   try { cm.setOption('mode', await resolveCMmode(fileTabName(tab.path))); } catch (e) { console.warn('Mode resolve failed:', e); }
   return !tab.closed;
+}
+
+// Persistent "changed on disk" indicator for a dirty tab whose file moved
+// underneath it: cyan ring on the dot, amber note in the toolbar (clickable —
+// reloads), cyan marker on the tab strip. Cleared by save/reload/close.
+function setTabExtChanged(tab, on, msg) {
+  if (!tab) return;
+  on = !!on;
+  const was = !!tab.extChanged;
+  tab.extChanged = on;
+  if (tab.fteDot) {
+    tab.fteDot.classList.toggle('ext', on);
+    tab.fteDot.setAttribute('aria-label', on ? 'File changed on disk'
+      : (tab.dirty ? 'Unsaved changes' : 'No unsaved changes'));
+  }
+  try { tab.el?.classList.toggle('has-ext', on); } catch {}
+  if (tab.fteStatus) {
+    if (on) {
+      const text = msg || EXT_CHANGED_MSG;
+      if (!was || tab.fteStatus.textContent !== text) tab.fteStatus.textContent = text;
+      tab.fteStatus.classList.add('ext');
+      tab.fteStatus.title = 'Re-read the file from disk (asks before discarding edits)';
+      tab.fteStatus.setAttribute('role', 'button');
+      tab.fteStatus.tabIndex = 0;
+      tab.fteStatus.onclick = () => reloadTabFile(tab);
+    } else {
+      if (was || tab.fteStatus.classList.contains('ext')) tab.fteStatus.textContent = '';
+      tab.fteStatus.classList.remove('ext');
+      tab.fteStatus.title = '';
+      tab.fteStatus.removeAttribute('role');
+      tab.fteStatus.tabIndex = -1;
+      tab.fteStatus.onclick = null;
+    }
+  }
+}
+
+// Transient toolbar word that never wipes the persistent external-change note.
+function flashTabStatus(tab, text) {
+  if (!tab?.fteStatus || tab.extChanged) return;
+  tab.fteStatus.textContent = text;
+  setTimeout(() => { if (!tab.extChanged && tab.fteStatus) tab.fteStatus.textContent = ''; }, 2000);
+}
+
+async function refreshTabDiskSnapshot(tab) {
+  if (!tab?.path) return;
+  try {
+    const s = await api(`/api/files/stat?path=${encodeURIComponent(tab.path)}`);
+    if (s && !s.error && s.mtime !== undefined) {
+      tab.diskMtime = String(s.mtime);
+      tab.diskSize = s.size;
+    }
+  } catch {}
 }
 
 function showTabEditor(tab) {
@@ -665,7 +723,8 @@ function markTabDirty(tab) {
   tab.dirty = dirty;
   if (tab.fteDot) {
     tab.fteDot.classList.toggle('on', dirty);
-    tab.fteDot.setAttribute('aria-label', dirty ? 'Unsaved changes' : 'No unsaved changes');
+    tab.fteDot.setAttribute('aria-label', tab.extChanged ? 'File changed on disk'
+      : (dirty ? 'Unsaved changes' : 'No unsaved changes'));
   }
   try { tab.el?.classList.toggle('has-dirty', dirty); } catch {}
 }
@@ -703,11 +762,10 @@ async function saveTabFile(tab) {
     tab.original = content;
     clearTimeout(tab.draftTimer);
     removeDraft(tab.path);
+    await refreshTabDiskSnapshot(tab);
+    setTabExtChanged(tab, false);
     markTabDirty(tab);
-    if (tab.fteStatus) {
-      tab.fteStatus.textContent = 'Saved';
-      setTimeout(() => { if (tab.fteStatus) tab.fteStatus.textContent = ''; }, 2000);
-    }
+    flashTabStatus(tab, 'Saved');
     toast('Saved ' + fileTabName(tab.path), 'success');
     try { notifyPreviewFileSaved(); } catch {}
   } else {
@@ -728,11 +786,11 @@ async function reloadTabFile(tab) {
   removeDraft(tab.path);
   tab.cm.setValue(r.content);
   tab.original = r.content;
+  if (r.mtime != null) tab.diskMtime = String(r.mtime);
+  if (typeof r.length === 'number') tab.diskSize = r.length;
+  setTabExtChanged(tab, false);
   markTabDirty(tab);
-  if (tab.fteStatus) {
-    tab.fteStatus.textContent = 'Reloaded';
-    setTimeout(() => { if (tab.fteStatus) tab.fteStatus.textContent = ''; }, 2000);
-  }
+  flashTabStatus(tab, 'Reloaded');
 }
 
 // Hand the file to the split panel, carrying the buffer and undo history so nothing is
@@ -749,8 +807,10 @@ async function moveTabToPanel(tab) {
   // Crash-safety net for the handover: if the tab goes away but the panel never opens,
   // the draft still holds the text.
   if (content !== original) safeStorage.setItem('wt-draft:' + path, content);
+  const diskMtime = tab.diskMtime, diskSize = tab.diskSize, wasExt = tab.extChanged;
   await closeTab({ stopPropagation() {} }, tab.id, { force: true });
-  await showTextInPanel(path, content, original, history);
+  await showTextInPanel(path, content, original, history, diskMtime, diskSize);
+  if (wasExt) setPanelExtChanged(true);
   if (cursor) { try { editor?.setCursor(cursor); } catch {} }
 }
 
@@ -785,7 +845,7 @@ function openFileAsTab(path) {
   if (!tab) return null;
   if (fromPanel) tab._cameFromPanel = true;
   if (fromPanel && tab.viewer === 'text') {
-    tab.seed = { content: editor.getValue(), original: editorOriginalContent, history: editor.getHistory(), cursor: editor.getCursor() };
+    tab.seed = { content: editor.getValue(), original: editorOriginalContent, history: editor.getHistory(), cursor: editor.getCursor(), mtime: editorDiskMtime, size: editorDiskSize, extChanged: editorExtChanged };
   } else if (fromPanel && tab.viewer === 'pdf') {
     tab.viewState = { page: _pdfCurrentPage, scale: _pdfScale };
   }

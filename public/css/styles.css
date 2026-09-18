@@ -216,6 +216,9 @@ svg { display: block; }
 .tab.preview-tab.active .tab-title { color: var(--accent); }
 .tab.file-tab .tab-title { color: var(--accent2); }
 .tab.file-tab.has-dirty .tab-title::after { content: ' \2022'; color: var(--amber); }
+/* External disk change: circular-arrow marker; unsaved edits keep the amber dot. */
+.tab.file-tab.has-ext .tab-title::after { content: ' \21BB'; color: var(--cyan); }
+.tab.file-tab.has-dirty.has-ext .tab-title::after { content: ' \2022'; color: var(--amber); }
 .tab.file-tab.active .tab-title { color: var(--accent); }
 @media (pointer: coarse) { .preview-bar input { font-size: 16px; height: 32px; } .preview-bar .btn { height: 32px; } }
 
@@ -329,8 +332,13 @@ svg { display: block; }
 .fte-bar { display: flex; align-items: center; gap: 8px; flex-shrink: 0; height: 30px; padding: 0 8px; background: var(--bg2); border-bottom: 1px solid var(--border); font-size: 12px; overflow: hidden; }
 .fte-dot { width: 7px; height: 7px; border-radius: 50%; background: transparent; flex-shrink: 0; }
 .fte-dot.on { background: var(--amber); }
+/* External change: cyan ring; with unsaved edits the dot stays amber so both
+   states read at once (matches the panel's twin dots). */
+.fte-dot.ext { background: var(--cyan); box-shadow: 0 0 5px var(--cyan); }
+.fte-dot.on.ext { background: var(--amber); box-shadow: 0 0 0 2px var(--cyan); }
 .fte-name { font-family: var(--font); color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .fte-status { font-size: 11px; color: var(--green); flex-shrink: 0; }
+.fte-status.ext { color: var(--amber); cursor: pointer; }
 .fte-spacer { flex: 1; }
 .fte-btn { height: 22px; padding: 0 9px; font-size: 11px; flex-shrink: 0; }
 .fte-host { flex: 1; min-height: 0; min-width: 0; position: relative; overflow: hidden; }
@@ -839,7 +847,12 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 #editor-filename { color: var(--fg); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .editor-dirty-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--yellow); flex-shrink: 0; display: none; }
 #editor-view.editor-dirty .editor-dirty-dot { display: inline-block; }
+/* Cyan twin: the file changed on disk after opening (watcher). Shown alongside
+   the amber dot when the buffer is both edited and externally changed. */
+.editor-ext-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 5px var(--cyan); flex-shrink: 0; display: none; }
+#editor-view.editor-ext .editor-ext-dot { display: inline-block; }
 #editor-status { font-size: 11px; color: var(--fg2); }
+#editor-status.ext { color: var(--amber); cursor: pointer; }
 #editor-area { flex: 1; overflow: hidden; position: relative; }
 #editor-preview { width: 100%; height: 100%; overflow-y: auto; padding: 12px 24px; font-size: 14px; line-height: 1.7; color: var(--fg); display: none; box-sizing: border-box; }
 #editor-preview.active { display: block; }
