@@ -195,6 +195,11 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 
 ## Changelog
 
+### v2.2.2
+- **Terminal directory follows `cd`** — the file explorer's "Go to terminal directory" button (and new-tab / copy-path / bookmark from the terminal menu) now resolves the session's live directory on demand via `GET /api/sessions/:id/cwd` (tmux `pane_current_path`, `/proc` on Linux, `lsof` on macOS) instead of the stale launch dir that OSC 7 rarely updated
+- **Open files track external changes** — text buffers snapshot `mtime`/`size` from `/api/files/read` and are re-statted every 10s and on refocus: clean buffers auto-reload (`Updated from disk`), dirty buffers keep your edits and raise a persistent cyan `Changed on disk` indicator (click to reload, Save to overwrite); deleted files are flagged the same way
+- **Dependency bumps** — `electron-builder` 26.16.1, `actions/checkout` v7.0.1, `actions/setup-node` v7.0.0 (Dependabot #4, #5, #6)
+
 ### v2.2.1
 - **Express 5** — `express` 4 → 5.2.1; the app-preview wildcard route migrated to the new `{*splat}` syntax (handler unchanged, it slices `originalUrl`); smoke-tested (`/`, `/docs`, file/git/system APIs, preview proxy)
 - **Latest dependencies** — `node-pty` 1.1.0, `ws` 8.21.3 (spec + override), `debug` 4.4.3 via the new tree; `npm audit` clean
