@@ -70,7 +70,7 @@
   },
   "devDependencies": {
     "electron": "^44.4.1",
-    "electron-builder": "^26.16.0",
+    "electron-builder": "^26.16.1",
     "nodemon": "^3.1.14"
   },
   "overrides": {
