@@ -8,7 +8,9 @@ on launch.
 `node-pty` 1.1.0, CI Node 24 (which matches Electron 44's bundled Node 24.21 —
 that alignment is correct, keep it; pin the exact minor, §5 P1).
 
-### Release assets (authoritative: GitHub API, `v2.2.2`, 6 assets, no checksums/SBOM/attestations published)
+### Release assets (authoritative: GitHub API; v2.2.2 was deleted and
+re-released fixed — 14 files: 6 artifacts + 3 blockmaps + 3 updater yml +
+SHA256SUMS.txt + SPDX SBOM; all checksums verify, attestation present)
 
 | Asset | Size (bytes) | DLs | Scan status in this audit |
 |---|---|---|---|
@@ -619,11 +621,21 @@ repaired hoisted tree. Tree-vs-lock stays warn-only in CI.
 transitive dep); harmless warning, identify at leisure.
 
 **Owner-only actions remaining (need GitHub access / human calls):**
-1. Delete the v2.2.2 releases; retag (or fresh version) after the fix to
-   trigger CI — exact mechanics in §5 P0.1.
-2. File the §7 upstream issue from your account.
+1. ~~Delete the v2.2.2 releases~~ DONE 2026-09-21 (old release deleted,
+   tag moved, rebuilt, re-released — see "Release validation" below).
+2. ~~File the §7 upstream issue from your account~~ STILL OPEN.
 3. Optional-ever: signing certs/Apple ID (currently planned unsigned),
    Intel-Mac/WinARM support, full terminal-E2E in CI (smoke covers boot+API).
+
+**Release validation (2026-09-21, second tag run fully green):**
+verify ✓, all three builds ✓, both smokes ✓, release ✓ (checksums + SBOM +
+attestation uploaded). Published 14 files; `sha256sum -c` passes 12/12.
+Two follow-up fixes landed before this run: dotted `artifactName` pinned
+(the publisher rewrites spaces→dots, which had broken SHA256SUMS —
+corrected file re-uploaded to the release), and updater metadata published
+(`latest.yml`/`latest-*.yml` + `*.blockmap`; without them autoUpdater cannot
+discover updates). All six fresh artifacts gated 359/0 with matching victim
+md5s; shipped deb boots (`{"required":false}`) + PTY OK, zero SyntaxErrors.
 
 *Report ends. Working-tree changes (all uncommitted): this report; the
 afterPack enforcer (`scripts/enforce-asar-integrity.js` + `electron-builder.yml`
