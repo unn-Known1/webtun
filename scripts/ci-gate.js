@@ -25,6 +25,25 @@ function loadAsar() {
   throw new Error('ci-gate: cannot resolve @electron/asar (run npm ci first)');
 }
 
+const norm = p => String(p || '').replace(/\\/g, '/').replace(/^\/+/, '');
+// The asar readers disagree across platforms (Windows listPackage yields
+// backslashed entries that statFile rejects), so every archive access tries
+// all path forms. Returns null when no form resolves.
+function tryStat(asar, archive, canonRel) {
+  const back = canonRel.split('/').join('\\');
+  for (const form of [...new Set([canonRel, '/' + canonRel, back, '\\' + back])]) {
+    try { return asar.statFile(archive, form); } catch {}
+  }
+  return null;
+}
+function tryExtract(asar, archive, canonRel) {
+  const back = canonRel.split('/').join('\\');
+  for (const form of [...new Set([canonRel, '/' + canonRel, back, '\\' + back])]) {
+    try { return asar.extractFile(archive, form); } catch {}
+  }
+  return null;
+}
+
 const REQUIRED = [
   'server.js', 'package.json',
   'electron/main.js', 'electron/preload.js',
@@ -54,9 +73,10 @@ function main() {
   const archive = path.join(resources, 'app.asar');
   const failures = [];
 
-  // 1. Presence.
+  // 1. Presence (entry paths canonicalized: Windows listPackage yields
+  // backslashes, other platforms forward slashes).
   let entries = [];
-  try { entries = asar.listPackage(archive).map(f => String(f).replace(/^\/+/, '')); }
+  try { entries = asar.listPackage(archive).map(norm).filter(Boolean); }
   catch (e) { console.error(`ci-gate: cannot list ${archive}: ${e.message}`); process.exit(1); }
   const have = new Set(entries);
   for (const r of REQUIRED) {
@@ -71,19 +91,18 @@ function main() {
     // statFile returns the header node: directories carry `files`, symlinks
     // `link`, files a numeric `size` (e.g. the package literally named
     // `ipaddr.js` is a directory — must be skipped, not parsed).
-    let node = null;
-    try { node = asar.statFile(archive, rel); } catch (e) { jsBroken.push(`${rel} (unstatable: ${e.message.split('\n')[0]})`); continue; }
-    if (node && node.files && typeof node.files === 'object') continue;
-    if (node && typeof node.link === 'string') {
-      try { asar.extractFile(archive, node.link); }
-      catch (e) { jsBroken.push(`${rel} (dangling symlink → ${node.link})`); continue; }
+    const node = tryStat(asar, archive, rel);
+    if (!node) { jsBroken.push(`${rel} (unstatable in any path form)`); continue; }
+    if (node.files && typeof node.files === 'object') continue;
+    if (typeof node.link === 'string') {
+      const target = tryExtract(asar, archive, norm(node.link));
+      if (!target) { jsBroken.push(`${rel} (dangling symlink → ${node.link})`); continue; }
       jsTotal++;
       continue;
     }
     jsTotal++;
-    let buf;
-    try { buf = asar.extractFile(archive, rel); }
-    catch (e) { jsBroken.push(`${rel} (unreadable: ${e.message})`); continue; }
+    const buf = tryExtract(asar, archive, rel);
+    if (!buf) { jsBroken.push(`${rel} (unreadable in any path form)`); continue; }
     try { new vm.Script(buf.toString('utf8'), { filename: rel }); }
     catch (e) { jsBroken.push(`${rel} (${e.message.split('\n')[0]})`); }
   }
@@ -109,7 +128,7 @@ function main() {
   // read from INSIDE app.asar package.json files (top level only).
   const manifest = {};
   const getPkg = rel => {
-    try { return JSON.parse(asar.extractFile(archive, rel).toString('utf8')).version || '?'; }
+    try { const b = tryExtract(asar, archive, rel); return b ? JSON.parse(b.toString('utf8')).version || '?' : null; }
     catch { return null; }
   };
   const topNames = new Set();
