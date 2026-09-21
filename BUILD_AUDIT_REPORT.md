@@ -558,11 +558,23 @@ kept; 25.1.8 downgrade reverted), no app-functionality changes beyond the
 listed hardening (all covered by existing behavior + local boot/PTY proof).
 
 **Packaging fix (P0.0):** `scripts/enforce-asar-integrity.js` (new) +
-`afterPack` wiring in `electron-builder.yml`. Verified: enforced pack → 527
+`afterPack` wiring in `electron-builder.yml`. Verified: enforced pack → 699
 files verified (9 repaired + 1 unpacked), external gate 358/0, unpack split
 intact, staged app boots with health OK + PTY OK. Array of hook bugs fixed
 along the way (dir entries, unpack-glob semantics, package.json stripping,
-symlink classification). Mechanism proof (asar fast-path CWD read) in §1.
+symlink classification, Windows path forms, macOS .app discovery).
+Mechanism proof (asar fast-path CWD read) in §1.
+
+**CI validation (2026-09-21, runs 35583627328 + 35585691779):** first tag run
+went green on verify/build-linux/smoke-linux and exposed two tooling gaps —
+Windows backslash path forms (fixed: canonicalization + variant-tolerant
+reads in both scripts) and mac `--dir` layout (`dist/mac-arm64` + .app hop;
+hook now fail-closed when no asar is found). Re-run (dispatch,
+windows+mac): verify ✓, build-windows ✓ (enforcer repaired the same 9+1 on
+the Windows runner — cross-platform determinism confirmed a third time),
+build-mac ✓, smoke-windows ✓ (portable boots on Windows CI, API answers).
+Linux proven in the tag run. Release job still untested (tag-only) — covered
+by the retag run below.
 
 **CI (P0.2, P1.5):** `scripts/ci-gate.js` (new) runs on `verify`, all three
 build jobs (stage + gate + manifest artifact), and `pr-check`; Node pinned
