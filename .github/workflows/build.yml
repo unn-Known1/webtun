@@ -142,6 +142,8 @@ jobs:
           name: webtun-windows
           path: |
             dist/*.exe
+            dist/*.blockmap
+            dist/latest.yml
             dist/packed-tree-manifest-windows.json
           if-no-files-found: error
           retention-days: 30
@@ -216,6 +218,7 @@ jobs:
           path: |
             dist/*.AppImage
             dist/*.deb
+            dist/latest-linux.yml
             dist/packed-tree-manifest-linux.json
           if-no-files-found: error
           retention-days: 30
@@ -290,6 +293,8 @@ jobs:
           path: |
             dist/*.dmg
             dist/*.zip
+            dist/*.blockmap
+            dist/latest-mac.yml
             dist/packed-tree-manifest-mac.json
           if-no-files-found: error
           retention-days: 30
@@ -382,7 +387,7 @@ jobs:
 
       - name: Checksums for every asset
         run: |
-          sha256sum *.exe *.AppImage *.deb *.dmg *.zip > SHA256SUMS.txt
+          sha256sum *.exe *.AppImage *.deb *.dmg *.zip *.blockmap latest.yml latest-*.yml > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
       - name: Attest the checksums file (covers all assets by hash)
@@ -399,6 +404,9 @@ jobs:
             *.deb
             *.dmg
             *.zip
+            *.blockmap
+            latest.yml
+            latest-*.yml
             SHA256SUMS.txt
             *.spdx.json
           fail_on_unmatched_files: true
