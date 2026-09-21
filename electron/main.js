@@ -6,6 +6,39 @@ const http = require('http');
 const net = require('net');
 const fs = require('fs');
 
+// Native crash dumps (main process). No upload server is configured — dumps
+// land in the OS crash-dumps dir for post-mortem debugging of native faults
+// (conpty/PTY) that leave no JS stack in webtun-server.log.
+try {
+  const { crashReporter } = require('electron');
+  crashReporter.start({ uploadToServer: false });
+} catch {}
+
+// Squirrel.Windows install/update hooks (no-op unless launched by Squirrel;
+// must run before app.ready).
+if (require('electron-squirrel-startup')) app.quit();
+
+// In-app updates. The GitHub provider is auto-inferred from package.json
+// repository (the same inference that emits app-update.yml). Packaged builds
+// only; silent when offline. No settings UI yet: background download +
+// notify, install on quit.
+function setupAutoUpdates() {
+  if (!app.isPackaged) return;
+  let autoUpdater = null;
+  try {
+    ({ autoUpdater } = require('electron-updater'));
+  } catch (e) {
+    try { console.error('auto-updater unavailable:', e.message); } catch {}
+    return;
+  }
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  const check = () => { try { autoUpdater.checkForUpdatesAndNotify().catch(() => {}); } catch {} };
+  setTimeout(check, 30000);
+  const timer = setInterval(check, 24 * 3600 * 1000);
+  if (timer.unref) timer.unref();
+}
+
 let mainWindow;
 let serverProcess;
 let PORT = (() => {
@@ -243,6 +276,11 @@ function createWindow() {
 
 // Single instance: a second launch focuses the running window instead of
 // racing the same PORT and showing an error dialog.
+// NOTE: requestSingleInstanceLock() also returns false when the lock socket
+// itself cannot be created (read-only/exotic TMPDIR, sandboxed FS) —
+// indistinguishable from "another instance is running". If the app quits
+// silently right after launch with no window and no dialog, check TMPDIR
+// writability (Linux) or a stale lock before assuming a crash.
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
@@ -262,6 +300,14 @@ function isAddrInUse(err) {
 function stopServerProcess() {
   if (!serverProcess) return;
   try { serverProcess.kill('SIGTERM'); } catch {}
+  // Windows SIGTERM is best-effort — fall back to taskkill so a stuck child
+  // cannot hold the port across the EADDRINUSE retry loop either.
+  if (process.platform === 'win32' && serverProcess.pid) {
+    try {
+      const { execFileSync } = require('child_process');
+      execFileSync('taskkill', ['/PID', String(serverProcess.pid), '/T', '/F'], { stdio: 'ignore' });
+    } catch {}
+  }
   serverProcess = null;
 }
 
@@ -278,8 +324,7 @@ app.whenReady().then(async () => {
     for (let attempt = 0; ; attempt++) {
       try {
         await startServer();
-        break;
-      } catch (e) {
+        break;      } catch (e) {
         stopServerProcess();
         if (attempt >= 4 || !isAddrInUse(e)) throw e;
         const next = await findFreePort(PORT + 1);
@@ -288,6 +333,7 @@ app.whenReady().then(async () => {
       }
     }
     createWindow();
+    setupAutoUpdates();
   } catch (e) {
     dialog.showErrorBox('WebTun Error', `Failed to start server:\n${e.message}`);
     app.quit();
@@ -330,10 +376,22 @@ ipcMain.handle('set-autostart', (_event, enabled) => {
   // IPC is renderer-reachable: accept a strict boolean only, so a compromised
   // renderer can't smuggle unexpected values into the login-item settings.
   const open = enabled === true;
+  // Preserve the app's own args across autostart, but strip Electron/Chromium
+  // runtime flags (they are re-added by the runtime itself and must not
+  // accumulate in the login item). A denylist of known runtime flags keeps
+  // future app flags working; compare on the part before '=' so --flag=v
+  // forms are caught too.
+  const RUNTIME_FLAGS = new Set([
+    '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
+    '--disable-software-rasterizer', '--enable-logging', '--v', '--vmodule',
+    '--remote-debugging-port', '--inspect', '--inspect-brk', '--js-flags',
+    '--trace-warnings', '--pending-deprecation', '--no-deprecation',
+    '--expose-gc', '--single-process', '--no-zygote', '--in-process-gpu',
+  ]);
   app.setLoginItemSettings({
     openAtLogin: open,
     path: process.execPath,
-    args: process.argv.slice(1).filter(a => !a.startsWith('--'))
+    args: process.argv.slice(1).filter(a => !RUNTIME_FLAGS.has(String(a).split('=')[0]))
   });
   return app.getLoginItemSettings().openAtLogin;
 });

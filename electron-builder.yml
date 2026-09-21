@@ -17,18 +17,38 @@ files:
   - public/**/*
   - LICENSE
   - package.json
+  # Prune node-pty build debris: intermediates (.tlog/.iobj/.ipdb/.exp/.lib,
+  # obj/ trees), all-platform prebuilds (runtime uses build/Release, rebuilt
+  # for Electron's ABI — see rebuild:electron), test files and sourcemaps.
+  # Decision: strip debug intermediates for size; native crashes are diagnosed
+  # via crashReporter dumps + webtun-server.log instead. Tens of MB saved.
+  - '!node_modules/node-pty/**/obj/**'
+  - '!node_modules/node-pty/**/*.iobj'
+  - '!node_modules/node-pty/**/*.ipdb'
+  - '!node_modules/node-pty/**/*.exp'
+  - '!node_modules/node-pty/**/*.lib'
+  - '!node_modules/node-pty/**/*.tlog'
+  - '!node_modules/node-pty/prebuilds/**'
+  - '!**/*.test.js'
+  - '!**/*.map'
 asarUnpack:
   - node_modules/node-pty/**/*
+# Integrity enforcement (see scripts/enforce-asar-integrity.js): after every
+# pack, every file inside app.asar is hash-compared against the source tree,
+# mismatches (e.g. the v2.2.2 truncations) are repaired from source, and the
+# build FAILS on anything unreconciled. Keeps the builder on latest stable
+# instead of pinning around its file-copy bug.
+afterPack: scripts/enforce-asar-integrity.js
 win:
   target:
     - nsis
     - portable
-  icon: public/icon-512.png
+  icon: build/icon.ico
 mac:
   target:
     - dmg
     - zip
-  icon: public/icon-512.png
+  icon: build/icon.icns
   category: Utility
 linux:
   target:
@@ -39,3 +59,7 @@ linux:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+  # Explicit install contract: per-user (no admin prompt), keep user data
+  # (logs) on uninstall. Both Setup and portable variants keep shipping.
+  perMachine: false
+  deleteAppDataOnUninstall: false

@@ -114,6 +114,8 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 ### Desktop (Electron)
 - Cross-platform app for Linux, Windows, macOS
 - Native window with system tray and file dialogs
+- Self-updating: checks GitHub releases after launch and daily, installs on quit (Windows Setup + portable, Linux deb + AppImage, macOS arm64)
+- Platform support: Windows x64, Linux x64, macOS arm64 (Intel Macs and Windows-on-ARM are currently unserved / emulation-only)
 - Build: `npm run dist:linux` / `npm run dist:win` / `npm run dist:mac`
 - [Download latest release](https://github.com/unn-known1/webtun/releases/latest)
 - **Windows "Unknown publisher" warning**: the exe is unsigned by default. To ship signed builds, get an Authenticode code-signing certificate (OV), export it as `.pfx`, and add two repo secrets (Settings → Secrets → Actions): `WIN_CSC_LINK` = base64 of the `.pfx`, `WIN_CSC_KEY_PASSWORD` = its password. The Windows CI build picks these up automatically (`CSC_LINK`/`CSC_KEY_PASSWORD`); without them it builds unsigned. Note: even signed, SmartScreen reputation takes time/downloads to build.

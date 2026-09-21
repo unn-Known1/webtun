@@ -740,7 +740,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
       </section>
 
       <!-- ── APPS ── -->
-      <section id="apps" data-title="Mobile PWA install desktop electron app exit">
+      <section id="apps" data-title="Mobile PWA install desktop electron app exit update auto updater release">
         <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--gn)" stroke-width="2" stroke-linecap="round"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg></span>
           <div><h2>Mobile &amp; desktop <a class="hash" href="#apps" aria-label="Link to this section">#</a></h2></div>
         </div>
@@ -748,6 +748,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
         <ul class="tight rv">
           <li><b>Install it from the browser</b> (menu → <i>Install / Add to Home Screen</i>) — or tap the install banner when it appears, with extra guidance on iOS. As a PWA it launches full-screen, works through network blips, and nudges you — never force-reloads — when an update is ready.</li>
           <li><b>Desktop app (Electron)</b> bundles the server: double-click and it picks a free port automatically if 3000 is busy. Enable <b>Start on Login</b> to have it waiting after every reboot. <b>Exit app</b> sits at the very bottom of the Settings panel, outside any section — one tap stops the server and closes every session cleanly.</li>
+          <li><b>Desktop updates itself:</b> the packaged app checks GitHub releases shortly after launch and then daily, downloads in the background, notifies you, and installs on quit — no manual download. Available for Windows (Setup + portable), Linux (deb + AppImage) and macOS (arm64 dmg + zip); Intel Macs are not served by current builds.</li>
           <li><b>Touch-friendly throughout</b> — file actions, git hunks and approvals are all big-target buttons, not hover-only menus.</li>
           <li><b>Gestures:</b> swipe a tab sideways to close it, pull down to refresh, pinch to resize terminal text (that size lasts for the session only — set your default in Settings → Appearance), and flip on Selection mode when you need to copy output instead of tapping it.</li>
           <li><b>Mobile extras:</b> enable <i>Show Mobile Keys</i> in Settings → Terminal for an on-screen keys row (terminal only), and <i>Data Saver</i> to pause live gauges and background preloads on metered connections.</li>

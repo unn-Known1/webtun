@@ -179,9 +179,12 @@ function isAddrInUse(err) {
   return /EADDRINUSE|address already in use/i.test(String(err && err.message || ''));
 }
 
-// Probe 127.0.0.1 for a free port starting at `startPort`.
-function findFreePort(startPort, maxTries = 20) {
+// Probe the effective bind host for a free port starting at `startPort`.
+// Probing only 127.0.0.1 while the server binds 0.0.0.0 misdiagnosed a
+// LAN-held port as free and then failed at listen() with EADDRINUSE.
+function findFreePort(startPort, maxTries = 20, host) {
   const net = require('net');
+  const probeHost = host || process.env.HOST || '127.0.0.1';
   return new Promise((resolve, reject) => {
     const tryPort = (port, attempt) => {
       if (attempt >= maxTries || port > 65535) {
@@ -190,7 +193,7 @@ function findFreePort(startPort, maxTries = 20) {
       const tester = net.createServer();
       tester.once('error', () => { tester.close(); tryPort(port + 1, attempt + 1); });
       tester.once('listening', () => tester.close(() => resolve(port)));
-      tester.listen(port, '127.0.0.1');
+      tester.listen(port, probeHost);
     };
     tryPort(startPort, 0);
   });
@@ -247,7 +250,7 @@ function boot(port, allowPortFallback) {
     if (allowPortFallback && isAddrInUse(err)) {
       // An implicit port (default or $PORT) may simply be busy: move up the range
       // the same way the Electron app does. An explicit --port is never overridden.
-      return findFreePort(port + 1)
+      return findFreePort(port + 1, 20, opts.host)
         .then(next => {
           console.warn(`  Port ${port} is in use — using ${next} instead.`);
           listenPort = next;

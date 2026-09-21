@@ -23,13 +23,13 @@ jobs:
   # (the checklist asked humans to bump both files; nothing verified it).
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
+          node-version: 24.21.0
           cache: npm
 
       - run: npm ci
@@ -46,6 +46,20 @@ jobs:
       - name: Dependency audit (production only)
         run: npm audit --omit=dev
 
+      - name: Rebuild native modules for Electron ABI
+        run: npm run rebuild:electron
+
+      - name: Assert unpacked native binding present
+        run: test -f node_modules/node-pty/build/Release/pty.node
+
+      # Catches the v2.2.2 asar-truncation class before any platform builds:
+      # stage the Linux bundle and run the integrity gate + tree manifest.
+      - name: Pack staged bundle (no distribution)
+        run: npm run pack -- --linux
+
+      - name: asar integrity gate
+        run: node scripts/ci-gate.js dist/linux-unpacked --manifest-out dist/packed-tree-manifest.json
+
   build-windows:
     needs: verify
     runs-on: windows-latest
@@ -56,7 +70,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
+          node-version: 24.21.0
           cache: npm
 
       - name: Cache Electron binary
@@ -74,6 +88,14 @@ jobs:
           restore-keys: electron-builder-win-
 
       - run: npm ci
+
+      - name: Rebuild native modules for Electron ABI
+        run: npm run rebuild:electron
+
+      - name: Assert unpacked native binding present
+        shell: pwsh
+        run: |
+          if (-not (Test-Path node_modules/node-pty/build/Release/pty.node)) { throw 'pty.node missing after rebuild' }
 
       - name: Build Windows
         shell: pwsh
@@ -95,11 +117,32 @@ jobs:
           CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
+      # Independent of the in-build afterPack enforcer: stage once more and
+      # run the integrity gate + tree manifest over the Windows output.
+      - name: Stage + gate Windows bundle
+        shell: pwsh
+        run: |
+          npx electron-builder --win --dir --publish never
+          node scripts/ci-gate.js dist/win-unpacked --manifest-out dist/packed-tree-manifest-windows.json
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Size budget (fail on unexpected bloat)
+        shell: pwsh
+        run: |
+          $caps = @{ '.exe' = 170MB }
+          Get-ChildItem dist/*.exe | ForEach-Object {
+            $cap = $caps['.exe']
+            Write-Host "$($_.Name): $([math]::Round($_.Length/1MB,1)) MB (cap $([math]::Round($cap/1MB)) MB)"
+            if ($_.Length -gt $cap) { throw "$($_.Name) exceeds size budget" }
+          }
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: success()
         with:
           name: webtun-windows
-          path: dist/*.exe
+          path: |
+            dist/*.exe
+            dist/packed-tree-manifest-windows.json
           if-no-files-found: error
           retention-days: 30
 
@@ -113,7 +156,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
+          node-version: 24.21.0
           cache: npm
 
       - name: Install native build dependencies
@@ -130,6 +173,12 @@ jobs:
 
       - run: npm ci
 
+      - name: Rebuild native modules for Electron ABI
+        run: npm run rebuild:electron
+
+      - name: Assert unpacked native binding present
+        run: test -f node_modules/node-pty/build/Release/pty.node
+
       - name: Build Linux
         run: |
           for i in 1 2 3 4 5; do
@@ -141,6 +190,25 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Independent of the in-build afterPack enforcer: stage once more and
+      # run the integrity gate + tree manifest over the Linux output.
+      - name: Stage + gate Linux bundle
+        run: |
+          npx electron-builder --linux --dir --publish never
+          node scripts/ci-gate.js dist/linux-unpacked --manifest-out dist/packed-tree-manifest-linux.json
+
+      - name: Size budget (fail on unexpected bloat)
+        run: |
+          check() { # $1 = glob, $2 = cap in MB
+            for f in $1; do
+              size=$(stat -c%s "$f"); cap=$(( $2 * 1024 * 1024 ))
+              echo "$f: $(( size / 1024 / 1024 )) MB (cap $2 MB)"
+              if [ "$size" -gt "$cap" ]; then echo "$f exceeds size budget"; exit 1; fi
+            done
+          }
+          check 'dist/*.deb' 130
+          check 'dist/*.AppImage' 160
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: success()
         with:
@@ -148,6 +216,7 @@ jobs:
           path: |
             dist/*.AppImage
             dist/*.deb
+            dist/packed-tree-manifest-linux.json
           if-no-files-found: error
           retention-days: 30
 
@@ -161,7 +230,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
+          node-version: 24.21.0
           cache: npm
 
       - name: Cache Electron binary
@@ -172,6 +241,12 @@ jobs:
           restore-keys: electron-mac-${{ runner.arch }}-
 
       - run: npm ci
+
+      - name: Rebuild native modules for Electron ABI
+        run: npm run rebuild:electron
+
+      - name: Assert unpacked native binding present
+        run: test -f node_modules/node-pty/build/Release/pty.node
 
       - name: Build macOS
         run: |
@@ -184,6 +259,26 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Independent of the in-build afterPack enforcer: stage once more and
+      # run the integrity gate + tree manifest over the macOS output.
+      # (No headless boot smoke on macOS runners — integrity gate only.)
+      - name: Stage + gate macOS bundle
+        run: |
+          npx electron-builder --mac --dir --publish never
+          node scripts/ci-gate.js dist/mac --manifest-out dist/packed-tree-manifest-mac.json
+
+      - name: Size budget (fail on unexpected bloat)
+        run: |
+          check() { # $1 = glob, $2 = cap in MB
+            for f in $1; do
+              size=$(stat -f%z "$f"); cap=$(( $2 * 1024 * 1024 ))
+              echo "$f: $(( size / 1024 / 1024 )) MB (cap $2 MB)"
+              if [ "$size" -gt "$cap" ]; then echo "$f exceeds size budget"; exit 1; fi
+            done
+          }
+          check 'dist/*.dmg' 165
+          check 'dist/*.zip' 160
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: success()
         with:
@@ -191,21 +286,103 @@ jobs:
           path: |
             dist/*.dmg
             dist/*.zip
+            dist/packed-tree-manifest-mac.json
           if-no-files-found: error
           retention-days: 30
 
-  release:
-    needs: [build-windows, build-linux, build-mac]
+  # Boot smoke tests on the real installable artifacts (not the staged dir):
+  # install → launch → poll the auth/required endpoint. macOS has no headless
+  # boot smoke (integrity gate covers it); Windows/Linux boot headless.
+  smoke-linux:
+    needs: build-linux
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    if: contains(inputs.platforms, 'linux') || github.event_name != 'workflow_dispatch' || inputs.platforms == ''
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: webtun-linux
+          path: artifacts
+
+      - name: Install deb on clean runner
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ./artifacts/webtun_*.deb xvfb
+
+      - name: Boot installed app + probe API
+        run: |
+          export PORT=39517 TMPDIR=/tmp
+          xvfb-run -a /opt/WebTun/webtun --no-sandbox > /tmp/webtun-smoke.log 2>&1 &
+          for i in $(seq 1 60); do
+            out=$(curl -s -m 3 http://127.0.0.1:39517/api/auth/required || true)
+            if [ "$out" = '{"required":false}' ]; then echo "boot ok: $out"; pkill -f "[o]pt/WebTun/webtun" || true; exit 0; fi
+            sleep 5
+          done
+          echo "smoke failed: API never answered"; tail -30 /tmp/webtun-smoke.log; exit 1
+
+  smoke-windows:
+    needs: build-windows
+    runs-on: windows-latest
+    timeout-minutes: 15
+    if: contains(inputs.platforms, 'windows') || github.event_name != 'workflow_dispatch' || inputs.platforms == ''
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: webtun-windows
+          path: artifacts
+
+      - name: Boot portable app + probe API
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem artifacts/*.exe | Where-Object { $_.Name -notlike '*Setup*' } | Select-Object -First 1
+          if (-not $exe) { throw 'portable exe not found in artifacts' }
+          $env:PORT = '39517'
+          $proc = Start-Process -FilePath $exe.FullName -ArgumentList '--no-sandbox' -PassThru
+          try {
+            for ($i=0; $i -lt 60; $i++) {
+              try { $out = (Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 'http://127.0.0.1:39517/api/auth/required').Content } catch { $out = '' }
+              if ($out -eq '{"required":false}') { Write-Host "boot ok: $out"; exit 0 }
+              Start-Sleep -Seconds 5
+            }
+            throw 'smoke failed: API never answered'
+          } finally { try { Stop-Process -Id $proc.Id -Force } catch {} }
+
+  release:
+    needs: [build-windows, build-linux, build-mac, smoke-linux, smoke-windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
+      attestations: write
+      id-token: write
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: webtun-*
           merge-multiple: true
+
+      - name: Checksums for every asset
+        run: |
+          sha256sum *.exe *.AppImage *.deb *.dmg *.zip > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Attest the checksums file (covers all assets by hash)
+        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
+        with:
+          subject-path: SHA256SUMS.txt
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.21.0
+          cache: npm
+
+      - run: npm ci
+
+      - name: SBOM (SPDX, production only)
+        run: npm sbom --omit=dev --sbom-format spdx > "webtun-${GITHUB_REF_NAME}.spdx.json"
 
       - name: Upload release assets
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3
@@ -216,4 +393,6 @@ jobs:
             *.deb
             *.dmg
             *.zip
+            SHA256SUMS.txt
+            *.spdx.json
           fail_on_unmatched_files: true

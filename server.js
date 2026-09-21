@@ -607,10 +607,12 @@ app.delete('/api/auth/sessions/:id', checkPin, (req, res) => {
   res.json({ success: true, revoked: existed });
 });
 
-// Writable runtime data dir. Repo checkouts keep state next to the server
-// (back-compat); global/npx installs (root-owned __dirname) use
-// ~/.config/webtun (or $XDG_CONFIG_HOME/webtun) so PIN/history/tunnel
-// persistence actually works instead of failing silently.
+// Writable runtime data dir — always ~/.config/webtun (or
+// $XDG_CONFIG_HOME/webtun), for repo checkouts and installs alike. The legacy
+// __dirname location is only a migration SOURCE (see migrateLegacyState) and
+// the last-resort fallback below. One writable home keeps PIN/history/tunnel
+// persistence identical for `node server.js`, global/npx installs, and the
+// packaged Electron app (whose __dirname lives inside read-only app.asar).
 function resolveDataDir() {
   try {
     const base = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
@@ -639,12 +641,20 @@ function migrateLegacyState() {
 }
 // Persist PIN to the writable .env (same file the startup parser reads).
 // Atomic tmp+rename with 0600, mirroring .cmdhist.json writes.
+function isPackagedAsar() {
+  // Packaged Electron runs from inside app.asar (read-only virtual FS) or its
+  // .unpacked sidecar — neither is a valid home for a writable .env.
+  try { return String(__dirname).includes('app.asar'); } catch { return false; }
+}
 function envPathForWrite() {
-  try {
-    if (fs.existsSync(path.join(__dirname, '.env'))) return path.join(__dirname, '.env');
-    fs.accessSync(__dirname, fs.constants.W_OK);
-    return path.join(__dirname, '.env');
-  } catch { return path.join(DATA_DIR, '.env'); }
+  if (!isPackagedAsar()) {
+    try {
+      if (fs.existsSync(path.join(__dirname, '.env'))) return path.join(__dirname, '.env');
+      fs.accessSync(__dirname, fs.constants.W_OK);
+      return path.join(__dirname, '.env');
+    } catch {}
+  }
+  return path.join(DATA_DIR, '.env');
 }
 const ENV_PATH = envPathForWrite();
 // systemd's EnvironmentFile re-parses this file with its own rules, where an
@@ -1200,10 +1210,12 @@ function killPid(pid) {
       // called with PIDs read back from .tunnels.json, so interpolation here
       // would be a shell-injection sink.
       try { execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' }); } catch {}
-      // Fallback: also kill any remaining child processes via WMIC
+      // Fallback: also kill any remaining child processes. wmic is deprecated
+      // and removed from current Windows 11 — use CIM instead (same argv-array
+      // discipline as above: no shell interpolation of the PID).
       try {
-        const out = execFileSync('wmic', ['process', 'where', `ParentProcessId=${pid}`, 'get', 'ProcessId', '/format:list'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-        const childPids = out.split('\n').filter(l => l.startsWith('ProcessId=')).map(l => parseInt(l.split('=')[1])).filter(Boolean);
+        const out = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `Get-CimInstance -ClassName Win32_Process | Where-Object { $_.ParentProcessId -eq ${pid} } | Select-Object -ExpandProperty ProcessId`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 15000 }).trim();
+        const childPids = out.split(/\r?\n/).map(l => parseInt(l.trim(), 10)).filter(n => Number.isInteger(n) && n > 0);
         for (const cp of childPids) { try { execFileSync('taskkill', ['/PID', String(cp), '/F'], { stdio: 'ignore' }); } catch {} }
       } catch {}
     } else {

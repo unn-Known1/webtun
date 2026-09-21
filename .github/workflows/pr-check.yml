@@ -10,13 +10,13 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
+          node-version: 24.21.0
           cache: npm
 
       - run: npm ci
@@ -32,3 +32,17 @@ jobs:
 
       - name: Dependency audit (production only)
         run: npm audit --omit=dev
+
+      - name: Rebuild native modules for Electron ABI
+        run: npm run rebuild:electron
+
+      - name: Assert unpacked native binding present
+        run: test -f node_modules/node-pty/build/Release/pty.node
+
+      # Catches the v2.2.2 asar-truncation class on every PR: stage the Linux
+      # bundle and run the integrity gate + tree manifest over it.
+      - name: Pack staged bundle (no distribution)
+        run: npm run pack -- --linux
+
+      - name: asar integrity gate
+        run: node scripts/ci-gate.js dist/linux-unpacked --manifest-out dist/packed-tree-manifest.json

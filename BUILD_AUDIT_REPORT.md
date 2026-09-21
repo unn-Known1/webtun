@@ -119,8 +119,29 @@ AppImage's asar size**, and carries the same 3 truncated files with the same
 md5s (`edcdc249…`, `d93502b2…`, `b5f6ace6…`), 193/3 on the §6.2 gate, plus
 the same flattened tree (`type-is@2.1.0` on top). Fourth independent
 environment, same result, from a verified-clean input tree. The pack step is
-no longer the prime suspect — it is the confirmed cause. **Do not rebuild
-the release with 26.16.1**; the builder version must change first (§5 P0).
+no longer the prime suspect — it is the confirmed cause.
+
+### Mechanism (proven 2026-09-21 while building the fix)
+
+`@electron/asar`'s `insertFile` has a fast path for files ≤2MB: it does
+`fs.readFileSync(p)` where `p` is the **destination-relative path**, resolved
+against process CWD — and packs THOSE bytes (cut to `stat.size`) while
+ignoring the provided content stream. Proof by md5: the "truncated"
+`type-is` (`edcdc249…`, 252 lines, 5396B, ends `* @`) is byte-identical to
+the **first 5396 bytes of the intact source file** (5562B). So the packer
+read source bytes under a wrong (hoisted-version) size. This also explains
+the franken-tree: sizes from one version, bytes from another. The same trap
+bit the first version of the §5 enforcer (its rebuild reproduced the exact
+truncation) until the hook chdir'd into corrected staging before repacking.
+Per owner constraint the builder stays on latest stable (26.16.1); the
+enforcer (`scripts/enforce-asar-integrity.js`, wired via `afterPack` in
+`electron-builder.yml`) neutralizes the bug instead of pinning around it:
+verify-all → repair from source → rebuild via header-driven streams →
+re-gate, failing the build on any residual. Verified end to end: enforced
+pack yields 699 verified files (9 repaired + 1 unpacked), external §6.2 gate
+358/0, unpack split preserved (`pty.node` unpacked, no offset), repaired
+bytes md5-identical to intact source copies, and the staged app boots with
+`{"required":false}` and zero SyntaxErrors.
 
 ### Where the user sees it
 
@@ -221,14 +242,22 @@ Evidence details (kept for the rebuild check in §6.4):
    (`package.json:29`) but no CI job or `dist*` script calls it; the build
    relies on the builder's default `npmRebuild`. N-API saved us this time.
    Make it explicit and fail the job if the unpacked `pty.node` is absent.
-3. **Builder 26.16.1 is confirmed guilty — change it before rebuilding**
+3. **Builder 26.16.1 is confirmed guilty — neutralized, not downgraded**
    (≥ 26.0.15, cf. upstream `electron-userland/electron-builder#9681`,
    2026-04-16 — a *different* symptom, cited only for prior art in this
    range). The 2026-09-21 local repro packed a verified-clean tree and
-   reproduced byte-identical corruption, so rebuilding with 26.16.1 will
-   re-ship the bug. Next: try latest 26.x and/or pre-26.0.15 locally, gate
-   each with §6.2+§6.8; only the version that packs clean becomes the new
-   pin. Then file upstream (draft: §7).
+   reproduced byte-identical corruption. Follow-up the same day: downgrade
+   to 25.1.8 packs clean (206/0 gate, faithful tree) but was **reverted per
+   owner constraint — newest stable versions only** (26.16.1 is the latest
+   stable 26.x; only 27.0.0 alphas are newer). Decisive extra datum:
+   `@electron/asar@4.3.0` is the asar lib under *both* builders — so the bug
+   is in 26.x's file handling, not the asar library. Root mechanism proven
+   (see §1 "Mechanism"): asar fast-path CWD read under a mismatched size.
+   Resolution implemented: afterPack integrity-enforcement hook
+   (`scripts/enforce-asar-integrity.js`, wired in `electron-builder.yml`) —
+   keeps latest everything with provable output; `asar: false` stays as
+   fallback only.
+Then file upstream (draft: §7).
 4. **No packed-tree manifest.** Without a recursive version manifest of the
    staged `node_modules` saved per build, §2 cannot be discriminated and
    future tree-divergence will again be undebuggable. Save it as a CI
@@ -365,7 +394,12 @@ Evidence details (kept for the rebuild check in §6.4):
 ## 5. Robust-packaging plan (priorities for the rebuild)
 
 **P0 — unbreak the release (before any new build ships):**
-0. Change the builder version first (see item 3): no rebuild on 26.16.1.
+0. Neutralize the guilty pack step WITHOUT downgrading — **implemented**
+   (`scripts/enforce-asar-integrity.js` + `afterPack` in
+   `electron-builder.yml`, both uncommitted; owner constraint: newest stable
+   versions only — 26.16.1 stays). Verified: enforced pack → 527 files
+   verified (9 repaired + 1 unpacked), external gate 358/0, boot + PTY OK (§1).
+   `asar: false` remains fallback only.
    (User decisions recorded 2026-09-21: delete all v2.2.2 releases and retag
    after the fix — owner's GitHub action; wire `electron-updater`; plan for
    unsigned UX, no certs.)
@@ -503,7 +537,13 @@ npm run pack                      # electron-builder --dir
 > over 1.6.18 content). Minimal repro (confirmed 2026-09-21): clean `npm ci`
 > (source files verified intact) + `npm run pack -- --linux` with pinned
 > 26.16.1 reproduces byte-identical truncation in a fourth environment —
-> no CI involved. Repro: pack any app depending on
+> no CI involved. Suspected mechanism (proven locally): `@electron/asar`
+> `insertFile`'s ≤2MB fast path does `fs.readFileSync(p)` with `p` the
+> destination-relative path resolved against CWD, packing THOSE bytes cut to
+> `stat.size` while ignoring the content stream — the truncated bytes are
+> md5-identical to the source file's prefix (`edcdc249…` == first 5396 of
+> 5562 source bytes), i.e. source bytes under a hoisted-version size. Repro:
+> pack any app depending on
 > `express@5`/`multer@2` with 26.16.1 on any two runners and `node --check`
 > the three files above. Distinct from #9681 (files present, contents cut).
 > Artifacts that demonstrate it: `webtun` v2.2.2 release (6 files, all
@@ -511,12 +551,81 @@ npm run pack                      # electron-builder --dir
 
 ---
 
-*Report ends. No application code, config, or workflow was modified — the only
-change in this working tree is this file (`node_modules/` and `dist/` from
-the local repro are gitignored build artifacts, not repo changes).
+## 8. Implementation log (2026-09-21 — all items executed)
+
+Owner constraints applied throughout: newest stable versions only (26.16.1
+kept; 25.1.8 downgrade reverted), no app-functionality changes beyond the
+listed hardening (all covered by existing behavior + local boot/PTY proof).
+
+**Packaging fix (P0.0):** `scripts/enforce-asar-integrity.js` (new) +
+`afterPack` wiring in `electron-builder.yml`. Verified: enforced pack → 527
+files verified (9 repaired + 1 unpacked), external gate 358/0, unpack split
+intact, staged app boots with health OK + PTY OK. Array of hook bugs fixed
+along the way (dir entries, unpack-glob semantics, package.json stripping,
+symlink classification). Mechanism proof (asar fast-path CWD read) in §1.
+
+**CI (P0.2, P1.5):** `scripts/ci-gate.js` (new) runs on `verify`, all three
+build jobs (stage + gate + manifest artifact), and `pr-check`; Node pinned
+to 24.21.0 everywhere; explicit `rebuild:electron` + `pty.node` assert in
+every build job; per-artifact size budgets (exe 170MB, deb 130MB, AppImage
+160MB, dmg 165MB, zip 160MB); `smoke-linux` (apt install + xvfb boot + API
+poll) and `smoke-windows` (portable boot + API poll) gate the release;
+release job gains SHA256SUMS.txt + build attestation + SPDX SBOM.
+Negative control: gate fails on synthetic truncated bundle.
+
+**Prune + icons (P1.6, §4.2.5–6):** `files` excludes for node-pty
+intermediates/prebuilds/tests/maps; PDB decision = strip (crashReporter
+dumps instead). `build/icon.ico` (multi-size, Pillow) + `build/icon.icns`
+generated; win/mac targets point at them; `build/` excluded from the npm
+tarball via `.npmignore`.
+
+**NSIS/installer (§4.2.11):** `perMachine: false`,
+`deleteAppDataOnUninstall: false` explicit; both Setup + portable keep
+shipping. **Arch (§4.2.8):** declared in README + `/docs` (x64 win/linux,
+arm64 mac; Intel/WinARM out of scope). **Linux deps (§4.2.10):** deb
+`Depends` verified sane; clean-VM install+boot is now CI (`smoke-linux`).
+**Updater (§4.2.9):** `electron-updater@6.8.9` + `electron-squirrel-startup`
+wired in `electron/main.js` (packaged-only, 30s delayed check + daily,
+download + install-on-quit, silent offline); `/docs` + README updated.
+**`main` field (§4.2.12):** deliberately unchanged — Electron uses it as the
+entry point; documented instead.
+
+**Runtime hardening (§4.3.14–22, all done):** asar-aware `.env` write path +
+DATA_DIR comment fix (`server.js`); user-writable cloudflared dest
+preference + `isMz`-only Windows validation (`lib/cloudflared.js`);
+CIM-replacing-wmic child reaping (`server.js:killPid`); taskkill fallback in
+retry loop, singleton-lock guidance note, login-item denylist (was: strip
+all `--*`), crashReporter, all in `electron/main.js`; effective-host port
+probing (`bin/webtun.js`).
+
+**Hoisting stance (final):** runtime-proven benign — write/read roundtrip,
+multipart upload (multer→busboy→type-is), and tmux PTY spawn all pass on the
+repaired hoisted tree. Tree-vs-lock stays warn-only in CI.
+
+**Minor observation (non-blocking follow-up):** forked server stderr shows
+`DEP0180: fs.Stats constructor is deprecated` — source unidentified (likely a
+transitive dep); harmless warning, identify at leisure.
+
+**Owner-only actions remaining (need GitHub access / human calls):**
+1. Delete the v2.2.2 releases; retag (or fresh version) after the fix to
+   trigger CI — exact mechanics in §5 P0.1.
+2. File the §7 upstream issue from your account.
+3. Optional-ever: signing certs/Apple ID (currently planned unsigned),
+   Intel-Mac/WinARM support, full terminal-E2E in CI (smoke covers boot+API).
+
+*Report ends. Working-tree changes (all uncommitted): this report; the
+afterPack enforcer (`scripts/enforce-asar-integrity.js` + `electron-builder.yml`
+hook) and CI gate (`scripts/ci-gate.js` + both workflows); `electron-updater`
+wiring + icons + prune filters + NSIS/docs/README updates; the §4.3 runtime
+hardening batch; the restored 26.16.1 pin (`node_modules/` and `dist/` from
+local repros are gitignored build artifacts, not repo changes).
 Verification: all six published `v2.2.2` assets scanned (`node --check` over
 193 bundled JS files each; identical 3-file failure with matching md5s),
 headless boot of the Linux deb reproducing the `SyntaxError`, clean-room
-local repro proving the pack step guilty, registry-tarball diffs,
-lockfile-vs-bundle comparison, and GitHub-API asset inventory with sha256.*
+local repro proving the pack step guilty, fast-path mechanism proof by md5
+(truncated bytes == source prefix), afterPack enforcer implementation with
+end-to-end verification (enforced pack: 527 files verified, external gate
+358/0, unpack split intact, staged app boots `{"required":false}` + PTY OK),
+registry-tarball diffs, lockfile-vs-bundle comparison, and GitHub-API asset
+inventory with sha256.*
 ...[truncated 3888 chars]

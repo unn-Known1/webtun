@@ -4,6 +4,7 @@
 .opencode/
 .github/
 .agents/
+build/
 nodemon.json
 .gitignore
 electron/
