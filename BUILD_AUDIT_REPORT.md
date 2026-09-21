@@ -111,6 +111,17 @@ half of the same conclusion). This is a *different* defect from upstream
 `#9681` ("node_modules silently missing") — here the files are present but
 their contents are cut. Upstream report draft: §7.
 
+**Proven locally (2026-09-21 follow-up):** clean `npm ci` in this repo
+(source `type-is/index.js` verified intact at 266 lines, no
+`multer/node_modules/` in the tree) → `npm run pack -- --linux` with the
+pinned 26.16.1 → staged `app.asar` is **3,032,822 bytes, exactly the shipped
+AppImage's asar size**, and carries the same 3 truncated files with the same
+md5s (`edcdc249…`, `d93502b2…`, `b5f6ace6…`), 193/3 on the §6.2 gate, plus
+the same flattened tree (`type-is@2.1.0` on top). Fourth independent
+environment, same result, from a verified-clean input tree. The pack step is
+no longer the prime suspect — it is the confirmed cause. **Do not rebuild
+the release with 26.16.1**; the builder version must change first (§5 P0).
+
 ### Where the user sees it
 
 The dialog already prints the last 15 server lines plus the log path
@@ -162,11 +173,11 @@ Evidence details (kept for the rebuild check in §6.4):
 - `git diff v2.2.2 HEAD` is empty, so the release was built from this exact
   source tree — yet the packed `node_modules` layout differs from what
   `npm ci` reproduces from `package-lock.json`.
-- Candidate A (working-tree divergence before packing) is retained only as a
-  null hypothesis for the manifest check: it would require the same
-  non-lock layout *and* byte-identical truncated files to arise independently
-  on Windows, Linux, and macOS runners. The required evidence going forward
-  is the packed-tree manifest (§6.4) — add it in §5 P0.
+- Candidate A (working-tree divergence before packing) is **dead**: the
+  2026-09-21 local repro packed a verified-clean, verified-lock-conformant
+  `npm ci` tree and produced byte-identical corruption. No runner-side
+  explanation survives. The packed-tree manifest (§6.4) stays recommended as
+  a permanent CI artifact, but no longer as a discriminator.
 
 ---
 
@@ -210,14 +221,14 @@ Evidence details (kept for the rebuild check in §6.4):
    (`package.json:29`) but no CI job or `dist*` script calls it; the build
    relies on the builder's default `npmRebuild`. N-API saved us this time.
    Make it explicit and fail the job if the unpacked `pty.node` is absent.
-3. **Pinned builder 26.16.1 is the verdict for §1, not just a suspect**
+3. **Builder 26.16.1 is confirmed guilty — change it before rebuilding**
    (≥ 26.0.15, cf. upstream `electron-userland/electron-builder#9681`,
    2026-04-16 — a *different* symptom, cited only for prior art in this
-   range). Byte-identical truncated files + identical flattened tree across
-   three OS runners with `npm ci` integrity checks in between leaves the
-   shared pack step as the only remaining explanation. Report upstream with
-   these artifacts as the repro (draft: §7); keep the pin until a fixed
-   builder passes §6.2 locally before unpinning.
+   range). The 2026-09-21 local repro packed a verified-clean tree and
+   reproduced byte-identical corruption, so rebuilding with 26.16.1 will
+   re-ship the bug. Next: try latest 26.x and/or pre-26.0.15 locally, gate
+   each with §6.2+§6.8; only the version that packs clean becomes the new
+   pin. Then file upstream (draft: §7).
 4. **No packed-tree manifest.** Without a recursive version manifest of the
    staged `node_modules` saved per build, §2 cannot be discriminated and
    future tree-divergence will again be undebuggable. Save it as a CI
@@ -354,9 +365,17 @@ Evidence details (kept for the rebuild check in §6.4):
 ## 5. Robust-packaging plan (priorities for the rebuild)
 
 **P0 — unbreak the release (before any new build ships):**
-1. Supersede v2.2.2 desktop assets (yank or publish fixed `v2.2.3`; both
+0. Change the builder version first (see item 3): no rebuild on 26.16.1.
+   (User decisions recorded 2026-09-21: delete all v2.2.2 releases and retag
+   after the fix — owner's GitHub action; wire `electron-updater`; plan for
+   unsigned UX, no certs.)
+1. Supersede v2.2.2 desktop assets (retag fixed build after item 0; both
    `.exe` variants already have downloads). Follow the repo's tag/changelog
-   convention (`git describe --tags`, `v` prefix, heading == tag).
+   convention (`git describe --tags`, `v` prefix, heading == tag). NOTE on
+   retag mechanics: deleting the GitHub release does not delete the tag —
+   to retrigger CI the remote tag must be deleted and re-pushed
+   (`git push --delete origin vX.Y.Z && git push origin vX.Y.Z`), or bump to
+   a fresh version (cleaner: avoids stale CDN/API caches keyed on the tag).
 2. Add the §6 gate to CI and make it fail the pipeline: integrity (§6.2) on
    **all six variants**, tree-vs-lock (§6.4), packed-tree manifest artifact
    (§4.1.4), headless boot (§6.5) of at least the portable exe + deb.
@@ -440,6 +459,16 @@ print('type-is tree OK:', bund['version'])
 
 # 6.7 Stage without distributing (fast iteration):
 npm run pack                      # electron-builder --dir
+
+# 6.8 Local clean-room repro (COMPLETED 2026-09-21 — verdict: builder guilty):
+#   npm ci                                   # source type-is verified intact (266 lines), no multer/node_modules nesting
+#   npm run pack -- --linux                  # pinned electron-builder 26.16.1
+#   staged app.asar = 3,032,822 bytes = shipped AppImage's asar size, byte for byte in size
+#   asar extract dist/linux-unpacked/resources/app.asar repro-tree && gate §6.2
+#   → 193 checked / same 3 broken / same md5s (edcdc249…, d93502b2…, b5f6ace6…)
+#   → same flattened tree (type-is@2.1.0 on top). Fourth environment, clean input.
+#   Repeat 6.8 with any candidate builder version: only a version whose output
+#   passes §6.2 + §6.4 may become the new pin.
 ```
 
 | Observation | Points to |
@@ -471,7 +500,10 @@ npm run pack                      # electron-builder --dir
 > corruption is in the shared pack step, not the runners. `npm ci` verifies
 > tarball integrity, excluding corrupt downloads. The packed tree is also
 > flattened versus the lockfile (nested `type-is@2.1.0` hoisted to top level
-> over 1.6.18 content). Repro: pack any app depending on
+> over 1.6.18 content). Minimal repro (confirmed 2026-09-21): clean `npm ci`
+> (source files verified intact) + `npm run pack -- --linux` with pinned
+> 26.16.1 reproduces byte-identical truncation in a fourth environment —
+> no CI involved. Repro: pack any app depending on
 > `express@5`/`multer@2` with 26.16.1 on any two runners and `node --check`
 > the three files above. Distinct from #9681 (files present, contents cut).
 > Artifacts that demonstrate it: `webtun` v2.2.2 release (6 files, all
@@ -480,9 +512,11 @@ npm run pack                      # electron-builder --dir
 ---
 
 *Report ends. No application code, config, or workflow was modified — the only
-change in this working tree is this file. Verification: all six published
-`v2.2.2` assets scanned (`node --check` over 193 bundled JS files each;
-identical 3-file failure with matching md5s), headless boot of the Linux deb
-reproducing the `SyntaxError`, registry-tarball diffs, lockfile-vs-bundle
-comparison, and GitHub-API asset inventory with sha256.*
+change in this working tree is this file (`node_modules/` and `dist/` from
+the local repro are gitignored build artifacts, not repo changes).
+Verification: all six published `v2.2.2` assets scanned (`node --check` over
+193 bundled JS files each; identical 3-file failure with matching md5s),
+headless boot of the Linux deb reproducing the `SyntaxError`, clean-room
+local repro proving the pack step guilty, registry-tarball diffs,
+lockfile-vs-bundle comparison, and GitHub-API asset inventory with sha256.*
 ...[truncated 3888 chars]
