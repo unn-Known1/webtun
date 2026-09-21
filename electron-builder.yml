@@ -63,3 +63,10 @@ nsis:
   # (logs) on uninstall. Both Setup and portable variants keep shipping.
   perMachine: false
   deleteAppDataOnUninstall: false
+  # Explicit dotted artifact names: the release publisher rewrites spaces to
+  # dots on upload (WebTun Setup 2.2.2.exe → WebTun.Setup.2.2.2.exe), which
+  # broke SHA256SUMS.txt verification. Pinning dots here makes CI filenames
+  # identical to release filenames, so checksums verify verbatim.
+  artifactName: ${productName}.Setup.${version}.${ext}
+portable:
+  artifactName: ${productName}.${version}.${ext}
