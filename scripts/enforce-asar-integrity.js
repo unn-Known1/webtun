@@ -51,7 +51,7 @@ function loadAsar() {
   throw new Error('enforce-asar-integrity: cannot resolve @electron/asar');
 }
 
-const norm = p => String(p || '').replace(/^\/+/, '');
+const norm = p => String(p || '').replace(/\\/g, '/').replace(/^\/+/, '');
 const md5 = b => crypto.createHash('md5').update(b).digest('hex');
 const isJs = p => p.endsWith('.js');
 function assertJsSyntax(buf, name) {
@@ -69,29 +69,41 @@ function readFile(p) {
 // Classify an archive entry. statFile returns the header node: directories
 // carry a `files` object, symlinks a string `link`, files a numeric `size`
 // (e.g. the npm package literally named `ipaddr.js` is a directory node).
-// Returns {kind:'dir'} | {kind:'link', target} | {kind:'file', buf}.
-function classify(asar, archive, rel) {
-  let node = null;
-  try { node = asar.statFile(archive, rel); } catch (e) {
-    throw new Error(`enforce-asar-integrity: cannot stat packed entry ${rel}: ${e.message}`);
+// The asar readers disagree across platforms (Windows listPackage yields
+// backslashed entries that statFile rejects), so every path form is tried
+// and the canonical forward-slash form is returned for all downstream logic.
+// Returns {canon, kind} with kind dir | {kind:'link', target} | {kind:'file', buf}.
+function classify(asar, archive, rawRel) {
+  const canon = norm(rawRel);
+  const back = canon.split('/').join('\\');
+  const forms = [...new Set([canon, '/' + canon, back, '\\' + back])];
+  let lastErr = null;
+  for (const form of forms) {
+    let node = null;
+    try { node = asar.statFile(archive, form); }
+    catch (e) { lastErr = e; continue; }
+    if (!node) continue;
+    if (node.files && typeof node.files === 'object') return { canon, kind: 'dir' };
+    if (typeof node.link === 'string') return { canon, kind: 'link', target: norm(node.link) };
+    if (typeof node.size !== 'number') { lastErr = new Error('unknown entry shape'); continue; }
+    try {
+      return { canon, kind: 'file', buf: asar.extractFile(archive, form) };
+    } catch (e) {
+      // Unpacked entries live in the app.asar.unpacked sidecar, not in the
+      // archive: a missing sidecar surfaces here (not as a corrupt archive).
+      if (node.unpacked) lastErr = new Error(`unpacked sidecar unreadable for ${canon}: ${e.message.split('\n')[0]}`);
+      else lastErr = e;
+      continue;
+    }
   }
-  if (node && node.files && typeof node.files === 'object') return { kind: 'dir' };
-  if (node && typeof node.link === 'string') return { kind: 'link', target: node.link };
-  if (!node || typeof node.size !== 'number') {
-    throw new Error(`enforce-asar-integrity: packed entry has unknown shape: ${rel}`);
-  }
-  try {
-    return { kind: 'file', buf: asar.extractFile(archive, rel) };
-  } catch (e) {
-    throw new Error(`enforce-asar-integrity: cannot read packed file ${rel}: ${e.message}`);
-  }
+  throw new Error(`enforce-asar-integrity: cannot read packed entry ${canon}: ${lastErr && lastErr.message}`);
 }
 // Walk the archive header in insertion order: directories carry a `files`
 // object, symlinks a string `link`, files a numeric `size`. Records the
 // original unpacked flags so a rebuild preserves the split exactly.
 function walkHeader(filesNode, prefix, out) {
   for (const [name, node] of Object.entries(filesNode || {})) {
-    const rel = prefix ? `${prefix}/${name}` : name;
+    const rel = norm(prefix ? `${prefix}/${name}` : name);
     if (node && node.files && typeof node.files === 'object') {
       out.push({ rel, kind: 'dir', unpacked: !!node.unpacked });
       walkHeader(node.files, rel, out);
@@ -102,6 +114,14 @@ function walkHeader(filesNode, prefix, out) {
     }
   }
   return out;
+}
+// Read a file from the archive, tolerating platform path-form differences.
+function tryExtract(asar, archive, canonRel) {
+  const back = canonRel.split('/').join('\\');
+  for (const form of [...new Set([canonRel, '/' + canonRel, back, '\\' + back])]) {
+    try { return asar.extractFile(archive, form); } catch {}
+  }
+  return null;
 }
 // Split an asar-internal path into its owning package: the LAST
 // node_modules/<name> segment, honouring @scopes.
@@ -176,7 +196,7 @@ function pkgId(asar, archive, projectDir, rel, inAsar) {
   const pkgJson = rootParts.join('/') + '/package.json';
   try {
     const raw = inAsar
-      ? asar.extractFile(archive, pkgJson).toString('utf8')
+      ? (() => { const b = tryExtract(asar, archive, pkgJson); if (!b) throw new Error('unreadable'); return b.toString('utf8'); })()
       : fs.readFileSync(path.join(projectDir, pkgJson), 'utf8');
     const d = JSON.parse(raw);
     return { name: d.name || null, version: d.version || null };
@@ -250,7 +270,7 @@ function checkLinkTarget(projectDir, rel, target) {
     throw new Error(`enforce-asar-integrity: packed symlink without source symlink: ${rel}`);
   }
   const srcTarget = fs.readlinkSync(path.join(projectDir, rel));
-  if (srcTarget !== target) {
+  if (norm(srcTarget) !== norm(target)) {
     throw new Error(`enforce-asar-integrity: symlink target differs: ${rel} (packed ${target} vs source ${srcTarget})`);
   }
 }
@@ -262,11 +282,21 @@ module.exports = async function enforceAsarIntegrity(context) {
   const say = m => console.log(`  [asar-integrity] ${m}`);
   const notes = new Set();
 
-  const resources = [path.join(appOutDir, 'resources'), path.join(appOutDir, 'Contents', 'Resources')]
+  const candidates = [path.join(appOutDir, 'resources'), path.join(appOutDir, 'Contents', 'Resources')];
+  // macOS layouts nest the app: dist/mac[-arch]/<Name>.app/Contents/Resources.
+  try {
+    for (const e of fs.readdirSync(appOutDir, { withFileTypes: true })) {
+      if (e.isDirectory() && e.name.endsWith('.app')) {
+        candidates.push(path.join(appOutDir, e.name, 'Contents', 'Resources'));
+      }
+    }
+  } catch {}
+  const resources = candidates
     .find(d => { try { return fs.statSync(path.join(d, 'app.asar')).isFile(); } catch { return false; } });
   if (!resources) {
-    say(`no app.asar under ${appOutDir} (asar disabled?) — nothing to enforce`);
-    return;
+    // Fail closed: this project's config always packs app.asar, so a missing
+    // archive means the hook looked in the wrong place — never silently pass.
+    throw new Error(`enforce-asar-integrity: no app.asar under ${appOutDir}`);
   }
   const archive = path.join(resources, 'app.asar');
   const unpackedRoot = path.join(resources, 'app.asar.unpacked');
@@ -277,8 +307,9 @@ module.exports = async function enforceAsarIntegrity(context) {
 
   const mismatched = [];   // { rel, reason, expected }
   let fileCount = 0;
-  for (const rel of entries) {
-    const c = classify(asar, archive, rel);
+  for (const rawRel of entries) {
+    const c = classify(asar, archive, rawRel);
+    const rel = c.canon;
     if (c.kind === 'dir') continue;
     if (c.kind === 'link') { checkLinkTarget(projectDir, rel, c.target); fileCount++; continue; }
     fileCount++;
@@ -449,8 +480,9 @@ module.exports = async function enforceAsarIntegrity(context) {
 
   // Final gate: re-resolve every entry from scratch and compare + parse.
   let residual = 0;
-  for (const rel of asar.listPackage(archive).map(norm).filter(Boolean)) {
-    const c = classify(asar, archive, rel);
+  for (const rawRel of asar.listPackage(archive).map(norm).filter(Boolean)) {
+    const c = classify(asar, archive, rawRel);
+    const rel = c.canon;
     if (c.kind === 'dir') continue;
     if (c.kind === 'link') { checkLinkTarget(projectDir, rel, c.target); continue; }
     if (rel === 'package.json' || rel.endsWith('/package.json')) {

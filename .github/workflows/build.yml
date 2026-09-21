@@ -262,10 +262,14 @@ jobs:
       # Independent of the in-build afterPack enforcer: stage once more and
       # run the integrity gate + tree manifest over the macOS output.
       # (No headless boot smoke on macOS runners — integrity gate only.)
+      # NOTE: --dir output is arch-suffixed (dist/mac-arm64 on Apple Silicon,
+      # dist/mac-x64 on Intel, dist/mac otherwise) — resolve it dynamically.
       - name: Stage + gate macOS bundle
         run: |
           npx electron-builder --mac --dir --publish never
-          node scripts/ci-gate.js dist/mac --manifest-out dist/packed-tree-manifest-mac.json
+          STAGED=""; for d in dist/mac-arm64 dist/mac-x64 dist/mac; do if [ -d "$d" ]; then STAGED="$d"; fi; done
+          [ -n "$STAGED" ] || { echo "no mac stage dir under dist/"; exit 1; }
+          node scripts/ci-gate.js "$STAGED" --manifest-out dist/packed-tree-manifest-mac.json
 
       - name: Size budget (fail on unexpected bloat)
         run: |
