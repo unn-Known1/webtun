@@ -130,11 +130,14 @@ function txRender(force) {
     else liveWrap.classList.toggle('on', active.length > 0 && active.some(j => j.status === 'active'));
   }
   const jobs = [...Transfers.jobs.values()].sort((a, b) => b.startedAt - a.startedAt);
-  if (!jobs.length) { list.innerHTML = '<div class="tx-empty">No transfers yet.<br>Uploads, downloads and copy/move show here with speed.</div>'; return; }
+  if (!jobs.length) { list.innerHTML = '<div class="tx-empty">No transfers yet.<br>Uploads, downloads, copy/move and archives show here with progress.</div>'; return; }
+  // Icons: upload, download, archive (zip/unzip), and the catch-all copy/move.
   const ico = (t) => t === 'download'
     ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>'
     : t === 'upload'
     ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>'
+    : t === 'zip' || t === 'unzip'
+    ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="12" x2="12" y2="18"/><line x1="9" y1="15" x2="15" y2="15"/></svg>'
     : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
   list.innerHTML = jobs.map(j => {
     // Determinate only with real movement: multi-file n/m, or bytes actually

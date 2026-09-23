@@ -398,8 +398,9 @@ async function unlockApp() {
   try { refreshVersion(); } catch {}
 
   loadFiles(currentPath);
-  renderBookmarks();
-  restoreTunnels();
+  // Restore a server-mirrored clipboard (copy/cut survives refresh + tabs).
+  try { if (typeof hydrateClipboard === 'function') hydrateClipboard(); } catch {}
+  renderBookmarks();  restoreTunnels();
   setupMobileKeys();
 
   // ── One-time wiring ────────────────────────────────────────────────────

@@ -4,6 +4,8 @@
 // FILE EXPLORER
 // ═══════════════════════════════════════════════════════
 let loadFilesAbortController = null;
+let _loadSeq = 0; // spinner/request race guard: only the newest load owns the UI
+const NAV_HISTORY_MAX = 50;
 let fileListLoadingTimer = null;
 function setFileListLoading(on) {
   const wrap = document.getElementById('file-list-wrap');
@@ -48,10 +50,15 @@ async function loadFiles(dir, opts = {}) {
 async function _loadFilesInner(dir) {
   if (loadFilesAbortController) loadFilesAbortController.abort();
   loadFilesAbortController = new AbortController();
+  const seq = ++_loadSeq;
 
-  // Selection belongs to the directory it was made in: stale entries would
-  // otherwise act on files the user is no longer looking at.
-  try { if (typeof clearSelection === 'function') clearSelection(); } catch {}
+  // Selection belongs to the directory it was made in: leaving the directory
+  // exits select mode entirely (stale toolbar + phantom toggle-clicks), while
+  // a same-directory refresh keeps it.
+  try {
+    if (typeof exitSelectMode === 'function' && currentPath && dir !== currentPath) exitSelectMode();
+    else if (typeof clearSelection === 'function') clearSelection();
+  } catch {}
 
   const prevPath = currentPath;
   const shouldPushHistory = !skipHistoryPush && currentPath && currentPath !== dir;
@@ -64,7 +71,10 @@ async function _loadFilesInner(dir) {
   try {
     data = await api(`/api/files?path=${encodeURIComponent(dir)}`, { signal: loadFilesAbortController.signal });
   } catch (e) {
-    if (e.name === 'AbortError') { setFileListLoading(false); return; }
+    // A superseded request must not touch the UI: the newer load owns the
+    // spinner, the list and the breadcrumb now.
+    if (seq !== _loadSeq) return false;
+    if (e.name === 'AbortError') { setFileListLoading(false); return false; }
     setFileListLoading(false);
     const errorDiv = document.createElement('div');
     errorDiv.style.cssText = 'padding:16px;text-align:center;';
@@ -75,10 +85,11 @@ async function _loadFilesInner(dir) {
     list.appendChild(errorDiv);
     errorDiv.querySelector('button').addEventListener('click', () => loadFiles(dir));
     toast(e.message || 'Failed to load directory', 'error');
-    return;
+    return false;
   }
 
   if (!data.files) {
+    if (seq !== _loadSeq) return false;
     setFileListLoading(false);
     const msg = data.error || 'Failed to load directory';
     // Revert optimistic path — don't save failed dir
@@ -101,12 +112,16 @@ async function _loadFilesInner(dir) {
       document.getElementById('path-input').value = dir;
       renderBreadcrumb(dir);
     }
-    return;
+    return false;
   }
+
+  // A stale success must not overwrite the newer directory now on screen.
+  if (seq !== _loadSeq) return false;
 
   // Success — now update history and UI state
   if (shouldPushHistory) {
     navHistory.push(prevPath);
+    if (navHistory.length > NAV_HISTORY_MAX) navHistory.splice(0, navHistory.length - NAV_HISTORY_MAX);
     navForwardHistory = [];
   }
 
@@ -295,6 +310,7 @@ async function _loadFilesInner(dir) {
 
   updateBackBtn();
   setFileListLoading(false);
+  return true;
 }
 
 let fileItemCounter = 0;
@@ -512,7 +528,9 @@ function setupFileListClicks() {
     const ell = e.target.closest('.file-ellipsis');
     if (ell) { e.preventDefault(); e.stopPropagation(); openMenuFor(row, ell); return; }
     if (selectMode) {
-      if (isParentRow) { loadFiles(curPath); return; }
+      // Directories stay navigable in select mode (mouse + keyboard Enter):
+      // only files toggle selection, so keyboard users are never trapped.
+      if (isParentRow || curIsDir) { loadFiles(curPath); return; }
       toggleFileSelection(curPath, row); return;
     }
     if (curIsDir) loadFiles(curPath);
@@ -591,6 +609,8 @@ function navigateTo(p) {
   // If relative path, resolve against currentPath
   const isAbsolute = target.startsWith('/') || /^[A-Za-z]:[\\/]/.test(target) || target.startsWith('\\\\');
   if (!isAbsolute) target = joinPath(currentPath || homeDir, target);
+  // Same target + history bookkeeping on success: navigateBack/Forward already
+  // restore on failure.
   loadFiles(target);
 }
 function navigateUp() {
@@ -598,19 +618,27 @@ function navigateUp() {
     loadFiles(currentParent);
   }
 }
-function navigateBack() {
-  if (navHistory.length > 0) {
-    skipHistoryPush = true;
-    navForwardHistory.push(currentPath);
-    loadFiles(navHistory.pop());
-  }
+async function navigateBack() {
+  if (!navHistory.length) return;
+  const target = navHistory.pop();
+  navForwardHistory.push(currentPath);
+  if (navForwardHistory.length > NAV_HISTORY_MAX) navForwardHistory.splice(0, navForwardHistory.length - NAV_HISTORY_MAX);
+  skipHistoryPush = true;
+  // Only mutate the queue on success: a failed load restores both stacks so
+  // back/forward can't desync (deleted dir, lost permissions).
+  const ok = await loadFiles(target);
+  if (!ok) { navHistory.push(target); navForwardHistory.pop(); }
+  updateBackBtn();
 }
-function navigateForward() {
-  if (navForwardHistory.length > 0) {
-    skipHistoryPush = true;
-    navHistory.push(currentPath);
-    loadFiles(navForwardHistory.pop());
-  }
+async function navigateForward() {
+  if (!navForwardHistory.length) return;
+  const target = navForwardHistory.pop();
+  navHistory.push(currentPath);
+  if (navHistory.length > NAV_HISTORY_MAX) navHistory.splice(0, navHistory.length - NAV_HISTORY_MAX);
+  skipHistoryPush = true;
+  const ok = await loadFiles(target);
+  if (!ok) { navForwardHistory.push(target); navHistory.pop(); }
+  updateBackBtn();
 }
 async function getLiveTerminalCwd(tab) {
   // tab.cwd is only refreshed by OSC 7, which most shells never emit — so a
@@ -1018,6 +1046,7 @@ function showCtxMenu(e, file) {
   document.getElementById('ctx-open-term').style.display = file.isDir ? '' : 'none';
   document.getElementById('ctx-paste').style.display = fsClipboard ? '' : 'none';
   document.getElementById('ctx-zip').style.display = '';
+  document.getElementById('ctx-props').style.display = '';
   document.getElementById('ctx-folder-size').style.display = file.isDir ? '' : 'none';
   document.getElementById('ctx-extract').style.display = file.isDir ? 'none' : (file.ext === '.zip' ? '' : 'none');
   // Measure after content is set
@@ -1068,19 +1097,54 @@ document.getElementById('ctx-download').onclick = () => {
 document.getElementById('ctx-zip').onclick = async () => {
   const files = selectedFiles.length > 0 ? selectedFiles : (ctxTarget ? [ctxTarget.path] : []);
   if (!files.length) return;
-  const t = toast('Zipping…', 'info');
-  for (const p of files) {
-    const name = p.split(/[\\/]/).pop();
-    await zipFile(p, name);
-  }
-  t.remove();
+  // Multiple files bundle into ONE archive via batch-zip (which auto-renames
+  // on conflict); a lone file keeps the classic single-file zip.
+  if (files.length > 1) { await zipSelected(files); clearSelection(); return; }
+  const name = files[0].split(/[\\/]/).pop();
+  await zipFile(files[0], name);
   clearSelection();
 };
+
+async function zipSelected(files) {
+  const base = (currentPath.split(/[\\/]/).filter(Boolean).pop() || 'archive');
+  const dest = joinPath(currentPath, base + '.zip');
+  // One indeterminate Transfer Center job covers the whole batch-zip call:
+  // the server returns once the .zip is on disk, so we don't have item totals
+  // to show — same honesty tier as a single server-side archive.
+  const job = txCreate('zip', `Zip ${files.length} items`, { filesTotal: files.length });
+  const ctrl = new AbortController();
+  job.abort = () => { try { ctrl.abort(); } catch {} };
+  try {
+    const r = await api('/api/files/batch-zip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sources: files, destination: dest }),
+      signal: ctrl.signal,
+    });
+    job.abort = null;
+    if (r && r.success) {
+      txFinish(job, 'done', 'Zipped: ' + r.name);
+      toast('Zipped: ' + r.name, 'success');
+      refreshFiles();
+    } else {
+      txFinish(job, 'error', (r && r.error) || 'Zip failed');
+      toast((r && r.error) || 'Zip failed', 'error');
+    }
+  } catch (e) {
+    job.abort = null;
+    if (e && (e.name === 'AbortError' || job.stopAfterCurrent)) {
+      txFinish(job, 'cancelled');
+      toast('Zip cancelled', 'warning');
+      refreshFiles();
+    } else {
+      txFinish(job, 'error', (e && e.message) || 'Zip failed');
+      toast('Zip failed', 'error');
+    }
+  }
+}
 document.getElementById('ctx-extract').onclick = async () => {
   if (!ctxTarget) return;
-  const t = toast('Extracting…', 'info');
   await extractZip(ctxTarget.path, ctxTarget.name);
-  t.remove();
 };
 document.getElementById('ctx-folder-size').onclick = async () => {
   if (!ctxTarget) return;
@@ -1099,6 +1163,7 @@ document.getElementById('ctx-folder-size').onclick = async () => {
 };
 document.getElementById('ctx-rename').onclick = () => ctxTarget && startRename(ctxTarget.path, ctxTarget.name);
 document.getElementById('ctx-copy-path').onclick = () => { if (!ctxTarget) return; navigator.clipboard.writeText(ctxTarget.path).then(() => toast('Path copied')).catch(() => toast('Copy failed', 'error')); };
+document.getElementById('ctx-props').onclick = () => { if (ctxTarget) openProperties(ctxTarget.path); };
 document.getElementById('ctx-delete').onclick = () => {
   if (selectedFiles.length > 0) { deleteSelected(); return; }
   if (ctxTarget) deleteFile(ctxTarget);
@@ -1111,6 +1176,7 @@ document.getElementById('ctx-copy').onclick = () => {
   if (!files.length) return;
   fsClipboard = { action: 'copy', files };
   updatePasteUI();
+  mirrorClipboard();
   toast(`Copied ${files.length} item(s)`, 'success');
 };
 document.getElementById('ctx-cut').onclick = () => {
@@ -1120,9 +1186,49 @@ document.getElementById('ctx-cut').onclick = () => {
   if (!files.length) return;
   fsClipboard = { action: 'cut', files };
   updatePasteUI();
+  mirrorClipboard();
   toast(`Cut ${files.length} item(s)`, 'success');
 };
-document.getElementById('ctx-paste').onclick = () => { if (fsClipboard) pasteFile(currentPath); };
+document.getElementById('ctx-paste').onclick = () => pasteFromClipboard(currentPath);
+
+// ── Server clipboard mirror ──────────────────────────────────────────
+// The server keeps a session-isolated clipboard (15min TTL) that survives
+// refresh, re-auth and other tabs. Mirror every local change there, and
+// hydrate from it when pasting with an empty local clipboard (fresh tab).
+async function mirrorClipboard() {
+  try {
+    if (!fsClipboard || !fsClipboard.files || !fsClipboard.files.length) {
+      try { await api('/api/clipboard', { method: 'DELETE' }); } catch {}
+      return;
+    }
+    await api('/api/clipboard', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sources: fsClipboard.files.map(f => f.path), action: fsClipboard.action }),
+    });
+  } catch {}
+}
+async function hydrateClipboard() {
+  if (fsClipboard && fsClipboard.files && fsClipboard.files.length) return true;
+  try {
+    const r = await api('/api/clipboard');
+    const cb = r && r.clipboard;
+    if (cb && Array.isArray(cb.sources) && cb.sources.length) {
+      fsClipboard = {
+        action: cb.action === 'cut' ? 'cut' : 'copy',
+        files: cb.sources.map(s => ({ path: s, name: String(s).split(/[\\/]/).pop() })),
+      };
+      updatePasteUI();
+      return true;
+    }
+  } catch {}
+  return false;
+}
+async function pasteFromClipboard(destDir) {
+  if (!fsClipboard) await hydrateClipboard();
+  if (!fsClipboard) { try { toast('Clipboard is empty — copy or cut files first', 'info'); } catch {} return; }
+  pasteFile(destDir || currentPath);
+}
 
 function updatePasteUI() {
   const el = document.getElementById('footer-paste-btn');
@@ -1138,6 +1244,7 @@ async function pasteFile(destDir, conflictMode, resumeFrom) {
   const isResume = typeof resumeFrom === 'number';
   if (_pasteBusy && !isResume) return;
   _pasteBusy = true;
+  if (!isResume) _conflictApplyAll = false;
   try {
     // Support both old single-file and new multi-file format
     const allFiles = fsClipboard.files || [{ path: fsClipboard.path, name: fsClipboard.name }];
@@ -1180,9 +1287,10 @@ async function pasteFile(destDir, conflictMode, resumeFrom) {
       txTick(job, bytesDone);
       const dest = joinPath(destDir, file.name);
       const body = { source: file.path, destination: dest };
-      // Apply the chosen mode to the conflicted file only (first of a
-      // resumed run); later conflicts re-prompt instead of inheriting it.
-      if (conflictMode && (fi === 0 || !isResume)) body.conflict = conflictMode;
+      // Apply the chosen mode to the conflicted file (first of a resumed run).
+      // With "apply to all" checked, later conflicts inherit it instead of
+      // re-prompting for every colliding file in the batch.
+      if (conflictMode && (fi === 0 || !isResume || _conflictApplyAll)) body.conflict = conflictMode;
       // Raw fetch with no client timeout: server-side copies of large trees
       // outlive api()'s 30s cap (G2). Aborting only stops the wait, never the fs.
       let r;
@@ -1233,7 +1341,8 @@ async function pasteFile(destDir, conflictMode, resumeFrom) {
     }
     else if (succeeded === 0) { txFinish(job, 'error', opLabel + ' failed'); toast(opLabel + ' failed', 'error'); }
     else { txFinish(job, 'error', `${opLabel} ${succeeded}, ${failed} failed`); toast(`${opLabel} ${succeeded}, ${failed} failed`, 'warning'); }
-    if (fsClipboard.action === 'cut' && !job.stopAfterCurrent) { fsClipboard = null; updatePasteUI(); }
+    if (fsClipboard.action === 'cut' && !job.stopAfterCurrent) { fsClipboard = null; updatePasteUI(); mirrorClipboard(); }
+    _conflictApplyAll = false;
     refreshFiles();
   } finally {
     _pasteBusy = false;
@@ -1242,13 +1351,29 @@ async function pasteFile(destDir, conflictMode, resumeFrom) {
 
 let _conflictBusy = false;
 let _resumeJobId = null; // paused Transfer Center job to reattach after a conflict choice
+let _conflictApplyAll = false; // "apply to all" from the conflict dialog
 function resolveConflict(mode) {
   // Guard double-fire (double-click/Enter+click) and stale state
   if (_conflictBusy || !fsClipboard || !_conflictResolve) return;
   const { destDir, resumeFrom, action, jobId } = _conflictResolve;
   // Clipboard changed since the conflict (e.g. new copy) — don't resume stale queue
   if (!destDir || fsClipboard.action !== action) { _conflictResolve = null; return; }
+  // Cancel aborts the whole batch (it used to resume and count 'Cancelled' as
+  // one failed item while the rest of the queue kept pasting).
+  if (mode === 'cancel') {
+    const job = (jobId && Transfers.jobs.get(jobId)) || null;
+    _conflictResolve = null; _resumeJobId = null; _conflictApplyAll = false;
+    closeOverlay('conflict-overlay');
+    if (job) txFinish(job, 'cancelled', job._ok ? job._ok + ' done' : '');
+    toast('Paste cancelled', 'warning');
+    return;
+  }
   _conflictBusy = true;
+  try {
+    const box = document.getElementById('conflict-apply-all');
+    _conflictApplyAll = !!(box && box.checked);
+    if (box) box.checked = false;
+  } catch { _conflictApplyAll = false; }
   closeOverlay('conflict-overlay');
   _resumeJobId = jobId || null;
   _conflictResolve = null;
@@ -1256,23 +1381,185 @@ function resolveConflict(mode) {
 }
 
 async function zipFile(path, name) {
-  const r = await api('/api/files/zip', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path })
-  });
-  if (r.success) { toast('Zipped: ' + r.name, 'success'); refreshFiles(); }
-  else toast(r.error || 'Zip failed', 'error');
+  // Zip streams on disk on the server: indeterminate progress + Stop, same
+  // shape as copy/move jobs in the Transfer Center.
+  const job = txCreate('zip', 'Zip ' + (name || path.split(/[\\/]/).pop()), { filesTotal: 1 });
+  const ctrl = new AbortController();
+  job.abort = () => { try { ctrl.abort(); } catch {} };
+  try {
+    const r = await api('/api/files/zip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path }),
+      signal: ctrl.signal,
+    });
+    job.abort = null;
+    if (r && r.success) {
+      txFinish(job, 'done', r.name ? ('Zipped: ' + r.name) : 'Zipped');
+      toast('Zipped: ' + (r.name || name || ''), 'success');
+      refreshFiles();
+    } else {
+      txFinish(job, 'error', (r && r.error) || 'Zip failed');
+      toast((r && r.error) || 'Zip failed', 'error');
+    }
+  } catch (e) {
+    job.abort = null;
+    if (e && (e.name === 'AbortError' || job.stopAfterCurrent)) {
+      txFinish(job, 'cancelled');
+      toast('Zip cancelled', 'warning');
+      refreshFiles();
+    } else {
+      txFinish(job, 'error', (e && e.message) || 'Zip failed');
+      toast('Zip failed', 'error');
+    }
+  }
 }
 
 async function extractZip(path, name) {
-  const r = await api('/api/files/unzip', {
+  const label = name || path.split(/[\\/]/).pop();
+  const job = txCreate('unzip', 'Unzip ' + label, { filesTotal: 1 });
+  const doExtract = async (destName) => api('/api/files/unzip', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path })
+    body: JSON.stringify({ path, ...(destName ? { destName } : {}) }),
   });
-  if (r.success) { toast('Extracted to: ' + r.dir, 'success'); refreshFiles(); }
-  else toast(r.error || 'Extract failed', 'error');
+  try {
+    let r = await doExtract();
+    // 409: destination folder exists and isn't empty. Try numbered siblings
+    // (archive (1)/, archive (2)/, …) so the operation always has an out.
+    if (!r.success && r.dir && /already exists/i.test(r.error || '')) {
+      const base = String(r.dir).split(/[\\/]/).pop() || 'extracted';
+      let n = 1;
+      while (n <= 100) {
+        const candidate = `${base} (${n})`;
+        const r2 = await doExtract(candidate);
+        if (r2.success) { r = r2; break; }
+        if (!(r2.dir && /already exists/i.test(r2.error || ''))) { r = r2; break; }
+        n++;
+      }
+      if (n > 100) r = { success: false, error: 'Too many numbered folders' };
+    }
+    job.abort = null;
+    if (r.success) {
+      txFinish(job, 'done', r.dir ? ('Extracted: ' + r.dir) : 'Extracted');
+      toast('Extracted to: ' + r.dir, 'success');
+      refreshFiles();
+    } else {
+      txFinish(job, 'error', r.error || 'Extract failed');
+      toast(r.error || 'Extract failed', 'error');
+    }
+  } catch (e) {
+    job.abort = null;
+    txFinish(job, 'error', (e && e.message) || 'Extract failed');
+    toast('Extract failed', 'error');
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// PROPERTIES + CHMOD
+// ═══════════════════════════════════════════════════════
+let _propsPath = '';
+async function openProperties(path) {
+  _propsPath = path;
+  clearFieldError('props-error');
+  const body = document.getElementById('props-body');
+  body.innerHTML = '<div style="color:var(--fg2);font-size:12px;padding:8px 0">Loading…</div>';
+  document.getElementById('props-mode-row').style.display = 'none';
+  document.getElementById('props-save-btn').style.display = 'none';
+  openOverlay('props-overlay');
+  const st = await api(`/api/files/stat?path=${encodeURIComponent(path)}`);
+  if (!st || st.error) { body.innerHTML = '<div style="color:var(--red);font-size:12px">' + escHtml((st && st.error) || 'Failed to load properties') + '</div>'; return; }
+  const rows = [
+    ['Name', st.name],
+    ['Path', st.path],
+    ['Type', st.isSymlink ? 'Symlink' : st.isDirectory ? 'Folder' : 'File'],
+    ['Size', st.isDirectory ? '—' : formatSize(st.size)],
+    ['Modified', st.mtime ? new Date(st.mtime).toLocaleString() : '—'],
+    ['Owner', [st.owner, st.group].filter(Boolean).join(':') || (st.uid + ':' + st.gid)],
+    ['Permissions', st.permissions || st.mode || '—'],
+  ];
+  body.innerHTML = rows.map(([k, v]) =>
+    '<div class="props-row"><span class="props-k">' + escHtml(k) + '</span><span class="props-v">' + escHtml(String(v == null ? '—' : v)) + '</span></div>'
+  ).join('');
+  // chmod is meaningless for symlinks (it follows to the target) and a no-op
+  // on Windows — offer it only for real files/dirs on non-Windows hosts.
+  const canChmod = !st.isSymlink && (serverPlatform !== 'win32');
+  document.getElementById('props-mode-row').style.display = canChmod ? '' : 'none';
+  document.getElementById('props-save-btn').style.display = canChmod ? '' : 'none';
+  if (canChmod) {
+    const inp = document.getElementById('props-mode');
+    inp.value = st.permissions || st.mode || '';
+  }
+}
+
+async function savePropsMode() {
+  const mode = document.getElementById('props-mode').value.trim();
+  if (!/^[0-7]{3,4}$/.test(mode)) { showFieldError('props-error', 'Mode must be 3–4 octal digits (e.g. 755, 644)'); return; }
+  clearFieldError('props-error');
+  setBtnBusy(document.getElementById('props-save-btn'), true);
+  const r = await api('/api/files/chmod', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: _propsPath, mode }),
+  });
+  setBtnBusy(document.getElementById('props-save-btn'), false);
+  if (r && r.success) {
+    toast('Permissions updated' + (r.warning ? ' — ' + r.warning : ''), r.warning ? 'warning' : 'success');
+    openProperties(_propsPath);
+    refreshFiles();
+  } else showFieldError('props-error', (r && r.error) || 'chmod failed');
+}
+
+// ═══════════════════════════════════════════════════════
+// CONTENT SEARCH
+// ═══════════════════════════════════════════════════════
+function openContentSearch() {
+  clearFieldError('cs-error');
+  document.getElementById('cs-results').innerHTML = '';
+  const p = document.getElementById('cs-path');
+  if (p && !p.value) p.value = currentPath || '';
+  openOverlay('content-search-overlay');
+  setTimeout(() => { try { document.getElementById('cs-query').focus(); } catch {} }, 100);
+}
+
+async function runContentSearch() {
+  const query = document.getElementById('cs-query').value.trim();
+  const dir = document.getElementById('cs-path').value.trim() || currentPath;
+  if (!query) { showFieldError('cs-error', 'Enter search text'); return; }
+  clearFieldError('cs-error');
+  const box = document.getElementById('cs-results');
+  box.innerHTML = '<div style="color:var(--fg2);font-size:12px;padding:8px 0">Searching…</div>';
+  setBtnBusy(document.getElementById('cs-search-btn'), true);
+  let r;
+  try {
+    r = await api('/api/files/search-content', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, path: dir, pattern: document.getElementById('cs-regex').checked ? 'regex' : 'string', maxResults: 50 }),
+    });
+  } finally {
+    setBtnBusy(document.getElementById('cs-search-btn'), false);
+  }
+  if (!r || r.error) { showFieldError('cs-error', (r && r.error) || 'Search failed'); box.innerHTML = ''; return; }
+  const results = Array.isArray(r.results) ? r.results : [];
+  if (!results.length) { box.innerHTML = '<div style="color:var(--fg2);font-size:12px;padding:8px 0">No matches</div>'; return; }
+  box.innerHTML = '';
+  const head = document.createElement('div');
+  head.className = 'cs-count';
+  head.textContent = results.length + ' match' + (results.length === 1 ? '' : 'es') + ((r.count || 0) >= 50 ? ' (capped at 50)' : '');
+  box.appendChild(head);
+  results.slice(0, 50).forEach(m => {
+    const row = document.createElement('button');
+    row.className = 'cs-row';
+    row.type = 'button';
+    const name = String(m.path || '').split(/[\\/]/).pop();
+    row.innerHTML = '<span class="cs-file">' + escHtml(name) + '</span>' +
+      '<span class="cs-line">:' + escHtml(String(m.line)) + '</span>' +
+      '<span class="cs-text">' + escHtml(String(m.content || '')) + '</span>';
+    row.title = m.path + ':' + m.line;
+    row.addEventListener('click', () => { closeOverlay('content-search-overlay'); openFileEditor(m.path); });
+    box.appendChild(row);
+  });
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1296,7 +1583,35 @@ async function confirmRename() {
     body: JSON.stringify({ oldPath: renamePath, newName })
   });
   setBtnBusy(document.getElementById('rename-ok-btn'), false);
-  if (r.success) { toast('Renamed', 'success'); refreshFiles(); closeOverlay('rename-overlay'); }
+  if (r.success) {
+    // Keep open surfaces on the renamed path: otherwise the panel/tab still
+    // point at oldPath and the next Ctrl+S recreates the old file, while the
+    // crash-safety draft is orphaned under wt-draft:<oldPath>.
+    try {
+      const oldPath = renamePath;
+      const newPath = (r.newPath && typeof r.newPath === 'string') ? r.newPath : joinPath(currentPath, newName);
+      if (typeof editorPath === 'string' && editorPath && editorPath === oldPath) {
+        editorPath = newPath;
+        try { document.getElementById('editor-filename').textContent = newName; } catch {}
+      }
+      try {
+        tabs.forEach(t => {
+          if (t && t.type === 'file' && t.path === oldPath) {
+            t.path = newPath; t.title = newName;
+            try { t.el.querySelector('.tab-title').textContent = newName; } catch {}
+            try { if (typeof applyTabMeta === 'function') applyTabMeta(t); } catch {}
+            try { if (t.fteName) t.fteName.textContent = newName; } catch {}
+          }
+        });
+      } catch {}
+      try {
+        const draft = safeStorage.getItem('wt-draft:' + oldPath);
+        if (draft != null) { safeStorage.setItem('wt-draft:' + newPath, draft); safeStorage.removeItem('wt-draft:' + oldPath); }
+      } catch {}
+      try { if (typeof saveTabState === 'function') saveTabState(); } catch {}
+    } catch (e) { console.warn('rename sync failed:', e); }
+    toast('Renamed', 'success'); refreshFiles(); closeOverlay('rename-overlay');
+  }
   else showFieldError('rename-error', r.error || 'Rename failed');
 }
 
@@ -1340,9 +1655,56 @@ async function downloadFile(filePath) {
     // length-less and stay indeterminate (bytes + speed only).
     if (len > 0) job.total = len;
     txRender(true);
+    let name = name0;
+    // Server returns application/zip for directories — append .zip if missing
+    if (ct.includes('zip') && !name.endsWith('.zip')) name += '.zip';
+    const reader = r.body && r.body.getReader ? r.body.getReader() : null;
+    // Large (or unknown-size) downloads stream straight to disk via the File
+    // System Access API instead of assembling a multi-GB Blob in the tab's
+    // heap. Unavailable (Firefox/Safari, insecure origins) → Blob fallback.
+    if (typeof window.showSaveFile === 'function' && (!(len > 0) || len > 64 * 1024 * 1024)) {
+      try {
+        const handle = await window.showSaveFile({ suggestedName: name });
+        const writable = await handle.createWritable();
+        try {
+          if (reader) {
+            for (;;) {
+              if (job.stopAfterCurrent) { try { await reader.cancel(); } catch {} break; }
+              const { done, value } = await reader.read();
+              if (done) break;
+              if (value) { await writable.write(value); txTick(job, job.loaded + value.length); }
+            }
+          } else {
+            const blob = await r.blob();
+            await writable.write(blob);
+            txTick(job, blob.size);
+          }
+          await writable.close();
+        } catch (e) {
+          try { await writable.abort(); } catch {}
+          throw e;
+        }
+        job.abort = null;
+        if (job.stopAfterCurrent) {
+          txFinish(job, 'cancelled', job.loaded ? formatSize(job.loaded) + ' received' : '');
+          toast('Download stopped', 'warning');
+          return;
+        }
+        txFinish(job, 'done', formatSize(job.loaded));
+      } catch (e) {
+        if (e && e.name === 'AbortError') {
+          txFinish(job, 'cancelled');
+          toast('Download stopped', 'warning');
+        } else {
+          console.warn('Download failed:', e);
+          txFinish(job, 'error', 'Download failed');
+          toast('Download failed', 'error');
+        }
+      }
+      return;
+    }
     // Stream the body so progress + speed are real. Chunks are still assembled
     // into one Blob for the anchor download — same memory profile as before.
-    const reader = r.body && r.body.getReader ? r.body.getReader() : null;
     const chunks = [];
     let loaded = 0;
     if (reader) {
@@ -1368,9 +1730,6 @@ async function downloadFile(filePath) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    let name = name0;
-    // Server returns application/zip for directories — append .zip if missing
-    if (ct.includes('zip') && !name.endsWith('.zip')) name += '.zip';
     a.download = name;
     document.body.appendChild(a);
     a.click();
@@ -1469,27 +1828,45 @@ function clearSelection() {
   document.getElementById('select-all-btn').textContent = 'Select All';
 }
 
+// Leaving the directory exits select mode outright: selection + toolbar +
+// flag + sidebar state all reset together, so the next folder never inherits
+// phantom toggle-clicks with a hidden toolbar.
+function exitSelectMode() {
+  selectMode = false;
+  clearSelection();
+  try {
+    document.getElementById('sidebar').dataset.selectMode = '';
+    document.querySelector('[onclick="toggleSelectMode()"]')?.classList.remove('active');
+  } catch {}
+}
+
 async function deleteSelected() {
   if (!selectedFiles.length) return;
-  const msg = `Delete ${selectedFiles.length} item${selectedFiles.length > 1 ? 's' : ''}?`;
+  const targets = [...selectedFiles];
+  const msg = `Delete ${targets.length} item${targets.length > 1 ? 's' : ''}?`;
   const ok = await confirmDialog({ title: 'Delete', message: msg, okText: 'Delete', danger: true });
   if (!ok) return;
-  const results = await Promise.allSettled(
-    [...selectedFiles].map(p =>
-      api(`/api/files?path=${encodeURIComponent(p)}`, { method: 'DELETE' })
-    )
-  );
-  let failed = 0;
-  results.forEach((res, i) => {
-    if (res.status === 'rejected' || !res.value.success) {
-      failed++;
-      const name = selectedFiles[i].split(/[\\/]/).pop();
-      const err = res.status === 'rejected' ? res.reason : res.value.error;
-      toast(`Failed to delete ${name}: ${err}`, 'error');
-    }
+  // One batch call instead of N concurrent DELETEs (rate-limiter friendly).
+  const r = await api('/api/files/batch-delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ paths: targets }),
   });
-  if (failed === 0) toast('Deleted', 'success');
-  else if (failed < selectedFiles.length) toast(`Deleted ${selectedFiles.length - failed} item(s), ${failed} failed`, 'warning');
+  const results = (r && Array.isArray(r.results)) ? r.results : null;
+  if (!results) { toast((r && r.error) || 'Delete failed', 'error'); }
+  else {
+    let failed = 0;
+    results.forEach(res => {
+      if (!res.success) {
+        failed++;
+        const name = String(res.path || '').split(/[\\/]/).pop();
+        toast(`Failed to delete ${name}: ${res.error}`, 'error');
+      }
+    });
+    const done = targets.length - failed;
+    if (failed === 0) toast('Deleted', 'success');
+    else if (done > 0) toast(`Deleted ${done} item(s), ${failed} failed`, 'warning');
+  }
   clearSelection();
   refreshFiles();
 }
@@ -1497,6 +1874,32 @@ async function deleteSelected() {
 async function downloadSelected() {
   const files = [...selectedFiles];
   if (!files.length) return;
+  // Multi-downloads go through ONE combined archive: staggered synthetic
+  // anchor clicks lose the user gesture and browsers popup-block every file
+  // after the first. The temp zip is deleted right after the download.
+  if (files.length > 1) {
+    const base = (currentPath.split(/[\\/]/).filter(Boolean).pop() || 'download');
+    const t = toast(`Zipping ${files.length} items…`, 'info');
+    try {
+      const r = await api('/api/files/batch-zip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sources: files, destination: joinPath(currentPath, base + '-download.zip') }),
+      });
+      try { t.remove(); } catch {}
+      if (r && r.success) {
+        const zipPath = joinPath(currentPath, r.name);
+        clearSelection();
+        await downloadFile(zipPath);
+        try { await api(`/api/files?path=${encodeURIComponent(zipPath)}`, { method: 'DELETE' }); } catch {}
+        refreshFiles();
+        return;
+      }
+      toast((r && r.error) || 'Zip failed', 'error');
+    } catch (e) { toast('Zip failed', 'error'); }
+    clearSelection();
+    return;
+  }
   toast(`Downloading ${files.length} item(s)…`, 'info');
   for (let i = 0; i < files.length; i++) {
     await downloadFile(files[i]);

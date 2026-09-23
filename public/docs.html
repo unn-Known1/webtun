@@ -628,8 +628,8 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
       </section>
 
       <!-- ── FILES ── -->
-      <section id="files" data-title="File manager upload download zip rename move copy search transfers progress speed">
-        <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--gn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
+      <section id="files" data-title="File manager upload download zip rename move copy search transfers progress speed content search properties permissions clipboard folder hierarchy">
+        <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--gn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
           <div><h2>File manager <a class="hash" href="#files" aria-label="Link to this section">#</a></h2></div>
         </div>
         <p class="sec-sub rv">Browse the whole host filesystem, or stay inside your workspace. <b>Right-click anything</b> for the full action menu.</p>
@@ -644,6 +644,13 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
           <li><b>Long names truncate in the middle</b> so the extension stays visible (<code class="inl">very-long-file…name.js</code>); click a row to select it and the full name unwraps.</li>
           <li><b>Batch with Select mode.</b> Flip the select toggle and checkboxes appear — tick a dozen files, then delete, download, zip, cut or copy them in one move.</li>
           <li><b>Right-click → Folder Size</b> reveals what's eating your disk before you reach for <code class="inl">du</code>.</li>
+          <li><b>Search inside files</b> with the magnifier in the explorer header: literal or regex full-text search across the current folder (depth-capped, binaries skipped) — click a hit to open it.</li>
+          <li><b>Right-click → Properties</b> shows size, dates, owner and permissions, and lets you <code class="inl">chmod</code> real files and folders (octal, e.g. 755).</li>
+          <li><b>Uploads keep their shape.</b> Dropping a folder preserves its subfolders, and international filenames (accents, CJK, Cyrillic, spaces) arrive intact instead of flattened underscores.</li>
+          <li><b>Clipboard travels with you.</b> Copy/cut is mirrored server-side, so a refresh, a second tab or a re-login keeps it — and pasting with an empty tab restores it automatically.</li>
+          <li><b>Conflicts, your way.</b> Batch pastes can apply one choice to every remaining collision, and Cancel stops the whole batch instead of failing one file at a time. Extracting over an existing folder lands in a numbered sibling (<code class="inl">archive (1)/</code>).</li>
+          <li><b>Renames follow open files.</b> Renaming a file updates the editor panel, its tabs and any unsaved draft — saving afterwards writes the new path, never resurrects the old one. Deleting a symlink removes the link, never its target.</li>
+          <li><b>Big downloads behave.</b> Multi-file downloads arrive as one combined zip (no popup-blocked stragglers), and large files stream straight to disk where the browser allows instead of filling the tab's memory.</li>
           <li><b>Transfers panel.</b> The up/down icon next to the coffee cup shows live uploads, downloads and copy/move jobs with speed and time left — hover to peek, click to pin. Copy/move pause while a conflict dialog waits for you, and Stop halts uploads/downloads at once or copy/move after the current file.</li>
         </ul>
         <figure class="fig rv">

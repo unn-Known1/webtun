@@ -163,6 +163,9 @@
         <button class="icon-btn" style="width:32px;height:32px;min-width:32px;min-height:32px" aria-label="Refresh" title="Refresh" onclick="refreshFiles()" id="refresh-btn">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
         </button>
+        <button class="icon-btn" style="width:32px;height:32px;min-width:32px;min-height:32px" aria-label="Search file contents" title="Search file contents" onclick="openContentSearch()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M8 11h6M11 8v6"/></svg>
+        </button>
         <span class="hdr-sep" aria-hidden="true"></span>
         <button class="icon-btn" style="width:32px;height:32px;min-width:32px;min-height:32px" aria-label="Toggle select mode" title="Toggle select mode" onclick="toggleSelectMode()">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="9 12 11 14 15 10"/></svg>
@@ -270,7 +273,7 @@
         <button class="icon-btn" onclick="newFile()" title="New file" aria-label="New file">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
         </button>
-        <button class="icon-btn" id="footer-paste-btn" onclick="pasteFile(currentPath)" title="Paste" aria-label="Paste" style="display:none">
+        <button class="icon-btn" id="footer-paste-btn" onclick="pasteFromClipboard(currentPath)" title="Paste" aria-label="Paste" style="display:none">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="14" y="2" width="8" height="8" rx="2"/><path d="M16 14H8M8 18h8"/><path d="M5 4h4"/><rect x="2" y="6" width="16" height="16" rx="2"/></svg>
         </button>
       </div>
@@ -716,6 +719,7 @@
   <div class="ctx-item" id="ctx-extract" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg> Extract</div>
   <div class="ctx-item" id="ctx-folder-size" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Folder Size</div>
   <div class="ctx-item" id="ctx-copy-path" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy Path</div>
+  <div class="ctx-item" id="ctx-props" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg> Properties</div>
   <div class="ctx-sep"></div>
   <div class="ctx-item" id="ctx-copy" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy</div>
   <div class="ctx-item" id="ctx-cut" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg> Cut</div>
@@ -956,12 +960,52 @@
     <h2 id="conflict-heading">File Conflict</h2>
     <p id="conflict-desc">An item named <strong id="conflict-name"></strong> already exists at this location.</p>
     <p id="conflict-dir-hint">The destination already contains a folder with this name.</p>
+    <label id="conflict-apply-all-row" style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--fg2);margin:8px 0"><input type="checkbox" id="conflict-apply-all"> Apply to all remaining conflicts</label>
     <div class="modal-actions" id="conflict-actions">
       <button class="btn btn-primary" id="conflict-replace" onclick="resolveConflict('replace')">Replace</button>
       <button class="btn" id="conflict-merge" onclick="resolveConflict('merge')">Merge</button>
       <button class="btn btn-ghost" id="conflict-keep-both" onclick="resolveConflict('keep_both')">Keep Both</button>
       <button class="btn btn-ghost" id="conflict-skip" onclick="resolveConflict('skip')">Skip</button>
       <button class="btn btn-ghost" id="conflict-cancel" onclick="resolveConflict('cancel')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Content Search Modal -->
+<div class="overlay" id="content-search-overlay">
+  <div class="modal modal-md">
+    <h2>Search file contents</h2>
+    <div class="modal-row">
+      <label for="cs-query">Search for</label>
+      <input type="text" id="cs-query" placeholder="TODO, import os, \(err\) => …" autocomplete="off" onkeydown="if(event.key==='Enter')runContentSearch()">
+      <div class="field-error" id="cs-error" role="alert"></div>
+    </div>
+    <div class="modal-row">
+      <label for="cs-path">In folder</label>
+      <input type="text" id="cs-path" autocomplete="off" spellcheck="false" onkeydown="if(event.key==='Enter')runContentSearch()">
+    </div>
+    <label id="cs-regex-row" style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--fg2);margin-bottom:8px"><input type="checkbox" id="cs-regex"> Regular expression</label>
+    <div id="cs-results" aria-live="polite"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeOverlay('content-search-overlay')">Close</button>
+      <button class="btn btn-primary" id="cs-search-btn" onclick="runContentSearch()">Search</button>
+    </div>
+  </div>
+</div>
+
+<!-- File Properties Modal -->
+<div class="overlay" id="props-overlay">
+  <div class="modal modal-sm">
+    <h2>Properties</h2>
+    <div id="props-body"></div>
+    <div class="modal-row" id="props-mode-row">
+      <label for="props-mode">Permissions (octal)</label>
+      <input type="text" id="props-mode" inputmode="numeric" maxlength="4" placeholder="755" autocomplete="off" onkeydown="if(event.key==='Enter')savePropsMode()">
+      <div class="field-error" id="props-error" role="alert"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeOverlay('props-overlay')">Close</button>
+      <button class="btn btn-primary" id="props-save-btn" onclick="savePropsMode()">Apply permissions</button>
     </div>
   </div>
 </div>

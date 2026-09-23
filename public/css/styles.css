@@ -1063,6 +1063,20 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 .ctx-submenu-items { display: none; }
 .ctx-submenu-wrap.open > .ctx-submenu-items { display: block; }
 
+/* File properties + content search */
+.props-row { display: flex; gap: 10px; padding: 5px 0; font-size: 12px; border-bottom: 1px solid var(--border); }
+.props-row:last-child { border-bottom: none; }
+.props-k { width: 96px; flex-shrink: 0; color: var(--fg2); }
+.props-v { flex: 1; min-width: 0; word-break: break-all; color: var(--fg); font-family: var(--font); font-size: 11.5px; }
+#cs-results { max-height: 40vh; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; margin: 8px 0; }
+.cs-count { font-size: 11px; color: var(--fg2); padding: 2px 0 6px; }
+.cs-row { display: flex; align-items: baseline; gap: 8px; text-align: left; padding: 7px 8px; border-radius: var(--radius-sm); cursor: pointer; font-size: 12px; background: none; border: none; width: 100%; color: inherit; }
+.cs-row:hover { background: var(--bg4); }
+.cs-file { color: var(--accent); font-family: var(--font); font-size: 11.5px; white-space: nowrap; }
+.cs-line { color: var(--fg3); font-size: 11px; flex-shrink: 0; }
+.cs-text { color: var(--fg2); font-family: var(--font); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+#cs-regex-row input, #conflict-apply-all-row input { accent-color: var(--accent); }
+
 /* ═══════════════════════════════════════════════════════
    TOAST
    ═══════════════════════════════════════════════════════ */

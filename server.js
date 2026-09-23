@@ -875,6 +875,20 @@ function pathContained(parent, child) {
 }
 
 async function renameWithFallback(src, dst) {
+  // Case-only rename (sample.txt → Sample.txt) on case-insensitive filesystems
+  // can no-op or error when resolved through the same directory entry: bounce
+  // through a temporary name so the new casing always lands.
+  if (src !== dst && src.toLowerCase() === dst.toLowerCase()) {
+    const tmp = dst + '.webtun-case-' + crypto.randomBytes(4).toString('hex');
+    await fsPromises.rename(src, tmp);
+    try {
+      await fsPromises.rename(tmp, dst);
+    } catch (e) {
+      try { await fsPromises.rename(tmp, src); } catch {}
+      throw e;
+    }
+    return;
+  }
   try {
     await fsPromises.rename(src, dst);
   } catch (e) {
@@ -1415,18 +1429,15 @@ async function resolveCopyMove(src, dst, conflict, isMove) {
   const isDir = st.isDirectory();
 
   if (dstExists && conflict === 'replace') {
-    if (isDir) await fsPromises.rm(dst, { recursive: true, force: true });
+    // Remove the DESTINATION by its own type: replacing an existing directory
+    // with a file (or vice versa) must not unlink()/rm() the wrong kind.
+    if (dstIsDir) await fsPromises.rm(dst, { recursive: true, force: true });
     else await fsPromises.unlink(dst);
   }
 
   if (isMove) {
     if (dstExists && conflict === 'merge' && isDir && dstIsDir) {
-      const entries = await fsPromises.readdir(src);
-      for (const entry of entries) {
-        const srcEntry = path.join(src, entry);
-        const dstEntry = path.join(dst, entry);
-        await fsPromises.cp(srcEntry, dstEntry, { recursive: true, force: true });
-      }
+      await mergeDirs(src, dst);
       await fsPromises.rm(src, { recursive: true, force: true });
     } else {
       await renameWithFallback(src, dst);
@@ -1434,12 +1445,7 @@ async function resolveCopyMove(src, dst, conflict, isMove) {
   } else {
     if (isDir) {
       if (dstExists && conflict === 'merge' && dstIsDir) {
-        const entries = await fsPromises.readdir(src);
-        for (const entry of entries) {
-          const srcEntry = path.join(src, entry);
-          const dstEntry = path.join(dst, entry);
-          await fsPromises.cp(srcEntry, dstEntry, { recursive: true, force: true });
-        }
+        await mergeDirs(src, dst);
       } else {
         await fsPromises.cp(src, dst, { recursive: true, force: true });
       }
@@ -1448,6 +1454,28 @@ async function resolveCopyMove(src, dst, conflict, isMove) {
     }
   }
   return { success: true };
+}
+
+// Merge src/ into dst/ with best-effort rollback: entries this merge created
+// are removed if a later entry fails, so a failed merge can't leave partial
+// duplicates behind. Pre-existing entries merged in place (force:true) can't
+// be restored without a full backup — document, don't pretend.
+async function mergeDirs(src, dst) {
+  let before = new Set();
+  try { before = new Set(await fsPromises.readdir(dst)); } catch {}
+  const created = [];
+  try {
+    const entries = await fsPromises.readdir(src);
+    for (const entry of entries) {
+      if (!before.has(entry)) created.push(entry);
+      await fsPromises.cp(path.join(src, entry), path.join(dst, entry), { recursive: true, force: true });
+    }
+  } catch (e) {
+    for (const entry of created) {
+      try { await fsPromises.rm(path.join(dst, entry), { recursive: true, force: true }); } catch {}
+    }
+    throw e;
+  }
 }
 
 async function handleCopyMove(req, res, isMove) {
@@ -1488,24 +1516,28 @@ function isDeletablePath(p) {
     return true;
   } catch { return false; }
 }
+
+// Delete without following the final path component: lstat (never stat, never
+// realpath) so a symlink is unlinked itself. The old code ran realPath() first,
+// which resolved a symlink-to-directory into its target and rm -rf'd the
+// DESTINATION instead of the link. resolvePath() (no symlink following) +
+// lstat is the safe pair; the kernel still resolves parent components.
+async function removePathSafe(p) {
+  const lst = await fsPromises.lstat(p);
+  if (lst.isSymbolicLink() || !lst.isDirectory()) await fsPromises.unlink(p);
+  else await fsPromises.rm(p, { recursive: true, force: true });
+}
 app.delete('/api/files', checkPin, async (req, res) => {
   try {
     if (!req.query.path) {
       console.warn('DELETE /api/files 400 — query param ?path= is required. Example: DELETE /api/files?path=/home/user/file.txt');
       return res.status(400).json({ error: 'path is required', usage: 'DELETE /api/files?path=<path>' });
     }
-    const p = realPath(req.query.path);
+    const p = resolvePath(req.query.path);
     if (!isDeletablePath(p)) {
       return res.status(400).json({ error: 'Refusing to delete this path' });
     }
-    const lst = await fsPromises.lstat(p);
-    if (lst.isSymbolicLink()) {
-      await fsPromises.unlink(p);
-    } else if (lst.isDirectory()) {
-      await fsPromises.rm(p, { recursive: true, force: true });
-    } else {
-      await fsPromises.unlink(p);
-    }
+    await removePathSafe(p);
     res.json({ success: true });
   } catch (e) {
     sendErr(res, e);
@@ -1594,7 +1626,14 @@ app.post('/api/files/unzip', checkPin, async (req, res) => {
         return res.status(400).json({ error: 'Not a zip file (bad magic)' });
       }
     } catch {}
-    const destDir = path.join(path.dirname(p), path.basename(p, '.zip'));
+    let destDir = path.join(path.dirname(p), path.basename(p, '.zip'));
+    // Optional single-segment override so the client can retry a 409 into a
+    // numbered folder (archive (1)/) instead of just showing an error toast.
+    if (req.body.destName != null && String(req.body.destName) !== '') {
+      const segs = String(req.body.destName).split(/[\\/]+/).filter(Boolean);
+      if (segs.length !== 1) return res.status(400).json({ error: 'destName must be a single folder name' });
+      destDir = path.join(path.dirname(p), sanitizeUploadSegment(segs[0]));
+    }
     if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, destDir)) return res.status(403).json({ error: 'Access denied: destination outside workspace' });
     // Refuse to merge into a non-empty directory; extract to a temp dir and
     // rename into place so a failed extraction can't wipe pre-existing data.
@@ -1777,6 +1816,20 @@ app.get('/api/files/download', checkPin, async (req, res) => {
   }
 });
 
+// Upload filename hygiene: split the client-sent relative path into segments
+// and sanitize each one. Unicode letters, digits, spaces and dots are kept;
+// control chars, Windows-reserved <>:"|?* and traversal segments are removed.
+function sanitizeUploadSegment(seg) {
+  let s = String(seg || '').replace(/[\x00-\x1f<>:"|?*]/g, '');
+  s = s.replace(/^\s+/, '').replace(/[\s.]+$/, '');
+  if (!s || s === '.' || s === '..') return '_';
+  return s.slice(0, 255);
+}
+function uploadRelPath(originalname) {
+  const segs = String(originalname || '').split(/[\\/]+/).filter(Boolean).map(sanitizeUploadSegment);
+  return segs.length ? segs : ['_'];
+}
+
 // Upload with multer disk storage – destination resolved per-request
 app.post('/api/files/upload', checkPin, (req, res) => {
   let destDir;
@@ -1785,23 +1838,28 @@ app.post('/api/files/upload', checkPin, (req, res) => {
   } catch (e) {
     return sendErr(res, e, 403);
   }
-  const UNIFIED_SAFE_RE = /[^a-zA-Z0-9_.\-]/g;
+  // Segment sanitizer: Unicode + spaces survive; only control characters,
+  // Windows-reserved symbols and traversal segments are stripped. The old
+  // /[^a-zA-Z0-9_.\-]/g turned every non-ASCII name (документ.pdf, 报告.txt)
+  // into underscores that then overwrote each other.
   const storage = multer.diskStorage({
     destination: (req, file, cb) => {
       try {
-        const safeName = path.basename(file.originalname).replace(UNIFIED_SAFE_RE, '_');
-        const finalDest = path.join(destDir, safeName);
-        if (!pathContained(destDir, finalDest)) {
+        // The client sends the drag-and-drop relative path as the multipart
+        // filename (folder/sub/file.txt) — preserve the hierarchy instead of
+        // flattening everything into the destination root with basename().
+        const segs = uploadRelPath(file.originalname);
+        const subPath = segs.length > 1 ? path.join(destDir, ...segs.slice(0, -1)) : destDir;
+        if (!pathContained(destDir, subPath)) {
           return cb(new Error('Invalid upload destination'));
         }
-        const subPath = path.dirname(finalDest);
         fs.mkdirSync(subPath, { recursive: true });
         cb(null, subPath);
       } catch (err) {
         cb(err);
       }
     },
-    filename: (_, file, cb) => cb(null, path.basename(file.originalname).replace(UNIFIED_SAFE_RE, '_'))
+    filename: (_, file, cb) => cb(null, uploadRelPath(file.originalname).slice(-1)[0])
   });
   const upload = multer({ storage, limits: { fileSize: 500 * 1024 * 1024, files: 100 } }).array('files');
   // Pre-flight the declared size: multer streams to disk, so checking the
@@ -1945,13 +2003,10 @@ app.post('/api/files/batch-delete', checkPin, async (req, res) => {
     const results = [];
     for (const raw of req.body.paths) {
       let p;
-      try { p = realPath(raw); } catch (e) { results.push({ path: raw, success: false, error: errText(e) }); continue; }
+      try { p = resolvePath(raw); } catch (e) { results.push({ path: raw, success: false, error: errText(e) }); continue; }
       if (!isDeletablePath(p)) { results.push({ path: raw, success: false, error: 'Refusing to delete this path' }); continue; }
       try {
-        const lst = await fsPromises.lstat(p);
-        if (lst.isSymbolicLink()) await fsPromises.unlink(p);
-        else if (lst.isDirectory()) await fsPromises.rm(p, { recursive: true, force: true });
-        else await fsPromises.unlink(p);
+        await removePathSafe(p);
         results.push({ path: raw, success: true });
       } catch (e) {
         results.push({ path: raw, success: false, error: errText(e) });
