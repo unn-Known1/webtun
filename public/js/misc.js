@@ -220,11 +220,21 @@ function saveCmdLib(cmds) {
   safeStorage.setItem('wt-cmdlib', JSON.stringify(cmds));
 }
 
+// Backdrop for the Command Library: block the workspace behind the panel
+// while its keyboard focus trap is engaged. #content is deliberately NOT
+// inerted — the panel lives inside it, so that would disable the panel
+// itself. #header stays interactive (same rule as Settings).
+function setCmdLibInert(on) {
+  ['sidebar', 'terminals'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    try { if (on) el.setAttribute('inert', ''); else el.removeAttribute('inert'); } catch {}
+  });
+}
+
 function toggleCmdLib() {
   const panel = document.getElementById('cmd-lib-panel');
   const isOpen = panel.classList.contains('open');
-  // Only inert the terminals area (content), not sidebar (panel is on right side)
-  const terms = document.getElementById('terminals');
   panel.classList.toggle('open');
   panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-modal', String(!isOpen));
@@ -233,14 +243,14 @@ function toggleCmdLib() {
   if (!isOpen) {
     loadHistMax();
     switchCmdTab('library');
-    if (terms) terms.setAttribute('inert', '');
+    setCmdLibInert(true);
     installFocusTrap(panel);
     setTimeout(() => {
       document.addEventListener('click', closeCmdLibOnClickOutside, true);
       panel.querySelector('input, button')?.focus();
     }, 50);
   } else {
-    if (terms) terms.removeAttribute('inert');
+    setCmdLibInert(false);
     removeFocusTrap();
     document.removeEventListener('click', closeCmdLibOnClickOutside, true);
   }
@@ -255,8 +265,7 @@ function closeCmdLibOnClickOutside(e) {
   }
   if (panel.contains(e.target) || btn.contains(e.target)) return;
   toggleCmdLib();
-  const terms = document.getElementById('terminals');
-  if (terms) terms.removeAttribute('inert');
+  setCmdLibInert(false);
   removeFocusTrap();
 }
 

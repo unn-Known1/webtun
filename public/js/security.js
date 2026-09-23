@@ -109,6 +109,24 @@ async function updateSessionCupCount() {
     }
   } catch { /* leave last state on failure */ }
 }
+// The session count badge lives inside the keep-awake <label>: a plain click
+// on it would bubble to the label and toggle the wake-lock checkbox instead
+// of reviewing sessions. Intercept it and open Security Review instead.
+(function wireSessionBadge() {
+  const wire = () => {
+    const num = document.getElementById('sess-cup-num');
+    if (!num || num.dataset._secWired) return;
+    num.dataset._secWired = '1';
+    try { num.style.cursor = 'pointer'; } catch {}
+    num.addEventListener('click', (e) => {
+      try { e.preventDefault(); } catch {}
+      try { e.stopPropagation(); } catch {}
+      try { if (typeof openSecurityReview === 'function') openSecurityReview(); } catch {}
+    }, true);
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire, { once: true });
+  else wire();
+})();
 // Static fallback lines via textContent (never innerHTML), so a future edit
 // can't accidentally turn these into an injection sink.
 function setListMessage(list, msg) {

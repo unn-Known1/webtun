@@ -125,11 +125,35 @@ function duplicateTab(id) {
 function triggerTabRename(id) {
   const tab = getTabById(id == null ? activeTabId : id);
   if (!tab?.el) return;
+  // Prefer the direct starter when available (no synthetic event bubbling).
+  try {
+    if (typeof tab._startRename === 'function') { tab._startRename(); return; }
+  } catch {}
   const span = tab.el.querySelector('.tab-title');
   if (!span) return;
   try { span.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true })); } catch {}
   // Fallback when the rename wiring is missing: focus the span.
   setTimeout(() => { try { if (!document.getElementById('tab-rename-input')) span.focus?.(); } catch {} }, 50);
+}
+
+// TR-07: dedicated rename entry point for the terminal context menu (and
+// anywhere else) — scrolls the tab into view first so the inline editor
+// never opens on a tab scrolled off-screen or hidden in Tile View, then
+// starts editing directly instead of dispatching a synthetic dblclick.
+function promptTabRename(tabOrId) {
+  const tab = (tabOrId && typeof tabOrId === 'object' && tabOrId.el)
+    ? tabOrId
+    : getTabById(tabOrId == null ? activeTabId : tabOrId);
+  if (!tab?.el) return;
+  try { tab.el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' }); } catch {}
+  const start = () => {
+    try {
+      if (typeof tab._startRename === 'function') tab._startRename();
+      else triggerTabRename(tab.id);
+    } catch {}
+  };
+  // Let the smooth scroll bring the tab into view before opening the editor.
+  setTimeout(start, 60);
 }
 
 // Background activity / bell / exited badges. Activity + bell clear the moment
@@ -547,6 +571,13 @@ function setupTabDragDrop(tabEl, id) {
 
 function setupTabInlineRename(tabTitleSpan, tab) {
   const startRename = (span) => {
+    // Guard against double-invocation (e.g. promptTabRename + dblclick racing):
+    // only one rename input may exist at a time.
+    try { if (document.getElementById('tab-rename-input')) return; } catch {}
+    if (!span || !span.isConnected) {
+      span = tab.el?.querySelector('.tab-title');
+      if (!span) return;
+    }
     const input = document.createElement('input');
     input.id = 'tab-rename-input';
     input.name = 'tab-rename';
@@ -591,6 +622,15 @@ function setupTabInlineRename(tabTitleSpan, tab) {
   tabTitleSpan.addEventListener('touchmove', () => {
     if (renameTimer) { clearTimeout(renameTimer); renameTimer = null; }
   }, { passive: true });
+  // Direct entry point for promptTabRename()/triggerTabRename() — always
+  // resolves the *current* .tab-title node (the span is replaced on every
+  // rename, so a captured reference would go stale).
+  try {
+    tab._startRename = () => {
+      const cur = tab.el?.querySelector('.tab-title');
+      if (cur) startRename(cur);
+    };
+  } catch {}
 }
 
 function setupTabSwipeGesture(tabEl, id) {
@@ -772,6 +812,7 @@ function activateTab(id) {
   if (tab && tab.type === 'file') mountFileTab(tab);
   else if (_dockedFileTabId != null) undockEditor();
   scrollActiveTabIntoView();
+  try { if (typeof refreshConnStatus === 'function') refreshConnStatus(); } catch {}
 }
 async function closeTab(e, id, opts = {}) {
   e.stopPropagation();
@@ -846,6 +887,7 @@ async function closeTab(e, id, opts = {}) {
   try { hideTabMenus(); } catch {}
   if (activeTabId === id && tabs.length > 0) activateTab(tabs[tabs.length - 1].id);
   else updateTabOverflow();
+  try { if (typeof refreshConnStatus === 'function') refreshConnStatus(); } catch {}
   if (tilesMode) layoutTiles();
   const termsEl = document.getElementById('terminals');
   if (termsEl) termsEl.style.marginBottom = '';

@@ -1053,8 +1053,15 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 #ctx-menu { position: fixed; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 4px 20px var(--shadow-color); z-index: var(--z-menu); display: none; min-width: 160px; overflow: hidden; max-height: calc(100vh - 16px); overflow-y: auto; }
 @media (max-width: 360px) { #ctx-menu { min-width: 140px; max-width: calc(100vw - 16px); font-size: 11px; } }
 #ctx-menu.open { display: block; }
+#term-ctx-menu { max-height: calc(100vh - 20px); overflow-y: auto; scrollbar-width: thin; }
+#term-ctx-menu:focus { outline: none; }
+@media (max-width: 360px) { #term-ctx-menu { min-width: 140px; max-width: calc(100vw - 16px); font-size: 11px; } }
 .ctx-item { padding: 8px 14px; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
 .ctx-item:hover { background: var(--bg4); }
+.ctx-item:focus { background: var(--bg4); outline: none; }
+.ctx-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.ctx-item.disabled { opacity: 0.45; cursor: not-allowed; }
+.ctx-item.disabled:hover { background: none; }
 .ctx-sep { height: 1px; background: var(--border); margin: 3px 0; }
 .ctx-item.danger { color: var(--red); }
 .ctx-submenu-wrap { }

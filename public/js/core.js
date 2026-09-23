@@ -13,6 +13,7 @@ let navHistory = [];
 let navForwardHistory = [];
 let skipHistoryPush = false;
 let ctxTarget = null;
+let termCtxTabId = null;
 let renamePath = '';
 let editorPath = '';
 let editorOriginalContent = '';
@@ -24,6 +25,42 @@ let hasTmux = false;
   gitEnabled: true, gitSimple: true
 };
 let serverPlatform = '';
+
+// ── Terminal context-menu target (TR-02) ─────────────────────────────
+// The tab that owns the terminal element the menu was invoked on. Set on
+// `contextmenu` (terminal.js) and cleared on dismiss (files.js). Handlers
+// must use getTermCtxTarget() so Tile View actions hit the right-clicked
+// tile instead of whatever tab happens to be active.
+function getTermCtxTarget() {
+  if (termCtxTabId != null) {
+    const t = tabs.find(x => x.id === termCtxTabId);
+    if (t && !t.closed) return t;
+  }
+  return tabs.find(t => t.id === activeTabId);
+}
+
+// ── Menu viewport clamp (TR-01 + TR-10) ──────────────────────────────
+// Re-clamps a positioned menu into the usable viewport: viewport size minus
+// the mobile key bar (when visible) and an 8px margin. Called on open and
+// again when the "More Options" submenu expands (which adds ~280px).
+function adjustTermMenuPosition(menu) {
+  if (!menu) return;
+  const rect = menu.getBoundingClientRect();
+  const vw = window.innerWidth;
+  const mobileKeys = document.getElementById('mobile-keys');
+  const mobileOffset = (mobileKeys && mobileKeys.offsetHeight && window.innerWidth <= 768 &&
+    getComputedStyle(mobileKeys).display !== 'none') ? mobileKeys.offsetHeight : 0;
+  const maxBottom = window.innerHeight - mobileOffset - 8;
+  const maxRight = vw - 8;
+  let newLeft = rect.left;
+  let newTop = rect.top;
+  if (rect.bottom > maxBottom) newTop = Math.max(8, maxBottom - rect.height);
+  if (rect.right > maxRight) newLeft = Math.max(8, maxRight - rect.width);
+  // Keep explicit px positioning in sync so a later submenu toggle measures
+  // the clamped origin, not the pre-clamp one.
+  if (newLeft !== rect.left) menu.style.left = newLeft + 'px';
+  if (newTop !== rect.top) menu.style.top = newTop + 'px';
+}
 
 const isElectron = !!(window.electronAPI && window.electronAPI.isElectron);
 

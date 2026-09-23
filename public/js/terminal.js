@@ -112,7 +112,7 @@ function connectWebSocket(tab, isReconnect = false) {
     tab.reconnectAttempts = 0;
     hideTermLoading(tab);
     try { if (typeof clearTabExited === 'function') clearTabExited(tab); } catch {}
-    updateConnStatus(true);
+    try { if (typeof refreshConnStatus === 'function') refreshConnStatus(); else updateConnStatus(true); } catch {}
     const banner = document.getElementById('reconnect-banner');
     if (banner) {
       banner.innerHTML = '<span class="reconnect-spinner"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></span> Reconnecting…';
@@ -304,7 +304,7 @@ function handleClientEvent(payload) {
   ws.onclose = () => {
     cleanupWebSocket(tab);
     if (tab.closed) return;
-    updateConnStatus(false);
+    try { if (typeof refreshConnStatus === 'function') refreshConnStatus(); else updateConnStatus(false); } catch {}
     tab.reconnectAttempts = (tab.reconnectAttempts || 0) + 1;
     const _attempt = tab.reconnectAttempts;
     const _maxAttempts = 10;
@@ -511,35 +511,70 @@ function initTerminal(tab) {
   term.element.addEventListener('contextmenu', e => {
     if (!settings.termRightClick) return;
     e.preventDefault();
+    // TR-02: bind the menu to the exact tile that was right-clicked, then
+    // activate it so Tile View actions can't land on a background session.
+    try { termCtxTabId = tab.id; } catch {}
+    try { if (typeof activateTab === 'function' && activeTabId !== tab.id) activateTab(tab.id); } catch {}
     const menu = document.getElementById('term-ctx-menu');
+    // TR-04: proper disabled state (not just dimmed opacity) for Copy.
+    const copyItem = document.getElementById('term-ctx-copy');
     const sel = term.getSelection();
-    document.getElementById('term-ctx-copy').style.opacity = sel ? '' : '0.5';
+    const hasSel = !!sel;
+    if (copyItem) {
+      copyItem.classList.toggle('disabled', !hasSel);
+      copyItem.setAttribute('aria-disabled', String(!hasSel));
+      copyItem.style.opacity = '';
+    }
+    // Start closed: a submenu left open from the last invocation must not
+    // affect this measurement or leak its expanded height into positioning.
+    try {
+      menu.querySelectorAll('.ctx-submenu-wrap.open').forEach(el => {
+        el.classList.remove('open');
+        el.querySelector(':scope > .ctx-item')?.setAttribute('aria-expanded', 'false');
+      });
+    } catch {}
+    // Keyboard-invoked menus (Shift+F10 / Menu key) report 0,0 — anchor to
+    // the terminal tile instead of the viewport origin.
+    let cx = e.clientX, cy = e.clientY;
+    if (cx === 0 && cy === 0) {
+      try {
+        const r = term.element.getBoundingClientRect();
+        cx = r.left + Math.min(60, Math.max(20, r.width / 3));
+        cy = r.top + Math.min(60, Math.max(20, r.height / 3));
+      } catch { cx = 20; cy = 60; }
+    }
     // Show first to measure actual dimensions
     menu.style.display = 'block';
     const mw = menu.offsetWidth;
     const mh = menu.offsetHeight;
     const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    let left = e.clientX;
-    let top = e.clientY;
+    // TR-10: keep the menu above the mobile key bar + safe-area inset.
+    const mobileKeys = document.getElementById('mobile-keys');
+    const mobileOffset = (mobileKeys && mobileKeys.offsetHeight && window.innerWidth <= 768 &&
+      getComputedStyle(mobileKeys).display !== 'none') ? mobileKeys.offsetHeight : 0;
+    const vh = window.innerHeight - mobileOffset;
+    let left = cx;
+    let top = cy;
     // Flip horizontally if overflowing right
-    if (left + mw > vw) left = Math.max(0, e.clientX - mw);
-    // Flip vertically if overflowing bottom
-    if (top + mh > vh) top = Math.max(0, e.clientY - mh);
-    // Clamp to viewport
-    left = Math.max(0, Math.min(left, vw - mw));
-    top = Math.max(0, Math.min(top, vh - mh));
+    if (left + mw > vw) left = Math.max(0, cx - mw);
+    // Flip vertically if overflowing bottom (TR-01: clamped to usable vh)
+    if (top + mh > vh) top = Math.max(0, cy - mh);
+    // Clamp to viewport with an 8px margin
+    left = Math.max(8, Math.min(left, vw - mw - 8));
+    top = Math.max(8, Math.min(top, vh - mh - 8));
+    // Guard against tiny viewports where mw/mh exceed the usable area.
+    left = Math.max(8, left);
+    top = Math.max(8, top);
     menu.style.left = left + 'px';
     menu.style.top = top + 'px';
-    // Keep typing focus in the terminal for mouse right-clicks so the cursor
-    // stays active. Only move focus into the menu for keyboard-invoked
-    // context menus (Shift+F10 / Menu key reports 0,0) where keyboard nav is
-    // needed. Focus is restored to the terminal on dismiss (see hideTermCtxMenu).
-    if (e.clientX === 0 && e.clientY === 0) {
-      menu.querySelector('.ctx-item')?.focus();
-    } else {
-      term.focus();
-    }
+    // TR-05: focus the menu container so arrow keys navigate items instead
+    // of being sent to the shell. Focus returns to the terminal on dismiss
+    // (see hideTermCtxMenu). The xterm cursor dims while the menu has focus
+    // but no input is lost — the PTY keeps running underneath.
+    try {
+      menu.setAttribute('tabindex', '-1');
+      menu.focus({ preventScroll: true });
+    } catch { try { menu.focus(); } catch {} }
   });
 
   // Touch-to-mouse translation for TUI apps (mobile)
@@ -548,13 +583,18 @@ function initTerminal(tab) {
     if (e.touches.length !== 1) return;
     const touch = e.touches[0];
     _tapPos = { x: touch.clientX, y: touch.clientY, time: Date.now() };
-    // Long press detection for right-click
+    // Long press detection for right-click (TR-03: dispatch a real
+    // `contextmenu` event — synthetic mousedown/mouseup with button:2 never
+    // triggers the contextmenu handler in WebKit/Blink).
     _longPressTimer = setTimeout(() => {
       if (_tapPos) {
-        const evt = new MouseEvent('mousedown', { clientX: _tapPos.x, clientY: _tapPos.y, button: 2, bubbles: true });
-        term.element.dispatchEvent(evt);
-        const upEvt = new MouseEvent('mouseup', { clientX: _tapPos.x, clientY: _tapPos.y, button: 2, bubbles: true });
-        term.element.dispatchEvent(upEvt);
+        try {
+          const ctxEvt = new MouseEvent('contextmenu', {
+            clientX: _tapPos.x, clientY: _tapPos.y,
+            button: 2, bubbles: true, cancelable: true
+          });
+          term.element.dispatchEvent(ctxEvt);
+        } catch {}
         _tapPos = null;
       }
     }, 500);
@@ -811,6 +851,34 @@ function getXtermSelectionTheme() {
 // SEARCH
 // ═══════════════════════════════════════════════════════
 function toggleSearch() {
+  const tab = typeof getActiveTab === 'function' ? getActiveTab() : null;
+  // File tabs own a CodeMirror, not an xterm search addon — the terminal
+  // search bar would open with no results. Route to the file's own surface.
+  if (tab && tab.type === 'file') {
+    if (tab.cm) {
+      try {
+        // CodeMirror ships no find UI by default (no search addon loaded);
+        // use it when present, otherwise focus the editor for browser find.
+        if (tab.cm.execCommand && window.CodeMirror && window.CodeMirror.commands && window.CodeMirror.commands.find) {
+          tab.cm.execCommand('find');
+        } else {
+          tab.cm.focus();
+          try { toast('File tab focused — use browser find (Ctrl+F) here', 'info'); } catch {}
+        }
+      } catch { try { tab.cm.focus(); } catch {} }
+    } else {
+      try { toast('Search is not available for this file type', 'info'); } catch {}
+    }
+    return;
+  }
+  // Preview tabs render a sandboxed iframe (opaque origin, no searchable DOM)
+  // — focus the preview path bar instead of a dead terminal search.
+  if (tab && tab.type === 'preview') {
+    const input = (tab.pathInput && document.contains(tab.pathInput)) ? tab.pathInput
+      : tab.wrapper ? tab.wrapper.querySelector('.preview-path-input') : null;
+    if (input) { input.focus(); try { input.select(); } catch {} }
+    return;
+  }
   const bar = document.getElementById('search-bar');
   bar.classList.toggle('open');
   if (bar.classList.contains('open')) {
@@ -900,6 +968,10 @@ function setupKeyboardShortcuts() {
     if (ctrl && e.shiftKey && e.key === 'r') { e.preventDefault(); refreshPreview(); }
     if (e.key === 'F11' && document.getElementById('editor-view').classList.contains('open')) { e.preventDefault(); toggleEditorFullscreen(); }
     if (e.key === 'Escape') {
+      // Skip if a menu-level handler already consumed the key (TR-09: the
+      // term-ctx keydown closes just the submenu and stops propagation, so
+      // this global handler must not then close the whole menu as well).
+      if (e.defaultPrevented) return;
       try {
         const tabMenu = document.getElementById('tab-ctx-menu');
         const newMenu = document.getElementById('new-tab-menu');
@@ -911,6 +983,17 @@ function setupKeyboardShortcuts() {
       } catch {}
       const termMenu = document.getElementById('term-ctx-menu');
       if (termMenu && termMenu.style.display !== 'none') {
+        // TR-09: hierarchical dismissal — an open "More Options" flyout
+        // closes first (covers mouse-opened menus where focus never entered
+        // the menu, so the menu-level keydown never fires).
+        try {
+          const openSub = termMenu.querySelector('.ctx-submenu-wrap.open');
+          if (openSub) {
+            openSub.classList.remove('open');
+            openSub.querySelector(':scope > .ctx-item')?.setAttribute('aria-expanded', 'false');
+            return;
+          }
+        } catch {}
         hideTermCtxMenu();
         return;
       }
@@ -1065,7 +1148,9 @@ let _pasteInput = null;
 function pasteToTerminal() {
   const doPaste = text => {
     if (!text) return;
-    const tab = getActiveTab();
+    // TR-02: prefer the right-clicked tile when the menu is open; falls back
+    // to the active tab once the menu is dismissed (target is cleared).
+    const tab = (typeof getTermCtxTarget === 'function' ? getTermCtxTarget() : null) || getActiveTab();
     if (tab?.ws && tab.ws.readyState === WebSocket.OPEN) {
       // Bracketed paste: wrap in escape sequences so the shell buffers the input.
       // sendWsInput() chunks on character boundaries, so multibyte UTF-8 is never split.
@@ -1096,7 +1181,10 @@ function fallbackPaste(callback) {
           callback(_pasteInput.value);
           toast('Pasted to terminal', 'success');
         } else {
-          toast('Paste failed — please use Ctrl+V', 'warning');
+          // TR-11: explicit permission guidance — an empty read means the
+          // browser blocked clipboard access (HTTP origin, denied permission,
+          // or execCommand('paste') unsupported), not an empty clipboard.
+          toast('Clipboard access blocked by browser — press Ctrl+V to paste', 'warning');
         }
         _pasteInput.value = '';
       }, 0);
@@ -1106,14 +1194,14 @@ function fallbackPaste(callback) {
   _pasteInput.focus();
   try {
     const ok = document.execCommand('paste');
-    if (!ok) toast('Paste failed — please use Ctrl+V', 'warning');
+    if (!ok) toast('Clipboard access blocked by browser — press Ctrl+V to paste', 'warning');
   } catch {
-    toast('Paste not supported — use Ctrl+V', 'warning');
+    toast('Clipboard access blocked — press Ctrl+V to paste', 'warning');
   }
 }
 
 function selectAllTerm() {
-  const tab = getActiveTab();
+  const tab = (typeof getTermCtxTarget === 'function' ? getTermCtxTarget() : null) || getActiveTab();
   if (tab?.term) {
     let ta = tab.textarea || tab.term.textarea || tab.term.element?.querySelector('.xterm-textarea, textarea');
     let restore = null;
@@ -1126,7 +1214,7 @@ function selectAllTerm() {
 }
 
 function selectTermLine() {
-  const tab = getActiveTab();
+  const tab = (typeof getTermCtxTarget === 'function' ? getTermCtxTarget() : null) || getActiveTab();
   if (!tab?.term) return;
   const buf = tab.term.buffer.active;
   const cursorY = buf.baseY + buf.cursorY;
@@ -1135,12 +1223,12 @@ function selectTermLine() {
 }
 
 function termScrollUp() {
-  const tab = getActiveTab();
+  const tab = (typeof getTermCtxTarget === 'function' ? getTermCtxTarget() : null) || getActiveTab();
   if (tab?.term) tab.term.scrollLines(-Math.floor((tab.term.rows || 10) / 2));
 }
 
 function termScrollDn() {
-  const tab = getActiveTab();
+  const tab = (typeof getTermCtxTarget === 'function' ? getTermCtxTarget() : null) || getActiveTab();
   if (tab?.term) tab.term.scrollLines(Math.floor((tab.term.rows || 10) / 2));
 }
 

@@ -727,7 +727,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
           <li><b>New devices wait in line.</b> When someone signs in while you're active, their session stays <i>pending</i> until you approve it from your screen. It lapses automatically after 5 minutes.</li>
           <li><b>Review every login.</b> The triangle badge in the header collects unreviewed sign-ins — open the security review to see what, where, and when.</li>
           <li><b>Revoke in one click.</b> The sessions list shows every active device; kicking one drops its connections instantly — or <b>sign out all other devices</b> at once and keep only this one.</li>
-          <li><b>The coffee cup watches the fort.</b> The header cup keeps your screen awake during long jobs (Wake Lock), and the number on it is your live session count — a glance tells you if someone else is in.</li>
+          <li><b>The coffee cup watches the fort.</b> The header cup keeps your screen awake during long jobs (Wake Lock), and the number on it is your live session count — a glance tells you if someone else is in. Click the number to open the security review.</li>
           <li><b>Changing the PIN is a ceremony.</b> It needs approval from a different trusted session and wipes all sessions — so a stolen laptop can't lock you out of your own server.</li>
           <li><b>Rate-limited auth</b> slows brute-force guessing, and destructive actions like remote shutdown require PIN protection to be on.</li>
         </ul>
@@ -757,7 +757,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
         <p class="sec-sub rv">WebTun is a web app that <b>refuses to feel like one</b>.</p>
         <ul class="tight rv">
           <li><b>Install it from the browser</b> (menu → <i>Install / Add to Home Screen</i>) — or tap the install banner when it appears, with extra guidance on iOS. As a PWA it launches full-screen, works through network blips, and nudges you — never force-reloads — when an update is ready.</li>
-          <li><b>Desktop app (Electron)</b> bundles the server: double-click and it picks a free port automatically if 3000 is busy. Enable <b>Start on Login</b> to have it waiting after every reboot. <b>Exit app</b> sits at the very bottom of the Settings panel, outside any section — one tap stops the server and closes every session cleanly.</li>
+          <li><b>Desktop app (Electron)</b> bundles the server: double-click and it picks a free port automatically if 3000 is busy. Enable <b>Start on Login</b> to have it waiting after every reboot. <b>Exit app</b> sits in the System section at the bottom of the Settings panel — one tap stops the server and closes every session cleanly.</li>
           <li><b>Desktop updates itself:</b> the packaged app checks GitHub releases shortly after launch and then daily, downloads in the background, notifies you, and installs on quit — no manual download. Available for Windows (Setup + portable), Linux (deb + AppImage) and macOS (arm64 dmg + zip); Intel Macs are not served by current builds.</li>
           <li><b>Touch-friendly throughout</b> — file actions, git hunks and approvals are all big-target buttons, not hover-only menus.</li>
           <li><b>Gestures:</b> swipe a tab sideways to close it, pull down to refresh, pinch to resize terminal text (that size lasts for the session only — set your default in Settings → Appearance), and flip on Selection mode when you need to copy output instead of tapping it.</li>
@@ -766,7 +766,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
       </section>
 
       <!-- ── SHORTCUTS ── -->
-      <section id="shortcuts" data-title="Keyboard shortcuts keys cheat sheet duplicate reopen rename pin tab menu middle click Alt number">
+      <section id="shortcuts" data-title="Keyboard shortcuts keys cheat sheet duplicate reopen rename pin tab menu middle click Alt number search find">
         <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--vi)" stroke-width="2" stroke-linecap="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg></span>
           <div><h2>Shortcuts <a class="hash" href="#shortcuts" aria-label="Link to this section">#</a></h2></div>
         </div>
@@ -776,7 +776,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
           <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>T</kbd></span><span class="does">New terminal tab</span></div>
           <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>W</kbd></span><span class="does">Close tab</span></div>
           <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>B</kbd></span><span class="does">Toggle file explorer</span></div>
-          <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>F</kbd></span><span class="does">Search in terminal</span></div>
+          <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>F</kbd></span><span class="does">Search active tab (terminal results, file focus, preview path)</span></div>
           <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>→/←</kbd></span><span class="does">Cycle tabs</span></div>
           <div class="keyrow"><span class="combo"><kbd>Alt</kbd><kbd>1</kbd>…<kbd>9</kbd></span><span class="does">Jump to tab 1–8 / last tab</span></div>
           <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>T</kbd></span><span class="does">Reopen last closed tab</span></div>

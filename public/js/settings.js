@@ -62,7 +62,11 @@ function applyScreensaverMin(v) {
   settings.screensaverMin = v;
   saveSettings();
   document.getElementById('s-screensaver-min').value = v;
-  pokeScreensaver();
+  // Only arm the idle countdown when the master screensaver toggle is on —
+  // editing the duration with it off must not start the timer.
+  if (settings.screensaver) {
+    pokeScreensaver();
+  }
 }
 
 function syncToggle(k) {
@@ -79,8 +83,8 @@ function toggleSetting(k) {
   if (k === 'autostart') {
     if (isElectron) {
       window.electronAPI.setAutostart(settings.autostart).then(ok => {
-        if (!ok) { settings.autostart = false; syncToggle('autostart'); }
-      }).catch(() => { settings.autostart = false; syncToggle('autostart'); });
+        if (!ok) { settings.autostart = false; syncToggle('autostart'); saveSettings(); }
+      }).catch(() => { settings.autostart = false; syncToggle('autostart'); saveSettings(); });
     }
     return;
   }
@@ -158,8 +162,10 @@ function applyGitEnabled() {
 }
 
 // Every element a modal sidebar/panel must block while it is open. #main is
-// excluded because these panels are its children.
-const BACKDROP_INERT_IDS = ['header', 'sidebar', 'content'];
+// excluded because these panels are its children. #header stays interactive
+// so the Settings toggle remains clickable while the panel is open (inert
+// subtrees swallow event targets and corrupt the outside-click dismiss).
+const BACKDROP_INERT_IDS = ['sidebar', 'content'];
 function setBackdropInert(on) {
   for (const id of BACKDROP_INERT_IDS) {
     const el = document.getElementById(id);
@@ -214,7 +220,7 @@ function closeSettings() {
 }
 function closeSettingsOnClickOutside(e) {
   const panel = document.getElementById('settings-panel');
-  const btn = document.querySelector('[onclick="openSettings()"]');
+  const btn = document.getElementById('settings-btn') || document.querySelector('[onclick="openSettings()"]');
   if (!panel.classList.contains('open')) { document.removeEventListener('click', closeSettingsOnClickOutside, true); return; }
   if (panel.contains(e.target) || (btn && btn.contains(e.target))) return;
   closeSettings();
@@ -229,6 +235,7 @@ const _secIcons = {
   terminal: '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>',
   interface: '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/><circle cx="9" cy="6" r="2.2"/><circle cx="15" cy="12" r="2.2"/><circle cx="7" cy="18" r="2.2"/>',
   tunnel: '<path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>',
+  system: '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>',
   features: '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/>',
   reset: '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>',
   about: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>'
@@ -321,9 +328,16 @@ function setupSettingsSections() {
     });
   }
 }
+// Pre-search expansion snapshot: filterSettings adds .open while matching,
+// so clearing must restore the exact prior states (not just persisted ones,
+// which miss hover-peeks).
+let _preSearchSectionStates = new Map();
 function filterSettings(q) {
   q = (q || '').trim().toLowerCase();
   const secs = [...document.querySelectorAll('#settings-panel .settings-section')];
+  if (q && _preSearchSectionStates.size === 0) {
+    secs.forEach(s => _preSearchSectionStates.set(s, s.classList.contains('open')));
+  }
   let anyVisible = false;
   secs.forEach(sec => {
     const h3 = sec.querySelector('h3');
@@ -332,7 +346,10 @@ function filterSettings(q) {
       const inner = sec.querySelector('.settings-section-inner');
       const kids = inner ? [...inner.children] : [...sec.children].filter(el => el.tagName !== 'H3');
       kids.forEach(ch => ch.style.display = '');
-      if (sec._secApply) sec._secApply();
+      if (_preSearchSectionStates.has(sec)) {
+        sec.classList.toggle('open', _preSearchSectionStates.get(sec));
+        if (h3) h3.setAttribute('aria-expanded', String(_preSearchSectionStates.get(sec)));
+      } else if (sec._secApply) sec._secApply();
       anyVisible = true;
       return;
     }
@@ -341,13 +358,16 @@ function filterSettings(q) {
     const kids = inner ? [...inner.children] : [...sec.querySelectorAll(':scope > div:not(.settings-section-body)')];
     let show = !!titleHit;
     kids.forEach(ch => {
-      const hit = !!titleHit || ((ch.textContent || '').toLowerCase().includes(q));
+      const text = (ch.textContent || '').toLowerCase();
+      const kw = ((ch.dataset && ch.dataset.keywords) || '').toLowerCase();
+      const hit = !!titleHit || text.includes(q) || (!!kw && kw.split(/\s+/).some(w => w && q.includes(w) || w.includes(q)));
       ch.style.display = hit ? '' : 'none';
       if (hit) show = true;
     });
-    if (show) { sec.style.display = ''; sec.classList.add('open'); anyVisible = true; }
+    if (show) { sec.style.display = ''; sec.classList.add('open'); if (h3) h3.setAttribute('aria-expanded', 'true'); anyVisible = true; }
     else sec.style.display = 'none';
   });
+  if (!q) _preSearchSectionStates.clear();
   document.getElementById('settings-no-match').style.display = anyVisible ? 'none' : '';
 }
 function applyTheme(theme, save = true) {
@@ -368,6 +388,11 @@ function applyTheme(theme, save = true) {
 function applyFontSize(size) {
   size = Math.max(8, Math.min(32, Number(size) || 14));
   settings.fontSize = size;
+  // Clamped value written back so the input never shows an unvalidated number.
+  try {
+    const el = document.getElementById('s-fontsize');
+    if (el && document.activeElement !== el) el.value = String(size);
+  } catch {}
   tabs.forEach(t => { if (t.term) { t.term.options.fontSize = size; fitTerm(t); } });
   saveSettings();
 }
@@ -375,6 +400,10 @@ function applyFontSize(size) {
 function applyScrollback(lines) {
   lines = Math.max(100, Math.min(50000, Number(lines) || 1000));
   settings.scrollback = lines;
+  try {
+    const el = document.getElementById('s-scrollback');
+    if (el && document.activeElement !== el) el.value = String(lines);
+  } catch {}
   tabs.forEach(t => { if (t.term) t.term.options.scrollback = lines; });
   saveSettings();
 }
@@ -394,23 +423,50 @@ function applyCursor(style) {
 // ═══════════════════════════════════════════════════════
 // SIDEBAR
 // ═══════════════════════════════════════════════════════
-let sidebarOpen = true;
+// Single source of truth for collapsed state across mobile/desktop, persisted
+// so a resize between breakpoints can't desync the toggle.
+let sidebarOpen = (() => { try { const v = safeStorage.getItem('wt-sidebar-collapsed'); if (v !== null) return v !== 'true'; } catch {} try { return window.innerWidth > 768; } catch { return true; } })();
+function applySidebarState() {
+  const sb = document.getElementById('sidebar');
+  if (!sb) return;
+  const isMobile = window.innerWidth <= 768;
+  if (isMobile) {
+    sb.classList.remove('hidden');
+    sb.classList.toggle('mobile-open', sidebarOpen);
+  } else {
+    sb.classList.remove('mobile-open');
+    sb.classList.toggle('hidden', !sidebarOpen);
+  }
+  try { safeStorage.setItem('wt-sidebar-collapsed', String(!sidebarOpen)); } catch {}
+}
+let _sidebarResizeWired = false;
+function wireSidebarResizeSync() {
+  if (_sidebarResizeWired) return;
+  _sidebarResizeWired = true;
+  let _sbResizeT = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(_sbResizeT);
+    _sbResizeT = setTimeout(() => { try { applySidebarState(); } catch {} }, 120);
+  });
+}
+wireSidebarResizeSync();
+// Honor a persisted collapsed state on boot without forcing mobile open.
+try { if (safeStorage.getItem('wt-sidebar-collapsed') === 'true') applySidebarState(); } catch {}
 function toggleSidebar() {
   const sb = document.getElementById('sidebar');
+  sidebarOpen = !sidebarOpen;
+  if (!sb) { try { safeStorage.setItem('wt-sidebar-collapsed', String(!sidebarOpen)); } catch {} return; }
   if (window.innerWidth <= 768) {
-    sb.classList.toggle('mobile-open');
-    sb.classList.remove('hidden');
+    applySidebarState();
   } else {
-    sidebarOpen = !sidebarOpen;
     if (!sidebarOpen) {
       sb._savedWidth = sb.style.width || '';
       sb.style.width = '';
     } else {
       sb.style.width = sb._savedWidth || '';
     }
-    sb.classList.toggle('hidden', !sidebarOpen);
-    sb.classList.remove('mobile-open');
-    setTimeout(() => { const t = getActiveTab(); try { fitTerm(t); } catch(e) { console.warn(e); } }, 220);
+    applySidebarState();
+    setTimeout(() => { const t = typeof getActiveTab === 'function' ? getActiveTab() : null; try { fitTerm(t); } catch(e) { console.warn(e); } }, 220);
   }
 }
 

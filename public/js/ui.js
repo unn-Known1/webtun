@@ -94,8 +94,12 @@ function openOverlay(id) {
   const modal = overlay.querySelector('.modal, input, button');
   if (modal) setTimeout(() => modal.focus(), 50);
   installFocusTrap(overlay);
-  const settingsPanel = document.getElementById('settings-panel');
-  if (settingsPanel && settingsPanel.classList.contains('open')) closeSettings();
+  // Confirm + shortcuts dialogs stack over the Settings panel (e.g. PIN
+  // removal) — closing it underneath loses the updated PIN status/fields.
+  if (id !== 'confirm-overlay' && id !== 'shortcuts-overlay') {
+    const settingsPanel = document.getElementById('settings-panel');
+    if (settingsPanel && settingsPanel.classList.contains('open')) closeSettings();
+  }
 }
 function closeOverlay(id) {
   const overlay = document.getElementById(id);
@@ -244,6 +248,28 @@ function updateConnStatus(connected) {
     dot.title = connected ? 'Connected' : 'Disconnected';
     dot.setAttribute('aria-label', connected ? 'Connected' : 'Disconnected');
   }
+}
+
+// Aggregated status: a background tab's socket closing must not flip the
+// title-bar dot red while the active tab is still connected.
+function refreshConnStatus() {
+  try {
+    const list = (typeof tabs !== 'undefined' && Array.isArray(tabs)) ? tabs : [];
+    const active = (typeof getActiveTab === 'function') ? getActiveTab() : null;
+    let isConnected = false;
+    if (active && active.type === 'term') {
+      isConnected = !!(active.ws && active.ws.readyState === WebSocket.OPEN);
+      if (!isConnected) {
+        isConnected = list.some(t => t && t.type === 'term' && t.ws && t.ws.readyState === WebSocket.OPEN);
+      }
+    } else {
+      isConnected = list.some(t => t && t.type === 'term' && t.ws && t.ws.readyState === WebSocket.OPEN);
+      // No terminal tabs at all (files/previews only): nothing to be
+      // disconnected from — keep the last known dot rather than crying wolf.
+      if (!list.some(t => t && t.type === 'term')) return;
+    }
+    updateConnStatus(isConnected);
+  } catch {}
 }
 
 function setupSwipeGestures() {

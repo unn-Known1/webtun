@@ -851,33 +851,47 @@ function hideTermCtxMenu(restoreFocus = true) {
   // click). Otherwise leave focus alone so dismissing via a click into the
   // file explorer / editor doesn't get stolen back to the terminal.
   const hadFocus = !!(menu && menu.contains(document.activeElement));
+  // Capture the target before clearing so focus restores to the tile the
+  // menu was opened on (TR-02), not whatever became active underneath.
+  const target = (typeof getTermCtxTarget === 'function' ? getTermCtxTarget() : null) || getActiveTab();
   if (menu) menu.style.display = 'none';
-  document.querySelectorAll('#term-ctx-menu .ctx-submenu-wrap.open').forEach(el => el.classList.remove('open'));
+  document.querySelectorAll('#term-ctx-menu .ctx-submenu-wrap.open').forEach(el => {
+    el.classList.remove('open');
+    el.querySelector(':scope > .ctx-item')?.setAttribute('aria-expanded', 'false');
+  });
+  try { termCtxTabId = null; } catch {}
   if (restoreFocus && hadFocus) {
-    try { getActiveTab()?.term?.focus(); } catch {}
+    try { target?.term?.focus(); } catch {}
   }
 }
 document.getElementById('term-ctx-copy').addEventListener('click', () => {
-  const t = getActiveTab();
+  const t = (typeof getTermCtxTarget === 'function' ? getTermCtxTarget() : null) || getActiveTab();
+  // TR-04: guard the disabled state — the item is aria-disabled with no
+  // selection, so explain instead of silently closing.
+  const sel = t?.term?.getSelection();
+  if (!sel) {
+    hideTermCtxMenu();
+    try { toast('No text selected to copy', 'info'); } catch {}
+    return;
+  }
   if (t?.term) {
-    const sel = t.term.getSelection();
-    if (sel) {
-      navigator.clipboard.writeText(sel).then(() => {
-        toast('Copied to clipboard', 'success');
-      }).catch(() => {
-        document.execCommand('copy');
-        toast('Copied to clipboard', 'success');
-      });
-    }
+    navigator.clipboard.writeText(sel).then(() => {
+      toast('Copied to clipboard', 'success');
+    }).catch(() => {
+      document.execCommand('copy');
+      toast('Copied to clipboard', 'success');
+    });
   }
   hideTermCtxMenu();
 });
 document.getElementById('term-ctx-paste').addEventListener('click', () => {
+  // Capture target via pasteToTerminal's own lookup (it prefers the ctx
+  // target while the menu is open) before dismissing.
   pasteToTerminal();
   hideTermCtxMenu();
 });
 document.getElementById('term-ctx-select-all').addEventListener('click', () => {
-  const t = getActiveTab();
+  const t = (typeof getTermCtxTarget === 'function' ? getTermCtxTarget() : null) || getActiveTab();
   if (t?.term) t.term.selectAll();
   hideTermCtxMenu();
 });
@@ -898,71 +912,104 @@ document.getElementById('term-ctx-zoom-out').addEventListener('click', () => {
   hideTermCtxMenu();
 });
 document.getElementById('term-ctx-new-tab').addEventListener('click', async () => {
-  const t = getActiveTab();
-  newTab(null, null, (await getLiveTerminalCwd(t)) || t?.cwd || currentPath);
+  // TR-06: dismiss synchronously — the CWD lookup hits the network and must
+  // not freeze the menu on screen. Target is captured first (hide clears it).
+  const t = (typeof getTermCtxTarget === 'function' ? getTermCtxTarget() : null) || getActiveTab();
+  const fallback = t?.cwd || currentPath;
   hideTermCtxMenu();
+  try {
+    const cwd = (await getLiveTerminalCwd(t)) || fallback;
+    newTab(null, null, cwd);
+  } catch {
+    newTab(null, null, fallback);
+  }
 });
 document.getElementById('term-ctx-copy-cwd').addEventListener('click', async () => {
-  const t = getActiveTab();
-  const cwd = (await getLiveTerminalCwd(t)) || t?.cwd || currentPath;
-  if (cwd) {
-    navigator.clipboard.writeText(cwd).then(() => {
-      toast('Path copied', 'success');
-    }).catch(() => {
-      document.execCommand('copy');
-      toast('Path copied', 'success');
-    });
-  }
+  const t = (typeof getTermCtxTarget === 'function' ? getTermCtxTarget() : null) || getActiveTab();
+  const fallback = t?.cwd || currentPath;
   hideTermCtxMenu();
+  try {
+    const cwd = (await getLiveTerminalCwd(t)) || fallback;
+    if (cwd) {
+      await navigator.clipboard.writeText(cwd);
+      toast('Path copied', 'success');
+    }
+  } catch {
+    toast('Failed to copy directory', 'error');
+  }
 });
 document.getElementById('term-ctx-bookmark').addEventListener('click', async () => {
-  const t = getActiveTab();
-  const cwd = (await getLiveTerminalCwd(t)) || t?.cwd || currentPath;
-  if (cwd) {
-    const bm = getBookmarks();
-    if (bm.some(b => b.path === cwd)) { toast('Already bookmarked', 'info'); }
-    else {
-      const sep = cwd.includes('\\') ? '\\' : '/';
-      bm.push({ name: cwd.split(sep).filter(Boolean).pop() || cwd, path: cwd });
-      saveBookmarks(bm);
-      toast('Bookmarked', 'success');
-    }
-  }
+  const t = (typeof getTermCtxTarget === 'function' ? getTermCtxTarget() : null) || getActiveTab();
+  const fallback = t?.cwd || currentPath;
   hideTermCtxMenu();
+  try {
+    const cwd = (await getLiveTerminalCwd(t)) || fallback;
+    if (cwd) {
+      const bm = getBookmarks();
+      if (bm.some(b => b.path === cwd)) { toast('Already bookmarked', 'info'); }
+      else {
+        const sep = cwd.includes('\\') ? '\\' : '/';
+        bm.push({ name: cwd.split(sep).filter(Boolean).pop() || cwd, path: cwd });
+        saveBookmarks(bm);
+        toast('Bookmarked', 'success');
+      }
+    }
+  } catch {
+    toast('Failed to read directory', 'error');
+  }
 });
 document.getElementById('term-ctx-interrupt').addEventListener('click', () => {
-  sendKey('\x03');
+  // TR-02: interrupt the right-clicked tile, not just the active tab.
+  const t = (typeof getTermCtxTarget === 'function' ? getTermCtxTarget() : null) || getActiveTab();
   hideTermCtxMenu();
+  try {
+    if (t?.ws && t.ws.readyState === WebSocket.OPEN) {
+      try { sendWsInput(t.ws, '\x03'); } catch { sendKey('\x03'); }
+    } else {
+      sendKey('\x03');
+    }
+  } catch { try { sendKey('\x03'); } catch {} }
 });
 document.getElementById('term-ctx-rename').addEventListener('click', () => {
-  const t = getActiveTab();
-  if (t?.el) {
-    const span = t.el.querySelector('.tab-title');
-    if (span) span.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-  }
+  // TR-07: dedicated rename entry point — no synthetic dblclick bubbling.
+  const t = (typeof getTermCtxTarget === 'function' ? getTermCtxTarget() : null) || getActiveTab();
   hideTermCtxMenu();
+  if (t && typeof promptTabRename === 'function') promptTabRename(t);
 });
 document.getElementById('term-ctx-scroll-top').addEventListener('click', () => {
-  const t = getActiveTab();
+  const t = (typeof getTermCtxTarget === 'function' ? getTermCtxTarget() : null) || getActiveTab();
   if (t?.term) t.term.scrollToTop();
   hideTermCtxMenu();
 });
 document.getElementById('term-ctx-scroll-bottom').addEventListener('click', () => {
-  const t = getActiveTab();
+  const t = (typeof getTermCtxTarget === 'function' ? getTermCtxTarget() : null) || getActiveTab();
   if (t?.term) t.term.scrollToBottom();
   hideTermCtxMenu();
 });
 document.getElementById('term-ctx-clear').addEventListener('click', () => {
-  const t = getActiveTab();
+  const t = (typeof getTermCtxTarget === 'function' ? getTermCtxTarget() : null) || getActiveTab();
   if (t?.term) t.term.clear();
   hideTermCtxMenu();
 });
-// Submenu toggle on click
+// Submenu toggle on click (TR-01: re-clamp after expansion so the added
+// ~280px can't push items off-screen under overflow clipping).
 document.querySelector('#term-ctx-menu .ctx-submenu-wrap > .ctx-item').addEventListener('click', e => {
   e.stopPropagation();
   const wrap = e.currentTarget.closest('.ctx-submenu-wrap');
   wrap.classList.toggle('open');
   e.currentTarget.setAttribute('aria-expanded', wrap.classList.contains('open'));
+  if (wrap.classList.contains('open')) {
+    try {
+      const menu = document.getElementById('term-ctx-menu');
+      if (typeof adjustTermMenuPosition === 'function') adjustTermMenuPosition(menu);
+      else {
+        const rect = menu.getBoundingClientRect();
+        const vh = window.innerHeight, vw = window.innerWidth;
+        if (rect.bottom > vh - 8) menu.style.top = Math.max(8, vh - rect.height - 8) + 'px';
+        if (rect.right > vw - 8) menu.style.left = Math.max(8, vw - rect.width - 8) + 'px';
+      }
+    } catch {}
+  }
 });
 
 // ═══════════════════════════════════════════════════════
@@ -979,6 +1026,11 @@ function setupCtxMenuKeyboard() {
       wrap.classList.add('open');
       const toggle = wrap.querySelector(':scope > .ctx-item');
       if (toggle) toggle.setAttribute('aria-expanded', 'true');
+      // TR-01: the submenu adds height — re-clamp so it can't spill off-screen.
+      try {
+        const m = wrap.closest('#term-ctx-menu, #ctx-menu, #tab-ctx-menu');
+        if (m && typeof adjustTermMenuPosition === 'function') adjustTermMenuPosition(m);
+      } catch {}
       const first = wrap.querySelector('.ctx-submenu-items .ctx-item');
       if (first) first.focus();
     };
@@ -1001,10 +1053,18 @@ function setupCtxMenuKeyboard() {
       switch (e.key) {
         case 'Escape': {
           const wrap = activeItem && activeItem.closest('.ctx-submenu-wrap');
-          if (wrap && wrap.classList.contains('open')) { closeSubmenu(wrap); e.preventDefault(); return; }
+          if (wrap && wrap.classList.contains('open')) {
+            closeSubmenu(wrap);
+            e.preventDefault();
+            // TR-09: stop the global document Escape handler from then
+            // closing the whole menu as well (dual-listener race).
+            if (e.stopPropagation) e.stopPropagation();
+            return;
+          }
           if (id === 'ctx-menu') document.getElementById('ctx-menu').classList.remove('open');
           else hideTermCtxMenu();
           e.preventDefault();
+          if (e.stopPropagation) e.stopPropagation();
           return;
         }
         case 'ArrowDown': idx = (idx + 1) % items.length; break;
@@ -1028,7 +1088,10 @@ function setupCtxMenuKeyboard() {
         default: return;
       }
       e.preventDefault();
-      if (idx >= 0 && items[idx]) items[idx].focus();
+      if (idx >= 0 && items[idx]) {
+        items[idx].focus();
+        try { items[idx].scrollIntoView({ block: 'nearest' }); } catch {}
+      }
     });
   });
 }
@@ -1068,9 +1131,16 @@ function showCtxMenu(e, file) {
   if (firstItem) firstItem.focus();
 }
 
-document.addEventListener('click', () => {
+document.addEventListener('click', e => {
   document.getElementById('ctx-menu').classList.remove('open');
-  hideTermCtxMenu();
+  // TR-05: clicks inside the terminal menu are owned by the item handlers
+  // (which restore focus to the terminal on action). An outside click
+  // dismisses without stealing focus — otherwise clicking into the explorer
+  // or editor would yank focus back to the terminal.
+  try {
+    if (e && e.target && e.target.closest && e.target.closest('#term-ctx-menu')) return;
+  } catch {}
+  hideTermCtxMenu(false);
 });
 
 document.getElementById('ctx-open').onclick = () => {
