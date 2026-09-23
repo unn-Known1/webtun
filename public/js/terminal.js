@@ -111,6 +111,7 @@ function connectWebSocket(tab, isReconnect = false) {
     tab.reconnectDelay = 1000;
     tab.reconnectAttempts = 0;
     hideTermLoading(tab);
+    try { if (typeof clearTabExited === 'function') clearTabExited(tab); } catch {}
     updateConnStatus(true);
     const banner = document.getElementById('reconnect-banner');
     if (banner) {
@@ -200,6 +201,7 @@ function connectWebSocket(tab, isReconnect = false) {
     if (out) {
       tab.term.write(out);
       try { scanPreviewHint(tab, out.slice(-2000)); } catch {}
+      try { if (typeof notifyTabOutput === 'function') notifyTabOutput(tab); } catch {}
     }
   }
 
@@ -220,7 +222,7 @@ function connectWebSocket(tab, isReconnect = false) {
     if (!buf.length) return;
     const type = buf[0], payload = buf.slice(1);
     if (type === 0x00) processTerminalOutput(payload);
-    else if (type === 0x01) tab.term.writeln('\r\n\x1b[31m[Process exited]\x1b[0m');
+    else if (type === 0x01) { tab.term.writeln('\r\n\x1b[31m[Process exited]\x1b[0m'); try { if (typeof notifyTabExited === 'function') notifyTabExited(tab); } catch {} }
     else if (type === 0x02) tab.term.writeln('\r\n\x1b[31m' + new TextDecoder().decode(payload) + '\x1b[0m');
     else if (type === 0x03) handleClientEvent(payload);
   };
@@ -461,6 +463,7 @@ function initTerminal(tab) {
 
   // Bell: visual flash + desktop notification for background tabs (also flash parent for WebGL)
   term.onBell(() => {
+    try { if (typeof notifyTabBell === 'function') notifyTabBell(tab); } catch {}
     // Visual flash on terminal screen and parent (WebGL uses canvas, so also flash parent)
     const screen = term.element?.querySelector('.xterm-screen');
     const parent = term.element;
@@ -869,7 +872,25 @@ function searchKeydown(e) {
 function setupKeyboardShortcuts() {
   document.addEventListener('keydown', e => {
     const ctrl = e.ctrlKey || e.metaKey;
+    // Alt+1..8 jump to tab N, Alt+9 jumps to the last tab (VS Code / Win Terminal).
+    if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && /^[1-9]$/.test(e.key || '')) {
+      const n = parseInt(e.key, 10);
+      if (tabs.length) {
+        e.preventDefault();
+        const target = (n === 9) ? tabs[tabs.length - 1] : tabs[n - 1];
+        if (target) { unpinLaunchpad(); activateTab(target.id); }
+      }
+      return;
+    }
+    // F2 renames the active tab (standard terminal emulator convention).
+    if (e.key === 'F2' && !ctrl && !e.altKey) {
+      e.preventDefault();
+      if (typeof triggerTabRename === 'function' && activeTabId) triggerTabRename(activeTabId);
+      return;
+    }
     if (ctrl && e.key === 'p') { e.preventDefault(); openFinder(); }
+    if (ctrl && e.shiftKey && (e.key === 'T' || e.key === 't')) { e.preventDefault(); if (typeof reopenLastClosedTab === 'function') reopenLastClosedTab(); return; }
+    if (ctrl && e.shiftKey && (e.key === 'D' || e.key === 'd')) { e.preventDefault(); if (typeof duplicateTab === 'function' && activeTabId) duplicateTab(activeTabId); return; }
     if (ctrl && e.key === 't') { e.preventDefault(); newTab(); }
     if (ctrl && e.key === 'b') { e.preventDefault(); toggleSidebar(); }
     if (ctrl && e.key === 'f') { e.preventDefault(); toggleSearch(); }
@@ -879,6 +900,15 @@ function setupKeyboardShortcuts() {
     if (ctrl && e.shiftKey && e.key === 'r') { e.preventDefault(); refreshPreview(); }
     if (e.key === 'F11' && document.getElementById('editor-view').classList.contains('open')) { e.preventDefault(); toggleEditorFullscreen(); }
     if (e.key === 'Escape') {
+      try {
+        const tabMenu = document.getElementById('tab-ctx-menu');
+        const newMenu = document.getElementById('new-tab-menu');
+        const listMenu = document.getElementById('tab-list-menu');
+        if ((tabMenu && tabMenu.style.display === 'block') || (newMenu && newMenu.style.display === 'block') || (listMenu && listMenu.style.display === 'block')) {
+          if (typeof hideTabMenus === 'function') hideTabMenus();
+          return;
+        }
+      } catch {}
       const termMenu = document.getElementById('term-ctx-menu');
       if (termMenu && termMenu.style.display !== 'none') {
         hideTermCtxMenu();

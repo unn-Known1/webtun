@@ -561,13 +561,16 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
       </section>
 
       <!-- ── TERMINAL ── -->
-      <section id="terminal" data-title="Terminal tabs sessions search links history tmux clipboard">
+      <section id="terminal" data-title="Terminal tabs sessions search links history tmux clipboard pin color duplicate reopen bell activity">
         <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--tl)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg></span>
           <div><h2>Terminal <a class="hash" href="#terminal" aria-label="Link to this section">#</a></h2></div>
         </div>
         <p class="sec-sub rv">A real shell in every tab — <b>not a simulation</b>. Full filesystem access, your own shell, links you can click.</p>
         <ul class="tight rv">
           <li><b>Tabs for everything</b> — <kbd>Ctrl</kbd>+<kbd>T</kbd> opens one, <kbd>Ctrl</kbd>+<kbd>W</kbd> closes it, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>→</kbd>/<kbd>←</kbd> cycles. Double-click a tab to rename it, and your whole tab layout (terminals, app previews and open files) is remembered across reloads. The tab strip is <b>keyboard reachable</b> too: <kbd>Tab</kbd> onto the active tab, then <kbd>←</kbd>/<kbd>→</kbd> to move (or <kbd>Home</kbd>/<kbd>End</kbd> for the ends), and in tile view each tile header is focusable and activates with <kbd>Enter</kbd>.</li>
+          <li><b>Jump directly</b> with <kbd>Alt</kbd>+<kbd>1</kbd>…<kbd>8</kbd> (<kbd>Alt</kbd>+<kbd>9</kbd> always lands on the last tab), <b>rename</b> with <kbd>F2</kbd>, <b>duplicate</b> the current terminal in its working directory with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd>, and <b>reopen</b> an accidentally closed tab with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> (a fresh shell in the same directory — scrollback can't be restored). Middle-click closes any tab.</li>
+          <li><b>Right-click any tab</b> for the full menu: Rename, Duplicate, a 7-color tag (green for the API server, red for prod-ssh…), Pin, Clear Buffer, Restart Session, Close, Close Others, Close Tabs to the Right. Colors and pins survive reloads; pinned tabs shrink to icons and are skipped by bulk-close. Right-click the <b>+</b> button (or empty tab-bar space) for New Terminal / Duplicate / New Preview / Tile View.</li>
+          <li><b>Background tabs speak up.</b> Output in a tab you're not looking at raises a green activity dot, a terminal bell raises an amber badge, and an exited process dims the tab with a red marker — all cleared the moment you visit. When the strip overflows, arrow buttons scroll it and the <b>⌄ switcher</b> lists every tab with a live filter.</li>
           <li><b>Sessions survive accidents.</b> Refresh the page, close the laptop, drop Wi-Fi — your shells keep running server-side (via tmux when available) and reattach exactly where you left them.</li>
           <li><b>Tile view</b> lays every terminal out in a grid at once — and every open code file with it, so you can watch two logs and edit three files in one screen. Find it in the overflow menu when you're juggling.</li>
           <li><b>Search inside output</b> with <kbd>Ctrl</kbd>+<kbd>F</kbd> (match highlighting, optional case-sensitivity), and <b>click file paths &amp; URLs</b> printed by your tools to jump straight there.</li>
@@ -756,7 +759,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
       </section>
 
       <!-- ── SHORTCUTS ── -->
-      <section id="shortcuts" data-title="Keyboard shortcuts keys cheat sheet">
+      <section id="shortcuts" data-title="Keyboard shortcuts keys cheat sheet duplicate reopen rename pin tab menu middle click Alt number">
         <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--vi)" stroke-width="2" stroke-linecap="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg></span>
           <div><h2>Shortcuts <a class="hash" href="#shortcuts" aria-label="Link to this section">#</a></h2></div>
         </div>
@@ -768,6 +771,10 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
           <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>B</kbd></span><span class="does">Toggle file explorer</span></div>
           <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>F</kbd></span><span class="does">Search in terminal</span></div>
           <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>→/←</kbd></span><span class="does">Cycle tabs</span></div>
+          <div class="keyrow"><span class="combo"><kbd>Alt</kbd><kbd>1</kbd>…<kbd>9</kbd></span><span class="does">Jump to tab 1–8 / last tab</span></div>
+          <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>T</kbd></span><span class="does">Reopen last closed tab</span></div>
+          <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>D</kbd></span><span class="does">Duplicate current tab</span></div>
+          <div class="keyrow"><span class="combo"><kbd>F2</kbd></span><span class="does">Rename active tab</span></div>
           <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>S</kbd></span><span class="does">Save editor file</span></div>
           <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>R</kbd></span><span class="does">Refresh preview</span></div>
           <div class="keyrow"><span class="combo"><kbd>Esc</kbd></span><span class="does">Close menus / dialogs</span></div>

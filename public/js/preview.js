@@ -245,7 +245,7 @@ function newPreviewTab(port, pth, opts = {}) {
     try { const rp = recentPreviewPath(initialPort); if (rp && rp !== '/') p = rp; } catch {}
   }
   const id = ++tabCounter;
-  const tab = { id, type: 'preview', port: initialPort, previewPath: p, previewAutoReload: !!opts.auto, previewWidth: opts.width || 'full', title: `App:${initialPort}`, el: null, wrapper: null, iframe: null, closed: false, cwd: currentPath };
+  const tab = { id, type: 'preview', port: initialPort, previewPath: p, previewAutoReload: !!opts.auto, previewWidth: opts.width || 'full', title: `App:${initialPort}`, el: null, wrapper: null, iframe: null, closed: false, cwd: currentPath, color: opts.color || '', pinned: !!opts.pinned };
   tabs.push(tab);
   createTabButton(tab);
   createPreviewWrapper(tab);

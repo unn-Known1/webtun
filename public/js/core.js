@@ -54,7 +54,7 @@ function preventDoubleTap(el, fn, delay = 1000) {
 }
 
 function saveTabState() {
-  const state = tabs.map(t => ({ id: t.id, sessionId: t.sessionId, title: t.title, type: t.type || 'term', port: t.port || null, path: t.type === 'file' ? t.path : (t.previewPath || '/'), auto: t.type === 'preview' && t.previewAutoReload ? 1 : 0, width: t.type === 'preview' ? (t.previewWidth || 'full') : undefined }));
+  const state = tabs.map(t => ({ id: t.id, sessionId: t.sessionId, title: t.title, type: t.type || 'term', port: t.port || null, path: t.type === 'file' ? t.path : (t.previewPath || '/'), auto: t.type === 'preview' && t.previewAutoReload ? 1 : 0, width: t.type === 'preview' ? (t.previewWidth || 'full') : undefined, color: t.color || undefined, pinned: t.pinned ? 1 : undefined }));
   try { safeStorage.setItem('wt-tabs', JSON.stringify(state)); } catch(e) { console.warn('Failed to save tabs:', e); }
 }
 
@@ -414,6 +414,7 @@ async function unlockApp() {
     startScreensaverWatch();
     setupDragDrop();
     setupTabBarDnD();
+    setupTabEnhancements();
     setupKeyboardShortcuts();
     startFileWatcher();
     startOpenFileWatcher();
@@ -466,11 +467,11 @@ async function unlockApp() {
       for (const s of saved) {
         await new Promise(resolve => setTimeout(resolve, 100));
         try {
-          if (s.type === 'preview' && s.port) newPreviewTab(s.port, s.path || '/', { useRecent: false, auto: !!s.auto, width: s.width || 'full' });
+          if (s.type === 'preview' && s.port) newPreviewTab(s.port, s.path || '/', { useRecent: false, auto: !!s.auto, width: s.width || 'full', color: s.color || '', pinned: !!s.pinned });
           // File tabs come back parked: only the last tab is activated below, so a
           // reload does not force the editor panel into a tab.
-          else if (s.type === 'file' && s.path) newFileTab(s.path, { mount: false });
-          else newTab(s.title, s.sessionId);
+          else if (s.type === 'file' && s.path) newFileTab(s.path, { mount: false, color: s.color || '', pinned: !!s.pinned });
+          else newTab(s.title, s.sessionId, undefined, { color: s.color || '', pinned: !!s.pinned });
         } catch (e) { console.warn('Tab restore failed:', e); }
       }
       // newFileTab({ mount: false }) never activates, so a session that ended on a

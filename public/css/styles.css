@@ -574,16 +574,75 @@ body.datasaver #transfers-btn.has-active .tx-up, body.datasaver #transfers-btn.h
 /* ═══════════════════════════════════════════════════════
    TABS
    ═══════════════════════════════════════════════════════ */
-.tab { display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 12px; border-radius: var(--radius); background: var(--bg3); color: var(--fg2); cursor: pointer; flex-shrink: 0; font-size: 12px; transition: background var(--transition-fast), color var(--transition-fast), opacity var(--transition-fast); white-space: nowrap; user-select: none; min-width: 0; }
-.tab.dragging { opacity: 0.4; }
-.tab.drag-over { border-left: 2px solid var(--accent, #00c853); }
-.tab .tab-title { overflow: hidden; text-overflow: ellipsis; color: var(--fg); }
-.tab:hover { background: var(--bg4); color: var(--fg); }
-.tab.active { background: var(--bg4); color: var(--accent); border-bottom: 2px solid var(--accent); }
+.tab { position: relative; display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 8px 0 12px; border-radius: var(--radius); background: var(--bg3); color: var(--fg2); cursor: pointer; flex-shrink: 0; font-size: 12px; white-space: nowrap; user-select: none; min-width: 0; max-width: 220px; border: 1px solid transparent; border-bottom: none; transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast); }
+.tab.dragging { opacity: 0.45; box-shadow: 0 6px 18px var(--shadow-color); }
+/* Inset marker (not a border) so the drop indicator never shifts layout. */
+.tab.drag-over { box-shadow: inset 2px 0 0 var(--accent); }
+.tab .tab-title { overflow: hidden; text-overflow: ellipsis; color: var(--fg); min-width: 0; }
+.tab:hover { background: var(--bg4); color: var(--fg); border-color: var(--border); }
+.tab.active { background: var(--bg4); color: var(--accent); border-color: var(--border); border-bottom: none; box-shadow: inset 0 2px 0 var(--accent), 0 0 12px color-mix(in srgb, var(--accent) 25%, transparent); }
 .tab.active .tab-title { color: var(--accent); }
-.tab-close { width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-sm); opacity: 0.4; flex-shrink: 0; transition: opacity var(--transition-fast), background var(--transition-fast); }
-.tab:hover .tab-close, .tab.active .tab-close { opacity: 0.6; }
-.tab-close:hover { opacity: 1; background: var(--border); }
+.tab-close { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 50%; opacity: 0; flex-shrink: 0; transition: opacity var(--transition-fast), background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast); }
+.tab:hover .tab-close, .tab.active .tab-close, .tab:focus-within .tab-close { opacity: 0.75; }
+.tab-close:hover { opacity: 1; background: color-mix(in srgb, var(--red) 22%, var(--bg4)); color: var(--red); transform: scale(1.08); }
+@media (pointer: coarse) { .tab .tab-close { opacity: 0.75; } }
+/* ── Tab color tags ─────────────────────────────────────────────── */
+.tab::before { content: ''; display: none; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.tab-color-blue::before { display: block; background: #7aa2f7; box-shadow: 0 0 6px #7aa2f7; }
+.tab-color-green::before { display: block; background: #9ece6a; box-shadow: 0 0 6px #9ece6a; }
+.tab-color-amber::before { display: block; background: #e5a50a; box-shadow: 0 0 6px #e5a50a; }
+.tab-color-red::before { display: block; background: #f7768e; box-shadow: 0 0 6px #f7768e; }
+.tab-color-purple::before { display: block; background: #bb9af7; box-shadow: 0 0 6px #bb9af7; }
+.tab-color-cyan::before { display: block; background: #7dcfff; box-shadow: 0 0 6px #7dcfff; }
+/* ── Pinned tabs: icon-only, amber underline ────────────────────── */
+.tab.pinned { padding: 0 4px 0 8px; min-width: 0; box-shadow: inset 0 -2px 0 var(--amber); }
+.tab.pinned .tab-title { display: none; }
+/* ── Activity / bell / exited badges ────────────────────────────── */
+.tab.has-activity::after, .tab.has-bell::after, .tab.is-exited::after { content: ''; position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; border-radius: 50%; pointer-events: none; }
+.tab.has-activity::after { background: var(--green); animation: tabPulse 1.4s ease-in-out infinite; }
+.tab.has-bell::after { background: var(--amber); box-shadow: 0 0 8px var(--amber); animation: tabPulse 0.9s ease-in-out infinite; }
+.tab.has-bell { border-color: var(--amber); }
+.tab.is-exited { opacity: 0.62; }
+.tab.is-exited::after { background: var(--red); }
+@keyframes tabPulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.45; transform: scale(0.8); } }
+/* ── Inline rename input ────────────────────────────────────────── */
+#tab-rename-input { height: 22px; font-size: 12px; font-family: var(--font); padding: 0 8px; background: var(--bg2); color: var(--fg); border: 1px solid var(--accent); border-radius: var(--radius-sm); outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
+/* ── Tab bar overflow controls ──────────────────────────────────── */
+.tab-nav-btn { width: 28px; height: 28px; min-width: 28px; min-height: 28px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius); color: var(--fg2); flex-shrink: 0; background: var(--bg2); border: 1px solid var(--border); align-self: center; position: relative; }
+.tab-nav-btn:hover { background: var(--bg4); color: var(--fg); }
+#tab-list-count { position: absolute; top: -6px; right: -6px; font-size: 9px; font-weight: 700; background: var(--accent); color: var(--bg); border-radius: 8px; padding: 0 4px; line-height: 14px; min-width: 14px; text-align: center; }
+#tab-list-count:empty { display: none; }
+#tab-scroll { scroll-behavior: smooth; }
+@media (pointer: coarse) { #tab-scroll { scroll-snap-type: x proximity; } .tab { scroll-snap-align: start; } }
+/* ── Tab switcher dropdown ──────────────────────────────────────── */
+#tab-list-menu { position: fixed; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 8px 28px var(--shadow-color); z-index: var(--z-menu); padding: 6px; max-height: min(60vh, 420px); display: flex; flex-direction: column; }
+#tab-list-search { width: 100%; height: 30px; font-size: 12px; margin-bottom: 6px; }
+#tab-list-items { overflow-y: auto; display: flex; flex-direction: column; gap: 1px; min-height: 0; }
+.tab-list-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: var(--radius-sm); cursor: pointer; font-size: 12px; }
+.tab-list-row:hover { background: var(--bg4); }
+.tab-list-row.active { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.tab-list-num { width: 16px; color: var(--fg3); font-size: 10px; text-align: center; flex-shrink: 0; }
+.tab-list-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--fg3); flex-shrink: 0; }
+.tab-list-dot.sw-blue { background: #7aa2f7; } .tab-list-dot.sw-green { background: #9ece6a; }
+.tab-list-dot.sw-amber { background: #e5a50a; } .tab-list-dot.sw-red { background: #f7768e; }
+.tab-list-dot.sw-purple { background: #bb9af7; } .tab-list-dot.sw-cyan { background: #7dcfff; }
+.tab-list-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+.tab-list-kind { font-size: 10px; color: var(--fg3); text-transform: uppercase; letter-spacing: 0.4px; flex-shrink: 0; }
+.tab-list-close { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 50%; color: var(--fg3); font-size: 10px; flex-shrink: 0; }
+.tab-list-close:hover { background: color-mix(in srgb, var(--red) 22%, var(--bg4)); color: var(--red); }
+.tab-list-empty { padding: 12px; text-align: center; color: var(--fg3); font-size: 12px; }
+/* ── Tab / new-tab context menus ────────────────────────────────── */
+#tab-ctx-menu, #new-tab-menu { max-height: calc(100vh - 16px); overflow-y: auto; }
+.ctx-hint { margin-left: auto; font-size: 10.5px; color: var(--fg3); padding-left: 16px; white-space: nowrap; }
+.ctx-item.ctx-current { background: color-mix(in srgb, var(--accent) 12%, transparent); box-shadow: inset 2px 0 0 var(--accent); }
+.tab-color-swatch { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; border: 1px solid var(--border); }
+.tab-color-swatch[data-swatch="none"] { background: transparent; border-style: dashed; }
+.tab-color-swatch[data-swatch="blue"] { background: #7aa2f7; border-color: #7aa2f7; }
+.tab-color-swatch[data-swatch="green"] { background: #9ece6a; border-color: #9ece6a; }
+.tab-color-swatch[data-swatch="amber"] { background: #e5a50a; border-color: #e5a50a; }
+.tab-color-swatch[data-swatch="red"] { background: #f7768e; border-color: #f7768e; }
+.tab-color-swatch[data-swatch="purple"] { background: #bb9af7; border-color: #bb9af7; }
+.tab-color-swatch[data-swatch="cyan"] { background: #7dcfff; border-color: #7dcfff; }
 #new-tab-btn { width: 28px; height: 28px; min-width: 28px; min-height: 28px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius); color: var(--fg2); flex-shrink: 0; position: sticky; right: 0; background: var(--bg2); border: 1px solid var(--border); z-index: 1; margin-left: 4px; }
 #new-tab-btn:hover { background: var(--bg4); color: var(--fg); }
 #home-btn { width: 28px; height: 28px; min-width: 28px; min-height: 28px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius); color: var(--fg2); flex-shrink: 0; background: var(--bg2); border: 1px solid var(--border); align-self: center; }
@@ -734,6 +793,8 @@ body.datasaver #transfers-btn.has-active .tx-up, body.datasaver #transfers-btn.h
 .ctx-item:focus-visible,
 .iv-close:focus-visible,
 #new-tab-btn:focus-visible,
+.tab-nav-btn:focus-visible,
+.tab-list-row:focus-visible,
 #home-btn:focus-visible,
 #pin-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 #search-input:focus-visible,
@@ -743,6 +804,8 @@ body.datasaver #transfers-btn.has-active .tx-up, body.datasaver #transfers-btn.h
 
 /* Touch feedback */
 .sidebar-action-btn:active { transform: scale(0.96); }
+.tab-nav-btn:active { transform: scale(0.92); }
+.tab-list-row:active { transform: scale(0.99); }
 .icon-btn:active { transform: scale(0.92); }
 .mkey:active { transform: scale(0.95); }
 

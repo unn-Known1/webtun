@@ -283,13 +283,27 @@
         <button id="home-btn" onclick="toggleLaunchpad()" title="Home dashboard" aria-label="Home dashboard" aria-pressed="false">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         </button>
+        <button id="tab-scroll-left" class="tab-nav-btn" onclick="scrollTabBar(-1)" title="Scroll tabs left" aria-label="Scroll tabs left" style="display:none">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
         <div id="tab-scroll">
-          <button id="new-tab-btn" onclick="newTab()" title="New terminal" aria-label="New terminal">
+          <button id="new-tab-btn" onclick="newTab()" title="New terminal (right-click for more)" aria-label="New terminal" aria-haspopup="menu">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </button>
           <button id="new-preview-btn" onclick="newPreviewPrompt()" title="New app preview" aria-label="New app preview" style="width:28px;height:28px;min-width:28px;min-height:28px;display:flex;align-items:center;justify-content:center;border-radius:var(--radius);color:var(--fg2);flex-shrink:0;background:var(--bg2);border:1px solid var(--border);margin-left:4px">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
           </button>
+        </div>
+        <button id="tab-scroll-right" class="tab-nav-btn" onclick="scrollTabBar(1)" title="Scroll tabs right" aria-label="Scroll tabs right" style="display:none">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+        <button id="tab-list-btn" class="tab-nav-btn" onclick="toggleTabListMenu(event)" title="List all tabs" aria-label="List all tabs" aria-haspopup="menu" aria-expanded="false">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          <span id="tab-list-count" aria-hidden="true"></span>
+        </button>
+        <div id="tab-list-menu" role="menu" aria-label="Open tabs" style="display:none">
+          <input id="tab-list-search" type="text" placeholder="Filter tabs…" aria-label="Filter tabs" autocomplete="off">
+          <div id="tab-list-items" role="group"></div>
         </div>
       </div>
       <div id="editor-split-area">
@@ -748,6 +762,41 @@
   <div class="ctx-item danger" id="term-ctx-clear" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg> Clear</div>
 </div>
 
+<!-- Tab context menu (right-click a tab) -->
+<div id="tab-ctx-menu" role="menu" aria-label="Tab actions" style="position:fixed;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 4px 20px var(--shadow-color);z-index:var(--z-menu);display:none;min-width:210px;overflow:hidden">
+  <div class="ctx-item" id="tab-ctx-rename" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg> Rename <span class="ctx-hint">F2</span></div>
+  <div class="ctx-item" id="tab-ctx-duplicate" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Duplicate Tab <span class="ctx-hint">Ctrl+Shift+D</span></div>
+  <div class="ctx-submenu-wrap" id="tab-ctx-color-wrap">
+    <div class="ctx-item" role="menuitem" aria-haspopup="menu" aria-expanded="false"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg> Set Color<span class="ctx-submenu-arrow"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></span></div>
+    <div class="ctx-submenu-items" id="tab-ctx-colors">
+      <div class="ctx-item" data-tab-color="" role="menuitem"><span class="tab-color-swatch" data-swatch="none"></span> None</div>
+      <div class="ctx-item" data-tab-color="blue" role="menuitem"><span class="tab-color-swatch" data-swatch="blue"></span> Tokyo Blue</div>
+      <div class="ctx-item" data-tab-color="green" role="menuitem"><span class="tab-color-swatch" data-swatch="green"></span> Emerald Green</div>
+      <div class="ctx-item" data-tab-color="amber" role="menuitem"><span class="tab-color-swatch" data-swatch="amber"></span> Amber</div>
+      <div class="ctx-item" data-tab-color="red" role="menuitem"><span class="tab-color-swatch" data-swatch="red"></span> Coral Red</div>
+      <div class="ctx-item" data-tab-color="purple" role="menuitem"><span class="tab-color-swatch" data-swatch="purple"></span> Purple</div>
+      <div class="ctx-item" data-tab-color="cyan" role="menuitem"><span class="tab-color-swatch" data-swatch="cyan"></span> Cyan</div>
+    </div>
+  </div>
+  <div class="ctx-item" id="tab-ctx-pin" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg> <span id="tab-ctx-pin-label">Pin Tab</span></div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" id="tab-ctx-clear" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg> Clear Buffer</div>
+  <div class="ctx-item" id="tab-ctx-restart" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Restart Session</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" id="tab-ctx-close" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Close Tab <span class="ctx-hint">Ctrl+W</span></div>
+  <div class="ctx-item" id="tab-ctx-close-others" role="menuitem"> Close Other Tabs</div>
+  <div class="ctx-item" id="tab-ctx-close-right" role="menuitem"> Close Tabs to the Right</div>
+</div>
+
+<!-- New-tab menu (right-click the + button or empty tab bar) -->
+<div id="new-tab-menu" role="menu" aria-label="New tab" style="position:fixed;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 4px 20px var(--shadow-color);z-index:var(--z-menu);display:none;min-width:200px;overflow:hidden">
+  <div class="ctx-item" id="newtab-term" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> New Terminal <span class="ctx-hint">Ctrl+T</span></div>
+  <div class="ctx-item" id="newtab-duplicate" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Duplicate Current</div>
+  <div class="ctx-item" id="newtab-preview" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> New Preview</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" id="newtab-tiles" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> Toggle Tile View</div>
+</div>
+
 <!-- Fuzzy Finder Modal -->
 <div class="overlay" id="finder-overlay" role="dialog" aria-modal="true" aria-label="Search files">
   <div class="modal modal-md" style="padding:12px">
@@ -770,6 +819,12 @@
           <tr><td><kbd>Ctrl</kbd>+<kbd>B</kbd></td><td>Toggle file explorer</td></tr>
           <tr><td><kbd>Ctrl</kbd>+<kbd>F</kbd></td><td>Search in terminal</td></tr>
           <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>→</kbd>/<kbd>←</kbd></td><td>Cycle tabs</td></tr>
+          <tr><td><kbd>Alt</kbd>+<kbd>1</kbd>..<kbd>9</kbd></td><td>Jump to tab 1–8 / last tab</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd></td><td>Reopen last closed tab</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd></td><td>Duplicate current tab</td></tr>
+          <tr><td><kbd>F2</kbd></td><td>Rename active tab</td></tr>
+          <tr><td>Middle-click</td><td>Close tab</td></tr>
+          <tr><td>Right-click tab</td><td>Tab menu (pin, color, close…)</td></tr>
           <tr><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td><td>Save editor file</td></tr>
           <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd></td><td>Refresh preview</td></tr>
           <tr><td><kbd>Esc</kbd></td><td>Close menus / dialogs</td></tr>

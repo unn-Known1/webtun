@@ -86,7 +86,7 @@ function newFileTab(path, opts = {}) {
     id, type: 'file', path, viewer: fileTabViewerKind(path), title: fileTabName(path),
     el: null, wrapper: null, bodyEl: null, cardEl: null, closed: false,
     mountedOnce: false, dirty: false, viewState: null, seed: null, imgUrl: null,
-    cwd: currentPath,
+    cwd: currentPath, color: opts.color || '', pinned: !!opts.pinned,
   };
   tabs.push(tab);
   createTabButton(tab);
@@ -808,7 +808,7 @@ async function moveTabToPanel(tab) {
   // the draft still holds the text.
   if (content !== original) safeStorage.setItem('wt-draft:' + path, content);
   const diskMtime = tab.diskMtime, diskSize = tab.diskSize, wasExt = tab.extChanged;
-  await closeTab({ stopPropagation() {} }, tab.id, { force: true });
+  await closeTab({ stopPropagation() {} }, tab.id, { force: true, noReopen: true });
   await showTextInPanel(path, content, original, history, diskMtime, diskSize);
   if (wasExt) setPanelExtChanged(true);
   if (cursor) { try { editor?.setCursor(cursor); } catch {} }

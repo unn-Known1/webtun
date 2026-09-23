@@ -2,6 +2,499 @@
 
 
 // ═══════════════════════════════════════════════════════
+// TAB ENHANCEMENTS: color, pin, reopen, activity, menus
+// ═══════════════════════════════════════════════════════
+// tab.color: '' | 'blue' | 'green' | 'amber' | 'red' | 'purple' | 'cyan'
+// tab.pinned: boolean — pinned tabs survive bulk-close (others/right).
+const TAB_COLORS = ['', 'blue', 'green', 'amber', 'red', 'purple', 'cyan'];
+const CLOSED_STACK_MAX = 15;
+let closedTabsHistory = [];
+let _tabCtxId = null;
+let _tabCtxLongPress = null;
+
+function getTabById(id) { return tabs.find(t => t.id === id); }
+
+function applyTabMeta(tab) {
+  const el = tab.el;
+  if (!el) return;
+  TAB_COLORS.forEach(c => { if (c) el.classList.remove('tab-color-' + c); });
+  if (tab.color && TAB_COLORS.includes(tab.color) && tab.color) el.classList.add('tab-color-' + tab.color);
+  el.classList.toggle('pinned', !!tab.pinned);
+  el.title = tab.title + (tab.pinned ? ' (pinned)' : '');
+  try {
+    const pinLbl = document.getElementById('tab-ctx-pin-label');
+    if (pinLbl && _tabCtxId === tab.id) pinLbl.textContent = tab.pinned ? 'Unpin Tab' : 'Pin Tab';
+  } catch {}
+}
+
+function setTabColor(id, color) {
+  const tab = getTabById(id);
+  if (!tab) return;
+  tab.color = TAB_COLORS.includes(color) ? color : '';
+  if (!tab.color) tab.color = '';
+  applyTabMeta(tab);
+  try { saveTabState(); } catch {}
+}
+
+function togglePinTab(id) {
+  const tab = getTabById(id);
+  if (!tab) return;
+  tab.pinned = !tab.pinned;
+  // Pin to the left: a newly pinned tab moves ahead of unpinned ones so the
+  // persistent set stays grouped. Unpinning keeps the position.
+  if (tab.pinned) {
+    const idx = tabs.findIndex(t => t.id === id);
+    if (idx > 0) {
+      const [moved] = tabs.splice(idx, 1);
+      let at = 0;
+      while (at < tabs.length && tabs[at].pinned) at++;
+      tabs.splice(at, 0, moved);
+      const bar = document.getElementById('tab-scroll');
+      const anchor = document.getElementById('new-tab-btn');
+      try {
+        if (moved.el && moved.el.parentNode === bar) {
+          const ref = tabs[at + 1] && tabs[at + 1].el && tabs[at + 1].el.parentNode === bar ? tabs[at + 1].el : (anchor && anchor.parentElement === bar ? anchor : null);
+          if (ref) bar.insertBefore(moved.el, ref);
+          else bar.appendChild(moved.el);
+        }
+      } catch {}
+    }
+  }
+  applyTabMeta(tab);
+  try { saveTabState(); } catch {}
+  try { toast(tab.pinned ? 'Tab pinned — bulk close will skip it' : 'Tab unpinned', 'info'); } catch {}
+}
+
+// Snapshot a tab for the reopen stack. Terminal sessions are killed on close
+// (DELETE /api/sessions), so a reopen is always a fresh shell in the same cwd —
+// scrollback cannot be restored. Preview/file tabs restore port/path.
+function snapshotTabForReopen(tab) {
+  if (!tab) return null;
+  const snap = { type: tab.type || 'term', title: tab.title, color: tab.color || '', cwd: tab.cwd || null };
+  if (tab.type === 'preview') { snap.port = tab.port; snap.path = tab.previewPath || '/'; }
+  else if (tab.type === 'file') { snap.path = tab.path; if (!snap.path) return null; }
+  return snap;
+}
+
+function pushClosedTab(tab) {
+  try {
+    const snap = snapshotTabForReopen(tab);
+    if (!snap) return;
+    closedTabsHistory.push(snap);
+    if (closedTabsHistory.length > CLOSED_STACK_MAX) closedTabsHistory.splice(0, closedTabsHistory.length - CLOSED_STACK_MAX);
+  } catch {}
+}
+
+function reopenLastClosedTab() {
+  const snap = closedTabsHistory.pop();
+  if (!snap) { try { toast('Nothing to reopen', 'info'); } catch {} return null; }
+  try {
+    let tab = null;
+    if (snap.type === 'preview' && snap.port) {
+      tab = newPreviewTab(snap.port, snap.path || '/');
+    } else if (snap.type === 'file' && snap.path) {
+      tab = (typeof openFileAsTab === 'function') ? openFileAsTab(snap.path) : newFileTab(snap.path);
+    } else {
+      tab = newTab(snap.title, undefined, snap.cwd || undefined);
+    }
+    if (tab && snap.color) setTabColor(tab.id, snap.color);
+    return tab;
+  } catch (e) { console.warn('reopenLastClosedTab failed:', e); return null; }
+}
+
+function duplicateTab(id) {
+  const tab = getTabById(id == null ? activeTabId : id);
+  if (!tab) { try { toast('No active tab to duplicate', 'error'); } catch {} return null; }
+  try {
+    if (tab.type === 'preview') {
+      const t = newPreviewTab(tab.port, tab.previewPath || '/');
+      if (t && tab.color) setTabColor(t.id, tab.color);
+      return t;
+    }
+    if (tab.type === 'file') {
+      try { toast('File tabs open one path once — focusing the existing tab instead', 'info'); } catch {}
+      activateTab(tab.id);
+      return tab;
+    }
+    const t = newTab(tab.title, undefined, tab.cwd || currentPath);
+    if (t && tab.color) setTabColor(t.id, tab.color);
+    return t;
+  } catch (e) { console.warn('duplicateTab failed:', e); return null; }
+}
+
+function triggerTabRename(id) {
+  const tab = getTabById(id == null ? activeTabId : id);
+  if (!tab?.el) return;
+  const span = tab.el.querySelector('.tab-title');
+  if (!span) return;
+  try { span.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true })); } catch {}
+  // Fallback when the rename wiring is missing: focus the span.
+  setTimeout(() => { try { if (!document.getElementById('tab-rename-input')) span.focus?.(); } catch {} }, 50);
+}
+
+// Background activity / bell / exited badges. Activity + bell clear the moment
+// the user visits the tab; exited persists until reconnect/restart.
+function notifyTabOutput(tab) {
+  try {
+    if (!tab || tab.closed || tab.id === activeTabId) return;
+    if (tab.type !== 'term') return;
+    tab.el?.classList.add('has-activity');
+  } catch {}
+}
+function notifyTabBell(tab) {
+  try {
+    if (!tab || tab.closed) return;
+    if (tab.id !== activeTabId) { tab.el?.classList.add('has-bell'); tab.el?.classList.remove('has-activity'); }
+  } catch {}
+}
+function notifyTabExited(tab) {
+  try {
+    if (!tab || tab.closed) return;
+    tab.el?.classList.add('is-exited');
+    tab.el?.classList.remove('has-activity');
+  } catch {}
+}
+function clearTabExited(tab) {
+  try { tab?.el?.classList.remove('is-exited'); } catch {}
+}
+function clearTabBadges(tab) {
+  try { tab?.el?.classList.remove('has-activity', 'has-bell'); } catch {}
+}
+
+function clearTabBuffer(id) {
+  const tab = getTabById(id == null ? activeTabId : id);
+  if (!tab) return;
+  if (tab.type === 'term' && tab.term) { try { tab.term.clear(); toast('Terminal cleared', 'success'); } catch {} return; }
+  if (tab.type === 'preview') { try { previewReload(tab); } catch {} return; }
+  try { toast('Nothing to clear on this tab', 'info'); } catch {}
+}
+
+function restartTabSession(id) {
+  const tab = getTabById(id == null ? activeTabId : id);
+  if (!tab) return;
+  try {
+    if (tab.type === 'preview') { previewReload(tab); toast('Preview reloaded', 'success'); return; }
+    if (tab.type === 'file') {
+      if (tab.viewer === 'text' && tab.cm) { reloadTabFile(tab); return; }
+      if (tab.viewer === 'image') {
+        try { if (tab.imgUrl) URL.revokeObjectURL(tab.imgUrl); } catch {}
+        tab.imgUrl = null;
+        if (tab.bodyEl) delete tab.bodyEl.dataset.mounted;
+        mountImageIntoTab(tab);
+        return;
+      }
+      mountFileTab(tab);
+      return;
+    }
+    // Terminal: fresh server session in the same cwd, badges reset.
+    clearTabExited(tab); clearTabBadges(tab);
+    try { cleanupWebSocket(tab); } catch {}
+    clearTimeout(tab.reconnectTimer);
+    tab.sessionId = (typeof uuid === 'function') ? uuid() : String(Date.now());
+    try { tab.term?.clear(); } catch {}
+    try { tab.term?.writeln('\x1b[33m[Restarting session…]\x1b[0m'); } catch {}
+    tab.reconnectDelay = 1000;
+    tab.reconnectAttempts = 0;
+    connectWebSocket(tab, false);
+    toast('Session restarting…', 'info');
+  } catch (e) { console.warn('restartTabSession failed:', e); }
+}
+
+async function bulkCloseTabs(targetIds, label) {
+  const targets = (targetIds || []).map(getTabById).filter(t => t && !t.closed);
+  if (!targets.length) { try { toast('Nothing to close', 'info'); } catch {} return; }
+  // Pinned tabs are never bulk-closed.
+  const closable = targets.filter(t => !t.pinned);
+  const skipped = targets.length - closable.length;
+  if (!closable.length) { try { toast('Pinned tabs are protected — unpin first', 'warning'); } catch {} return; }
+  // One confirm for the whole batch (per-tab prompts would spam N dialogs).
+  const dirtyFile = closable.some(t => t.type === 'file' && t.cm && t.cm.getValue() !== t.original);
+  if (dirtyFile) {
+    const ok = await confirmDialog({ title: 'Discard changes?', message: `Close ${closable.length} tabs? Unsaved file edits will be lost.`, okText: 'Discard', cancelText: 'Cancel', danger: true });
+    if (!ok) return;
+  } else if (settings.confirmclose) {
+    const ok = await confirmDialog({ title: 'Close ' + (label || 'tabs'), message: `Close ${closable.length} tab${closable.length === 1 ? '' : 's'}?${skipped ? ` (${skipped} pinned skipped)` : ''}`, okText: 'Close', cancelText: 'Cancel' });
+    if (!ok) return;
+  }
+  const fakeEv = { stopPropagation() {} };
+  for (const t of closable) {
+    try { await closeTab(fakeEv, t.id, { force: true }); } catch (e) { console.warn('bulk close failed:', e); }
+  }
+  if (skipped) { try { toast(`Skipped ${skipped} pinned tab${skipped === 1 ? '' : 's'}`, 'info'); } catch {} }
+}
+
+function closeOtherTabs(id) {
+  const keep = id == null ? activeTabId : id;
+  bulkCloseTabs(tabs.filter(t => t.id !== keep).map(t => t.id), 'other tabs');
+}
+
+function closeTabsToRight(id) {
+  const ref = id == null ? activeTabId : id;
+  const idx = tabs.findIndex(t => t.id === ref);
+  if (idx === -1) return;
+  bulkCloseTabs(tabs.slice(idx + 1).map(t => t.id), 'tabs to the right');
+}
+
+// ── Tab overflow (scroll arrows + count) ────────────────────────────────
+function updateTabOverflow() {
+  try {
+    const scroll = document.getElementById('tab-scroll');
+    const left = document.getElementById('tab-scroll-left');
+    const right = document.getElementById('tab-scroll-right');
+    const count = document.getElementById('tab-list-count');
+    if (!scroll) return;
+    const overflow = scroll.scrollWidth > scroll.clientWidth + 2;
+    const maxScroll = scroll.scrollWidth - scroll.clientWidth;
+    if (left) left.style.display = (overflow && scroll.scrollLeft > 2) ? 'flex' : 'none';
+    if (right) right.style.display = (overflow && scroll.scrollLeft < maxScroll - 2) ? 'flex' : 'none';
+    if (count) count.textContent = tabs.length > 1 ? String(tabs.length) : '';
+  } catch {}
+}
+
+function scrollTabBar(dir) {
+  try {
+    const scroll = document.getElementById('tab-scroll');
+    if (!scroll) return;
+    scroll.scrollBy({ left: dir * Math.max(160, Math.floor(scroll.clientWidth * 0.6)), behavior: 'smooth' });
+    setTimeout(updateTabOverflow, 250);
+  } catch {}
+}
+
+function scrollActiveTabIntoView() {
+  try {
+    const tab = getTabById(activeTabId);
+    tab?.el?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  } catch {}
+  setTimeout(updateTabOverflow, 60);
+}
+
+// ── Tab quick-switcher (overflow menu) ──────────────────────────────────
+function toggleTabListMenu(e) {
+  try {
+    const menu = document.getElementById('tab-list-menu');
+    if (!menu) return;
+    if (menu.style.display === 'block') { hideTabMenus(); return; }
+    hideTabMenus();
+    renderTabListMenu('');
+    const btn = document.getElementById('tab-list-btn');
+    const r = btn ? btn.getBoundingClientRect() : { left: window.innerWidth - 240, bottom: 40 };
+    menu.style.display = 'block';
+    const mw = Math.min(300, window.innerWidth - 16);
+    menu.style.minWidth = mw + 'px';
+    menu.style.maxWidth = mw + 'px';
+    let left = Math.max(8, Math.min(r.left, window.innerWidth - mw - 8));
+    menu.style.left = left + 'px';
+    menu.style.top = ((r.bottom || 40) + 6) + 'px';
+    btn?.setAttribute('aria-expanded', 'true');
+    const search = document.getElementById('tab-list-search');
+    if (search) { search.value = ''; setTimeout(() => { try { search.focus(); } catch {} }, 30); }
+  } catch (e) { console.warn('toggleTabListMenu failed:', e); }
+}
+
+function renderTabListMenu(filter) {
+  try {
+    const box = document.getElementById('tab-list-items');
+    if (!box) return;
+    box.innerHTML = '';
+    const q = String(filter || '').trim().toLowerCase();
+    tabs.forEach((t, i) => {
+      if (q && !(t.title || '').toLowerCase().includes(q) && !(t.path || '').toLowerCase().includes(q)) return;
+      const row = document.createElement('div');
+      row.className = 'tab-list-row' + (t.id === activeTabId ? ' active' : '');
+      row.setAttribute('role', 'menuitem');
+      row.tabIndex = 0;
+      const num = document.createElement('span');
+      num.className = 'tab-list-num';
+      num.textContent = i < 9 ? String(i + 1) : '•';
+      const dot = document.createElement('span');
+      dot.className = 'tab-list-dot' + (t.color ? ' sw-' + t.color : '');
+      const name = document.createElement('span');
+      name.className = 'tab-list-name';
+      name.textContent = (t.pinned ? '📌 ' : '') + t.title;
+      name.title = t.type === 'file' ? t.path : t.title;
+      const kind = document.createElement('span');
+      kind.className = 'tab-list-kind';
+      kind.textContent = t.type === 'preview' ? 'preview' : t.type === 'file' ? 'file' : 'term';
+      const close = document.createElement('button');
+      close.className = 'tab-list-close';
+      close.setAttribute('aria-label', 'Close ' + t.title);
+      close.textContent = '✕';
+      close.addEventListener('click', ev => { ev.stopPropagation(); hideTabMenus(); closeTab({ stopPropagation() {} }, t.id); });
+      row.append(num, dot, name, kind, close);
+      row.addEventListener('click', () => { hideTabMenus(); activateTab(t.id); });
+      row.addEventListener('keydown', ev => {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); hideTabMenus(); activateTab(t.id); }
+      });
+      box.appendChild(row);
+    });
+    if (!box.children.length) {
+      const empty = document.createElement('div');
+      empty.className = 'tab-list-empty';
+      empty.textContent = 'No tabs match';
+      box.appendChild(empty);
+    }
+  } catch (e) { console.warn('renderTabListMenu failed:', e); }
+}
+
+// ── Context menus ───────────────────────────────────────────────────────
+function positionMenu(menu, x, y) {
+  menu.style.display = 'block';
+  const mw = menu.offsetWidth, mh = menu.offsetHeight;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  let left = x, top = y;
+  if (left + mw > vw) left = Math.max(0, x - mw);
+  if (top + mh > vh) top = Math.max(0, y - mh);
+  menu.style.left = Math.max(0, Math.min(left, vw - mw)) + 'px';
+  menu.style.top = Math.max(0, Math.min(top, vh - mh)) + 'px';
+}
+
+function hideTabMenus() {
+  try { document.getElementById('tab-ctx-menu').style.display = 'none'; } catch {}
+  try { document.getElementById('new-tab-menu').style.display = 'none'; } catch {}
+  try {
+    const m = document.getElementById('tab-list-menu');
+    if (m) m.style.display = 'none';
+    document.getElementById('tab-list-btn')?.setAttribute('aria-expanded', 'false');
+  } catch {}
+  try { document.getElementById('tab-ctx-color-wrap')?.classList.remove('open'); } catch {}
+  _tabCtxId = null;
+}
+
+function openTabContextMenu(e, id) {
+  const tab = getTabById(id);
+  if (!tab) return;
+  e.preventDefault();
+  e.stopPropagation();
+  try { document.getElementById('ctx-menu')?.classList.remove('open'); } catch {}
+  try { hideTermCtxMenu(); } catch {}
+  hideTabMenus();
+  _tabCtxId = id;
+  applyTabMeta(tab);
+  const menu = document.getElementById('tab-ctx-menu');
+  if (!menu) return;
+  // Per-type affordances: Clear/Restart always available, Duplicate is a no-op
+  // for file tabs (one path = one tab) and says so on click.
+  const dup = document.getElementById('tab-ctx-duplicate');
+  if (dup) dup.style.opacity = tab.type === 'file' ? '0.55' : '';
+  const clear = document.getElementById('tab-ctx-clear');
+  if (clear) clear.style.opacity = tab.type === 'file' && !(tab.cm) ? '0.55' : '';
+  // Mark the active color.
+  try {
+    menu.querySelectorAll('#tab-ctx-colors .ctx-item').forEach(el => {
+      el.classList.toggle('ctx-current', (el.dataset.tabColor || '') === (tab.color || ''));
+    });
+  } catch {}
+  positionMenu(menu, e.clientX, e.clientY);
+  try { menu.querySelector('.ctx-item')?.focus(); } catch {}
+}
+
+function openNewTabMenu(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  try { document.getElementById('ctx-menu')?.classList.remove('open'); } catch {}
+  try { hideTermCtxMenu(); } catch {}
+  hideTabMenus();
+  const menu = document.getElementById('new-tab-menu');
+  if (!menu) return;
+  const x = e.clientX || (window.innerWidth - 220);
+  const y = e.clientY || 40;
+  positionMenu(menu, x, y);
+  try { menu.querySelector('.ctx-item')?.focus(); } catch {}
+}
+
+function setupTabCtxMenuItems() {
+  if (window._tabCtxWired) return;
+  window._tabCtxWired = true;
+  const on = (id, fn) => { try { document.getElementById(id)?.addEventListener('click', ev => { ev.stopPropagation(); fn(ev); }); } catch {} };
+  on('tab-ctx-rename', () => { const id = _tabCtxId; hideTabMenus(); triggerTabRename(id); });
+  on('tab-ctx-duplicate', () => { const id = _tabCtxId; hideTabMenus(); duplicateTab(id); });
+  on('tab-ctx-pin', () => { const id = _tabCtxId; hideTabMenus(); togglePinTab(id); });
+  on('tab-ctx-clear', () => { const id = _tabCtxId; hideTabMenus(); clearTabBuffer(id); });
+  on('tab-ctx-restart', () => { const id = _tabCtxId; hideTabMenus(); restartTabSession(id); });
+  on('tab-ctx-close', () => { const id = _tabCtxId; hideTabMenus(); if (id != null) closeTab({ stopPropagation() {} }, id); });
+  on('tab-ctx-close-others', () => { const id = _tabCtxId; hideTabMenus(); closeOtherTabs(id); });
+  on('tab-ctx-close-right', () => { const id = _tabCtxId; hideTabMenus(); closeTabsToRight(id); });
+  try {
+    document.querySelectorAll('#tab-ctx-colors .ctx-item').forEach(el => {
+      el.addEventListener('click', ev => { ev.stopPropagation(); const id = _tabCtxId; const c = el.dataset.tabColor || ''; hideTabMenus(); setTabColor(id, c); });
+    });
+    document.querySelector('#tab-ctx-color-wrap > .ctx-item')?.addEventListener('click', e => {
+      e.stopPropagation();
+      document.getElementById('tab-ctx-color-wrap')?.classList.toggle('open');
+    });
+  } catch {}
+  on('newtab-term', () => { hideTabMenus(); newTab(); });
+  on('newtab-duplicate', () => { hideTabMenus(); duplicateTab(activeTabId); });
+  on('newtab-preview', () => { hideTabMenus(); newPreviewPrompt(); });
+  on('newtab-tiles', () => { hideTabMenus(); toggleTiles(); });
+  // Dismiss on outside click / resize.
+  document.addEventListener('click', e => {
+    try {
+      if (!e.target.closest('#tab-ctx-menu') && !e.target.closest('#new-tab-menu') && !e.target.closest('#tab-list-menu') && !e.target.closest('#tab-list-btn')) hideTabMenus();
+    } catch {}
+  });
+  window.addEventListener('resize', () => { hideTabMenus(); updateTabOverflow(); });
+  // Keyboard nav inside the tab menus (mirrors setupCtxMenuKeyboard).
+  ['tab-ctx-menu', 'new-tab-menu'].forEach(mid => {
+    const menu = document.getElementById(mid);
+    if (!menu) return;
+    menu.querySelectorAll('.ctx-item').forEach(el => { if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1'); });
+    menu.addEventListener('keydown', e => {
+      const items = [...menu.querySelectorAll('.ctx-item')].filter(el => {
+        const sub = el.closest('.ctx-submenu-items');
+        if (sub && !sub.parentElement.classList.contains('open')) return false;
+        return el.offsetParent !== null;
+      });
+      if (!items.length) return;
+      let idx = items.indexOf(document.activeElement);
+      if (e.key === 'Escape') { e.preventDefault(); hideTabMenus(); return; }
+      if (e.key === 'ArrowDown') idx = (idx + 1) % items.length;
+      else if (e.key === 'ArrowUp') idx = (idx - 1 + items.length) % items.length;
+      else if (e.key === 'Home') idx = 0;
+      else if (e.key === 'End') idx = items.length - 1;
+      else if (e.key === 'Enter' || e.key === ' ') {
+        if (document.activeElement?.classList.contains('ctx-item')) { e.preventDefault(); document.activeElement.click(); }
+        return;
+      } else return;
+      e.preventDefault();
+      items[idx]?.focus();
+    });
+  });
+  try {
+    document.getElementById('tab-list-search')?.addEventListener('input', e => renderTabListMenu(e.target.value));
+    document.getElementById('tab-list-search')?.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { e.stopPropagation(); hideTabMenus(); }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const first = document.querySelector('#tab-list-items .tab-list-row');
+        if (first) { hideTabMenus(); first.click(); }
+      }
+      if (e.key === 'ArrowDown') { e.preventDefault(); document.querySelector('#tab-list-items .tab-list-row')?.focus(); }
+    });
+  } catch {}
+}
+
+function setupTabEnhancements() {
+  setupTabCtxMenuItems();
+  try {
+    const scroll = document.getElementById('tab-scroll');
+    scroll?.addEventListener('scroll', () => requestAnimationFrame(updateTabOverflow), { passive: true });
+    window.addEventListener('resize', () => requestAnimationFrame(updateTabOverflow));
+    // Right-click the + button or empty tab-bar gutter for the new-tab menu.
+    document.getElementById('new-tab-btn')?.addEventListener('contextmenu', e => openNewTabMenu(e));
+    document.getElementById('tab-bar')?.addEventListener('contextmenu', e => {
+      if (e.target.closest('.tab') || e.target.closest('#tab-ctx-menu') || e.target.closest('#new-tab-menu') || e.target.closest('#tab-list-menu')) return;
+      openNewTabMenu(e);
+    });
+    // Long-press a tab on touch opens the menu (title long-press still renames:
+    // the rename input existing aborts the menu).
+    // (Per-tab touch wiring lives in createTabButton.)
+  } catch {}
+  updateTabOverflow();
+}
+
+
+// ═══════════════════════════════════════════════════════
 // TERMINAL TABS
 // ═══════════════════════════════════════════════════════
 function nextTermNumber() {
@@ -36,6 +529,7 @@ function setupTabDragDrop(tabEl, id) {
     const bar = document.getElementById('tab-scroll');
     if (moved.el && moved.el.parentNode === bar) bar.insertBefore(moved.el, tabEl);
     saveTabState();
+    updateTabOverflow();
   };
   tabEl.addEventListener('drop', e => {
     e.preventDefault();
@@ -178,6 +672,24 @@ function createTabButton(tab) {
 
   tabEl.addEventListener('click', e => { if (!e.target.closest('.tab-close')) { unpinLaunchpad(); activateTab(id); } });
 
+  // Right-click → tab menu; middle-click → close (both desktop conventions).
+  tabEl.addEventListener('contextmenu', e => openTabContextMenu(e, id));
+  tabEl.addEventListener('auxclick', e => {
+    if (e.button === 1) { e.preventDefault(); e.stopPropagation(); closeTab({ stopPropagation() {} }, id); }
+  });
+  // Touch long-press on the tab chrome opens the menu. The title span has its
+  // own 400ms rename timer — this 650ms timer aborts when a rename input is
+  // already open so both don't fire.
+  tabEl.addEventListener('touchstart', e => {
+    clearTimeout(_tabCtxLongPress);
+    const t = e.touches[0];
+    _tabCtxLongPress = setTimeout(() => {
+      if (document.getElementById('tab-rename-input')) return;
+      try { openTabContextMenu({ preventDefault() {}, stopPropagation() {}, clientX: t.clientX, clientY: t.clientY }, id); } catch {}
+    }, 650);
+  }, { passive: true });
+  ['touchend', 'touchcancel', 'touchmove'].forEach(ev => tabEl.addEventListener(ev, () => clearTimeout(_tabCtxLongPress), { passive: true }));
+
   setupTabDragDrop(tabEl, id);
   setupTabInlineRename(titleSpan, tab);
   setupTabSwipeGesture(tabEl, id);
@@ -187,6 +699,8 @@ function createTabButton(tab) {
   if (anchor && anchor.parentElement === scroll) scroll.insertBefore(tabEl, anchor);
   else scroll.appendChild(tabEl);
   tab.el = tabEl;
+  applyTabMeta(tab);
+  scrollActiveTabIntoView();
 }
 
 function createTerminalWrapper(tab) {
@@ -203,10 +717,10 @@ function createTerminalWrapper(tab) {
 }
 
 
-function newTab(title, sessionId, dir) {
+function newTab(title, sessionId, dir, opts = {}) {
   const id = ++tabCounter;
   const sid = sessionId || uuid();
-  const tab = { id, type: 'term', sessionId: sid, title: title || `Term ${nextTermNumber()}`, term: null, fitAddon: null, searchAddon: null, ws: null, el: null, wrapper: null, closed: false, reconnectDelay: 1000, dataDisposable: null, resizeDisposable: null, resizeObserver: null, cwd: dir || currentPath };
+  const tab = { id, type: 'term', sessionId: sid, title: title || `Term ${nextTermNumber()}`, term: null, fitAddon: null, searchAddon: null, ws: null, el: null, wrapper: null, closed: false, reconnectDelay: 1000, dataDisposable: null, resizeDisposable: null, resizeObserver: null, cwd: dir || currentPath, color: (opts && opts.color) || '', pinned: !!(opts && opts.pinned) };
   tabs.push(tab);
   createTabButton(tab);
   createTerminalWrapper(tab);
@@ -240,6 +754,9 @@ function activateTab(id) {
   });
   const tab = tabs.find(t => t.id === id);
   if (tab?.fitAddon) setTimeout(() => fitTerm(tab), 60);
+  // Visiting a tab clears its unread/activity + bell badges.
+  if (tab) clearTabBadges(tab);
+  try { hideTabMenus(); } catch {}
   // Mobile key bar is terminal-only — hide it for preview and file tabs.
   try {
     const mk = document.getElementById('mobile-keys');
@@ -254,6 +771,7 @@ function activateTab(id) {
   // active, and hand it back to its own split when any other tab takes over.
   if (tab && tab.type === 'file') mountFileTab(tab);
   else if (_dockedFileTabId != null) undockEditor();
+  scrollActiveTabIntoView();
 }
 async function closeTab(e, id, opts = {}) {
   e.stopPropagation();
@@ -293,6 +811,10 @@ async function closeTab(e, id, opts = {}) {
   const isPreview = tab.type === 'preview';
   const isFile = tab.type === 'file';
   tab.closed = true;
+  // Remember for Ctrl+Shift+T — after the confirms above, so a cancelled
+  // close never lands in the reopen stack. Handoffs via moveTabToPanel pass
+  // noReopen:true (the file moved, it wasn't closed).
+  if (!opts.noReopen) pushClosedTab(tab);
   clearTimeout(tab.reconnectTimer);
   if (!isPreview && !isFile) cleanupWebSocket(tab);
   // Hand the shared editor panel back before the wrapper is removed, then free
@@ -321,7 +843,9 @@ async function closeTab(e, id, opts = {}) {
   if (!isPreview && !isFile && tab.sessionId) api(`/api/sessions/${tab.sessionId}`, { method: 'DELETE' });
   tabs = tabs.filter(t => t.id !== id);
   saveTabState();
+  try { hideTabMenus(); } catch {}
   if (activeTabId === id && tabs.length > 0) activateTab(tabs[tabs.length - 1].id);
+  else updateTabOverflow();
   if (tilesMode) layoutTiles();
   const termsEl = document.getElementById('terminals');
   if (termsEl) termsEl.style.marginBottom = '';
@@ -415,6 +939,7 @@ function moveTabToEnd(fromId) {
     else bar.appendChild(moved.el);
   }
   saveTabState();
+  updateTabOverflow();
 }
 
 function setupTabBarDnD() {
