@@ -65,6 +65,38 @@ const os = require('os');
 const crypto = require('crypto');
 const dns = require('dns');
 const { execSync, execFileSync, execFile, spawn } = require('child_process');
+
+function getValidExecutable(candidate) {
+  if (!candidate || typeof candidate !== 'string') return null;
+  const trimmed = candidate.trim();
+  if (!trimmed || trimmed === '/' || trimmed === '\\') return null;
+  try {
+    if (fs.existsSync(trimmed)) {
+      const st = fs.statSync(trimmed);
+      if (st.isFile()) {
+        return trimmed;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+function resolveShell() {
+  if (os.platform() === 'win32') {
+    if (process.env.WEBTUN_SHELL && getValidExecutable(process.env.WEBTUN_SHELL)) {
+      return process.env.WEBTUN_SHELL;
+    }
+    return 'powershell.exe';
+  }
+  const envShell = getValidExecutable(process.env.SHELL);
+  if (envShell) return envShell;
+
+  for (const cand of ['/bin/bash', '/usr/bin/bash', '/bin/sh', '/usr/bin/sh', '/bin/zsh', '/usr/bin/zsh', '/bin/ash', '/bin/dash']) {
+    const valid = getValidExecutable(cand);
+    if (valid) return valid;
+  }
+  return '/bin/sh';
+}
 // Zip creation is stdlib-only (lib/zip-store.js, STORE/no-compression writer)
 // so zipping works identically on Linux, macOS and Windows with no native
 // modules, no shell-outs and no extra dependencies.
@@ -172,10 +204,8 @@ const PORT = (() => {
 // Mutable at runtime via POST /api/pin (persisted to __dirname/.env).
 // All auth checks read this binding, so changes apply instantly.
 let PIN = process.env.PIN || '';
-// On Windows, ignore SHELL env from Git Bash/MSYS2/WSL — prefer PowerShell
-const SHELL = (os.platform() === 'win32' && !process.env.WEBTUN_SHELL)
-  ? 'powershell.exe'
-  : (process.env.SHELL || (os.platform() === 'win32' ? 'powershell.exe' : (fs.existsSync('/bin/bash') ? '/bin/bash' : 'sh')));
+// Resolved safely — ignores invalid or directory paths (e.g. SHELL="/" in containers)
+const SHELL = resolveShell();
 const HOST = process.env.HOST || '0.0.0.0';
 const ALLOW_FULL_FS = process.env.ALLOW_FULL_FS !== 'false';
 const WORKSPACE_ROOT = (() => {
@@ -3332,10 +3362,10 @@ app.post('/api/git/unstage-hunk', rateLimiter, checkPin, async (req, res) => {
 });
 
 // ── Session persistence ──────────────────────────────────────────────
-let TMUX = (() => { try { return execSync('command -v tmux', { stdio: ['ignore','pipe','ignore'] }).toString().trim(); } catch { return null; } })();
+let TMUX = (() => { try { const p = execSync('command -v tmux', { stdio: ['ignore','pipe','ignore'] }).toString().trim(); return getValidExecutable(p); } catch { return null; } })();
 const TMUX_PREFIX = 'wt-webtun-'; // namespaced to avoid collision with user wt-* (F14)
 function getTMUX() {
-  if (!TMUX) { try { TMUX = execSync('command -v tmux', { stdio: ['ignore','pipe','ignore'] }).toString().trim(); } catch { TMUX = null; } }
+  if (!TMUX) { try { const p = execSync('command -v tmux', { stdio: ['ignore','pipe','ignore'] }).toString().trim(); TMUX = getValidExecutable(p); } catch { TMUX = null; } }
   return TMUX;
 }
 // Per-instance namespace: two servers on one box (repo checkout + global/npx
@@ -3802,7 +3832,16 @@ wss.on('connection', (ws, req) => {
   const origin = getWsOrigin(req);
   if (origin) {
     const host = req.headers['host'] || '';
-    const allowedLocal = origin === `http://${host}` || origin === `https://${host}` || origin === `http://localhost` || origin === `https://localhost`;
+    // x-forwarded-host is client-controlled: only honor it behind a trusted proxy.
+    const trustProxy = process.env.TRUST_PROXY === 'true';
+    const fwdHost = trustProxy ? (req.headers['x-forwarded-host'] || '') : '';
+    let originHost = '';
+    try { originHost = new URL(origin).host; } catch {}
+    const allowedLocal = origin === `http://${host}` || origin === `https://${host}` ||
+                         (fwdHost && (origin === `http://${fwdHost}` || origin === `https://${fwdHost}`)) ||
+                         originHost === host || (fwdHost && originHost === fwdHost) ||
+                         origin === `http://localhost` || origin === `https://localhost` ||
+                         origin === `http://127.0.0.1` || origin === `https://127.0.0.1`;
     if (!allowedLocal && !ALLOWED_WS_ORIGINS.has(origin)) {
       ws.close(1008, 'Origin not allowed');
       return;
