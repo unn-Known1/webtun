@@ -901,7 +901,27 @@ function toggleSearchCase() {
   const btn = document.getElementById('search-case-btn');
   btn.classList.toggle('active', searchCaseSensitive);
   btn.setAttribute('aria-pressed', String(searchCaseSensitive));
-  doSearch();
+  // Re-run so highlights and the match count reflect the new mode at once.
+  try { doSearch(); } catch {}
+}
+
+// True for app text fields (settings/finder inputs, rename box, CodeMirror's
+// hidden textarea…) but NOT xterm's own textarea, where Ctrl+F must still
+// open the terminal search. Keyboard events from these fields otherwise
+// bubble to the global shortcuts, which must let them pass through.
+function isAppTextField(el) {
+  if (!el || el === document.body) return false;
+  try { if (el.isContentEditable) return true; } catch {}
+  const tag = String(el.tagName || '').toUpperCase();
+  if (tag === 'INPUT' || tag === 'SELECT') return true;
+  if (tag === 'TEXTAREA') {
+    try {
+      if (/^xterm-helper-/.test(el.id || '')) return false;
+      if (el.classList && el.classList.contains('xterm-textarea')) return false;
+    } catch {}
+    return true;
+  }
+  return false;
 }
 
 // Decoration colors for search highlighting; enabling decorations is also what
@@ -963,7 +983,18 @@ function setupKeyboardShortcuts() {
     if (ctrl && e.shiftKey && (e.key === 'P' || e.key === 'p')) { e.preventDefault(); if (typeof togglePinTab === 'function' && activeTabId) togglePinTab(activeTabId); return; }
     if (ctrl && e.key === 't') { e.preventDefault(); newTab(); }
     if (ctrl && e.key === 'b') { e.preventDefault(); toggleSidebar(); }
-    if (ctrl && e.key === 'f') { e.preventDefault(); toggleSearch(); }
+    // Ctrl+F belongs to the terminal search only when a terminal tab is
+    // active and focus isn't in an app text field. Everywhere else (file
+    // editor, preview, settings/finder inputs, rename box) the keystroke
+    // passes through so the browser's native find opens — hijacking it
+    // there showed "use browser find" advice the user could never follow.
+    if (ctrl && e.key === 'f') {
+      const st = (typeof getActiveTab === 'function') ? getActiveTab() : null;
+      if (st && st.type === 'term' && !isAppTextField(document.activeElement)) {
+        e.preventDefault();
+        toggleSearch();
+      }
+    }
     if (ctrl && e.key === 'w') { e.preventDefault(); if (activeTabId) closeTab(e, activeTabId); }
     if (ctrl && e.shiftKey && e.key === 'ArrowRight') { e.preventDefault(); cycleTab(1); }
     if (ctrl && e.shiftKey && e.key === 'ArrowLeft') { e.preventDefault(); cycleTab(-1); }
