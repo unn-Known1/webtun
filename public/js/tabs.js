@@ -5,7 +5,8 @@
 // TAB ENHANCEMENTS: color, pin, reopen, activity, menus
 // ═══════════════════════════════════════════════════════
 // tab.color: '' | 'blue' | 'green' | 'amber' | 'red' | 'purple' | 'cyan'
-// tab.pinned: boolean — pinned tabs survive bulk-close (others/right).
+// tab.pinned: boolean — pinned tabs group left, shrink to icons, survive
+// bulk-close (others/right), and ask first on any single close.
 const TAB_COLORS = ['', 'blue', 'green', 'amber', 'red', 'purple', 'cyan'];
 const CLOSED_STACK_MAX = 15;
 let closedTabsHistory = [];
@@ -36,33 +37,37 @@ function setTabColor(id, color) {
   try { saveTabState(); } catch {}
 }
 
+// Pinned tabs live as a group at the left of the bar, so the persistent set
+// stays together. Shared by togglePinTab (pinning) and reopenLastClosedTab
+// (restoring a closed pinned tab).
+function groupPinnedTab(tab) {
+  const idx = tabs.findIndex(t => t.id === tab.id);
+  if (idx === -1) return;
+  const [moved] = tabs.splice(idx, 1);
+  let at = 0;
+  while (at < tabs.length && tabs[at].pinned) at++;
+  tabs.splice(at, 0, moved);
+  const bar = document.getElementById('tab-scroll');
+  const anchor = document.getElementById('new-tab-btn');
+  try {
+    if (moved.el && moved.el.parentNode === bar) {
+      const ref = tabs[at + 1] && tabs[at + 1].el && tabs[at + 1].el.parentNode === bar ? tabs[at + 1].el : (anchor && anchor.parentElement === bar ? anchor : null);
+      if (ref) bar.insertBefore(moved.el, ref);
+      else bar.appendChild(moved.el);
+    }
+  } catch {}
+}
+
 function togglePinTab(id) {
   const tab = getTabById(id);
   if (!tab) return;
   tab.pinned = !tab.pinned;
-  // Pin to the left: a newly pinned tab moves ahead of unpinned ones so the
-  // persistent set stays grouped. Unpinning keeps the position.
-  if (tab.pinned) {
-    const idx = tabs.findIndex(t => t.id === id);
-    if (idx > 0) {
-      const [moved] = tabs.splice(idx, 1);
-      let at = 0;
-      while (at < tabs.length && tabs[at].pinned) at++;
-      tabs.splice(at, 0, moved);
-      const bar = document.getElementById('tab-scroll');
-      const anchor = document.getElementById('new-tab-btn');
-      try {
-        if (moved.el && moved.el.parentNode === bar) {
-          const ref = tabs[at + 1] && tabs[at + 1].el && tabs[at + 1].el.parentNode === bar ? tabs[at + 1].el : (anchor && anchor.parentElement === bar ? anchor : null);
-          if (ref) bar.insertBefore(moved.el, ref);
-          else bar.appendChild(moved.el);
-        }
-      } catch {}
-    }
-  }
+  // Pin to the left: a newly pinned tab moves ahead of unpinned ones.
+  // Unpinning keeps the position.
+  if (tab.pinned) groupPinnedTab(tab);
   applyTabMeta(tab);
   try { saveTabState(); } catch {}
-  try { toast(tab.pinned ? 'Tab pinned — bulk close will skip it' : 'Tab unpinned', 'info'); } catch {}
+  try { toast(tab.pinned ? 'Tab pinned — closing it will ask first' : 'Tab unpinned', 'info'); } catch {}
 }
 
 // Snapshot a tab for the reopen stack. Terminal sessions are killed on close
@@ -70,7 +75,7 @@ function togglePinTab(id) {
 // scrollback cannot be restored. Preview/file tabs restore port/path.
 function snapshotTabForReopen(tab) {
   if (!tab) return null;
-  const snap = { type: tab.type || 'term', title: tab.title, color: tab.color || '', cwd: tab.cwd || null };
+  const snap = { type: tab.type || 'term', title: tab.title, color: tab.color || '', pinned: !!tab.pinned, cwd: tab.cwd || null };
   if (tab.type === 'preview') { snap.port = tab.port; snap.path = tab.previewPath || '/'; }
   else if (tab.type === 'file') { snap.path = tab.path; if (!snap.path) return null; }
   return snap;
@@ -98,6 +103,13 @@ function reopenLastClosedTab() {
       tab = newTab(snap.title, undefined, snap.cwd || undefined);
     }
     if (tab && snap.color) setTabColor(tab.id, snap.color);
+    // A reopened pinned tab comes back pinned and regrouped left, so the
+    // protection the user asked for survives an accidental close.
+    if (tab && snap.pinned) {
+      if (!tab.pinned) { tab.pinned = true; try { applyTabMeta(tab); } catch {} }
+      groupPinnedTab(tab);
+      try { saveTabState(); } catch {}
+    }
     return tab;
   } catch (e) { console.warn('reopenLastClosedTab failed:', e); return null; }
 }
@@ -693,6 +705,14 @@ function createTabButton(tab) {
   }
   tabEl.appendChild(icon);
 
+  const pinIco = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  pinIco.setAttribute('width', '10'); pinIco.setAttribute('height', '10'); pinIco.setAttribute('viewBox', '0 0 24 24');
+  pinIco.setAttribute('fill', 'none'); pinIco.setAttribute('stroke', 'currentColor'); pinIco.setAttribute('stroke-width', '2');
+  pinIco.setAttribute('class', 'tab-pin-ico');
+  pinIco.setAttribute('aria-hidden', 'true');
+  pinIco.innerHTML = '<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>';
+  tabEl.appendChild(pinIco);
+
   const titleSpan = document.createElement('span');
   titleSpan.className = 'tab-title';
   titleSpan.textContent = tab.title;
@@ -817,9 +837,20 @@ function activateTab(id) {
 async function closeTab(e, id, opts = {}) {
   e.stopPropagation();
   const closing = tabs.find(t => t.id === id);
+  // Pinned tabs resist every single-close path (× button, middle-click,
+  // Ctrl+W, swipe, context menu, quick-switcher, tiles, panel ×): one
+  // explicit confirm, even when the global close-confirm is off. Bulk close
+  // never reaches here for pinned tabs — it filters them out first and
+  // closes the rest with `opts.force`, which bypasses this guard.
+  let pinConfirmed = false;
+  if (closing && closing.pinned && !opts.force) {
+    pinConfirmed = await confirmDialog({ title: 'Tab is pinned', message: `'${closing.title}' is pinned. Close it anyway?`, okText: 'Close', cancelText: 'Keep', danger: true });
+    if (!pinConfirmed) return;
+  }
   // `opts.force` means the caller has already taken ownership of the buffer (see
   // moveTabToPanel), so neither the close prompt nor the discard prompt applies.
-  if (settings.confirmclose && !opts.force) {
+  // A passed pin confirm already covers the generic close prompt — no double dialog.
+  if (settings.confirmclose && !opts.force && !pinConfirmed) {
     const kind = closing?.type === 'preview' ? 'preview' : closing?.type === 'file' ? 'file' : 'terminal';
     const ok = await confirmDialog({ title: 'Close ' + kind, message: tabs.length === 1 ? `Close last ${kind}?` : `Close ${kind}?`, okText: 'Close', cancelText: 'Cancel' });
     if (!ok) return;

@@ -33,7 +33,7 @@ Optional env vars:
 - `TRUST_PROXY=true` — trust `X-Forwarded-For` from first proxy (default: loopback only)
 - `WEBTUN_SHELL` — override shell on Windows (default: PowerShell; set to `/usr/bin/bash` for Git Bash)
 - `ALLOWED_ORIGINS` — comma-separated extra WebSocket origins for reverse-proxy/custom hostnames (same-origin is always allowed). Without it, `ALLOWED_WS_ORIGINS` stays empty and only same-origin WS upgrades pass.
-- `PREVIEW_PORTS` — comma-separated allow-list for app preview targets; unset means any port except WebTun's own.
+- `PREVIEW_PORTS` — comma-separated allow-list for app preview targets; unset means any port 1–65535.
 - `JSON_LIMIT` note: the global JSON body limit is **2 MB**; only `POST /api/files/write` gets 12 MB (`LARGE_JSON_ROUTES` in `server.js`). Add a path there before raising the global limit.
 
 PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means no auth. Quoted values in `.env` are stripped (e.g., `PIN="secret"` works).
@@ -75,7 +75,7 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
   - `hideTermLoading(tab)` / `tab.loadingEl` — terminal "Connecting…" overlay
   - `setupMoreMenuKeyboard()` — arrow/Home/End/Escape nav in overflow menu
 - **Dialogs**: `openOverlay(id)` sets `role="dialog"`, `aria-modal="true"`, `aria-labelledby` from the modal `h2`. Overlays without an `h2` need `aria-label`.
-- **Toasts**: `toast(msg, type)` supports `info|success|warning|error` with icons; stack capped at 4.
+- **Toasts**: `toast(msg, type)` supports `info|success|warning|error` with icons; stack capped at 4. Every toast is also logged to the Notification Center (`logNotification`, cap 100, in `ui.js`) — bell drawer mirroring the settings panel, entries persist until cleared (✕, swipe, or Clear all), badge counts unread.
 - **Security header UI** (all in `public/js/app.js`): `#security-alert-btn` + `#security-alert-count` — persistent triangle for unreviewed logins (`wt-security-alerts` in storage, cleared by `openSecurityReview()`); `#sess-cup-num` — live session count drawn on the keep-awake cup (`updateSessionCupCount()`); `handleClientEvent()` handles `0x03` pushes (approve/deny modals via `confirmDialog`, pending rows in `refreshSessions()`).
 
 ### Terminal

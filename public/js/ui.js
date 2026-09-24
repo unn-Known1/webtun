@@ -238,7 +238,161 @@ function toast(msg, type = 'info') {
   container.appendChild(el);
   while (container.children.length > 4) container.firstChild.remove();
   setTimeout(() => el.remove(), 3000);
+  // The popup is transient — the Notification Center keeps it until cleared.
+  try { logNotification(msg, type); } catch {}
   return el;
+}
+
+// ── Notification Center (bell drawer, mirrors the settings panel) ─────────
+// Every toast is logged here (newest last, cap 100) and stays until cleared.
+// The header badge counts arrivals while the panel is closed; opening marks
+// them read without deleting anything.
+const NOTIF_MAX = 100;
+let notifLog = [];
+let notifSeq = 0;
+let notifUnread = 0;
+
+function logNotification(msg, type) {
+  const t = (type === 'success' || type === 'error' || type === 'warning') ? type : 'info';
+  notifLog.push({ id: ++notifSeq, msg: String(msg == null ? '' : msg), type: t, time: Date.now() });
+  if (notifLog.length > NOTIF_MAX) notifLog.splice(0, notifLog.length - NOTIF_MAX);
+  const panel = document.getElementById('notif-panel');
+  if (panel && panel.classList.contains('open')) renderNotifPanel();
+  else { notifUnread++; updateNotifBadge(); }
+}
+
+function updateNotifBadge() {
+  const btn = document.getElementById('notif-btn');
+  const count = document.getElementById('notif-count');
+  const head = document.getElementById('notif-head-count');
+  if (count) count.textContent = notifUnread > 99 ? '99+' : String(notifUnread);
+  if (btn) btn.classList.toggle('has-unread', notifUnread > 0);
+  if (head) head.textContent = notifLog.length ? `(${notifLog.length})` : '';
+}
+
+function renderNotifPanel() {
+  const box = document.getElementById('notif-list');
+  if (!box) return;
+  box.innerHTML = '';
+  const empty = document.getElementById('notif-empty');
+  if (empty) empty.style.display = notifLog.length ? 'none' : 'flex';
+  const clearBtn = document.getElementById('notif-clear-all');
+  if (clearBtn) clearBtn.disabled = !notifLog.length;
+  // Newest first.
+  for (let i = notifLog.length - 1; i >= 0; i--) {
+    const n = notifLog[i];
+    const row = document.createElement('div');
+    row.className = 'notif-item ' + n.type;
+    row.dataset.nid = String(n.id);
+    const ico = document.createElement('span');
+    ico.setAttribute('aria-hidden', 'true');
+    ico.innerHTML = TOAST_ICONS[n.type] || TOAST_ICONS.info;
+    const txt = document.createElement('span');
+    txt.className = 'notif-msg';
+    txt.textContent = n.msg;
+    const d = new Date(n.time);
+    const when = document.createElement('span');
+    when.className = 'notif-time';
+    try {
+      when.textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      when.title = d.toLocaleString();
+    } catch { when.textContent = ''; }
+    const x = document.createElement('button');
+    x.className = 'notif-x';
+    x.setAttribute('aria-label', 'Dismiss notification');
+    x.title = 'Dismiss';
+    x.textContent = '✕';
+    x.addEventListener('click', () => clearNotifItem(n.id));
+    row.append(ico, txt, when, x);
+    box.appendChild(row);
+  }
+  updateNotifBadge();
+  setupNotifSwipe();
+}
+
+// Swipe a row sideways to dismiss it (same gesture as tab swipe-to-close:
+// horizontal-dominant drag past ~90px; anything else snaps back).
+function setupNotifSwipe() {
+  const box = document.getElementById('notif-list');
+  if (!box || box._swipeWired) return;
+  box._swipeWired = true;
+  let startX = 0, startY = 0, row = null;
+  box.addEventListener('touchstart', e => {
+    if (!e.touches || e.touches.length !== 1) return;
+    const r = e.target && e.target.closest ? e.target.closest('.notif-item') : null;
+    if (!r) return;
+    row = r;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+  }, { passive: true });
+  box.addEventListener('touchmove', e => {
+    if (!row || !row.isConnected) { row = null; return; }
+    if (!e.touches || e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - startX;
+    const dy = e.touches[0].clientY - startY;
+    // Require horizontal-dominant motion so vertical scrolling never dismisses.
+    if (Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    if (Math.abs(dx) > 5) {
+      e.preventDefault();
+      row.style.transform = `translateX(${dx}px)`;
+      row.style.opacity = Math.max(0.3, 1 - Math.abs(dx) / 200);
+      row.style.background = `rgba(247,118,142,${Math.min(Math.abs(dx) / 80, 1) * 0.2})`;
+    }
+  }, { passive: false });
+  const endSwipe = e => {
+    if (!row) return;
+    const el = row;
+    row = null;
+    let dx = 0, dy = 0;
+    try {
+      const t = (e.changedTouches || [])[0] || {};
+      dx = (t.clientX || 0) - startX;
+      dy = (t.clientY || 0) - startY;
+    } catch {}
+    el.style.transform = '';
+    el.style.opacity = '';
+    el.style.background = '';
+    if (Math.abs(dx) > 90 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      const id = parseInt(el.dataset ? el.dataset.nid : '', 10);
+      if (!isNaN(id)) clearNotifItem(id);
+    }
+  };
+  box.addEventListener('touchend', endSwipe, { passive: true });
+  box.addEventListener('touchcancel', () => { row = null; }, { passive: true });
+}
+
+function toggleNotifPanel() {
+  const panel = document.getElementById('notif-panel');
+  if (!panel) return;
+  if (panel.classList.contains('open')) { closeNotifPanel(); return; }
+  try { closeSettings(); } catch {}
+  panel.classList.add('open');
+  notifUnread = 0;
+  renderNotifPanel();
+  document.getElementById('notif-btn')?.setAttribute('aria-expanded', 'true');
+  setTimeout(() => document.addEventListener('click', closeNotifOnClickOutside, true), 50);
+}
+function closeNotifPanel() {
+  const panel = document.getElementById('notif-panel');
+  if (panel) panel.classList.remove('open');
+  document.getElementById('notif-btn')?.setAttribute('aria-expanded', 'false');
+  document.removeEventListener('click', closeNotifOnClickOutside, true);
+}
+function closeNotifOnClickOutside(e) {
+  const panel = document.getElementById('notif-panel');
+  const btn = document.getElementById('notif-btn');
+  if (!panel || !panel.classList.contains('open')) { document.removeEventListener('click', closeNotifOnClickOutside, true); return; }
+  if (panel.contains(e.target) || (btn && btn.contains(e.target))) return;
+  closeNotifPanel();
+}
+function clearNotifItem(id) {
+  notifLog = notifLog.filter(n => n.id !== id);
+  renderNotifPanel();
+}
+function clearAllNotifs() {
+  notifLog = [];
+  notifUnread = 0;
+  renderNotifPanel();
 }
 
 function updateConnStatus(connected) {

@@ -4741,8 +4741,8 @@ function checkPreviewAuth(req, res, next) {
   if (s.status !== 'active') return res.status(403).json({ error: 'Session awaiting approval from another device', pending: true });
   req.authToken = token; req.authSession = s; return next();
 }
-// Ports the preview proxy may dial. By default any port except WebTun's own:
-// connecting needs no privilege, the dial is always 127.0.0.1, and the caller
+// Ports the preview proxy may dial. By default any port 1–65535, WebTun's own
+// included: connecting needs no privilege, the dial is always 127.0.0.1, and the caller
 // is already authenticated. Set PREVIEW_PORTS=5173,8080 to restrict it when an
 // instance is shared and you don't want the proxy usable as a loopback scanner.
 const PREVIEW_PORTS = (() => {
@@ -4759,7 +4759,7 @@ function validPreviewPort(p) {
   const n = Number(p);
   if (!Number.isInteger(n) || n < 1 || n > 65535) return false;
   if (PREVIEW_PORTS && !PREVIEW_PORTS.has(n)) return false;
-  return n !== (Number(PORT) || 3000);
+  return true;
 }
 const HOP_HEADERS = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade', 'content-length']);
 // Why this port was refused before any dial (caller-visible config, not a
@@ -4767,7 +4767,6 @@ const HOP_HEADERS = new Set(['connection', 'keep-alive', 'proxy-authenticate', '
 function previewPortRejectReason(p) {
   const n = Number(p);
   if (!Number.isInteger(n) || n < 1 || n > 65535) return 'invalid';
-  if (n === (Number(PORT) || 3000)) return 'self';
   if (PREVIEW_PORTS && !PREVIEW_PORTS.has(n)) return 'blocked';
   return null;
 }
@@ -4786,7 +4785,6 @@ function handlePreviewProxy(req, res) {
   const port = req.params.port;
   if (!validPreviewPort(port)) {
     const reason = previewPortRejectReason(port);
-    if (reason === 'self') return previewError(res, port, "That's WebTun itself", { status: 400, title: `Preview :${port} unavailable`, hint: "Enter your app's port, not WebTun's." });
     if (reason === 'blocked') return previewError(res, port, 'Port not in PREVIEW_PORTS allow-list', { status: 400, title: `Preview :${port} unavailable`, hint: 'Ask the server admin to allow this port.' });
     return previewError(res, port, 'Port must be 1-65535', { status: 400, title: 'Preview unavailable', hint: 'Check the port number.' });
   }
@@ -5021,8 +5019,6 @@ app.get('/api/ports', checkPin, (req, res) => {
       }
     }
   } catch {}
-  // Never advertise WebTun's own port as a preview target.
-  try { found.delete(Number(PORT) || 3000); } catch {}
   res.json({ ports: Array.from(found.values()).sort((a, b) => a.port - b.port).slice(0, 100) });
 });
 

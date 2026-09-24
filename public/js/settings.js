@@ -177,6 +177,8 @@ function setBackdropInert(on) {
 function openSettings() {
   const panel = document.getElementById('settings-panel');
   const isOpen = panel.classList.contains('open');
+  // One right-side drawer at a time — the notification center yields to settings.
+  try { closeNotifPanel(); } catch {}
   // Don't inert #main because the panel lives inside it — inert would disable
   // the panel itself. Inert the panel's visible siblings instead, so the
   // sidebar/header/tab strip can't be clicked or tabbed behind the dialog.

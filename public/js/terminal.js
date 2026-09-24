@@ -959,6 +959,7 @@ function setupKeyboardShortcuts() {
     if (ctrl && e.key === 'p') { e.preventDefault(); openFinder(); }
     if (ctrl && e.shiftKey && (e.key === 'T' || e.key === 't')) { e.preventDefault(); if (typeof reopenLastClosedTab === 'function') reopenLastClosedTab(); return; }
     if (ctrl && e.shiftKey && (e.key === 'D' || e.key === 'd')) { e.preventDefault(); if (typeof duplicateTab === 'function' && activeTabId) duplicateTab(activeTabId); return; }
+    if (ctrl && e.shiftKey && (e.key === 'P' || e.key === 'p')) { e.preventDefault(); if (typeof togglePinTab === 'function' && activeTabId) togglePinTab(activeTabId); return; }
     if (ctrl && e.key === 't') { e.preventDefault(); newTab(); }
     if (ctrl && e.key === 'b') { e.preventDefault(); toggleSidebar(); }
     if (ctrl && e.key === 'f') { e.preventDefault(); toggleSearch(); }
@@ -1004,6 +1005,7 @@ function setupKeyboardShortcuts() {
       if (document.getElementById('search-bar').classList.contains('open')) closeSearch();
       if (document.getElementById('cmd-lib-panel').classList.contains('open')) toggleCmdLib();
       if (document.getElementById('settings-panel').classList.contains('open')) closeSettings();
+      try { const np = document.getElementById('notif-panel'); if (np && np.classList.contains('open')) closeNotifPanel(); } catch {}
       document.querySelectorAll('.overlay.open').forEach(el => {
         const id = el.id;
         if (id === 'sys-overlay') closeSystemStats();

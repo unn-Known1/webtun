@@ -448,6 +448,58 @@ body.editor-docked #editor-resize-handle { display: none; }
 #settings-panel.open {
   transform: translateX(0);
 }
+
+/* ═══════════════════════════════════════════════════════
+   NOTIFICATION CENTER (right side, mirrors settings panel)
+   ═══════════════════════════════════════════════════════ */
+#notif-btn { position: relative; }
+#notif-btn.has-unread { color: var(--accent); }
+#notif-count { position: absolute; top: 2px; right: 0; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px; background: var(--accent); color: var(--bg); font-size: 9px; font-weight: 700; line-height: 15px; text-align: center; font-family: var(--font-ui); display: none; pointer-events: none; }
+#notif-btn.has-unread #notif-count { display: block; }
+#notif-panel {
+  position: absolute; right: 0; top: 0; bottom: 0;
+  width: var(--settings-w); overflow: hidden;
+  background: var(--bg2); border-left: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  transform: translateX(100%);
+  transition: transform var(--transition-normal) ease;
+  will-change: transform;
+  backface-visibility: hidden;
+  z-index: var(--z-drawer);
+  contain: layout style;
+}
+#notif-panel.open {
+  transform: translateX(0);
+}
+.notif-panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px; border-bottom: 1px solid var(--border);
+  flex-shrink: 0; position: sticky; top: 0; z-index: 2;
+  background: var(--bg2);
+  background: color-mix(in srgb, var(--bg2) 88%, transparent);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+}
+.notif-panel-header h2, .notif-panel-header > span:first-child { font-size: 14px; font-weight: 700; color: var(--fg); }
+#notif-head-count { font-size: 11px; font-weight: 400; color: var(--fg3); }
+.notif-clear-btn { background: none; border: none; color: var(--fg3); font-size: 11px; font-family: var(--font-ui); cursor: pointer; padding: 6px 8px; border-radius: var(--radius-sm); transition: color var(--transition-fast), background var(--transition-fast); }
+.notif-clear-btn:hover:not(:disabled) { color: var(--red); background: color-mix(in srgb, var(--red) 12%, transparent); }
+.notif-clear-btn:disabled { opacity: 0.4; cursor: default; }
+.notif-clear-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.notif-panel-body { padding: 12px; overflow-y: auto; flex: 1; }
+.notif-item { display: flex; align-items: flex-start; gap: 8px; padding: 9px 10px; margin-bottom: 8px; background: var(--bg3); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius); font-size: 12px; color: var(--fg); animation: slideIn 0.2s ease, fadeIn 0.2s ease; }
+.notif-item svg { flex-shrink: 0; margin-top: 1px; }
+.notif-item.success { border-left-color: var(--green); }
+.notif-item.success svg { color: var(--green); }
+.notif-item.error { border-left-color: var(--red); }
+.notif-item.error svg { color: var(--red); }
+.notif-item.warning { border-left-color: var(--yellow); }
+.notif-item.warning svg { color: var(--yellow); }
+.notif-item.info svg { color: var(--accent); }
+.notif-msg { flex: 1; min-width: 0; overflow-wrap: anywhere; line-height: 1.45; }
+.notif-time { font-size: 10px; color: var(--fg3); white-space: nowrap; font-family: var(--font); }
+.notif-x { flex-shrink: 0; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border: none; border-radius: 50%; background: none; color: var(--fg3); cursor: pointer; transition: color var(--transition-fast), background var(--transition-fast); }
+.notif-x:hover { color: var(--red); background: color-mix(in srgb, var(--red) 12%, transparent); }
+#notif-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 40px 20px; color: var(--fg3); font-size: 12px; text-align: center; }
 .settings-panel-header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 16px; border-bottom: 1px solid var(--border);
@@ -595,8 +647,9 @@ body.datasaver #transfers-btn.has-active .tx-up, body.datasaver #transfers-btn.h
 .tab-color-purple::before { display: block; background: #bb9af7; box-shadow: 0 0 6px #bb9af7; }
 .tab-color-cyan::before { display: block; background: #7dcfff; box-shadow: 0 0 6px #7dcfff; }
 /* ── Pinned tabs: icon-only, amber underline ────────────────────── */
-.tab.pinned { padding: 0 4px 0 8px; min-width: 0; box-shadow: inset 0 -2px 0 var(--amber); }
-.tab.pinned .tab-title { display: none; }
+.tab.pinned { box-shadow: inset 0 -2px 0 var(--amber); }
+.tab .tab-pin-ico { display: none; flex-shrink: 0; color: var(--amber); }
+.tab.pinned .tab-pin-ico { display: block; }
 /* ── Activity / bell / exited badges ────────────────────────────── */
 .tab.has-activity::after, .tab.has-bell::after, .tab.is-exited::after { content: ''; position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; border-radius: 50%; pointer-events: none; }
 .tab.has-activity::after { background: var(--green); animation: tabPulse 1.4s ease-in-out infinite; }

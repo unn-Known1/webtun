@@ -200,16 +200,6 @@ function previewNavigate(tab, port, pth) {
   const parsed = parsePreviewTarget(port, pth == null ? (tab.previewPath || '/') : pth);
   if (parsed.error) { toast(parsed.error, 'error'); return; }
   const n = parsed.port;
-  // The proxy refuses WebTun's own port (self-framing loop) — catch it here
-  // with words instead of a raw error frame. Covers Go, prompt, suggestion
-  // and tab-restore in one choke point.
-  try {
-    if (n === webtunSelfPort()) {
-      try { tab.loadingEl.classList.add('hidden'); } catch {}
-      toast("That's WebTun itself — enter your app's port, not " + n, 'warning');
-      return;
-    }
-  } catch {}
   let p = String(parsed.path == null ? (tab.previewPath || '/') : parsed.path).trim() || '/';
   p = p.replace(/["'\),;\]]+$/, '') || '/';
   if (!p.startsWith('/')) p = '/' + p;
@@ -272,9 +262,6 @@ function confirmNewPreview() {
   const parsed = parsePreviewTarget(raw, '/');
   if (parsed.error) { showFieldError('preview-error', 'Port must be 1–65535 (or paste a localhost URL)'); return; }
   const n = parsed.port;
-  try {
-    if (n === webtunSelfPort()) { showFieldError('preview-error', "That's WebTun itself — enter your app's port"); return; }
-  } catch {}
   clearFieldError('preview-error');
   closeOverlay('preview-overlay');
   newPreviewTab(n, parsed.path || '/');
@@ -341,11 +328,6 @@ function scanPreviewHint(tab, text) {
   }
   const port = parseInt(m[1], 10);
   if (!Number.isInteger(port) || port < 1 || port > 65535) return;
-  // Never suggest WebTun itself as a preview target. location.port is empty
-  // behind a tunnel (guesses 443), so the server's real port is authoritative.
-  try {
-    if (port === webtunSelfPort()) return;
-  } catch {}
   let pth = '/';
   try { pth = (m[2] || '/').replace(/["'\),;\]]+$/, '') || '/'; if (!pth.startsWith('/')) pth = '/'; } catch { pth = '/'; }
   const key = `${tab.id}:${port}`;
