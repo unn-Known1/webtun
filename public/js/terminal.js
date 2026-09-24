@@ -511,6 +511,7 @@ function initTerminal(tab) {
   term.element.addEventListener('contextmenu', e => {
     if (!settings.termRightClick) return;
     e.preventDefault();
+    try { if (typeof hideAllCtxMenus === 'function') hideAllCtxMenus(); } catch {}
     // TR-02: bind the menu to the exact tile that was right-clicked, then
     // activate it so Tile View actions can't land on a background session.
     try { termCtxTabId = tab.id; } catch {}

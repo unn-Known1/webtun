@@ -1098,6 +1098,7 @@ function setupCtxMenuKeyboard() {
 
 function showCtxMenu(e, file) {
   e.preventDefault();
+  try { if (typeof hideAllCtxMenus === 'function') hideAllCtxMenus(); } catch {}
   ctxTarget = file;
   const menu = document.getElementById('ctx-menu');
   menu.style.display = 'block';

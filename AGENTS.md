@@ -73,6 +73,7 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
   - `openShortcuts()` — Keyboard Shortcuts dialog (`#shortcuts-overlay`)
   - `resetSettings()` — restores `DEFAULT_SETTINGS`
   - `hideTermLoading(tab)` / `tab.loadingEl` — terminal "Connecting…" overlay
+  - `hideTabMenus()` / `hideAllCtxMenus()` — close tab menus / every context menu (tab, terminal, file); outside click/right-click/scroll/resize/blur auto-dismiss is wired once in `ui.js` (`setupCtxAutoDismiss`), openers call the central hide first
   - `setupMoreMenuKeyboard()` — arrow/Home/End/Escape nav in overflow menu
 - **Dialogs**: `openOverlay(id)` sets `role="dialog"`, `aria-modal="true"`, `aria-labelledby` from the modal `h2`. Overlays without an `h2` need `aria-label`.
 - **Toasts**: `toast(msg, type)` supports `info|success|warning|error` with icons; stack capped at 4. Every toast is also logged to the Notification Center (`logNotification`, cap 100, in `ui.js`) — bell drawer mirroring the settings panel, entries persist until cleared (✕, swipe, or Clear all), badge counts unread.

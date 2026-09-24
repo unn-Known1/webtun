@@ -395,6 +395,40 @@ function clearAllNotifs() {
   renderNotifPanel();
 }
 
+// ── Context menus: one at a time, auto-close on outside activity ───────────
+// Every opener calls hideAllCtxMenus() first, and setupCtxAutoDismiss()
+// (idempotent, wired once below) closes whatever is open on outside click,
+// right-click elsewhere, scroll, resize, or window blur.
+const _CTX_MENU_SELS = '#ctx-menu,#term-ctx-menu,#tab-ctx-menu,#new-tab-menu,#tab-list-menu';
+function hideAllCtxMenus() {
+  try { if (typeof hideTabMenus === 'function') hideTabMenus(); } catch {}
+  try { document.getElementById('ctx-menu')?.classList.remove('open'); } catch {}
+  // No focus steal: an outside click into the explorer/editor keeps its focus.
+  try { if (typeof hideTermCtxMenu === 'function') hideTermCtxMenu(false); } catch {}
+}
+let _ctxAutoDismissWired = false;
+function setupCtxAutoDismiss() {
+  if (_ctxAutoDismissWired) return;
+  _ctxAutoDismissWired = true;
+  const insideMenu = (t) => {
+    try { return !!(t && t.closest && t.closest(_CTX_MENU_SELS)); } catch { return false; }
+  };
+  // Right-click anywhere else. Menu openers preventDefault their own event,
+  // so it never reaches here; anything arriving unprevented is outside.
+  document.addEventListener('contextmenu', e => {
+    if (e.defaultPrevented || insideMenu(e.target)) return;
+    hideAllCtxMenus();
+  });
+  // A position:fixed menu is orphaned by any scroll outside itself.
+  document.addEventListener('scroll', e => {
+    if (insideMenu(e.target)) return;
+    hideAllCtxMenus();
+  }, { capture: true, passive: true });
+  window.addEventListener('resize', () => hideAllCtxMenus());
+  window.addEventListener('blur', () => hideAllCtxMenus());
+}
+try { setupCtxAutoDismiss(); } catch {}
+
 function updateConnStatus(connected) {
   const dot = document.getElementById('conn-status');
   if (dot) {

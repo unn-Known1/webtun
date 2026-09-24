@@ -401,6 +401,7 @@ function openTabContextMenu(e, id) {
   if (!tab) return;
   e.preventDefault();
   e.stopPropagation();
+  try { if (typeof hideAllCtxMenus === 'function') hideAllCtxMenus(); } catch {}
   try { document.getElementById('ctx-menu')?.classList.remove('open'); } catch {}
   try { hideTermCtxMenu(); } catch {}
   hideTabMenus();
@@ -427,6 +428,7 @@ function openTabContextMenu(e, id) {
 function openNewTabMenu(e) {
   e.preventDefault();
   e.stopPropagation();
+  try { if (typeof hideAllCtxMenus === 'function') hideAllCtxMenus(); } catch {}
   try { document.getElementById('ctx-menu')?.classList.remove('open'); } catch {}
   try { hideTermCtxMenu(); } catch {}
   hideTabMenus();
