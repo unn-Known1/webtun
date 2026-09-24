@@ -375,30 +375,10 @@ function initTerminal(tab) {
 
   const term = new Terminal(cfg);
   const fitAddon = new FitAddon.FitAddon();
-  const searchAddon = new SearchAddon.SearchAddon();
   const webLinksAddon = new WebLinksAddon.WebLinksAddon();
 
   term.loadAddon(fitAddon);
-  term.loadAddon(searchAddon);
   term.loadAddon(webLinksAddon);
-
-  // Real match counts. addon-search has no getDecorations(), so the UI used to
-  // print a hardcoded "1/1"; onDidChangeResults is the actual API and fires
-  // when a search carries decorations (see SEARCH_DECORATIONS).
-  try {
-    tab._searchResultsSub = searchAddon.onDidChangeResults(res => {
-      try {
-        if (getActiveTab() !== tab) return;
-        const el = document.getElementById('search-results');
-        if (!el) return;
-        const q = document.getElementById('search-input')?.value || '';
-        if (!q) { el.textContent = ''; return; }
-        // resultIndex is -1 when the match limit is exceeded.
-        if (!res || res.resultIndex < 0 || !res.resultCount) { el.textContent = q ? 'No results' : ''; return; }
-        el.textContent = `${res.resultIndex + 1}/${res.resultCount}`;
-      } catch {}
-    });
-  } catch (_) {}
 
   try {
     const unicodeAddon = new Unicode11Addon.Unicode11Addon();
@@ -420,7 +400,6 @@ function initTerminal(tab) {
 
   tab.term = term;
   tab.fitAddon = fitAddon;
-  tab.searchAddon = searchAddon;
   tab.closed = false;
   tab.textarea = term.textarea || term.element?.querySelector('.xterm-textarea, textarea');
   if (tab.textarea && !tab.textarea.id) {
@@ -849,113 +828,6 @@ function getXtermSelectionTheme() {
   };
 }
 // ═══════════════════════════════════════════════════════
-// SEARCH
-// ═══════════════════════════════════════════════════════
-function toggleSearch() {
-  const tab = typeof getActiveTab === 'function' ? getActiveTab() : null;
-  // File tabs own a CodeMirror, not an xterm search addon — the terminal
-  // search bar would open with no results. Route to the file's own surface.
-  if (tab && tab.type === 'file') {
-    if (tab.cm) {
-      try {
-        // CodeMirror ships no find UI by default (no search addon loaded);
-        // use it when present, otherwise focus the editor for browser find.
-        if (tab.cm.execCommand && window.CodeMirror && window.CodeMirror.commands && window.CodeMirror.commands.find) {
-          tab.cm.execCommand('find');
-        } else {
-          tab.cm.focus();
-          try { toast('File tab focused — use browser find (Ctrl+F) here', 'info'); } catch {}
-        }
-      } catch { try { tab.cm.focus(); } catch {} }
-    } else {
-      try { toast('Search is not available for this file type', 'info'); } catch {}
-    }
-    return;
-  }
-  // Preview tabs render a sandboxed iframe (opaque origin, no searchable DOM)
-  // — focus the preview path bar instead of a dead terminal search.
-  if (tab && tab.type === 'preview') {
-    const input = (tab.pathInput && document.contains(tab.pathInput)) ? tab.pathInput
-      : tab.wrapper ? tab.wrapper.querySelector('.preview-path-input') : null;
-    if (input) { input.focus(); try { input.select(); } catch {} }
-    return;
-  }
-  const bar = document.getElementById('search-bar');
-  bar.classList.toggle('open');
-  if (bar.classList.contains('open')) {
-    document.getElementById('search-input').focus();
-    document.getElementById('search-input').select();
-  } else closeSearch();
-}
-
-function closeSearch() {
-  document.getElementById('search-bar').classList.remove('open');
-  const tab = getActiveTab();
-  tab?.searchAddon?.clearDecorations();
-  tab?.term?.focus();
-}
-
-let searchCaseSensitive = false;
-function toggleSearchCase() {
-  searchCaseSensitive = !searchCaseSensitive;
-  const btn = document.getElementById('search-case-btn');
-  btn.classList.toggle('active', searchCaseSensitive);
-  btn.setAttribute('aria-pressed', String(searchCaseSensitive));
-  // Re-run so highlights and the match count reflect the new mode at once.
-  try { doSearch(); } catch {}
-}
-
-// True for app text fields (settings/finder inputs, rename box, CodeMirror's
-// hidden textarea…) but NOT xterm's own textarea, where Ctrl+F must still
-// open the terminal search. Keyboard events from these fields otherwise
-// bubble to the global shortcuts, which must let them pass through.
-function isAppTextField(el) {
-  if (!el || el === document.body) return false;
-  try { if (el.isContentEditable) return true; } catch {}
-  const tag = String(el.tagName || '').toUpperCase();
-  if (tag === 'INPUT' || tag === 'SELECT') return true;
-  if (tag === 'TEXTAREA') {
-    try {
-      if (/^xterm-helper-/.test(el.id || '')) return false;
-      if (el.classList && el.classList.contains('xterm-textarea')) return false;
-    } catch {}
-    return true;
-  }
-  return false;
-}
-
-// Decoration colors for search highlighting; enabling decorations is also what
-// makes the addon emit onDidChangeResults (the count in #search-results).
-const SEARCH_DECORATIONS = {
-  matchBackground: '#3d59a1', matchBorder: '#7aa2f7', matchOverviewRuler: '#7aa2f7',
-  activeMatchBackground: '#e0af68', activeMatchBorder: '#ffc777', activeMatchColorOverviewRuler: '#e0af68'
-};
-
-// Typing used to scan the entire scrollback (up to 50k lines) synchronously on
-// every keystroke, which janked the terminal in long buffers.
-let _searchDebounce = null;
-function queueSearch() {
-  clearTimeout(_searchDebounce);
-  _searchDebounce = setTimeout(doSearch, 150);
-}
-
-function doSearch() {
-  const q = document.getElementById('search-input').value;
-  const tab = getActiveTab();
-  const el = document.getElementById('search-results');
-  if (!tab?.searchAddon || !q) { el.textContent = ''; return; }
-  // Count is rendered by the addon's onDidChangeResults event (wired per tab).
-  tab.searchAddon.findNext(q, { caseSensitive: searchCaseSensitive, decorations: SEARCH_DECORATIONS });
-}
-
-function searchNext() { const q=document.getElementById('search-input').value; if (!q) return; const t=getActiveTab(); t?.searchAddon?.findNext(q, {caseSensitive: searchCaseSensitive, decorations: SEARCH_DECORATIONS}); }
-function searchPrev() { const q=document.getElementById('search-input').value; if (!q) return; const t=getActiveTab(); t?.searchAddon?.findPrevious(q, {caseSensitive: searchCaseSensitive, decorations: SEARCH_DECORATIONS}); }
-
-function searchKeydown(e) {
-  if (e.key === 'Enter') { e.shiftKey ? searchPrev() : searchNext(); }
-  if (e.key === 'Escape') closeSearch();
-}
-// ═══════════════════════════════════════════════════════
 // KEYBOARD SHORTCUTS
 // ═══════════════════════════════════════════════════════
 function setupKeyboardShortcuts() {
@@ -983,18 +855,6 @@ function setupKeyboardShortcuts() {
     if (ctrl && e.shiftKey && (e.key === 'P' || e.key === 'p')) { e.preventDefault(); if (typeof togglePinTab === 'function' && activeTabId) togglePinTab(activeTabId); return; }
     if (ctrl && e.key === 't') { e.preventDefault(); newTab(); }
     if (ctrl && e.key === 'b') { e.preventDefault(); toggleSidebar(); }
-    // Ctrl+F belongs to the terminal search only when a terminal tab is
-    // active and focus isn't in an app text field. Everywhere else (file
-    // editor, preview, settings/finder inputs, rename box) the keystroke
-    // passes through so the browser's native find opens — hijacking it
-    // there showed "use browser find" advice the user could never follow.
-    if (ctrl && e.key === 'f') {
-      const st = (typeof getActiveTab === 'function') ? getActiveTab() : null;
-      if (st && st.type === 'term' && !isAppTextField(document.activeElement)) {
-        e.preventDefault();
-        toggleSearch();
-      }
-    }
     if (ctrl && e.key === 'w') { e.preventDefault(); if (activeTabId) closeTab(e, activeTabId); }
     if (ctrl && e.shiftKey && e.key === 'ArrowRight') { e.preventDefault(); cycleTab(1); }
     if (ctrl && e.shiftKey && e.key === 'ArrowLeft') { e.preventDefault(); cycleTab(-1); }
@@ -1034,7 +894,6 @@ function setupKeyboardShortcuts() {
         document.getElementById('ctx-menu').classList.remove('open');
         return;
       }
-      if (document.getElementById('search-bar').classList.contains('open')) closeSearch();
       if (document.getElementById('cmd-lib-panel').classList.contains('open')) toggleCmdLib();
       if (document.getElementById('settings-panel').classList.contains('open')) closeSettings();
       try { const np = document.getElementById('notif-panel'); if (np && np.classList.contains('open')) closeNotifPanel(); } catch {}

@@ -782,7 +782,7 @@ function createTerminalWrapper(tab) {
 function newTab(title, sessionId, dir, opts = {}) {
   const id = ++tabCounter;
   const sid = sessionId || uuid();
-  const tab = { id, type: 'term', sessionId: sid, title: title || `Term ${nextTermNumber()}`, term: null, fitAddon: null, searchAddon: null, ws: null, el: null, wrapper: null, closed: false, reconnectDelay: 1000, dataDisposable: null, resizeDisposable: null, resizeObserver: null, cwd: dir || currentPath, color: (opts && opts.color) || '', pinned: !!(opts && opts.pinned) };
+  const tab = { id, type: 'term', sessionId: sid, title: title || `Term ${nextTermNumber()}`, term: null, fitAddon: null, ws: null, el: null, wrapper: null, closed: false, reconnectDelay: 1000, dataDisposable: null, resizeDisposable: null, resizeObserver: null, cwd: dir || currentPath, color: (opts && opts.color) || '', pinned: !!(opts && opts.pinned) };
   tabs.push(tab);
   createTabButton(tab);
   createTerminalWrapper(tab);
@@ -908,7 +908,6 @@ async function closeTab(e, id, opts = {}) {
   // after that new terminals silently lose the GPU renderer.
   try { tab._webglAddon?.dispose(); } catch {}
   tab._webglAddon = null;
-  try { tab._searchResultsSub?.dispose?.(); } catch {}
   tab.term?.dispose();
   try { if (tab.iframe) tab.iframe.src = 'about:blank'; } catch {}
   tab.el?.remove();

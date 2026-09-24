@@ -126,8 +126,6 @@ a { color: var(--accent); text-decoration: none; }
   #new-tab-btn { width: 36px; height: 36px; min-width: 36px; min-height: 36px; }
   .icon-btn { width: 40px; height: 40px; }
   .file-action-btn { width: 36px; height: 36px; }
-  .search-btn { width: 32px; height: 32px; }
-  .search-btn#search-case-btn { width: 28px; height: 28px; line-height: 28px; }
 }
 svg { display: block; }
 
@@ -841,7 +839,6 @@ body.datasaver #transfers-btn.has-active .tx-up, body.datasaver #transfers-btn.h
 .btn:focus-visible,
 .mkey:focus-visible,
 .sidebar-action-btn:focus-visible,
-.search-btn:focus-visible,
 .tth-close:focus-visible,
 .ctx-item:focus-visible,
 .iv-close:focus-visible,
@@ -850,7 +847,6 @@ body.datasaver #transfers-btn.has-active .tx-up, body.datasaver #transfers-btn.h
 .tab-list-row:focus-visible,
 #home-btn:focus-visible,
 #pin-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-#search-input:focus-visible,
 #path-input:focus-visible,
 .settings-panel-body select:focus-visible,
 .settings-panel-body input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -869,17 +865,6 @@ body.datasaver #transfers-btn.has-active .tx-up, body.datasaver #transfers-btn.h
 /* ═══════════════════════════════════════════════════════
    SEARCH BAR
    ═══════════════════════════════════════════════════════ */
-#search-bar { position: absolute; top: 8px; right: 12px; z-index: var(--z-popover); background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 8px; display: none; align-items: center; gap: 6px; box-shadow: 0 4px 16px var(--shadow-color); }
-#search-bar.open { display: flex; }
-#terminals.tiles-mode #search-bar { position: fixed; top: calc(var(--header-h) + var(--tab-h) + 8px); right: 12px; left: auto; z-index: var(--z-popover); }
-#search-input { width: 200px; height: 26px; }
-@media (max-width: 480px) { #search-bar { left: 8px; right: 8px; } #search-input { flex: 1; width: auto; min-width: 0; } }
-.search-btn { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 4px; color: var(--fg2); }
-.search-btn:hover { background: var(--bg4); color: var(--fg); }
-.search-btn#search-case-btn { font-size: 11px; font-weight: bold; width: 28px; height: 28px; min-width: 28px; min-height: 28px; line-height: 28px; }
-.search-btn#search-case-btn.active { background: var(--accent); color: var(--bg); }
-#search-results { font-size: 11px; color: var(--fg2); white-space: nowrap; }
-
 /* ═══════════════════════════════════════════════════════
    OVERLAY
    ═══════════════════════════════════════════════════════ */
@@ -1528,7 +1513,6 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
   #hostname-badge { display: inline-flex; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #more-btn { display: flex; }
   #cmd-lib-toggle, #system-stats-btn, #tilesBtn { display: none; }
-  #search-input { width: 200px; }
   .modal { min-width: unset; width: 95vw; }
   .sys-grid { grid-template-columns: 1fr; }
 }
@@ -1549,7 +1533,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 }
 @media print {
   body { background: #fff !important; color: #000 !important; }
-  #sidebar, #header, #tab-bar, #search-bar, #toast-container, #mobile-keys, .overlay, #drop-overlay, #settings-panel { display: none !important; }
+  #sidebar, #header, #tab-bar, #toast-container, #mobile-keys, .overlay, #drop-overlay, #settings-panel { display: none !important; }
   #editor-view { position: static !important; z-index: auto !important; }
   .terminal { background: #fff !important; color: #000 !important; }
   #path-segments, #file-list-wrap { overflow: visible !important; }

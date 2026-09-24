@@ -899,10 +899,6 @@ document.getElementById('term-ctx-select-line').addEventListener('click', () => 
   selectTermLine();
   hideTermCtxMenu();
 });
-document.getElementById('term-ctx-find').addEventListener('click', () => {
-  toggleSearch();
-  hideTermCtxMenu();
-});
 document.getElementById('term-ctx-zoom-in').addEventListener('click', () => {
   applyFontSize((settings.fontSize || 14) + 1);
   hideTermCtxMenu();

@@ -593,7 +593,6 @@ function showPinScreen() {
     try { cleanupWebSocket(t); } catch {}
     try { t.resizeObserver?.disconnect(); } catch {}
     try { t._webglAddon?.dispose(); } catch {}
-    try { t._searchResultsSub?.dispose?.(); } catch {}
     try { t.term?.dispose(); } catch {}
     try { t.el?.remove(); } catch {}
     try { t.wrapper?.remove(); } catch {}
