@@ -8,7 +8,8 @@
     "webtun.pid",
     "*.log",
     "dist",
-    "release"
+    "release",
+    "public/docs.html"
   ],
   "delay": 300
 }

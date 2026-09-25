@@ -29,7 +29,19 @@ function connectWebSocket(tab, isReconnect = false) {
   ws.binaryType = 'arraybuffer';
 
   const sendInput = data => {
-    if (ws.readyState !== WebSocket.OPEN) return;
+    if (ws.readyState !== WebSocket.OPEN) {
+      // Never drop typing silently: keep the history buffer in sync and nudge
+      // the user (throttled) instead of losing keystrokes.
+      try {
+        const now = Date.now();
+        if (!tab._discToastAt || now - tab._discToastAt > 5000) {
+          tab._discToastAt = now;
+          toast('Terminal reconnecting — input not sent', 'warning');
+        }
+      } catch {}
+      trackTermKeystrokes(tab, data);
+      return;
+    }
     // On Enter, capture the command for history
     for (let i = 0; i < data.length; i++) {
       const ch = data.charCodeAt(i);
@@ -46,8 +58,10 @@ function connectWebSocket(tab, isReconnect = false) {
           } else {
             // Use the tracked input buffer (more reliable than buffer scanning)
             text = (tab._currentInput || '').trim();
-            // Strip any leaked VT/ANSI parameter junk that bypassed the escape parser
-            text = text.replace(/^[>;\d\s]+(?=[a-zA-Z/\\~\-.])/, '').replace(/^[>;\d\s]+$/, '').trim();
+            // Strip leaked device-attribute replies (e.g. ">0;276;0c") that
+            // bypassed the escape parser — narrowed to that shape so digit-
+            // leading commands like "2to3" are never eaten.
+            text = text.replace(/^[>][0-9;? ]+c(?=[a-zA-Z/\\~\-.])/, '').replace(/^[>][0-9;? ]+c$/, '').trim();
           }
           if (text) addToCmdHist(text);
           tab._currentInput = ''; // Clear after history save
@@ -57,6 +71,17 @@ function connectWebSocket(tab, isReconnect = false) {
     // Chunked send (server caps input per message)
     sendWsInput(ws, data);
 
+    trackTermKeystrokes(tab, data);
+  };
+  // Keystroke model for command-history capture. Tracks printable input plus
+  // common readline edits so the saved history matches the real line:
+  // Backspace/DEL, ^U (kill line), ^W (kill word), ^C/^D (abandon line),
+  // ^K (kill to end → yank buffer), ^Y (yank back), ^A/^E (cursor jumps —
+  // buffer unchanged), Alt-F/B (word jumps — unchanged), Alt-D (kill word
+  // forward — approximated as trailing-word kill). Arrow-key cursor edits
+  // inside the line can't be modeled without cursor state, so mid-line
+  // edits may still diverge; the buffer is capped to the tail.
+  function trackTermKeystrokes(tab, data) {
     // Update the keystroke buffer — skip all escape sequences and control characters
     for (let i = 0; i < data.length; i++) {
       const ch = data.charCodeAt(i);
@@ -66,9 +91,29 @@ function connectWebSocket(tab, isReconnect = false) {
         if (tab._currentInput) tab._currentInput = tab._currentInput.slice(0, -1);
       } else if (ch === 21) { // ^U — clear line
         tab._currentInput = '';
+      } else if (ch === 3 || ch === 4) { // ^C / ^D — line killed, abandon buffer
+        tab._currentInput = '';
+        tab._lastPasteText = null;
       } else if (ch === 23) { // ^W — delete word
         if (tab._currentInput) tab._currentInput = tab._currentInput.replace(/\S+\s*$/, '');
+      } else if (ch === 11) { // ^K — kill to end of line
+        tab._yank = tab._currentInput || '';
+        tab._currentInput = '';
+      } else if (ch === 25) { // ^Y — yank back
+        if (tab._yank) tab._currentInput = (tab._currentInput || '') + tab._yank;
+      } else if (ch === 1 || ch === 5) { // ^A / ^E — cursor jump only
       } else if (ch === 27) { // ESC — skip entire escape sequence
+        // Alt-letter (Meta): ESC followed by a printable is a readline word
+        // command, not a terminal sequence. Alt-F/B jump (no buffer change);
+        // Alt-D kills the word forward (approximate as trailing-word kill).
+        if (i + 1 < data.length && data.charCodeAt(i + 1) >= 32 && data.charCodeAt(i + 1) < 127) {
+          const meta = data[i + 1].toLowerCase();
+          if (meta === 'd') {
+            if (tab._currentInput) tab._currentInput = tab._currentInput.replace(/\S+\s*$/, '');
+          }
+          i++; // consume the Alt-modified char
+          continue;
+        }
         i++;
         if (data[i] === ']') { // OSC — skip to BEL or ESC-backslash (title text isn't input)
           i++;
@@ -110,6 +155,7 @@ function connectWebSocket(tab, isReconnect = false) {
   ws.onopen = () => {
     tab.reconnectDelay = 1000;
     tab.reconnectAttempts = 0;
+    tab._freshRetried = false;
     hideTermLoading(tab);
     try { if (typeof clearTabExited === 'function') clearTabExited(tab); } catch {}
     try { if (typeof refreshConnStatus === 'function') refreshConnStatus(); else updateConnStatus(true); } catch {}
@@ -127,10 +173,19 @@ function connectWebSocket(tab, isReconnect = false) {
     setupVisualViewport();
   };
 
-  // OSC sequence handler: intercepts OSC 7, 133, 52 before passing to xterm.js
+  // OSC sequence handler: intercepts OSC 7, 133, 52 for app state, and
+  // forwards OSC 0/1/2 (window/icon titles) to xterm so onTitleChange fires.
+  // Frames are UTF-8 decoded with a streaming decoder (a multibyte char split
+  // across two 0x00 frames no longer decodes as U+FFFD), and a trailing
+  // unterminated OSC is held in oscBuf and prepended to the next frame.
   let oscBuf = '';
+  if (!tab._termDecoder) { try { tab._termDecoder = new TextDecoder(); } catch {} }
   function processTerminalOutput(data) {
-    const str = typeof data === 'string' ? data : new TextDecoder().decode(data);
+    let chunk;
+    if (typeof data === 'string') chunk = data;
+    else { try { chunk = tab._termDecoder.decode(data, { stream: true }); } catch { chunk = new TextDecoder().decode(data); } }
+    const str = oscBuf + chunk;
+    oscBuf = '';
     let out = '';
     let i = 0;
     while (i < str.length) {
@@ -189,10 +244,20 @@ function connectWebSocket(tab, isReconnect = false) {
                 tab._clipReadHintShown = true;
                 toast('A program asked to read your clipboard — enable "Allow terminal clipboard read" in Settings', 'warning');
               }
+            } else {
+              // OSC 0/1/2 (window/icon titles) and anything else we do not
+              // consume: forward verbatim so xterm fires onTitleChange.
+              out += str.substring(i, oscEnd + (str[oscEnd] === '\x07' ? 1 : 2));
             }
           }
           i = oscEnd + (str[oscEnd] === '\x07' ? 1 : 2);
           continue;
+        } else {
+          // Unterminated OSC at the end of this frame: hold it for the next
+          // frame instead of leaking escape garbage into the terminal.
+          oscBuf = str.substring(i);
+          if (oscBuf.length > 4096) { out += oscBuf; oscBuf = ''; }
+          break;
         }
       }
       out += str[i];
@@ -247,6 +312,14 @@ function handleClientEvent(payload) {
     toast('This session was signed out remotely', 'error');
     storeSessionToken('');
     authToken = '';
+    // Stop the reconnect loop or tabs keep dialling with a dead token
+    // behind the lock screen.
+    try {
+      (tabs || []).forEach(t => {
+        try { clearTimeout(t.reconnectTimer); } catch {}
+        try { cleanupWebSocket(t); } catch {}
+      });
+    } catch {}
     showPinScreen();
   } else if (ev.event === 'session-pending') {
     // A new device passed the PIN but is locked until WE approve it.
@@ -290,6 +363,17 @@ function handleClientEvent(payload) {
     toast(`${what} by ${ev.device || 'unknown device'} · ${ev.ip || 'unknown IP'} — re-login required`, 'error');
     // Persistent: survives the kick to the PIN screen, shown on next unlock
     try { addSecurityAlert({ ip: ev.ip, device: `${what} by ${ev.device || 'unknown device'}`, at: ev.at }); } catch {}
+    // The rotation revoked this token server-side: drop it now and stop the
+    // sockets instead of limping on until the next 401/close.
+    storeSessionToken('');
+    authToken = '';
+    try {
+      (tabs || []).forEach(t => {
+        try { clearTimeout(t.reconnectTimer); } catch {}
+        try { cleanupWebSocket(t); } catch {}
+      });
+    } catch {}
+    try { showPinScreen(); } catch {}
   } else if (ev.event === 'sessions-changed') {
     try { updateSessionCupCount(); } catch {}
     try {
@@ -313,6 +397,17 @@ function handleClientEvent(payload) {
     // Honor the cap: after _maxAttempts, stop auto-retry and leave the
     // manual Reconnect button (auto-loop never yielded before).
     if (_attempt > _maxAttempts) {
+      // The saved sessionId is probably dead (server restarted): mint a fresh
+      // one and try once more instead of parking a dead terminal.
+      if (!tab._freshRetried && tab.sessionId) {
+        tab._freshRetried = true;
+        try { tab.sessionId = (typeof uuid === 'function') ? uuid() : String(Date.now()); } catch {}
+        tab.reconnectDelay = 1000;
+        tab.reconnectAttempts = 0;
+        tab.term.writeln('\r\n\x1b[33m[Session expired — starting a fresh session…]\x1b[0m');
+        tab.reconnectTimer = setTimeout(() => { if (!tab.closed) connectWebSocket(tab, true); }, 1000);
+        return;
+      }
       if (banner) {
         banner.innerHTML = `Connection lost — auto-retry stopped. <button class="btn btn-primary" onclick="manualReconnect()" style="height:26px;padding:0 12px;font-size:11px;margin-left:8px">Reconnect</button>`;
         banner.style.display = 'block';
@@ -353,6 +448,7 @@ function manualReconnect() {
     if (!tab.ws || tab.ws.readyState !== WebSocket.OPEN) {
       tab.reconnectDelay = 1000;
       tab.reconnectAttempts = 0;
+      tab._freshRetried = false;
       connectWebSocket(tab, true);
     }
   });
@@ -386,11 +482,21 @@ function initTerminal(tab) {
     term.unicode.activeVersion = '11';
   } catch (_) {}
 
-  // GPU-accelerated renderer — falls back to canvas if WebGL unavailable (skip if >4 tabs to guard memory)
-  if (tabs.filter(t => t.term).length < 4) {
+  // GPU-accelerated renderer — falls back to canvas if WebGL unavailable.
+  // Guard counts LIVE WebGL contexts (not just tabs), so init churn can never
+  // exhaust the browser's ~16-context budget.
+  const liveGL = (typeof tabs !== 'undefined' ? tabs : []).filter(t => t && t._webglAddon).length;
+  if (liveGL < 4) {
     try {
       const webglAddon = new WebglAddon.WebglAddon();
-      webglAddon.onContextLoss(() => { try { webglAddon.dispose(); } catch {} try { term.element?.querySelector('canvas')?.remove(); } catch {} });
+      webglAddon.onContextLoss(() => {
+        // Context lost: dispose the GL addon and fall back to the canvas
+        // renderer (leave its canvas alone — removing it blanks the term).
+        try { webglAddon.dispose(); } catch {}
+        tab._webglAddon = null;
+        try { term.refresh(0, term.rows - 1); } catch {}
+        try { toast('3D renderer lost its context — using canvas fallback', 'warning'); } catch {}
+      });
       term.loadAddon(webglAddon);
       tab._webglAddon = webglAddon;
     } catch (_) {}
@@ -401,6 +507,16 @@ function initTerminal(tab) {
   tab.term = term;
   tab.fitAddon = fitAddon;
   tab.closed = false;
+  // Modes are global: a tab created mid-mode must match its siblings.
+  try {
+    if (typeof termSelectMode !== 'undefined' && termSelectMode) {
+      term.options.disableStdin = true;
+    }
+    if (typeof scrollMode !== 'undefined' && scrollMode) {
+      const h = (typeof attachScrollHandler === 'function') ? attachScrollHandler({ wrapper: tab.wrapper, term }) : null;
+      if (h) _scrollHandlers.push(h);
+    }
+  } catch {}
   tab.textarea = term.textarea || term.element?.querySelector('.xterm-textarea, textarea');
   if (tab.textarea && !tab.textarea.id) {
     tab.textarea.id = 'xterm-helper-' + tab.id;
@@ -418,8 +534,13 @@ function initTerminal(tab) {
       e.stopImmediatePropagation();
       e.stopPropagation();
       const text = (e.clipboardData || window.clipboardData)?.getData('text');
-      if (!text || !tab.ws || tab.ws.readyState !== WebSocket.OPEN) return;
+      if (!text) return;
       tab._lastPasteText = text;
+      tab._currentInput = ((tab._currentInput || '') + text.split('\n').pop()).slice(-4096);
+      if (!tab.ws || tab.ws.readyState !== WebSocket.OPEN) {
+        try { toast('Terminal reconnecting — paste not sent', 'warning'); } catch {}
+        return;
+      }
       // sendWsInput() chunks on character boundaries — the old fixed 60KB byte
       // slices cut multibyte characters in half, showing up as � in the shell.
       const bracketed = '\x1b[200~' + text + '\x1b[201~';
@@ -765,12 +886,21 @@ function sendKey(key) {
     altLatch = false;
     updateModifierButtons();
   }
-  const tab = getActiveTab();
-  if (tab?.ws?.readyState === WebSocket.OPEN) {
+  const tab = (typeof getTermCtxTarget === 'function' ? getTermCtxTarget() : null) || getActiveTab();
+  if (!tab) return;
+  if (tab.ws && tab.ws.readyState === WebSocket.OPEN) {
     const enc = new TextEncoder().encode(modified);
     const buf = new Uint8Array(1 + enc.length);
     buf[0] = 0x00; buf.set(enc, 1);
     tab.ws.send(buf.buffer);
+  } else {
+    try {
+      const now = Date.now();
+      if (!tab._discToastAt || now - tab._discToastAt > 5000) {
+        tab._discToastAt = now;
+        toast('Terminal reconnecting — key not sent', 'warning');
+      }
+    } catch {}
   }
   tab?.term?.focus();
 }
@@ -939,25 +1069,31 @@ function toggleTermSelect() {
     }
   }
 
-  const activeTab = getActiveTab();
+  // Selection mode is global: every tab (active or background) becomes
+  // read-only, and tabs created while it is on inherit it in initTerminal.
+  const allTargets = tabs.filter(t => t && !t.closed && t.term);
   if (termSelectMode) {
-    if (activeTab?.term) {
-      activeTab.term.options.disableStdin = true;
-      const ta = activeTab.textarea || activeTab.term.textarea || activeTab.term.element?.querySelector('.xterm-textarea, textarea');
-      if (ta) ta.disabled = true;
-    }
+    allTargets.forEach(t => {
+      try {
+        t.term.options.disableStdin = true;
+        const ta = t.textarea || t.term.textarea || t.term.element?.querySelector('.xterm-textarea, textarea');
+        if (ta) ta.disabled = true;
+      } catch {}
+    });
   } else {
     scrollMode = false;
     cleanupScrollHandlers();
     const scrollBtn = document.getElementById('sel-scroll-btn');
     if (scrollBtn) scrollBtn.classList.remove('active-mode');
     shiftLatch = false; altLatch = false; updateModifierButtons();
-    if (activeTab?.term) {
-      activeTab.term.options.disableStdin = false;
-      const ta = activeTab.textarea || activeTab.term.textarea || activeTab.term.element?.querySelector('.xterm-textarea, textarea');
-      if (ta) ta.disabled = false;
-      activeTab.term.clearSelection();
-    }
+    allTargets.forEach(t => {
+      try {
+        t.term.options.disableStdin = false;
+        const ta = t.textarea || t.term.textarea || t.term.element?.querySelector('.xterm-textarea, textarea');
+        if (ta) ta.disabled = false;
+        t.term.clearSelection();
+      } catch {}
+    });
   }
 }
 
@@ -1044,6 +1180,9 @@ function pasteToTerminal() {
     // TR-02: prefer the right-clicked tile when the menu is open; falls back
     // to the active tab once the menu is dismissed (target is cleared).
     const tab = (typeof getTermCtxTarget === 'function' ? getTermCtxTarget() : null) || getActiveTab();
+    if (!tab) return;
+    tab._lastPasteText = text;
+    tab._currentInput = ((tab._currentInput || '') + String(text).split('\n').pop()).slice(-4096);
     if (tab?.ws && tab.ws.readyState === WebSocket.OPEN) {
       // Bracketed paste: wrap in escape sequences so the shell buffers the input.
       // sendWsInput() chunks on character boundaries, so multibyte UTF-8 is never split.
@@ -1051,6 +1190,8 @@ function pasteToTerminal() {
       try { sendWsInput(tab.ws, bracketed); } catch {}
       tab.term?.focus();
       toast('Pasted to terminal', 'success');
+    } else {
+      toast('Terminal reconnecting — paste queued in history only', 'warning');
     }
   };
 
@@ -1212,9 +1353,16 @@ function setupVisualViewport() {
 function setupMobileKeys() {
   const mk = document.getElementById('mobile-keys');
   const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-  if (settings.mobilekeys === undefined && isTouch) {
-    settings.mobilekeys = true;
-  }
+  // core.js defaults mobilekeys to false, so `=== undefined` never fires.
+  // Auto-enable on touch devices only when the user never chose (no stored key).
+  try {
+    const raw = safeStorage.getItem('wt-settings');
+    const stored = raw ? JSON.parse(raw) : null;
+    if (isTouch && (!stored || typeof stored.mobilekeys !== 'boolean')) {
+      settings.mobilekeys = true;
+      try { saveSettings(); } catch {}
+    }
+  } catch {}
   const show = window.innerWidth <= 768 && settings.mobilekeys;
   if (mk) mk.style.display = show ? 'flex' : 'none';
   const tc = document.getElementById('toast-container');

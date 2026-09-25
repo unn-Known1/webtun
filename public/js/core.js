@@ -91,14 +91,23 @@ function preventDoubleTap(el, fn, delay = 1000) {
 }
 
 function saveTabState() {
-  const state = tabs.map(t => ({ id: t.id, sessionId: t.sessionId, title: t.title, type: t.type || 'term', port: t.port || null, path: t.type === 'file' ? t.path : (t.previewPath || '/'), auto: t.type === 'preview' && t.previewAutoReload ? 1 : 0, width: t.type === 'preview' ? (t.previewWidth || 'full') : undefined, color: t.color || undefined, pinned: t.pinned ? 1 : undefined }));
+  const state = {
+    activeTabId,
+    tabs: tabs.map(t => ({ id: t.id, sessionId: t.sessionId, title: t.title, type: t.type || 'term', port: t.port || null, path: t.type === 'file' ? t.path : (t.previewPath || '/'), auto: t.type === 'preview' && t.previewAutoReload ? 1 : 0, width: t.type === 'preview' ? (t.previewWidth || 'full') : undefined, color: t.color || undefined, pinned: t.pinned ? 1 : undefined, viewState: t.type === 'file' && t.viewState ? t.viewState : undefined })),
+  };
   try { safeStorage.setItem('wt-tabs', JSON.stringify(state)); } catch(e) { console.warn('Failed to save tabs:', e); }
 }
 
 function loadTabState() {
   try {
     const val = JSON.parse(safeStorage.getItem('wt-tabs'));
-    return Array.isArray(val) ? val : [];
+    if (Array.isArray(val)) return val; // legacy shape (no active tab)
+    if (val && Array.isArray(val.tabs)) {
+      const out = val.tabs.slice();
+      if (val.activeTabId != null) out.activeTabId = val.activeTabId;
+      return out;
+    }
+    return [];
   } catch(e) { console.warn('loadTabState error:', e); return []; }
 }
 
@@ -501,21 +510,33 @@ async function unlockApp() {
   // Restore tabs from last session, or open a fresh one
   const saved = loadTabState();
   if (saved.length > 0) {
+    const savedActiveId = saved.activeTabId;
     (async () => {
+      // Old restores and new restores share tabCounter space: map saved ids to
+      // the fresh runtime ids so the saved active tab can be re-selected.
+      const idMap = new Map();
       for (const s of saved) {
         await new Promise(resolve => setTimeout(resolve, 100));
         try {
-          if (s.type === 'preview' && s.port) newPreviewTab(s.port, s.path || '/', { useRecent: false, auto: !!s.auto, width: s.width || 'full', color: s.color || '', pinned: !!s.pinned });
-          // File tabs come back parked: only the last tab is activated below, so a
-          // reload does not force the editor panel into a tab.
-          else if (s.type === 'file' && s.path) newFileTab(s.path, { mount: false, color: s.color || '', pinned: !!s.pinned });
-          else newTab(s.title, s.sessionId, undefined, { color: s.color || '', pinned: !!s.pinned });
+          let t = null;
+          if (s.type === 'preview' && s.port) t = newPreviewTab(s.port, s.path || '/', { useRecent: false, auto: !!s.auto, width: s.width || 'full', color: s.color || '', pinned: !!s.pinned });
+          // File tabs come back parked: only the saved-active tab is activated
+          // below, so a reload does not force the editor panel into a tab.
+          else if (s.type === 'file' && s.path) {
+            t = newFileTab(s.path, { mount: false, color: s.color || '', pinned: !!s.pinned });
+            if (t && s.viewState && typeof s.viewState === 'object') t.viewState = s.viewState;
+          }
+          else t = newTab(s.title, s.sessionId, undefined, { color: s.color || '', pinned: !!s.pinned });
+          if (t) idMap.set(s.id, t.id);
         } catch (e) { console.warn('Tab restore failed:', e); }
       }
-      // newFileTab({ mount: false }) never activates, so a session that ended on a
-      // file tab would otherwise restore to a blank terminals area.
-      const lastTab = tabs[tabs.length - 1];
-      if (lastTab) activateTab(lastTab.id);
+      // Land where the session ended (mapped id), else the last tab — parked
+      // file tabs included, so ending on a file tab restores to it.
+      const mapped = savedActiveId != null ? idMap.get(savedActiveId) : null;
+      const target = (mapped != null && tabs.some(t => t.id === mapped))
+        ? tabs.find(t => t.id === mapped)
+        : tabs[tabs.length - 1];
+      if (target) activateTab(target.id);
     })();
   } else {
     newTab();
@@ -572,8 +593,21 @@ async function api(url, opts = {}) {
     clearTimeout(timeoutId);
     try { rememberServerPlace(); } catch {}
     // 401 must surface as an error object (never {}) so callers like
-    // changePin() can't mistake rejection for success.
-    if (!r.ok && r.status === 401) { showPinScreen(); return { error: 'Unauthorized' }; }
+    // changePin() can't mistake rejection for success. The token is dead
+    // (rotated/revoked): clear it and stop the sockets so tabs don't
+    // reconnect-loop behind the lock screen.
+    if (!r.ok && r.status === 401) {
+      storeSessionToken('');
+      authToken = '';
+      try {
+        (tabs || []).forEach(t => {
+          try { clearTimeout(t.reconnectTimer); } catch {}
+          try { cleanupWebSocket(t); } catch {}
+        });
+      } catch {}
+      showPinScreen();
+      return { error: 'Unauthorized' };
+    }
     if (!r.ok) { try { return await r.json(); } catch { return { error: 'Request failed (' + r.status + ')' }; } }
     try { return await r.json(); } catch(e) { console.warn('api() JSON parse error:', e); return {}; }
   } catch(e) {

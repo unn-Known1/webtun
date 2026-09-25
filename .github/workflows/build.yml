@@ -323,8 +323,11 @@ jobs:
           export PORT=39517 TMPDIR=/tmp
           xvfb-run -a /opt/WebTun/webtun --no-sandbox > /tmp/webtun-smoke.log 2>&1 &
           for i in $(seq 1 60); do
-            out=$(curl -s -m 3 http://127.0.0.1:39517/api/auth/required || true)
-            if [ "$out" = '{"required":false}' ]; then echo "boot ok: $out"; pkill -f "[o]pt/WebTun/webtun" || true; exit 0; fi
+            # Liveness only: any HTTP 200 from the endpoint proves the app
+            # booted. Asserting the exact auth body couples the smoke test to
+            # auth policy (a future default-PIN would turn boot-smoke red).
+            code=$(curl -s -m 3 -o /dev/null -w '%{http_code}' http://127.0.0.1:39517/api/auth/required || true)
+            if [ "$code" = '200' ]; then echo "boot ok (HTTP 200)"; pkill -f "[o]pt/WebTun/webtun" || true; exit 0; fi
             sleep 5
           done
           echo "smoke failed: API never answered"; tail -30 /tmp/webtun-smoke.log; exit 1
@@ -349,8 +352,10 @@ jobs:
           $proc = Start-Process -FilePath $exe.FullName -ArgumentList '--no-sandbox' -PassThru
           try {
             for ($i=0; $i -lt 60; $i++) {
-              try { $out = (Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 'http://127.0.0.1:39517/api/auth/required').Content } catch { $out = '' }
-              if ($out -eq '{"required":false}') { Write-Host "boot ok: $out"; exit 0 }
+              # Liveness only: HTTP 200 proves the app booted, whatever the
+              # auth body says (see the Linux smoke job — same rationale).
+              try { $code = (Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 'http://127.0.0.1:39517/api/auth/required').StatusCode } catch { $code = 0 }
+              if ($code -eq 200) { Write-Host 'boot ok (HTTP 200)'; exit 0 }
               Start-Sleep -Seconds 5
             }
             throw 'smoke failed: API never answered'

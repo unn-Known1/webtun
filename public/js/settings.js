@@ -23,6 +23,8 @@ function loadSettings() {
       if (typeof s.gitEnabled === 'boolean') settings.gitEnabled = s.gitEnabled;
       if (typeof s.gitSimple === 'boolean') settings.gitSimple = s.gitSimple;
       if (typeof s.clipboardRead === 'boolean') settings.clipboardRead = s.clipboardRead;
+      if (typeof s.termRightClick === 'boolean') settings.termRightClick = s.termRightClick;
+      if (typeof s.autostart === 'boolean') settings.autostart = s.autostart;
     }
   } catch(e) { console.warn(e); }
   document.getElementById('s-theme').value = settings.theme;
@@ -752,7 +754,14 @@ function syncKeepAwakeUI() {
   const cb = document.getElementById('keep-awake-cb');
   if (cb) cb.checked = !!settings.keepAwake;
   const label = document.getElementById('keep-awake-toggle');
-  if (label) label.title = settings.keepAwake ? 'Keep Screen Awake — ON (screen stays on)' : 'Keep Screen Awake';
+  // Merge with the live session-count title (security.js) instead of
+  // overwriting it: last writer used to win and the count hint vanished.
+  if (label) {
+    const base = settings.keepAwake ? 'Keep Screen Awake — ON (screen stays on)' : 'Keep Screen Awake';
+    let suffix = '';
+    try { suffix = label.dataset.sessSuffix || ''; } catch {}
+    label.title = base + suffix;
+  }
 }
 
 document.addEventListener('visibilitychange', async () => {

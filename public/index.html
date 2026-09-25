@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#1a1b26">
+<meta name="theme-color" content="#f9f9fb">
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="X-Content-Type-Options" content="nosniff">
 <!-- NOTE: no SRI on the Google Fonts CSS above: it is UA-sniffed per browser,
@@ -132,7 +132,7 @@
     </div>
     <div id="upload-progress"><div id="upload-progress-bar"></div><span id="upload-progress-text"></span><button id="upload-cancel-btn" aria-label="Cancel upload" title="Cancel upload" onclick="cancelUpload()">Cancel</button></div>
     <div id="transfers-livebar" aria-hidden="true"><div></div></div>
-    <div id="transfers-panel" role="dialog" aria-modal="false" aria-label="File transfers">
+    <div id="transfers-panel" role="dialog" aria-label="File transfers">
       <div class="tx-head"><span>Transfers</span><span class="tx-sub" id="transfers-sub"></span><span class="tx-spacer"></span><button onclick="clearFinishedTransfers()" title="Dismiss finished">Clear finished</button><button onclick="toggleTransfersPanel(event, true)" aria-label="Close transfers">✕</button></div>
       <div id="transfers-list"></div>
     </div>
@@ -335,7 +335,7 @@
         </div>
 
         <!-- Command Library Panel -->
-        <div id="cmd-lib-panel">
+        <div id="cmd-lib-panel" role="dialog" aria-label="Command Library">
           <div id="cmd-lib-header">
             <h3>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
@@ -496,7 +496,7 @@
     </div>
 
     <!-- Notification Center -->
-    <div id="notif-panel" role="dialog" aria-modal="false" aria-label="Notifications">
+    <div id="notif-panel" role="dialog" aria-label="Notifications">
       <div class="notif-panel-header">
         <span style="font-size:14px;font-weight:700;display:flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>Notifications <span id="notif-head-count"></span></span>
         <span style="display:flex;align-items:center;gap:4px">
@@ -513,7 +513,7 @@
     </div>
 
     <!-- Settings Panel -->
-    <div id="settings-panel">
+    <div id="settings-panel" role="dialog" aria-label="Settings">
       <div class="settings-panel-header">
          <span style="font-size:14px;font-weight:700;display:flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Settings</span>
         <button class="icon-btn" onclick="closeSettings()" title="Close settings">
@@ -815,7 +815,7 @@
 </div>
 
 <!-- Keyboard Shortcuts Modal -->
-<div class="overlay" id="shortcuts-overlay">
+<div class="overlay" id="shortcuts-overlay" role="dialog" aria-modal="true" aria-label="Keyboard Shortcuts">
   <div class="modal modal-md">
     <h2>Keyboard Shortcuts</h2>
     <div class="shortcuts-table-wrap">
@@ -846,7 +846,7 @@
 </div>
 
 <!-- System Stats Modal -->
-<div class="overlay" id="sys-overlay">
+<div class="overlay" id="sys-overlay" role="dialog" aria-modal="true" aria-label="System Stats">
   <div class="modal">
     <h2 style="display:flex;align-items:center;gap:6px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>System Stats</h2>
     <div id="sys-loading" style="text-align:center;padding:20px;color:var(--fg2);display:none">Loading…</div>
@@ -895,7 +895,7 @@
 </div>
 
 <!-- Rename Modal -->
-<div class="overlay" id="rename-overlay">
+<div class="overlay" id="rename-overlay" role="dialog" aria-modal="true" aria-label="Rename">
   <div class="modal">
     <h2>Rename</h2>
     <div class="modal-row">
@@ -911,7 +911,7 @@
 </div>
 
 <!-- New Folder Modal -->
-<div class="overlay" id="newfolder-overlay">
+<div class="overlay" id="newfolder-overlay" role="dialog" aria-modal="true" aria-label="New Folder">
   <div class="modal">
     <h2>New Folder</h2>
     <div class="modal-row">
@@ -927,7 +927,7 @@
 </div>
 
 <!-- New File Modal -->
-<div class="overlay" id="newfile-overlay">
+<div class="overlay" id="newfile-overlay" role="dialog" aria-modal="true" aria-label="New File">
   <div class="modal">
     <h2>New File</h2>
     <div class="modal-row">
@@ -943,7 +943,7 @@
 </div>
 
 <!-- New Preview Modal -->
-<div class="overlay" id="preview-overlay">
+<div class="overlay" id="preview-overlay" role="dialog" aria-modal="true" aria-label="New Preview">
   <div class="modal modal-sm">
     <h2>New Preview</h2>
     <div class="modal-row">
@@ -959,7 +959,7 @@
 </div>
 
 <!-- Conflict Dialog -->
-<div class="overlay" id="conflict-overlay">
+<div class="overlay" id="conflict-overlay" role="dialog" aria-modal="true" aria-label="File Conflict">
   <div class="modal" id="conflict-modal">
     <h2 id="conflict-heading">File Conflict</h2>
     <p id="conflict-desc">An item named <strong id="conflict-name"></strong> already exists at this location.</p>
@@ -976,7 +976,7 @@
 </div>
 
 <!-- Content Search Modal -->
-<div class="overlay" id="content-search-overlay">
+<div class="overlay" id="content-search-overlay" role="dialog" aria-modal="true" aria-label="Search File Contents">
   <div class="modal modal-md">
     <h2>Search file contents</h2>
     <div class="modal-row">
@@ -998,7 +998,7 @@
 </div>
 
 <!-- File Properties Modal -->
-<div class="overlay" id="props-overlay">
+<div class="overlay" id="props-overlay" role="dialog" aria-modal="true" aria-label="File Properties">
   <div class="modal modal-sm">
     <h2>Properties</h2>
     <div id="props-body"></div>
@@ -1015,7 +1015,7 @@
 </div>
 
 <!-- Confirm Dialog -->
-<div class="overlay" id="confirm-overlay">
+<div class="overlay" id="confirm-overlay" role="dialog" aria-modal="true" aria-label="Confirm">
   <div class="modal modal-sm">
     <h2 id="confirm-title">Confirm</h2>
     <p id="confirm-msg" style="font-size:13px;color:var(--fg2);line-height:1.6;white-space:pre-wrap;word-break:break-word"></p>
@@ -1054,20 +1054,20 @@
 </div>
 
 <script defer src="/commands.js"></script>
-<script src="js/core.js"></script>
-<script src="js/ui.js"></script>
-<script src="js/tabs.js"></script>
-<script src="js/terminal.js"></script>
-<script src="js/files.js"></script>
-<script src="js/transfers.js"></script>
-<script src="js/editor-panel.js"></script>
-<script src="js/file-tabs.js"></script>
-<script src="js/preview.js"></script>
-<script src="js/viewers.js"></script>
-<script src="js/launchpad.js"></script>
-<script src="js/settings.js"></script>
-<script src="js/security.js"></script>
-<script src="js/git.js"></script>
-<script src="js/misc.js"></script>
+<script defer src="js/core.js"></script>
+<script defer src="js/ui.js"></script>
+<script defer src="js/tabs.js"></script>
+<script defer src="js/terminal.js"></script>
+<script defer src="js/files.js"></script>
+<script defer src="js/transfers.js"></script>
+<script defer src="js/editor-panel.js"></script>
+<script defer src="js/file-tabs.js"></script>
+<script defer src="js/preview.js"></script>
+<script defer src="js/viewers.js"></script>
+<script defer src="js/launchpad.js"></script>
+<script defer src="js/settings.js"></script>
+<script defer src="js/security.js"></script>
+<script defer src="js/git.js"></script>
+<script defer src="js/misc.js"></script>
 </body>
 </html>

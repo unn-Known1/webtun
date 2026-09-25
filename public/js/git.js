@@ -45,7 +45,10 @@ async function _refreshGitPanelInner(section, dir, manual) {
   let st;
   try {
     st = await api(`/api/git/status?path=${encodeURIComponent(dir)}`);
-  } catch { return; }
+  } catch (e) {
+    if (manual) toast('Git refresh failed — ' + ((e && e.message) || 'network error'), 'error');
+    return;
+  }
   if (myReq !== _gitReq) return;
   if (!st || st.git === false) {
     gitUnsupported = true; section.style.display = 'none';
@@ -116,8 +119,12 @@ async function gitSwitchBranch(name) {
   if (!gitRoot || !name) return;
   const sel = document.getElementById('git-branch-sel');
   if (sel) sel.disabled = true;
-  const r = await api('/api/git/switch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: gitRoot, branch: name }) });
-  if (sel) sel.disabled = false;
+  let r = null;
+  try {
+    r = await api('/api/git/switch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: gitRoot, branch: name }) });
+  } finally {
+    if (sel) sel.disabled = false;
+  }
   if (!r || r.error) { toast((r && r.error) || 'Switch failed', 'error'); refreshGitPanel(currentPath); return; }
   toast('On ' + r.branch, 'success');
   refreshGitPanel(currentPath);
@@ -338,6 +345,10 @@ function gitFileRow(e, cls) {
   } else if (cls === 'unmerged') {
     // Plain `git diff` is empty for unmerged paths — diff against HEAD instead
     addBtn('Diff', 'conflict diff vs HEAD', () => openGitDiff(e.path, false, true));
+    // After resolving markers in the editor there was no way to stage the
+    // result (or work per-hunk) without dropping to a terminal.
+    addBtn('Stage', 'git add resolved file', () => gitStageOp('stage', [e.path]));
+    addBtn('Hunks', 'per-hunk stage', b => toggleHunks(b, e.path, false));
   }
   return row;
 }
@@ -447,8 +458,9 @@ async function gitPushPull(op, extraBody) {
     }
   } catch (e) {
     toast(op + ' failed: ' + e.message, 'error');
+  } finally {
+    setBtnBusy(btn, false);
   }
-  setBtnBusy(btn, false);
   refreshGitPanel(currentPath);
 }
 function gitPush() { gitPushPull('push'); }

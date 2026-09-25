@@ -12,8 +12,27 @@ function updateEditorDirty() {
 async function resetSettings() {
   const ok = await confirmDialog({ title: 'Reset settings', message: 'Reset all settings to defaults?', okText: 'Reset', danger: true });
   if (!ok) return;
+  const wasDatasaver = !!settings.datasaver;
+  const wasAwake = !!settings.keepAwake;
   settings = { ...DEFAULT_SETTINGS };
   saveSettings();
+  // Side-effects the plain assignment skips: stop/start the stats pulse and
+  // release the wake lock, or they leak in their pre-reset state.
+  try {
+    if (wasDatasaver !== !!settings.datasaver) {
+      // toggleSetting() flips the flag, so run the two branches directly.
+      if (settings.datasaver) {
+        if (typeof sysStatsTimer !== 'undefined' && sysStatsTimer) { clearInterval(sysStatsTimer); sysStatsTimer = null; }
+        try { stopSysIconPulse(); resetSysIcon(); } catch {}
+      } else {
+        try { startSysIconPulse(); } catch {}
+      }
+    }
+    if (wasAwake && !settings.keepAwake && typeof wakeLock !== 'undefined' && wakeLock) {
+      try { wakeLock.release(); } catch {}
+      wakeLock = null;
+    }
+  } catch {}
   document.getElementById('s-theme').value = settings.theme;
   document.getElementById('s-fontsize').value = settings.fontSize;
   document.getElementById('s-scrollback').value = settings.scrollback;
@@ -228,16 +247,34 @@ const TOAST_ICONS = {
 function toast(msg, type = 'info') {
   const el = document.createElement('div');
   el.className = `toast ${type}`;
+  el.setAttribute('role', 'status');
   el.innerHTML = (TOAST_ICONS[type] || '') + '<span></span>';
   el.querySelector('span').textContent = msg;
   const mk = document.getElementById('mobile-keys');
   if (mk && mk.style.display !== 'none' && window.getComputedStyle(mk).display !== 'none') {
     el.style.marginBottom = 'var(--mobilekey-h)';
   }
+  // Manual dismiss: errors especially must not be evicted silently.
+  const x = document.createElement('button');
+  x.className = 'toast-x';
+  x.setAttribute('aria-label', 'Dismiss notification');
+  x.textContent = '\u00d7';
+  x.addEventListener('click', (e) => { e.stopPropagation(); try { el.remove(); } catch {} });
+  el.appendChild(x);
   const container = document.getElementById('toast-container');
   container.appendChild(el);
-  while (container.children.length > 4) container.firstChild.remove();
-  setTimeout(() => el.remove(), 3000);
+  // Cap at 4, but never evict an error for an info burst: drop the oldest
+  // non-error first, and only an error when nothing else is left.
+  while (container.children.length > 4) {
+    const kids = [...container.children];
+    const victim = kids.find(k => !k.classList.contains('error') && k !== el) || kids.find(k => k !== el);
+    if (!victim) break;
+    victim.remove();
+  }
+  // Hover pauses the auto-dismiss so rapid bursts stay readable.
+  let ttl = setTimeout(() => el.remove(), type === 'error' ? 6000 : 3000);
+  el.addEventListener('mouseenter', () => { clearTimeout(ttl); });
+  el.addEventListener('mouseleave', () => { ttl = setTimeout(() => el.remove(), 1500); });
   // The popup is transient — the Notification Center keeps it until cleared.
   try { logNotification(msg, type); } catch {}
   return el;
@@ -251,14 +288,31 @@ const NOTIF_MAX = 100;
 let notifLog = [];
 let notifSeq = 0;
 let notifUnread = 0;
+try {
+  const saved = JSON.parse(safeStorage.getItem('wt-notifs') || 'null');
+  if (Array.isArray(saved)) {
+    notifLog = saved.filter(n => n && typeof n.msg === 'string').slice(-NOTIF_MAX);
+    notifSeq = notifLog.reduce((m, n) => Math.max(m, Number(n.id) || 0), 0);
+    notifUnread = notifLog.length;
+  }
+} catch {}
+function persistNotifs() {
+  try { safeStorage.setItem('wt-notifs', JSON.stringify(notifLog.slice(-NOTIF_MAX))); } catch {}
+  try { safeStorage.setItem('wt-notifs-unread', String(notifUnread)); } catch {}
+}
+try {
+  const u = parseInt(safeStorage.getItem('wt-notifs-unread') || '', 10);
+  if (Number.isInteger(u) && u >= 0) notifUnread = Math.min(u, notifLog.length);
+} catch {}
 
 function logNotification(msg, type) {
   const t = (type === 'success' || type === 'error' || type === 'warning') ? type : 'info';
   notifLog.push({ id: ++notifSeq, msg: String(msg == null ? '' : msg), type: t, time: Date.now() });
   if (notifLog.length > NOTIF_MAX) notifLog.splice(0, notifLog.length - NOTIF_MAX);
+  persistNotifs();
   const panel = document.getElementById('notif-panel');
   if (panel && panel.classList.contains('open')) renderNotifPanel();
-  else { notifUnread++; updateNotifBadge(); }
+  else { notifUnread++; updateNotifBadge(); persistNotifs(); }
 }
 
 function updateNotifBadge() {
@@ -368,6 +422,7 @@ function toggleNotifPanel() {
   try { closeSettings(); } catch {}
   panel.classList.add('open');
   notifUnread = 0;
+  persistNotifs();
   renderNotifPanel();
   document.getElementById('notif-btn')?.setAttribute('aria-expanded', 'true');
   setTimeout(() => document.addEventListener('click', closeNotifOnClickOutside, true), 50);
@@ -387,18 +442,23 @@ function closeNotifOnClickOutside(e) {
 }
 function clearNotifItem(id) {
   notifLog = notifLog.filter(n => n.id !== id);
+  persistNotifs();
   renderNotifPanel();
 }
 function clearAllNotifs() {
   notifLog = [];
   notifUnread = 0;
+  persistNotifs();
   renderNotifPanel();
 }
 
 // ── Context menus: one at a time, auto-close on outside activity ───────────
 // Every opener calls hideAllCtxMenus() first, and setupCtxAutoDismiss()
-// (idempotent, wired once below) closes whatever is open on outside click,
-// right-click elsewhere, scroll, resize, or window blur.
+// (idempotent, wired once below) closes whatever is open on right-click
+// elsewhere, scroll, resize, or window blur. Outside LEFT-click dismissal for
+// #ctx-menu/#term-ctx-menu lives in files.js (document click handler) —
+// left-clicks are excluded here so they can reach the explorer/editor
+// without this handler racing them.
 const _CTX_MENU_SELS = '#ctx-menu,#term-ctx-menu,#tab-ctx-menu,#new-tab-menu,#tab-list-menu';
 function hideAllCtxMenus() {
   try { if (typeof hideTabMenus === 'function') hideTabMenus(); } catch {}

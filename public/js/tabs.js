@@ -95,6 +95,12 @@ function reopenLastClosedTab() {
   if (!snap) { try { toast('Nothing to reopen', 'info'); } catch {} return null; }
   try {
     let tab = null;
+    // A survivor for the same path was never closed: focus it untouched
+    // instead of recoloring/regrouping a tab the user kept.
+    if (snap.type === 'file' && snap.path && typeof findFileTab === 'function') {
+      const survivor = findFileTab(snap.path);
+      if (survivor) { activateTab(survivor.id); return survivor; }
+    }
     if (snap.type === 'preview' && snap.port) {
       tab = newPreviewTab(snap.port, snap.path || '/');
     } else if (snap.type === 'file' && snap.path) {
@@ -236,7 +242,11 @@ function restartTabSession(id) {
   } catch (e) { console.warn('restartTabSession failed:', e); }
 }
 
+let _bulkClosing = false;
 async function bulkCloseTabs(targetIds, label) {
+  if (_bulkClosing) { try { toast('A bulk close is already running', 'info'); } catch {} return; }
+  _bulkClosing = true;
+  try {
   const targets = (targetIds || []).map(getTabById).filter(t => t && !t.closed);
   if (!targets.length) { try { toast('Nothing to close', 'info'); } catch {} return; }
   // Pinned tabs are never bulk-closed.
@@ -244,7 +254,13 @@ async function bulkCloseTabs(targetIds, label) {
   const skipped = targets.length - closable.length;
   if (!closable.length) { try { toast('Pinned tabs are protected — unpin first', 'warning'); } catch {} return; }
   // One confirm for the whole batch (per-tab prompts would spam N dialogs).
-  const dirtyFile = closable.some(t => t.type === 'file' && t.cm && t.cm.getValue() !== t.original);
+  // Parked tabs (restored, never mounted) have cm == null — check their
+  // crash-safety draft instead of calling them clean.
+  const dirtyFile = closable.some(t => {
+    if (t.type !== 'file') return false;
+    if (t.cm) return t.cm.getValue() !== t.original;
+    try { return typeof loadDraft === 'function' && loadDraft(t.path) != null; } catch { return false; }
+  });
   if (dirtyFile) {
     const ok = await confirmDialog({ title: 'Discard changes?', message: `Close ${closable.length} tabs? Unsaved file edits will be lost.`, okText: 'Discard', cancelText: 'Cancel', danger: true });
     if (!ok) return;
@@ -254,9 +270,14 @@ async function bulkCloseTabs(targetIds, label) {
   }
   const fakeEv = { stopPropagation() {} };
   for (const t of closable) {
+    if (!t || t.closed) continue; // re-check: an overlapping run may have closed it
     try { await closeTab(fakeEv, t.id, { force: true }); } catch (e) { console.warn('bulk close failed:', e); }
+    // force:true skips closeTab's discard purge: the batch confirm above was
+    // the explicit discard, so drop the draft or it resurrects on next open.
+    try { if (t.type === 'file' && t.path && typeof removeDraft === 'function') removeDraft(t.path); } catch {}
   }
   if (skipped) { try { toast(`Skipped ${skipped} pinned tab${skipped === 1 ? '' : 's'}`, 'info'); } catch {} }
+  } finally { _bulkClosing = false; }
 }
 
 function closeOtherTabs(id) {
@@ -545,10 +566,23 @@ function nextTermNumber() {
   return n;
 }
 
+const TAB_DND_TYPE = 'application/x-webtun-tab';
+function tabDndId(dt) {
+  // Typed payload only: a bare OS text drop containing digits must never
+  // reorder tabs.
+  try {
+    if (dt.types && Array.prototype.indexOf.call(dt.types, TAB_DND_TYPE) !== -1) {
+      const v = parseInt(dt.getData(TAB_DND_TYPE), 10);
+      if (!isNaN(v)) return v;
+    }
+  } catch {}
+  return NaN;
+}
 function setupTabDragDrop(tabEl, id) {
   tabEl.addEventListener('dragstart', e => {
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', String(id));
+    try { e.dataTransfer.setData(TAB_DND_TYPE, String(id)); } catch {}
+    e.dataTransfer.setData('text/plain', 'webtun-tab:' + id);
     tabEl.classList.add('dragging');
   });
   tabEl.addEventListener('dragenter', e => { e.preventDefault(); tabEl.classList.add('drag-over'); });
@@ -557,24 +591,41 @@ function setupTabDragDrop(tabEl, id) {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
   });
-  const finishDrop = (fromId) => {
+  const finishDrop = (fromId, after) => {
     if (isNaN(fromId) || fromId === id) return;
     const fromIdx = tabs.findIndex(t => t.id === fromId);
     if (fromIdx === -1) return;
     const [moved] = tabs.splice(fromIdx, 1);
-    const targetIdx = tabs.findIndex(t => t.id === id);
+    let targetIdx = tabs.findIndex(t => t.id === id);
+    if (after) targetIdx++;
     tabs.splice(targetIdx, 0, moved);
     const bar = document.getElementById('tab-scroll');
-    if (moved.el && moved.el.parentNode === bar) bar.insertBefore(moved.el, tabEl);
+    if (moved.el && moved.el.parentNode === bar) {
+      const ref = after ? tabEl.nextSibling : tabEl;
+      bar.insertBefore(moved.el, ref);
+    }
     saveTabState();
     updateTabOverflow();
   };
+  tabEl.addEventListener('dragover', e => {
+    // Before/after affordance: dropping on the right half inserts after.
+    try {
+      const r = tabEl.getBoundingClientRect();
+      tabEl.classList.toggle('drop-after', (e.clientX - r.left) > r.width / 2);
+    } catch {}
+  });
+  tabEl.addEventListener('dragleave', () => { tabEl.classList.remove('drop-after'); });
   tabEl.addEventListener('drop', e => {
     e.preventDefault();
+    let after = tabEl.classList.contains('drop-after');
+    try {
+      const r = tabEl.getBoundingClientRect();
+      after = (e.clientX - r.left) > r.width / 2;
+    } catch {}
     tabEl.classList.remove('drag-over');
+    tabEl.classList.remove('drop-after');
     [...document.querySelectorAll('.tab-drop-placeholder')].forEach(el => el.remove());
-    const fromId = parseInt(e.dataTransfer.getData('text/plain'));
-    finishDrop(fromId);
+    finishDrop(tabDndId(e.dataTransfer), after);
   });
   tabEl.addEventListener('dragend', () => {
     tabEl.classList.remove('dragging');
@@ -604,6 +655,7 @@ function setupTabInlineRename(tabTitleSpan, tab) {
     const done = () => {
       const val = input.value.trim() || tab.title;
       tab.title = val;
+      try { tab.el?.querySelector('.tab-close')?.setAttribute('aria-label', 'Close ' + val); } catch {}
       const newSpan = document.createElement('span');
       newSpan.className = 'tab-title';
       newSpan.textContent = val;
@@ -722,7 +774,8 @@ function createTabButton(tab) {
 
   const closeBtn = document.createElement('button');
   closeBtn.className = 'tab-close';
-  closeBtn.setAttribute('aria-label', 'Close tab');
+  closeBtn.setAttribute('aria-label', 'Close ' + tab.title);
+  closeBtn.title = 'Close ' + tab.title;
   closeBtn.onclick = e => closeTab(e, id);
   closeBtn.title = 'Close';
   const closeSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -794,7 +847,7 @@ function newTab(title, sessionId, dir, opts = {}) {
   return tab;
 }
 
-function activateTab(id) {
+async function activateTab(id) {
   activeTabId = id;
   tabs.forEach(t => {
     t.el?.classList.toggle('active', t.id === id);
@@ -831,7 +884,9 @@ function activateTab(id) {
   } catch {}
   // File tabs share one editor panel: mount it into the tab that just became
   // active, and hand it back to its own split when any other tab takes over.
-  if (tab && tab.type === 'file') mountFileTab(tab);
+  // Awaited: a refused open abandons the tab and re-activates elsewhere, so
+  // firing-and-forgetting let activation jump twice.
+  if (tab && tab.type === 'file') { try { await mountFileTab(tab); } catch (e) { console.warn('mountFileTab failed:', e); } }
   else if (_dockedFileTabId != null) undockEditor();
   scrollActiveTabIntoView();
   try { if (typeof refreshConnStatus === 'function') refreshConnStatus(); } catch {}
@@ -864,18 +919,29 @@ async function closeTab(e, id, opts = {}) {
   const editorOpen = !!evEl && evEl.classList.contains('open');
   const currentContent = editor ? editor.getValue() : '';
   const isDocPreview = !!(_pdfDoc || _epubBook || _officePath);
-  const closingText = !!closing && closing.type === 'file' && closing.viewer === 'text';
-  if (closingText) {
+  if (closing && closing.type === 'file' && closing.viewer === 'text') {
     // Text tabs own their buffer, so this is their own editor — not the panel's.
-    const dirty = !!(closing.cm && closing.cm.getValue() !== closing.original);
+    // A parked tab (restored, never mounted) has cm == null: its draft is the
+    // only record of unsaved work, so check that instead of calling it clean.
+    let dirty = !!(closing.cm && closing.cm.getValue() !== closing.original);
+    if (!closing.cm && closing.path) {
+      try { dirty = typeof loadDraft === 'function' && loadDraft(closing.path) != null; } catch {}
+    }
     if (dirty && !opts.force) {
       const ok = await confirmDialog({ title: 'Unsaved changes', message: 'You have unsaved changes. Close anyway?', okText: 'Discard', cancelText: 'Keep Editing', danger: true });
       if (!ok) return;
       // Explicit discard: drop the crash-safety draft so it is not offered again.
       if (closing.path) removeDraft(closing.path);
     }
-  } else if (_dockedFileTabId == null && editorOpen && !isDocPreview && currentContent !== editorOriginalContent) {
-    // Panel mode (nothing docked): the visible buffer belongs to the panel itself.
+  } else if (_dockedFileTabId != null && closing && closing.id === _dockedFileTabId && !isDocPreview && currentContent !== editorOriginalContent) {
+    // The closing tab owns the live panel buffer: discarding the tab discards
+    // those edits. Unrelated terminal/preview tabs never prompt for the panel.
+    const ok = await confirmDialog({ title: 'Unsaved changes', message: 'You have unsaved changes. Close anyway?', okText: 'Discard', cancelText: 'Keep Editing', danger: true });
+    if (!ok) return;
+    if (closing.path) removeDraft(closing.path);
+  } else if (_dockedFileTabId == null && editorOpen && !isDocPreview && currentContent !== editorOriginalContent && closing && (closing.type !== 'term' && closing.type !== 'preview')) {
+    // Panel mode (nothing docked): only a file-tab close can discard the
+    // panel buffer. Closing an unrelated terminal/preview tab leaves it alone.
     const ok = await confirmDialog({ title: 'Unsaved changes', message: 'You have unsaved changes. Close anyway?', okText: 'Close', cancelText: 'Cancel', danger: true });
     if (!ok) return;
   }
@@ -937,8 +1003,9 @@ function toggleTiles() {
   } else {
     const termWrap = document.getElementById('terminals');
     termWrap.querySelectorAll('.term-tile-header').forEach(el => el.remove());
-    const t = getActiveTab();
-    setTimeout(() => { try { fitTerm(t); } catch(e) { console.warn(e); } }, 60);
+    // Every tile had tile geometry: refit all, not just the active tab, or
+    // background terms keep tile sizes until visited.
+    setTimeout(() => { tabs.forEach(tab => { try { fitTerm(tab); } catch(e) { console.warn(e); } }); }, 60);
   }
 }
 
@@ -953,18 +1020,20 @@ function layoutTiles() {
     }
     hdr = document.createElement('div');
     hdr.className = 'term-tile-header';
-    hdr.setAttribute('tabindex', '0');
-    hdr.setAttribute('role', 'button');
-    hdr.setAttribute('aria-label', 'Activate ' + tab.title);
+    hdr.setAttribute('role', 'group');
+    hdr.setAttribute('aria-label', 'Tab ' + tab.title);
     const tthName = document.createElement('span');
     tthName.className = 'tth-name';
-    // Plain span on purpose: `hdr` is already the button (role=button +
-    // tabindex). A nested focusable role=button is invalid for screen readers.
+    // The name span is the single button: the header is a group so the
+    // close <button> is not nested inside another button (invalid ARIA).
+    tthName.setAttribute('role', 'button');
+    tthName.setAttribute('tabindex', '0');
+    tthName.setAttribute('aria-label', 'Activate ' + tab.title);
     tthName.textContent = tab.title;
     hdr.appendChild(tthName);
     const tthClose = document.createElement('button');
     tthClose.className = 'tth-close';
-    tthClose.setAttribute('aria-label', 'Close tab');
+    tthClose.setAttribute('aria-label', 'Close ' + tab.title);
     tthClose.setAttribute('tabindex', '0');
     tthClose.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
     hdr.appendChild(tthClose);
@@ -972,9 +1041,9 @@ function layoutTiles() {
       if (e.target.closest('.tth-close')) return;
       activateTab(tab.id);
     });
-    hdr.addEventListener('keydown', e => {
-      // Enter/Space on the header both activates and focuses the terminal, which
-      // is what the (now removed) nested name button used to do.
+    tthName.addEventListener('click', e => { e.stopPropagation(); activateTab(tab.id); });
+    tthName.addEventListener('keydown', e => {
+      // Enter/Space on the name activates and focuses the terminal.
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activateTab(tab.id); tab.term?.focus(); }
     });
     hdr.querySelector('.tth-close').addEventListener('click', e => {
@@ -986,19 +1055,21 @@ function layoutTiles() {
   // Tile view shows every tile at once, so mount the text tabs' editors here. Heavy
   // viewers are deliberately excluded: they stay single-live and show their parked
   // card rather than holding several documents in memory.
-  if (tilesMode) {
-    tabs.forEach(tab => {
-      if (tab.type === 'file' && !tab.closed && tab.viewer === 'text' && !tab.cm) {
-        mountFileTab(tab).catch(e => console.warn('Tile mount failed:', e));
-      }
-    });
-  }
-  setTimeout(() => {
+  const refitAll = () => {
     tabs.forEach(tab => { try { fitTerm(tab); } catch(e) { console.warn(e); } });
     // CodeMirror views have to re-measure: they just became tiles, or changed size.
     try { if (_dockedFileTabId != null) editor?.refresh(); } catch(e) { console.warn(e); }
     tabs.forEach(tab => { try { if (tab.cm) tab.cm.refresh(); } catch(e) { console.warn(e); } });
-  }, 60);
+  };
+  if (tilesMode) {
+    const pending = tabs
+      .filter(tab => tab.type === 'file' && !tab.closed && tab.viewer === 'text' && !tab.cm)
+      .map(tab => mountFileTab(tab).catch(e => console.warn('Tile mount failed:', e)));
+    // Refit after the mounts settle: a fixed 60ms fires before slow
+    // fetch/mode-load finishes and leaves zero-size CodeMirror panes.
+    Promise.allSettled(pending).then(() => requestAnimationFrame(refitAll));
+  }
+  setTimeout(refitAll, 60);
 }
 function moveTabToEnd(fromId) {
   if (isNaN(fromId)) return;
@@ -1027,15 +1098,13 @@ function setupTabBarDnD() {
   bar.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
   bar.addEventListener('drop', e => {
     e.preventDefault(); dragEnterCount = 0; setOver(bar, false);
-    const fromId = parseInt(e.dataTransfer.getData('text/plain'));
-    moveTabToEnd(fromId);
+    moveTabToEnd(tabDndId(e.dataTransfer));
   });
   btn.addEventListener('dragenter', () => setOver(btn, true));
   btn.addEventListener('dragleave', () => setOver(btn, false));
   btn.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
   btn.addEventListener('drop', e => {
     e.preventDefault(); setOver(btn, false);
-    const fromId = parseInt(e.dataTransfer.getData('text/plain'));
-    moveTabToEnd(fromId);
+    moveTabToEnd(tabDndId(e.dataTransfer));
   });
 }

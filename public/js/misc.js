@@ -237,7 +237,10 @@ function toggleCmdLib() {
   const isOpen = panel.classList.contains('open');
   panel.classList.toggle('open');
   panel.setAttribute('role', 'dialog');
-  panel.setAttribute('aria-modal', String(!isOpen));
+  // aria-modal only while open: leaving "false" behind mislabels the closed
+  // drawer for audits.
+  if (!isOpen) panel.setAttribute('aria-modal', 'true');
+  else panel.removeAttribute('aria-modal');
   document.getElementById('cmd-lib-toggle').classList.toggle('active', !isOpen);
   document.getElementById('cmd-lib-toggle').setAttribute('aria-expanded', String(!isOpen));
   if (!isOpen) {
@@ -425,8 +428,14 @@ function loadHistMax() {
     if (el) el.value = cmdHistMax;
   });
 }
+let _histChain = Promise.resolve();
+function _histEnqueue(fn) {
+  _histChain = _histChain.then(fn, fn);
+  return _histChain;
+}
 async function addToCmdHist(cmd) {
   if (!cmd || !cmd.trim()) return;
+  return _histEnqueue(async () => {
   // Strip all ANSI/VT escape sequences and control characters
   const clean = cmd
     .replace(/\x1b[^a-zA-Z0-9]*[a-zA-Z0-9~]/g, '')       // CSI: ESC [ ... final
@@ -434,14 +443,15 @@ async function addToCmdHist(cmd) {
     .replace(/\x1b[OPP][^\x40-\x7e]*[\x40-\x7e]/g, '')    // SS3/DCS: ESC O/P ... final
     .replace(/\x1b./g, '')                                   // Any other ESC sequence
     .replace(/[\x00-\x1f\x7f]/g, '')                        // All remaining control chars
-    .replace(/^[>;\d\s]+(?=[a-zA-Z/\\~\-.])/, '')          // VT params before a real command char
-    .replace(/^[>;\d\s]+$/, '')                              // Pure VT params, no command at all
+    .replace(/^[>][0-9;? ]+c(?=[a-zA-Z/\\~\-.])/, '')        // device-attr reply (e.g. >0;276;0c) before a command char
+    .replace(/^[>][0-9;? ]+c$/, '')                            // pure device-attr reply, no command at all
     .trim();
   if (!clean) return;
   try {
     await fetch('/api/history', { method: 'POST', headers: histHeaders(), body: JSON.stringify({ cmd: clean, max: cmdHistMax }) });
     await getCmdHist();
   } catch {}
+  });
 }
 async function removeCmdHistItem(idx) {
   try {
@@ -460,9 +470,14 @@ async function clearCmdHist() {
 }
 async function updateHistMax(val) {
   cmdHistMax = Math.max(10, Math.min(500, val || 50));
-  try {
-    await fetch('/api/history', { method: 'POST', headers: histHeaders(), body: JSON.stringify({ cmd: '', max: cmdHistMax }) });
-  } catch {}
+  // Max-only update: no cmd key at all, so a blind-append server can never
+  // store a blank row (the old {cmd:''} polluted history).
+  return _histEnqueue(async () => {
+    try {
+      await fetch('/api/history', { method: 'POST', headers: histHeaders(), body: JSON.stringify({ max: cmdHistMax }) });
+      await getCmdHist();
+    } catch {}
+  });
 }
 function switchCmdTab(tab) {
   const libBtn = document.getElementById('cmd-tab-lib');
@@ -887,8 +902,18 @@ window.addEventListener('beforeunload', e => {
   const editorOpen = document.getElementById('editor-view').classList.contains('open');
   const currentContent = editor ? editor.getValue() : '';
   const editorDirty = editorOpen && currentContent !== editorOriginalContent;
+  // File tabs own their buffers (tab.cm vs tab.original); parked tabs hold a
+  // crash-safety draft. The panel check alone missed all of them.
+  let fileDirty = false;
+  try {
+    fileDirty = tabs.some(t => {
+      if (!t || t.type !== 'file' || t.closed) return false;
+      if (t.cm) return t.cm.getValue() !== t.original;
+      try { return typeof loadDraft === 'function' && loadDraft(t.path) != null; } catch { return false; }
+    });
+  } catch {}
   const hasActiveSessions = tabs.some(t => t.ws && t.ws.readyState === WebSocket.OPEN);
-  if (editorDirty || hasActiveSessions) {
+  if (editorDirty || fileDirty || hasActiveSessions) {
     e.preventDefault();
     e.returnValue = '';
   }

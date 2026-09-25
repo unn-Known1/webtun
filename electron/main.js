@@ -15,13 +15,17 @@ try {
 } catch {}
 
 // Squirrel.Windows install/update hooks (no-op unless launched by Squirrel;
-// must run before app.ready).
-if (require('electron-squirrel-startup')) app.quit();
+// must run before app.ready). Return early so installer events don't acquire
+// the single-instance lock or register whenReady work on the way out.
+if (require('electron-squirrel-startup')) { app.quit(); return; }
 
 // In-app updates. The GitHub provider is auto-inferred from package.json
 // repository (the same inference that emits app-update.yml). Packaged builds
 // only; silent when offline. No settings UI yet: background download +
-// notify, install on quit.
+// notify, install on quit. Portable .exe / AppImage builds cannot self-update
+// via electron-updater (no installer to apply the update) — see the Desktop
+// section in README.md; the manual check below reports that instead of
+// failing silently.
 function setupAutoUpdates() {
   if (!app.isPackaged) return;
   let autoUpdater = null;
@@ -33,11 +37,39 @@ function setupAutoUpdates() {
   }
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
-  const check = () => { try { autoUpdater.checkForUpdatesAndNotify().catch(() => {}); } catch {} };
+  // Surface failures instead of swallowing them: background status is invisible
+  // otherwise (a broken feed used to look identical to "up to date").
+  autoUpdater.on('error', (e) => {
+    try { console.error('auto-updater error:', (e && e.message) || e); } catch {}
+  });
+  const check = () => {
+    try {
+      const r = autoUpdater.checkForUpdatesAndNotify();
+      if (r && typeof r.catch === 'function') r.catch((e) => {
+        try { console.error('update check failed:', (e && e.message) || e); } catch {}
+      });
+    } catch (e) {
+      try { console.error('update check failed:', (e && e.message) || e); } catch {}
+    }
+  };
   setTimeout(check, 30000);
   const timer = setInterval(check, 24 * 3600 * 1000);
   if (timer.unref) timer.unref();
+  return autoUpdater;
 }
+let _autoUpdater = null;
+// Renderer-reachable manual check (Settings → About can wire it up): resolves
+// to a short status string, never throws.
+ipcMain.handle('check-for-updates', async () => {
+  try {
+    if (!_autoUpdater) return 'updates unavailable in this build (portable/AppImage have no self-update — grab the next release from GitHub)';
+    const r = await _autoUpdater.checkForUpdatesAndNotify();
+    if (r && r.updateInfo && r.updateInfo.version) return 'update available: ' + r.updateInfo.version;
+    return 'up to date';
+  } catch (e) {
+    return 'update check failed: ' + ((e && e.message) || e);
+  }
+});
 
 let mainWindow;
 let serverProcess;
@@ -299,16 +331,23 @@ function isAddrInUse(err) {
 
 function stopServerProcess() {
   if (!serverProcess) return;
-  try { serverProcess.kill('SIGTERM'); } catch {}
+  const child = serverProcess;
+  serverProcess = null;
+  try { child.kill('SIGTERM'); } catch {}
+  // A stuck server holding the port used to survive SIGTERM forever, so rapid
+  // relaunch depended entirely on the EADDRINUSE retry loop. Escalate to
+  // SIGKILL after a grace period (taskkill below already covers win32).
+  setTimeout(() => {
+    try { child.kill('SIGKILL'); } catch {}
+  }, 5000).unref();
   // Windows SIGTERM is best-effort — fall back to taskkill so a stuck child
   // cannot hold the port across the EADDRINUSE retry loop either.
-  if (process.platform === 'win32' && serverProcess.pid) {
+  if (process.platform === 'win32' && child.pid) {
     try {
       const { execFileSync } = require('child_process');
-      execFileSync('taskkill', ['/PID', String(serverProcess.pid), '/T', '/F'], { stdio: 'ignore' });
+      execFileSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
     } catch {}
   }
-  serverProcess = null;
 }
 
 app.whenReady().then(async () => {
@@ -333,7 +372,7 @@ app.whenReady().then(async () => {
       }
     }
     createWindow();
-    setupAutoUpdates();
+    _autoUpdater = setupAutoUpdates() || null;
   } catch (e) {
     dialog.showErrorBox('WebTun Error', `Failed to start server:\n${e.message}`);
     app.quit();
@@ -346,15 +385,17 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   if (serverProcess) {
-    try { serverProcess.kill('SIGTERM'); } catch {}
+    const child = serverProcess;
+    serverProcess = null;
+    try { child.kill('SIGTERM'); } catch {}
+    setTimeout(() => { try { child.kill('SIGKILL'); } catch {} }, 5000).unref();
     // Windows SIGTERM is best-effort — fall back to taskkill so the port frees
-    if (process.platform === 'win32' && serverProcess.pid) {
+    if (process.platform === 'win32' && child.pid) {
       try {
         const { execFileSync } = require('child_process');
-        execFileSync('taskkill', ['/PID', String(serverProcess.pid), '/T', '/F'], { stdio: 'ignore' });
+        execFileSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
       } catch {}
     }
-    serverProcess = null;
   }
 });
 

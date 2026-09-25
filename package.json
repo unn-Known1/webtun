@@ -15,6 +15,7 @@
     "bin/",
     "server.js",
     "verify-version.js",
+    ".env.example",
     "lib/",
     "public/"
   ],

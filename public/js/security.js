@@ -102,8 +102,15 @@ async function updateSessionCupCount() {
     if (n > 0) {
       num.textContent = n > 9 ? '9+' : String(n);
       num.style.display = '';
-      num.parentElement?.closest('label')?.setAttribute('title',
-        n === 1 ? 'Keep Screen Awake — 1 active login session (open Security to review)' : `Keep Screen Awake — ${n} active login sessions (open Security to review)`);
+      // Merged with the wake-lock title in syncKeepAwakeUI (dataset, not a
+      // direct title write — last writer used to win and erase the other).
+      try {
+        const label = num.parentElement?.closest('label');
+        if (label) {
+          label.dataset.sessSuffix = n === 1 ? ' — 1 active login session (open Security to review)' : ` — ${n} active login sessions (open Security to review)`;
+          label.title = (settings.keepAwake ? 'Keep Screen Awake — ON (screen stays on)' : 'Keep Screen Awake') + label.dataset.sessSuffix;
+        }
+      } catch {}
     } else {
       num.style.display = 'none';
     }
@@ -306,7 +313,8 @@ function renderSecurityAlert() {
     count.textContent = n > 1 ? String(n) : '';
     count.style.display = n > 1 ? '' : 'none';
   }
-  btn.setAttribute('aria-label', n === 1 ? 'Security alert: 1 unreviewed login' : `Security alert: ${n} unreviewed logins`);
+  if (n) btn.setAttribute('aria-label', n === 1 ? 'Security alert: 1 unreviewed login' : `Security alert: ${n} unreviewed logins`);
+  else btn.removeAttribute('aria-label');
 }
 function addSecurityAlert(ev) {
   const list = getPendingAlerts();
@@ -315,17 +323,17 @@ function addSecurityAlert(ev) {
   renderSecurityAlert();
 }
 // The review step: open Security, refresh the list, clear the triangle.
+// Cleared AFTER the panel opens: clearing first lost the history when the
+// open/refresh threw.
 function openSecurityReview() {
-  setPendingAlerts([]);
-  renderSecurityAlert();
   const panel = document.getElementById('settings-panel');
-  if (!panel || !panel.classList.contains('open')) {
-    if (typeof openSettings === 'function') openSettings();
-    else return;
-  }
-  try { refreshSessions(); } catch {}
-  // Expand the Security section even when collapsed, then scroll to it
   try {
+    if (!panel || !panel.classList.contains('open')) {
+      if (typeof openSettings === 'function') openSettings();
+      else return;
+    }
+    try { refreshSessions(); } catch {}
+  // Expand the Security section even when collapsed, then scroll to it
     const sec = panel.querySelector('[data-sec="security"]');
     if (sec) {
       sec.classList.add('open');
@@ -334,7 +342,9 @@ function openSecurityReview() {
       try { safeStorage.setItem('wt-settings-sec-security', 'true'); } catch {}
       if (sec.scrollIntoView) sec.scrollIntoView({ block: 'start' });
     }
-  } catch {}
+  } catch (e) { console.warn('openSecurityReview failed:', e); return; }
+  setPendingAlerts([]);
+  renderSecurityAlert();
 }
 
 let tunnelList = [];

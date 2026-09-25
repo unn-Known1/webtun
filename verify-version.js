@@ -57,9 +57,46 @@ if (lock) {
 }
 
 // A `v*` tag build must match the manifest, or CI publishes the wrong version.
+// Strict: any GITHUB_REF_NAME on a tag build must carry the `v` prefix — a
+// `2.2.3`-style tag used to slip past this check entirely.
 const tag = process.env.GITHUB_REF_NAME || '';
-if (tag && tag.startsWith('v') && tag !== 'v' + version) {
-  problems.push(`git tag ${tag} does not match package.json version ${version}`);
+if (tag) {
+  if (!tag.startsWith('v')) {
+    problems.push(`git tag ${tag} is missing the required "v" prefix (want v${version}) — CI only builds v* tags`);
+  } else if (tag !== 'v' + version) {
+    problems.push(`git tag ${tag} does not match package.json version ${version}`);
+  }
+}
+
+// README-heading↔tag invariant (AGENTS.md): a `### vX.Y.Z` heading advertises
+// a release, so the current version must have one — v2.2.0 shipped a heading
+// with no tag, v2.2.3 a tag with no heading. Both directions break installs.
+try {
+  const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+  const re = new RegExp('^###\\s+v' + version.replace(/\./g, '\\.') + '\\s*$', 'm');
+  if (!re.test(readme)) {
+    problems.push(`README.md has no "### v${version}" changelog heading for package.json version ${version}`);
+  }
+} catch (e) {
+  problems.push('README.md is unreadable (' + (e.code || e.message) + ') — cannot check the changelog heading');
+}
+
+// Dirty-tree refuse, publish path only: `npm run version:check` / `npm test`
+// must stay green on a working tree, but `prepublishOnly` must not ship one.
+if (process.env.npm_lifecycle_event === 'prepublishOnly') {
+  try {
+    const { execFileSync } = require('child_process');
+    const dirty = (() => {
+      try {
+        execFileSync('git', ['diff', '--quiet'], { cwd: root, stdio: 'ignore' });
+        execFileSync('git', ['diff', '--cached', '--quiet'], { cwd: root, stdio: 'ignore' });
+        return false;
+      } catch { return true; }
+    })();
+    if (dirty) problems.push('working tree has uncommitted changes — commit or stash before publishing');
+  } catch {
+    // No git available (publishing from a tarball dir): cannot verify, skip.
+  }
 }
 
 // Optional explicit expectation (e.g. `node verify-version.js 2.1.0`).

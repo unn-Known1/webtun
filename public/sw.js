@@ -1,4 +1,4 @@
-const CACHE = 'webtun-v8';
+const CACHE = 'webtun-v9';
 const PRECACHE = [
   '/',
   '/index.html',
@@ -63,8 +63,10 @@ self.addEventListener('fetch', e => {
   if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return;
   if (url.pathname === '/ws' || url.pathname.startsWith('/ws/')) return;
   if (url.searchParams.has('token')) return;
-  // Credentialed non-API GETs (Authorization header) must never be cached.
+  // Credentialed non-API GETs must never be cached. The app authenticates
+  // with x-pin-token (not Authorization), so guard both explicitly.
   try { if (e.request.headers.has('authorization')) return; } catch {}
+  try { if (e.request.headers.has('x-pin-token')) return; } catch {}
 
   // Network-First for HTML/navigation
   const isNavigation = e.request.mode === 'navigate' || (url.pathname === '/') || (url.pathname.endsWith('.html') && e.request.mode === 'same-origin');

@@ -8,16 +8,19 @@ DIR="${HOME:-/root}/webtun"
 echo ""
 echo "  Installing WebTun..."
 
-# Every tool used below is checked up-front: a missing curl/node used to surface
-# much later as a cryptic failure inside setup.sh.
+# Every tool used below is checked up-front: a missing git/curl used to surface
+# much later as a cryptic failure inside setup.sh. Node.js is NOT required
+# here — setup.sh's install_node() installs/upgrades it when missing.
 missing=()
 command -v git  &>/dev/null || missing+=("git")
 command -v curl &>/dev/null || missing+=("curl")
-command -v node &>/dev/null || missing+=("node")
 if [ ${#missing[@]} -gt 0 ]; then
   echo "  Error: required command(s) not found: ${missing[*]}"
-  echo "         Install them first (git, curl, and Node.js >= 18)."
+  echo "         Install them first (git and curl)."
   exit 1
+fi
+if ! command -v node &>/dev/null; then
+  echo "  Node.js not found — setup.sh will install Node.js >= 18."
 fi
 
 # Clone or pull

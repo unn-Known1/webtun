@@ -110,6 +110,30 @@ function main() {
   for (const b of jsBroken.slice(0, 20)) console.error(`ci-gate BROKEN: ${b}`);
   if (jsBroken.length) failures.push(`${jsBroken.length} bundled JS file(s) do not parse`);
 
+  // 2b. Non-JS truncation sanity (the v2.2.2 class is byte-truncation at any
+  // cut point, not JS-specific — a cut index.html/CSS used to pass the gate
+  // on presence alone). HTML must still carry its closing tag; CSS must be
+  // non-empty with balanced braces.
+  let assetBroken = [];
+  for (const rel of entries) {
+    if (!rel.endsWith('.html') && !rel.endsWith('.css')) continue;
+    const buf = tryExtract(asar, archive, rel);
+    if (!buf) { assetBroken.push(`${rel} (unreadable in any path form)`); continue; }
+    const text = buf.toString('utf8');
+    if (rel.endsWith('.html')) {
+      if (!text.includes('</html>')) assetBroken.push(`${rel} (missing </html> — truncated?)`);
+    } else {
+      const open = (text.match(/\{/g) || []).length;
+      const close = (text.match(/\}/g) || []).length;
+      if (text.length === 0 || open === 0 || open !== close) {
+        assetBroken.push(`${rel} (empty or unbalanced braces ${open}/${close} — truncated?)`);
+      }
+    }
+  }
+  console.log(`ci-gate: html/css checked, broken=${assetBroken.length}`);
+  for (const b of assetBroken.slice(0, 20)) console.error(`ci-gate BROKEN: ${b}`);
+  if (assetBroken.length) failures.push(`${assetBroken.length} bundled HTML/CSS file(s) look truncated`);
+
   // 3. Unpacked native binding (platform-aware).
   const unpacked = path.join(resources, 'app.asar.unpacked');
   const needUnpacked = ['node_modules/node-pty/build/Release/pty.node'];

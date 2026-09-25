@@ -1,12 +1,12 @@
 // WebTun frontend - viewers.js (image/pdf/epub/office + html/md preview).
 
 
-const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.bmp', '.ico']);
+const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.avif', '.bmp', '.ico']);
 
 // Binary extensions from https://github.com/sindresorhus/binary-extensions (v2.3.0)
 // Used to block editor preview for non-text files. Images are previewable via image viewer, so they are checked first.
 const BINARY_EXTS = new Set([
-  '3dm','3ds','3g2','3gp','7z','a','aac','adp','afdesign','afphoto','afpub','ai','aif','aiff','alz','ape','apk','appimage','ar','arj','asf','au','avi','bak','baml','bh','bin','bk','bmp','btif','bz2','bzip2','cab','caf','cgm','class','cmx','cpio','cr2','cr3','cur','dat','dcm','deb','dex','djvu','dll','dmg','dng','doc','docm','docx','dot','dotm','dra','ds_store','dsk','dts','dtshd','dvb','dwg','dxf','ecelp4800','ecelp7470','ecelp9600','egg','eol','eot','epub','exe','f4v','fbs','fh','fla','flac','flatpak','fli','flv','fpx','fst','fvt','g3','gh','gif','graffle','gz','gzip','h261','h263','h264','icns','ico','ief','img','ipa','iso','jar','jpeg','jpg','jpgv','jpm','jxr','key','ktx','lha','lib','lvp','lz','lzh','lzma','lzo','m3u','m4a','m4v','mar','mdi','mht','mid','midi','mj2','mka','mkv','mmr','mng','mobi','mov','movie','mp3','mp4','mp4a','mpeg','mpg','mpga','mxu','nef','npx','numbers','nupkg','o','odp','ods','odt','oga','ogg','ogv','otf','ott','pages','pbm','pcx','pdb','pdf','pea','pgm','pic','png','pnm','pot','potm','potx','ppa','ppam','ppm','pps','ppsm','ppsx','ppt','pptm','pptx','psd','pya','pyc','pyo','pyv','qt','rar','ras','raw','resources','rgb','rip','rlc','rmf','rmvb','rpm','rtf','rz','s3m','s7z','scpt','sgi','shar','snap','sil','sketch','slk','smv','snk','so','stl','suo','sub','swf','tar','tbz','tbz2','tga','tgz','thmx','tif','tiff','tlz','ttc','ttf','txz','udf','uvh','uvi','uvm','uvp','uvs','uvu','viv','vob','war','wav','wax','wbmp','wdp','weba','webm','webp','whl','wim','wm','wma','wmv','wmx','woff','woff2','wrm','wvx','xbm','xif','xla','xlam','xls','xlsb','xlsm','xlsx','xlt','xltm','xltx','xm','xmind','xpi','xpm','xwd','xz','z','zip','zipx'
+  '3dm','3ds','3g2','3gp','7z','a','aac','adp','afdesign','afphoto','afpub','ai','aif','aiff','alz','ape','apk','appimage','avif','ar','arj','asf','au','avi','bak','baml','bh','bin','bk','bmp','btif','bz2','bzip2','cab','caf','cgm','class','cmx','cpio','cr2','cr3','cur','dat','dcm','deb','dex','djvu','dll','dmg','dng','doc','docm','docx','dot','dotm','dra','ds_store','dsk','dts','dtshd','dvb','dwg','dxf','ecelp4800','ecelp7470','ecelp9600','egg','eol','eot','epub','exe','f4v','fbs','fh','fla','flac','flatpak','fli','flv','fpx','fst','fvt','g3','gh','gif','graffle','gz','gzip','h261','h263','h264','icns','ico','ief','img','ipa','iso','jar','jpeg','jpg','jpgv','jpm','jxr','key','ktx','lha','lib','lvp','lz','lzh','lzma','lzo','m3u','m4a','m4v','mar','mdi','mht','mid','midi','mj2','mka','mkv','mmr','mng','mobi','mov','movie','mp3','mp4','mp4a','mpeg','mpg','mpga','mxu','nef','npx','numbers','nupkg','o','odp','ods','odt','oga','ogg','ogv','otf','ott','pages','pbm','pcx','pdb','pdf','pea','pgm','pic','png','pnm','pot','potm','potx','ppa','ppam','ppm','pps','ppsm','ppsx','ppt','pptm','pptx','psd','pya','pyc','pyo','pyv','qt','rar','ras','raw','resources','rgb','rip','rlc','rmf','rmvb','rpm','rtf','rz','s3m','s7z','scpt','sgi','shar','snap','sil','sketch','slk','smv','snk','so','stl','suo','sub','swf','tar','tbz','tbz2','tga','tgz','thmx','tif','tiff','tlz','ttc','ttf','txz','udf','uvh','uvi','uvm','uvp','uvs','uvu','viv','vob','war','wav','wax','wbmp','wdp','weba','webm','webp','whl','wim','wm','wma','wmv','wmx','woff','woff2','wrm','wvx','xbm','xif','xla','xlam','xls','xlsb','xlsm','xlsx','xlt','xltm','xltx','xm','xmind','xpi','xpm','xwd','xz','z','zip','zipx'
 ]);
 
 function isImageFile(path) {
@@ -1102,8 +1102,8 @@ function rewriteFullHtmlUrls(raw, baseDir, ptok) {
 }
 function rewriteHtmlRelativeUrls(html, baseDir, ptok) {
   if (!baseDir) return html;
-  // src/href/srcset/poster/data/action/cite/background
-  html = html.replace(/\b(src|href|srcset|poster|data|cite|action|background)\s*=\s*(["'])([^"']+)\2/gi, (m, attr, q, val) => {
+  // src/href/srcset/poster/data/action/cite/background/formaction/xlink:href
+  html = html.replace(/\b(src|href|srcset|poster|data|cite|action|background|formaction|xlink:href)\s*=\s*(["'])([^"']+)\2/gi, (m, attr, q, val) => {
     if (attr.toLowerCase() === 'srcset') {
       const parts = val.split(',').map(p => {
         const seg = p.trim();
@@ -1127,6 +1127,12 @@ function rewriteHtmlRelativeUrls(html, baseDir, ptok) {
     if (/^[A-Za-z]:[\\/]/.test(trimmed)) return m;
     const newUrl = toPreviewApiUrl(trimmed, baseDir, ptok);
     return `url(${q}${newUrl}${q})`;
+  });
+  // <meta http-equiv="refresh" content="0;url=..."> would navigate the frame
+  // outside the authed proxy — rewrite the url= target too.
+  html = html.replace(/(<meta\b[^>]*content=(["'])[^"']*?url=)([^"';\s>]+)/gi, (m, pre, q, url) => {
+    if (!url || isAbsoluteUrlForHtml(url.trim())) return m;
+    return pre + toPreviewApiUrl(url.trim(), baseDir, ptok);
   });
   return html;
 }
@@ -1236,11 +1242,11 @@ async function renderHtmlPreviewInner() {
   if (isFullDoc) {
     let sanitized = DOMPurify.sanitize(raw, { WHOLE_DOCUMENT: true, USE_PROFILES: { html: true }, ADD_TAGS: ['base','style'], ADD_ATTR: ['target'] });
     sanitized = rewriteHtmlRelativeUrls(sanitized, baseDir, ptok);
-    // Inject base tag if missing for any remaining relative URLs
-    if (!/<base\b/i.test(sanitized)) {
-      const baseHref = `/api/files/image?path=${encodeURIComponent(baseDir + '/')}` + (ptok ? `&ptoken=${encodeURIComponent(ptok)}` : '');
-      sanitized = sanitized.replace(/<head[^>]*>/i, m => m + `<base href="${escHtml(baseHref)}">`);
-    }
+    // An author-supplied <base href> survives sanitizing and re-targets every
+    // relative asset/script include: strip them all, then inject our own.
+    const baseHref = `/api/files/image?path=${encodeURIComponent(baseDir + '/')}` + (ptok ? `&ptoken=${encodeURIComponent(ptok)}` : '');
+    sanitized = sanitized.replace(/<base\b[^>]*>/gi, '');
+    sanitized = sanitized.replace(/<head[^>]*>/i, m => m + `<base href="${escHtml(baseHref)}">`);
     // Ensure color-scheme meta
     if (!/<meta[^>]*color-scheme/i.test(sanitized)) {
       sanitized = sanitized.replace(/<head[^>]*>/i, m => m + `<meta name="color-scheme" content="${isDark ? 'dark' : 'light'}">`);
@@ -1297,7 +1303,7 @@ async function renderHtmlPreviewInner() {
   setPreviewDoc(iframe, doc);
 }
 
-function renderMdPreview() {
+async function renderMdPreview() {
   const preview = document.getElementById('editor-preview');
   const mdContent = document.getElementById('md-preview-content');
   const iframe = document.getElementById('editor-preview-iframe');
@@ -1311,7 +1317,19 @@ function renderMdPreview() {
       return;
     }
     const html = marked.parse(raw, { breaks: true, gfm: true, langPrefix: 'language-' });
-    const sanitized = DOMPurify.sanitize(html);
+    let sanitized = DOMPurify.sanitize(html);
+    // Mirror the tab preview: route relative assets through the authed image
+    // endpoint and open links out of the app (a relative click used to
+    // navigate the whole app away).
+    try {
+      const mdBase = (typeof getHtmlBaseDir === 'function') ? getHtmlBaseDir() : '';
+      let mdTok = null;
+      try { mdTok = await mintPreviewFileToken(editorPath); } catch {}
+      sanitized = rewriteHtmlRelativeUrls(sanitized, mdBase, mdTok);
+    } catch {}
+    try {
+      sanitized = sanitized.replace(/<a\b(?![^>]*\btarget=)[^>]*>/gi, m => m.replace(/<a\b/i, '<a target="_blank" rel="noopener"'));
+    } catch {}
     const s = getComputedStyle(document.documentElement);
     const bg = s.getPropertyValue('--bg').trim();
     const fg = s.getPropertyValue('--fg').trim();

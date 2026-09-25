@@ -182,6 +182,12 @@ function createRateLimiter(opts) {
 
 const authRateLimiter = createRateLimiter({ limit: 5, windowMs: 10000, errorMsg: 'Too many attempts', skipWhenNoPin: true });
 const rateLimiter = createRateLimiter({ limit: 20, windowMs: 10000 });
+// NOTE (documented shared budget): authRateLimiter intentionally guards login,
+// PIN change, approve and veto together (5/10s per IP, single-owner box — one
+// human, so one shared budget). Traffic on one endpoint consumes the same
+// bucket; split into per-route limiters if multi-user operation is ever
+// supported. skipWhenNoPin disables throttling only when the instance is open
+// (no secret to brute-force).
 
 const app = express();
 app.disable('x-powered-by'); // don't advertise the stack
@@ -243,7 +249,10 @@ app.use((req, res, next) => {
   // HSTS only when the request really arrived over TLS (directly or via a
   // TLS-terminating reverse proxy). Sending it on plain HTTP is ignored by
   // browsers anyway, and a LAN-only install has no TLS to pin.
-  if (req.secure || req.headers['x-forwarded-proto'] === 'https') {
+  // x-forwarded-proto is client-controlled: honor it only behind a trusted
+  // proxy (TRUST_PROXY=true); otherwise only direct TLS (req.secure).
+  const trustProxyHsts = process.env.TRUST_PROXY === 'true';
+  if (req.secure || (trustProxyHsts && req.headers['x-forwarded-proto'] === 'https')) {
     res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
   }
   next();
@@ -253,11 +262,21 @@ app.use((req, res, next) => {
 // legitimately carries file content buffer more. A flat 50 MB global limit meant a
 // 40 MB POST to any endpoint was buffered in full before that route's own 10 MB
 // guard could reject it. (F42 / B-L4)
-const JSON_LIMIT_BASE = '2mb';
-const JSON_LIMIT_LARGE = '12mb';
+// Overridable via env: JSON_LIMIT (global, default 2mb), JSON_LIMIT_LARGE
+// (default 12mb, for LARGE_JSON_ROUTES). Invalid values fall back to defaults.
+function parseJsonLimit(raw, fallback) {
+  if (typeof raw !== 'string' || !raw) return fallback;
+  const m = raw.trim().toLowerCase().match(/^(\d+)(b|kb|mb)$/);
+  if (!m) { console.warn(`[webtun] invalid JSON_LIMIT value ${JSON.stringify(raw)}, using ${fallback}`); return fallback; }
+  return `${m[1]}${m[2]}`;
+}
+const JSON_LIMIT_BASE = parseJsonLimit(process.env.JSON_LIMIT, '2mb');
+const JSON_LIMIT_LARGE = parseJsonLimit(process.env.JSON_LIMIT_LARGE, '12mb');
 const LARGE_JSON_ROUTES = new Set(['/api/files/write']);
 app.use((req, res, next) => {
-  const limit = LARGE_JSON_ROUTES.has(req.path) ? JSON_LIMIT_LARGE : JSON_LIMIT_BASE;
+  // Trailing-slash tolerant: /api/files/write/ gets the large budget too.
+  const p = typeof req.path === 'string' ? req.path.replace(/\/+$/, '') || '/' : req.path;
+  const limit = LARGE_JSON_ROUTES.has(p) ? JSON_LIMIT_LARGE : JSON_LIMIT_BASE;
   return express.json({ limit })(req, res, next);
 });
 app.use(express.static(path.join(__dirname, 'public')));
@@ -360,6 +379,11 @@ function mintPreviewFileToken(dir) {
   previewFileTokens.set(t, { dir, exp: now + PREVIEW_FILE_TOKEN_TTL_MS });
   return t;
 }
+// Expired tokens lingered until the next mint; sweep periodically instead.
+const previewFileTokenSweep = setInterval(() => {
+  try { prunePreviewFileTokens(Date.now()); } catch {}
+}, 60000);
+if (previewFileTokenSweep.unref) previewFileTokenSweep.unref();
 function clearSessionTimer(s) { try { if (s && s.timer) clearTimeout(s.timer); } catch {} if (s) s.timer = null; }
 // Arm the deny-by-default expiry for a pending session. Shared by first-issue
 // and by the bootstrap demotion path (see /api/auth) so both behave identically.
@@ -442,7 +466,6 @@ function issueSession(req, deviceHint, status) {
   while (authSessions.size > SESSION_MAX) {
     const oldest = authSessions.keys().next().value;
     if (oldest === undefined) break;
-    if (oldest === token) break; // never evict the session we just minted
     const _o = authSessions.get(oldest);
     clearSessionTimer(_o);
     authSessions.delete(oldest);
@@ -465,7 +488,7 @@ function rawPinAllowed(req) {
   try {
     if (isLoopbackReq(req)) return true;
     return countActiveSessions() === 0;
-  } catch { return true; }
+  } catch { return false; }
 }
 function checkPin(req, res, next) {
   if (!PIN) return next();
@@ -697,6 +720,13 @@ function envValue(v) {
   if (/[\s#]/.test(s) && !/["'\\]/.test(s)) return '"' + s + '"';
   return s;
 }
+// Values needing both whitespace/# quoting AND containing quotes/backslashes
+// cannot round-trip (loader strips quotes but never unescapes; systemd would
+// truncate the unquoted form). Callers must reject these PINs upfront.
+function envValueUnsafe(v) {
+  const s = String(v == null ? '' : v);
+  return /[\s#]/.test(s) && /["'\\]/.test(s);
+}
 function persistPinToEnv(pin) {
   let lines = [];
   try { lines = fs.readFileSync(ENV_PATH, 'utf8').split('\n'); }
@@ -736,10 +766,24 @@ function describeChanger(req) {
     return parseDevice(req.headers && req.headers['user-agent'], null);
   } catch { return 'unknown device'; }
 }
-// Performs the rotation: broadcast attribution, wipe sessions, persist.
+// Performs the rotation: persist first, then wipe sessions. Persist-first so a
+// failed .env write never leaves memory on the new PIN while disk still holds
+// the old one (which locked the owner out after the next restart with all
+// sessions already destroyed). On persist failure the rotation is refused and
+// existing sessions are left untouched.
 function applyPinRotation(req, next, byDevice) {
+  let persisted = false, persistError = '';
+  try { persistPinToEnv(next); persisted = true; }
+  catch (e) { persistError = e.message || 'write failed'; }
+  if (!persisted) {
+    const err = new Error('PIN persist failed: ' + persistError);
+    err.status = 500;
+    throw err;
+  }
   PIN = next;
   process.env.PIN = next;
+  // Any successful rotation invalidates queued two-person requests.
+  clearPendingPinChange();
   // A PIN change invalidates every issued session token (they were minted
   // under the old secret). Clients re-login with the new PIN.
   // Broadcast first (with the changer's identity) so other tabs learn WHO
@@ -753,10 +797,7 @@ function applyPinRotation(req, next, byDevice) {
   // not cosmetic: the handshake is the only other auth check, so a client that
   // ignored the advisory event would otherwise keep a live shell forever.
   try { closeInvalidSockets('PIN changed'); } catch {}
-  let persisted = false, persistError = '';
-  try { persistPinToEnv(next); persisted = true; }
-  catch (e) { persistError = e.message || 'write failed'; }
-  return { persisted, persistError, sessionsRevoked };
+  return { persisted: true, persistError: '', sessionsRevoked };
 }
 
 // Set/change/disable the PIN at runtime. Authed callers only (checkPin),
@@ -774,9 +815,18 @@ app.post('/api/pin', authRateLimiter, checkPin, (req, res) => {
         return res.status(401).json({ error: 'Current PIN is incorrect' });
       }
     }
-    let next = typeof newPin === 'string' ? newPin.trim() : '';
+    // Missing/non-string newPin must not silently disable protection: only an
+    // explicit "" disables. Absent newPin is a 400.
+    if (newPin === undefined || typeof newPin !== 'string') {
+      return res.status(400).json({ error: 'newPin is required (pass "" to disable protection)' });
+    }
+    let next = newPin;
+    // Set path used to trim while login compares exactly, so space-padded PINs
+    // were unsettable-but-silent. Reject padded PINs instead of mangling them.
+    if (next !== next.trim()) return res.status(400).json({ error: 'PIN must not have leading or trailing spaces' });
     if (/[\r\n\0]/.test(next)) return res.status(400).json({ error: 'PIN contains invalid characters' });
     if (next.length > 64) return res.status(400).json({ error: 'PIN must be 64 characters or less' });
+    if (next && envValueUnsafe(next)) return res.status(400).json({ error: 'PIN cannot combine spaces/#/quotes — it would not survive .env reload' });
     // Two-person rule (only when protection is already on — first setup is instant)
     if (PIN) {
       const requesterToken = req.authToken || null;
@@ -945,9 +995,20 @@ function redactPaths(msg) {
   // Windows drive paths plus POSIX absolute paths that begin a word (' /, " /,
   // = /, : /). The (?!\/) guard leaves URLs alone, so a message quoting
   // https://host/a/b survives while '/home/you/secret' becomes '<path>'.
-  return String(msg)
-    .replace(/[A-Za-z]:\\[^\s"']*/g, '<path>')
-    .replace(/(^|[\s"'(=:,])\/(?!\/)[\w.@%+-]+(?:\/[\w.@%+-]+)*/g, '$1<path>');
+  // Segment class is deliberately broad ([^"'`\n\r()\[\]]): ASCII-only \w cut
+  // non-ASCII names (документ) and spaces (C:\Program Files) mid-path and
+  // leaked the remainder. Tilde-relative (~/x) and bare relative leaks are
+  // redacted too.
+  let s = String(msg);
+  s = s.replace(/https?:\/\/[^/\s"'`]+/g, m => (/[@]/.test(m) ? m.replace(/^(https?:\/\/)[^@]*@/, '$1<redacted>@') : m));
+  s = s.replace(/([A-Za-z]:\\[^"'`\n\r]*)/g, '<path>');
+  s = s.replace(/(^|[\s"'(=:,])~\/[^"'`\n\r()\[\]]*/g, '$1<path>');
+  s = s.replace(/(^|[\s"'(=:,])\/(?!\/)[^"'`\n\r()\[\]]*/g, (m, pre) => {
+    const body = m.slice(pre.length).replace(/[\s.,;:!?]+$/, '');
+    if (!body || body === '/') return m;
+    return pre + '<path>';
+  });
+  return s;
 }
 function safeErr(e, fallbackStatus) {
   const raw = (e && e.message) || '';
@@ -969,9 +1030,18 @@ function safeErr(e, fallbackStatus) {
 // Sanitized one-line text for batch responses ({ results: [{ error }] }).
 function errText(e) { return safeErr(e).body.error; }
 // Git CLI stderr is bound for the UI (it is genuinely useful), so it keeps its
-// wording, but paths are redacted and the length is bounded.
+// wording, but paths are redacted and the length is bounded. Remote URLs and
+// embedded tokens (https://<token>@host) are scrubbed to <redacted>.
 function gitErrText(e, fallback, max = 500) {
   return redactPaths((e && e.message) || '').trim().slice(0, max) || fallback;
+}
+// Timeouts/auth failures must not flatten to 400: callers need to tell
+// retryable (504/401/403) from bad-request. Non-git routes keep safeErr.
+function gitErrStatus(e, fallback = 400) {
+  const m = String((e && e.message) || '').toLowerCase();
+  if (/timed out|timeout|timed-out/.test(m)) return 504;
+  if (/authentication|permission denied \(publickey\)|could not read from remote|invalid username|password/.test(m)) return 401;
+  return fallback;
 }
 function sendErr(res, e, fallbackStatus) {
   const { status, body } = safeErr(e, fallbackStatus);
@@ -1117,7 +1187,7 @@ async function createZipArchive(entries, zipPath) {
   // truncated .zip behind.
   const items = await collectZipEntries(entries);
   const output = fs.createWriteStream(zipPath);
-  const writer = new ZipStoreWriter(output);
+  const writer = new ZipStoreWriter(output, { maxTotal: ZIP_MAX_TOTAL });
   await new Promise((resolve, reject) => {
     let settled = false;
     const fail = err => {
@@ -1135,7 +1205,7 @@ async function createZipArchive(entries, zipPath) {
 }
 
 function streamZipDirectory(dirPath, res) {
-  const writer = new ZipStoreWriter(res);
+  const writer = new ZipStoreWriter(res, { maxTotal: ZIP_MAX_TOTAL });
   // Returned immediately (not a promise) so the caller can still abort it on
   // client disconnect; the walk itself is async and link-free.
   (async () => {
@@ -1301,32 +1371,60 @@ async function safeStat(p) {
   try { return await fsPromises.stat(p); } catch { return null; }
 }
 
-async function asyncSafeWalk(currentDir, depth, maxDepth, q, results, maxResults) {
+async function asyncSafeWalk(currentDir, depth, maxDepth, q, results, maxResults, _seen) {
   if (depth > maxDepth || results.length >= maxResults) return;
+  const seen = _seen || new Set();
+  // Never descend into kernel/virtual trees even when full-FS is on.
+  try {
+    const rp = await fsPromises.realpath(currentDir).catch(() => path.resolve(currentDir));
+    if (seen.has(rp)) return;
+    seen.add(rp);
+    const low = String(rp).toLowerCase();
+    if (low === '/proc' || low === '/sys' || low === '/dev' ||
+        low.startsWith('/proc/') || low.startsWith('/sys/') || low.startsWith('/dev/')) return;
+  } catch {}
   let entries;
   try { entries = await fsPromises.readdir(currentDir, { withFileTypes: true }); } catch { return; }
 
   const matching = entries.filter(e => e.name.toLowerCase().includes(q));
+
+  // Bounded fan-out: sequential batches of 8 instead of unbounded Promise.all
+  // over every match and subdir (single-char q over depth 4 fanned thousands
+  // of concurrent stats).
+  const BATCH = 8;
+  for (let i = 0; i < matching.length && results.length < maxResults; i += BATCH) {
+    const chunk = matching.slice(i, i + BATCH);
+    await Promise.all(chunk.map(async e => {
+      if (results.length >= maxResults) return;
+      const full = path.join(currentDir, e.name);
+      try {
+        // lstat (no follow): a symlink pointing outside the root must not leak
+        // outside metadata. Containment is enforced on the lexical path.
+        const st = await fsPromises.lstat(full);
+        if (st.isSymbolicLink()) {
+          if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, full)) return;
+        } else if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, full)) {
+          return;
+        }
+        if (results.length < maxResults) results.push({ path: full, name: e.name, isDir: st.isDirectory(), dir: currentDir });
+      } catch {}
+    }));
+  }
+
   const dirs = entries.filter(e => e.isDirectory());
-
-  await Promise.all(matching.map(async e => {
-    if (results.length >= maxResults) return;
-    const full = path.join(currentDir, e.name);
-    try {
-      const st = await fsPromises.stat(full);
-      if (results.length < maxResults) results.push({ path: full, name: e.name, isDir: st.isDirectory(), dir: currentDir });
-    } catch {}
-  }));
-
-  await Promise.all(dirs.map(async e => {
-    if (results.length >= maxResults) return;
-    const full = path.join(currentDir, e.name);
-    try {
-      const st = await fsPromises.lstat(full);
-      if (st.isSymbolicLink()) return;
-    } catch {}
-    await asyncSafeWalk(full, depth + 1, maxDepth, q, results, maxResults);
-  }));
+  for (let i = 0; i < dirs.length && results.length < maxResults; i += BATCH) {
+    const chunk = dirs.slice(i, i + BATCH);
+    for (const e of chunk) {
+      if (results.length >= maxResults) return;
+      const full = path.join(currentDir, e.name);
+      try {
+        const st = await fsPromises.lstat(full);
+        if (!st.isDirectory() || st.isSymbolicLink()) continue;
+        if (!ALLOW_FULL_FS && !pathContained(WORKSPACE_ROOT, full)) continue;
+      } catch { continue; }
+      await asyncSafeWalk(full, depth + 1, maxDepth, q, results, maxResults, seen);
+    }
+  }
 }
 
 app.get('/api/files', checkPin, async (req, res) => {
@@ -1408,7 +1506,7 @@ app.get('/api/files', checkPin, async (req, res) => {
   }
 });
 
-app.post('/api/files/rename', checkPin, async (req, res) => {
+app.post('/api/files/rename', rateLimiter, checkPin, async (req, res) => {
   try {
     if (!req.body.oldPath || !req.body.newName) {
       console.warn('POST /api/files/rename 400 — body requires { oldPath, newName }. Example: { "oldPath": "/home/user/file.txt", "newName": "renamed.txt" }');
@@ -1445,14 +1543,17 @@ async function resolveCopyMove(src, dst, conflict, isMove) {
     const ext = path.extname(dst);
     const base = path.basename(dst, ext);
     const dir = path.dirname(dst);
-    // Bounded: an absurd number of existing copies must not spin forever. 1000 is
-    // far past any realistic collision chain; beyond it, fall through to overwrite.
+    // Bounded: an absurd number of existing copies must not spin forever. Past
+    // 1000 collisions report conflict:true instead of silently overwriting —
+    // the old fall-through destroyed the destination without feedback.
     let counter = 1;
+    let placed = false;
     while (counter <= 1000) {
       const suffix = counter === 1 ? ' (copy)' : ` (copy ${counter})`;
       dst = path.join(dir, base + suffix + ext);
-      try { await fsPromises.access(dst); counter++; } catch { break; }
+      try { await fsPromises.access(dst); counter++; } catch { placed = true; break; }
     }
+    if (!placed) return { conflict: true, isDir: dstIsDir, name: path.basename(dst), error: 'too many copies (max 1000) — choose another name' };
   }
 
   const st = await fsPromises.stat(src);
@@ -1486,25 +1587,50 @@ async function resolveCopyMove(src, dst, conflict, isMove) {
   return { success: true };
 }
 
-// Merge src/ into dst/ with best-effort rollback: entries this merge created
-// are removed if a later entry fails, so a failed merge can't leave partial
-// duplicates behind. Pre-existing entries merged in place (force:true) can't
-// be restored without a full backup — document, don't pretend.
+// Merge src/ into dst/ with full rollback: entries this merge created are
+// removed if a later entry fails, and pre-existing entries overwritten in
+// place are restored from a temp backup, so a failed merge leaves dst
+// exactly as it was. Backup itself is best-effort: if a pre-existing entry
+// can't be backed up, the merge still proceeds (old behavior for that entry).
 async function mergeDirs(src, dst) {
   let before = new Set();
   try { before = new Set(await fsPromises.readdir(dst)); } catch {}
   const created = [];
+  const backedUp = new Map(); // entry name -> backup path
+  let backupDir = null;
+  const makeBackupDir = async () => {
+    if (!backupDir) {
+      backupDir = await fsPromises.mkdtemp(path.join(os.tmpdir(), 'webtun-merge-'));
+    }
+    return backupDir;
+  };
   try {
     const entries = await fsPromises.readdir(src);
     for (const entry of entries) {
-      if (!before.has(entry)) created.push(entry);
+      if (!before.has(entry)) {
+        created.push(entry);
+      } else {
+        try {
+          const dir = await makeBackupDir();
+          const bak = path.join(dir, entry);
+          await fsPromises.cp(path.join(dst, entry), bak, { recursive: true, force: true });
+          backedUp.set(entry, bak);
+        } catch {}
+      }
       await fsPromises.cp(path.join(src, entry), path.join(dst, entry), { recursive: true, force: true });
     }
   } catch (e) {
     for (const entry of created) {
       try { await fsPromises.rm(path.join(dst, entry), { recursive: true, force: true }); } catch {}
     }
+    for (const [entry, bak] of backedUp) {
+      try { await fsPromises.cp(bak, path.join(dst, entry), { recursive: true, force: true }); } catch {}
+    }
     throw e;
+  } finally {
+    if (backupDir) {
+      try { await fsPromises.rm(backupDir, { recursive: true, force: true }); } catch {}
+    }
   }
 }
 
@@ -1533,8 +1659,8 @@ async function handleCopyMove(req, res, isMove) {
   }
 }
 
-app.post('/api/files/copy', checkPin, (req, res) => handleCopyMove(req, res, false));
-app.post('/api/files/move', checkPin, (req, res) => handleCopyMove(req, res, true));
+app.post('/api/files/copy', checkPin, rateLimiter, (req, res) => handleCopyMove(req, res, false));
+app.post('/api/files/move', checkPin, rateLimiter, (req, res) => handleCopyMove(req, res, true));
 
 // Never delete filesystem roots or the workspace root itself (one bad call
 // must not wipe the host). Shared by single + batch delete.
@@ -1557,7 +1683,7 @@ async function removePathSafe(p) {
   if (lst.isSymbolicLink() || !lst.isDirectory()) await fsPromises.unlink(p);
   else await fsPromises.rm(p, { recursive: true, force: true });
 }
-app.delete('/api/files', checkPin, async (req, res) => {
+app.delete('/api/files', rateLimiter, checkPin, async (req, res) => {
   try {
     if (!req.query.path) {
       console.warn('DELETE /api/files 400 — query param ?path= is required. Example: DELETE /api/files?path=/home/user/file.txt');
@@ -1574,7 +1700,7 @@ app.delete('/api/files', checkPin, async (req, res) => {
   }
 });
 
-app.post('/api/files/mkdir', checkPin, async (req, res) => {
+app.post('/api/files/mkdir', rateLimiter, checkPin, async (req, res) => {
   try {
     if (!req.body.path) {
       console.warn('POST /api/files/mkdir 400 — body requires { path }. Example: { "path": "/home/user/newfolder" }');
@@ -1588,7 +1714,7 @@ app.post('/api/files/mkdir', checkPin, async (req, res) => {
   }
 });
 
-app.post('/api/files/touch', checkPin, async (req, res) => {
+app.post('/api/files/touch', rateLimiter, checkPin, async (req, res) => {
   try {
     if (!req.body.path) {
       console.warn('POST /api/files/touch 400 — body requires { path }. Example: { "path": "/home/user/newfile.txt" }');
@@ -1602,7 +1728,7 @@ app.post('/api/files/touch', checkPin, async (req, res) => {
   }
 });
 
-app.post('/api/files/zip', checkPin, async (req, res) => {
+app.post('/api/files/zip', rateLimiter, checkPin, async (req, res) => {
   try {
     if (!req.body.path) {
       console.warn('POST /api/files/zip 400 — body requires { path }. Example: { "path": "/home/user/mydir" }');
@@ -1637,7 +1763,7 @@ app.post('/api/files/zip', checkPin, async (req, res) => {
   }
 });
 
-app.post('/api/files/unzip', checkPin, async (req, res) => {
+app.post('/api/files/unzip', rateLimiter, checkPin, async (req, res) => {
   try {
     if (!req.body.path) {
       console.warn('POST /api/files/unzip 400 — body requires { path }. Example: { "path": "/home/user/archive.zip" }');
@@ -1716,7 +1842,7 @@ app.get('/api/files/read', checkPin, async (req, res) => {
   }
 });
 
-app.post('/api/files/write', checkPin, async (req, res) => {
+app.post('/api/files/write', rateLimiter, checkPin, async (req, res) => {
   try {
     if (!req.body.path) {
       console.warn('POST /api/files/write 400 — body requires { path, content }. Example: { "path": "/home/user/file.txt", "content": "hello world" }');
@@ -1803,7 +1929,7 @@ app.get('/api/files/image', checkPreviewFileToken, checkPin, async (req, res) =>
   }
 });
 
-app.get('/api/files/download', checkPin, async (req, res) => {
+app.get('/api/files/download', rateLimiter, checkPin, async (req, res) => {
   try {
     if (!req.query.path) {
       console.warn('GET /api/files/download 400 — query param ?path= is required. Example: GET /api/files/download?path=/home/user/file.txt');
@@ -1855,13 +1981,35 @@ function sanitizeUploadSegment(seg) {
   if (!s || s === '.' || s === '..') return '_';
   return s.slice(0, 255);
 }
+// Upload path depth cap: the multipart filename carries a drag-and-drop
+// relative path — bound its nesting so one request can't fan out thousands of
+// directories. Multer's `files: 100` caps the file count.
+const UPLOAD_MAX_DEPTH = 10;
 function uploadRelPath(originalname) {
   const segs = String(originalname || '').split(/[\\/]+/).filter(Boolean).map(sanitizeUploadSegment);
-  return segs.length ? segs : ['_'];
+  const out = segs.length ? segs : ['_'];
+  if (out.length > UPLOAD_MAX_DEPTH + 1) {
+    const e = new Error('upload path too deep (max ' + UPLOAD_MAX_DEPTH + ' levels)');
+    e.status = 400;
+    throw e;
+  }
+  return out;
+}
+// Same-name uploads used to silently overwrite; uniquify instead.
+function uniqueUploadPath(dir, name) {
+  let candidate = path.join(dir, name);
+  try { fs.accessSync(candidate); } catch { return candidate; }
+  const ext = path.extname(name);
+  const base = path.basename(name, ext);
+  for (let i = 1; i <= 1000; i++) {
+    candidate = path.join(dir, base + (i === 1 ? ' (copy)' : ` (copy ${i})`) + ext);
+    try { fs.accessSync(candidate); } catch { return candidate; }
+  }
+  return candidate;
 }
 
 // Upload with multer disk storage – destination resolved per-request
-app.post('/api/files/upload', checkPin, (req, res) => {
+app.post('/api/files/upload', rateLimiter, checkPin, (req, res) => {
   let destDir;
   try {
     destDir = realPath(req.query.path || WORKSPACE_ROOT);
@@ -1880,21 +2028,38 @@ app.post('/api/files/upload', checkPin, (req, res) => {
         // flattening everything into the destination root with basename().
         const segs = uploadRelPath(file.originalname);
         const subPath = segs.length > 1 ? path.join(destDir, ...segs.slice(0, -1)) : destDir;
-        if (!pathContained(destDir, subPath)) {
+        fs.mkdirSync(subPath, { recursive: true });
+        // Real containment (not the old lexical pathContained on sanitized
+        // segments, which could never fail): a parent-dir symlink of destDir
+        // would redirect the mkdir through the link — verify via realpath.
+        let realDest = destDir, realSub = subPath;
+        try { realDest = fs.realpathSync(destDir); } catch {}
+        try { realSub = fs.realpathSync(subPath); } catch {}
+        if (!pathContained(realDest, realSub)) {
           return cb(new Error('Invalid upload destination'));
         }
-        fs.mkdirSync(subPath, { recursive: true });
         cb(null, subPath);
       } catch (err) {
         cb(err);
       }
     },
-    filename: (_, file, cb) => cb(null, uploadRelPath(file.originalname).slice(-1)[0])
+    filename: (req, file, cb) => {
+      try {
+        const segs = uploadRelPath(file.originalname);
+        const subPath = segs.length > 1 ? path.join(destDir, ...segs.slice(0, -1)) : destDir;
+        cb(null, path.basename(uniqueUploadPath(subPath, segs.slice(-1)[0])));
+      } catch (err) {
+        cb(err);
+      }
+    }
   });
   const upload = multer({ storage, limits: { fileSize: 500 * 1024 * 1024, files: 100 } }).array('files');
-  // Pre-flight the declared size: multer streams to disk, so checking the
-  // 2GB batch total AFTER the write let an attacker fill the disk first.
-  // (Content-Length is a client hint; the multer limits below stay the hard cap.)
+  // Pre-flight the declared size BEFORE multer streams to disk: the old code
+  // checked the 2GB batch total only after the write, so chunked (no
+  // Content-Length) uploads filled the disk first and were deleted after.
+  // Multer's fileSize/files limits abort mid-stream; the post-write total
+  // check below is the backstop for chunked batches (cleaned up on exceed).
+  // (Content-Length is a client hint; the multer limits stay the hard cap.)
   const MAX_BATCH = 2 * 1024 * 1024 * 1024;
   const declared = Number(req.headers['content-length'] || 0);
   if (Number.isFinite(declared) && declared > MAX_BATCH + (8 * 1024 * 1024)) {
@@ -2023,7 +2188,7 @@ app.get('/api/files/size', checkPin, async (req, res) => {
 });
 
 // ── Batch delete ──────────────────────────────────────────────────────
-app.post('/api/files/batch-delete', checkPin, async (req, res) => {
+app.post('/api/files/batch-delete', rateLimiter, checkPin, async (req, res) => {
   try {
     if (!Array.isArray(req.body.paths) || req.body.paths.length === 0) {
       console.warn('POST /api/files/batch-delete 400 — body requires { paths: [...] }');
@@ -2083,11 +2248,11 @@ async function handleBatchCopyMove(req, res, isMove) {
   }
 }
 
-app.post('/api/files/batch-copy', checkPin, (req, res) => handleBatchCopyMove(req, res, false));
-app.post('/api/files/batch-move', checkPin, (req, res) => handleBatchCopyMove(req, res, true));
+app.post('/api/files/batch-copy', rateLimiter, checkPin, (req, res) => handleBatchCopyMove(req, res, false));
+app.post('/api/files/batch-move', rateLimiter, checkPin, (req, res) => handleBatchCopyMove(req, res, true));
 
 // ── Change permissions (chmod) ─────────────────────────────────────────
-app.post('/api/files/chmod', checkPin, async (req, res) => {
+app.post('/api/files/chmod', rateLimiter, checkPin, async (req, res) => {
   try {
     if (!req.body.path || !req.body.mode) {
       console.warn('POST /api/files/chmod 400 — body requires { path, mode }. Example: { "path": "/home/user/file.sh", "mode": "755" }');
@@ -2105,7 +2270,7 @@ app.post('/api/files/chmod', checkPin, async (req, res) => {
 });
 
 // ── Create symlink ────────────────────────────────────────────────────
-app.post('/api/files/symlink', checkPin, async (req, res) => {
+app.post('/api/files/symlink', rateLimiter, checkPin, async (req, res) => {
   try {
     if (!req.body.target || !req.body.linkPath) {
       console.warn('POST /api/files/symlink 400 — body requires { target, linkPath }. Example: { "target": "/real/file.txt", "linkPath": "/home/user/link.txt" }');
@@ -2261,7 +2426,7 @@ app.post('/api/files/search-content', rateLimiter, checkPin, async (req, res) =>
 });
 
 // ── Batch zip (multiple sources) ──────────────────────────────────────
-app.post('/api/files/batch-zip', checkPin, async (req, res) => {
+app.post('/api/files/batch-zip', rateLimiter, checkPin, async (req, res) => {
   try {
     if (!Array.isArray(req.body.sources) || req.body.sources.length === 0 || !req.body.destination) {
       console.warn('POST /api/files/batch-zip 400 — body requires { sources: [...], destination: "<path>" }. Example: { "sources": ["/a", "/b"], "destination": "/home/user/archive.zip" }');
@@ -2298,7 +2463,7 @@ app.post('/api/files/batch-zip', checkPin, async (req, res) => {
 
 
 // ── Log tail (SSE) ────────────────────────────────────────────────────
-app.get('/api/files/tail', checkPin, async (req, res) => {
+app.get('/api/files/tail', rateLimiter, checkPin, async (req, res) => {
   try {
     if (!req.query.path) {
       res.status(400).json({ error: 'path is required' });
@@ -2443,6 +2608,7 @@ app.get('/api/system/network', rateLimiter, checkPin, async (req, res) => {
 // set to another. Entries also expire — they used to live until a restart.
 const clipboards = new Map(); // key -> { sources, action, createdAt, expiresAt }
 const CLIPBOARD_TTL_MS = 15 * 60 * 1000;
+const CLIPBOARD_MAX = 200;
 function clipboardKey(req) {
   const t = (req && req.authToken) || '';
   if (t) return 't:' + crypto.createHash('sha256').update(String(t)).digest('hex').slice(0, 32);
@@ -2450,9 +2616,18 @@ function clipboardKey(req) {
 }
 function getClipboard(key) {
   const now = Date.now();
+  // Expire unconditionally: entries without sources used to linger forever
+  // (skipped by the old `!v.sources` guard) and the map had no size cap.
   for (const [k, v] of clipboards) {
-    if (!v || !v.sources || !v.sources.length) continue;
-    if (v.expiresAt && now > v.expiresAt) clipboards.delete(k);
+    if (!v) { clipboards.delete(k); continue; }
+    if (v.expiresAt && now > v.expiresAt) { clipboards.delete(k); continue; }
+    if ((!v.sources || !v.sources.length) && k !== key) clipboards.delete(k);
+  }
+  while (clipboards.size > CLIPBOARD_MAX) {
+    const first = clipboards.keys().next().value;
+    if (first === undefined) break;
+    if (first === key) break;
+    clipboards.delete(first);
   }
   if (!clipboards.has(key)) clipboards.set(key, { sources: [], action: null, createdAt: null, expiresAt: 0 });
   return clipboards.get(key);
@@ -2478,6 +2653,11 @@ app.post('/api/clipboard', checkPin, async (req, res) => {
       expiresAt: Date.now() + CLIPBOARD_TTL_MS
     };
     clipboards.set(key, clipboard);
+    while (clipboards.size > CLIPBOARD_MAX) {
+      const first = clipboards.keys().next().value;
+      if (first === undefined || first === key) break;
+      clipboards.delete(first);
+    }
     res.json({ clipboard, count: clipboard.sources.length });
   } catch (e) {
     sendErr(res, e);
@@ -2553,7 +2733,11 @@ function saveCmdHistory() {
     fs.renameSync(tmp, HISTORY_FILE);
   } catch {}
 }
-loadCmdHistory();
+// NOTE: loaded in startServer() AFTER migrateLegacyState(), not at import —
+// the first boot after upgrade used to read the empty new-location file, then
+// migrate the legacy file without reloading, so the next save overwrote the
+// migrated history. require('./server.js') must stay side-effect free here.
+let _historyLoaded = false;
 
 app.get('/api/history', checkPin, (req, res) => {
   res.json({ history: cmdHistory, max: cmdHistMax });
@@ -2735,7 +2919,7 @@ function parseGitStatus(raw) {
 
 app.get('/api/git/status', rateLimiter, checkPin, async (req, res) => {
   try {
-    if (!gitAvailable()) return res.json({ git: false });
+    if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     let root;
     try { root = await gitRootFor(req.query.path); }
     catch (e) {
@@ -2801,12 +2985,15 @@ app.get('/api/git/diff', rateLimiter, checkPin, async (req, res) => {
     const abs = path.resolve(root, file);
     if (!pathContained(root, abs)) return res.status(400).json({ error: 'file outside repo' });
     const rel = path.relative(root, abs) || '.';
+    if (rel === '.' || rel === '..' || rel.startsWith('..' + path.sep)) return res.status(400).json({ error: 'invalid file path' });
     const args = ['-C', root, 'diff', '--no-color'];
     if (req.query.cached === '1') args.push('--cached');
     // head=1 diffs against HEAD — the only view that shows unmerged/conflicted files
     if (req.query.head === '1') args.push('HEAD');
     args.push('--', rel);
-    let diff = await spawnRead('git', args, { maxBytes: 400000 });
+    // Explicit timeout (not the 5s spawnRead default): large-repo diffs
+    // spuriously 500'd before they could finish draining.
+    let diff = await spawnRead('git', args, { timeout: 15000, maxBytes: 400000 });
     const binary = diff.includes('Binary files');
     const truncated = diff.length > 200000;
     if (truncated) diff = diff.slice(0, 200000);
@@ -2901,8 +3088,12 @@ app.post('/api/git/pull', rateLimiter, checkPin, async (req, res) => {
     const mode = req.body && req.body.mode;
     const flag = mode === 'rebase' ? '--rebase' : mode === 'ff-only' ? '--ff-only' : '--no-rebase';
     let out = '';
+    // 60s server timeout vs the 30s api() cap is intentional: a client abort
+    // does not kill the child, and pull/push/fetch are safe to finish
+    // server-side (the client re-reads state on retry). Timeouts now surface
+    // as 504 via gitErrStatus instead of a flat 400.
     try { out = await spawnRead('git', ['-C', root, 'pull', flag], { timeout: 60000 }); }
-    catch (e) { return res.status(400).json({ error: gitErrText(e, 'pull failed', 1000) }); }
+    catch (e) { return res.status(gitErrStatus(e)).json({ error: gitErrText(e, 'pull failed', 1000) }); }
     res.json({ success: true, output: out.slice(-5000) });
   } catch (e) {
     sendErr(res, e);
@@ -2919,7 +3110,7 @@ app.post('/api/git/push', rateLimiter, checkPin, async (req, res) => {
     if (req.body && req.body.upstream) args.push('-u', 'origin', 'HEAD');
     let out = '';
     try { out = await spawnRead('git', args, { timeout: 60000 }); }
-    catch (e) { return res.status(400).json({ error: gitErrText(e, 'push failed', 1000) }); }
+    catch (e) { return res.status(gitErrStatus(e)).json({ error: gitErrText(e, 'push failed', 1000) }); }
     res.json({ success: true, output: out.slice(-5000) });
   } catch (e) {
     sendErr(res, e);
@@ -2927,8 +3118,14 @@ app.post('/api/git/push', rateLimiter, checkPin, async (req, res) => {
 });
 
 // Validate a branch name with git itself (rejects `-x`, `..`, spaces, `~^:?*[`).
+// Leading-dash names are rejected up front so the name can never be parsed as
+// a flag even if validation were bypassed; every switch/branch/tag invocation
+// below also passes `--` before the ref.
 async function assertSafeBranch(root, name) {
   if (typeof name !== 'string' || !name.trim() || name.trim().length > 100) {
+    const e = new Error('invalid branch name'); e.status = 400; throw e;
+  }
+  if (name.trim().startsWith('-')) {
     const e = new Error('invalid branch name'); e.status = 400; throw e;
   }
   try {
@@ -2959,7 +3156,7 @@ app.post('/api/git/switch', rateLimiter, checkPin, async (req, res) => {
     if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
     const branch = await assertSafeBranch(root, req.body && req.body.branch);
-    try { await spawnRead('git', ['-C', root, 'switch', branch]); }
+    try { await spawnRead('git', ['-C', root, 'switch', '--', branch]); }
     catch (e) { return res.status(400).json({ error: gitErrText(e, 'switch failed') }); }
     res.json({ success: true, branch });
   } catch (e) {
@@ -2972,7 +3169,7 @@ app.post('/api/git/branch', rateLimiter, checkPin, async (req, res) => {
     if (!gitAvailable()) return res.status(501).json({ error: 'git not installed' });
     const root = await gitRootFor(req.body && req.body.path);
     const branch = await assertSafeBranch(root, req.body && req.body.name);
-    try { await spawnRead('git', ['-C', root, 'switch', '-c', branch]); }
+    try { await spawnRead('git', ['-C', root, 'switch', '-c', '--', branch]); }
     catch (e) { return res.status(400).json({ error: gitErrText(e, 'create failed') }); }
     res.json({ success: true, branch });
   } catch (e) {
@@ -3108,7 +3305,7 @@ app.post('/api/git/fetch', rateLimiter, checkPin, async (req, res) => {
     const root = await gitRootFor(req.body && req.body.path);
     let out = '';
     try { out = await spawnRead('git', ['-C', root, 'fetch', '--all'], { timeout: 60000 }); }
-    catch (e) { return res.status(400).json({ error: gitErrText(e, 'fetch failed', 1000) }); }
+    catch (e) { return res.status(gitErrStatus(e)).json({ error: gitErrText(e, 'fetch failed', 1000) }); }
     res.json({ success: true, output: out.slice(-5000) });
   } catch (e) {
     sendErr(res, e);
@@ -3200,7 +3397,7 @@ app.post('/api/git/tag', rateLimiter, checkPin, async (req, res) => {
     const msg = req.body && req.body.message;
     const args = ['-C', root, 'tag'];
     if (typeof msg === 'string' && msg.trim()) args.push('-a', '-m', msg.trim().slice(0, 500));
-    args.push(name);
+    args.push('--', name);
     try {
       await spawnRead('git', args);
     } catch (e) { return res.status(400).json({ error: gitErrText(e, 'tag failed') }); }
@@ -3216,7 +3413,7 @@ app.post('/api/git/untag', rateLimiter, checkPin, async (req, res) => {
     const root = await gitRootFor(req.body && req.body.path);
     const name = await assertSafeTag(root, req.body && req.body.name);
     try {
-      await spawnRead('git', ['-C', root, 'tag', '-d', name]);
+      await spawnRead('git', ['-C', root, 'tag', '-d', '--', name]);
     } catch (e) { return res.status(400).json({ error: gitErrText(e, 'delete tag failed') }); }
     res.json({ success: true, name });
   } catch (e) {
@@ -3393,7 +3590,7 @@ function tmuxKind(name) {
 }
 function tmuxHasClients(name) {
   try {
-    const out = execFileSync(getTMUX(), ['list-clients', '-t', name], { stdio: 'pipe', encoding: 'utf8' }).trim();
+    const out = execFileSync(getTMUX(), ['list-clients', '-t', name], { stdio: 'pipe', encoding: 'utf8' , timeout: 5000}).trim();
     return out.length > 0;
   } catch { return false; }
 }
@@ -3415,7 +3612,13 @@ function tmuxHasClients(name) {
 const ownTmuxSessions = new Set();
 let tmuxSweepsArmed = true; // false while a live sibling owns this namespace
 let tmuxClaimToken = null;
-function tmuxClaimPath(port = PORT) { return path.join(os.tmpdir(), `webtun-tmux-${Number(port)}.json`); }
+function tmuxClaimPath(port = PORT) {
+  // Per-UID claim file: os.tmpdir() is world-writable, so a shared name let
+  // any local user read/tamper with (or pre-plant) another user's claim.
+  let uid = '';
+  try { uid = String(process.getuid ? process.getuid() : 'nouid'); } catch { uid = 'nouid'; }
+  return path.join(os.tmpdir(), `webtun-tmux-${Number(port)}-u${uid}.json`);
+}
 function readTmuxClaim(port = PORT) {
   try {
     const c = JSON.parse(fs.readFileSync(tmuxClaimPath(port), 'utf8'));
@@ -3425,17 +3628,37 @@ function readTmuxClaim(port = PORT) {
 }
 function tmuxClaimLive(c) {
   if (!c) return false;
-  try { process.kill(c.pid, 0); } catch { return false; } // no such process
-  // Guard PID reuse: the claimant must still be a WebTun server.
+  try { process.kill(c.pid, 0); }
+  catch (e) {
+    // EPERM means a live process owned by another user — never treat it as
+    // dead (that let a second user steal the claim via PID-reuse logic).
+    if (e && e.code === 'EPERM') return true;
+    return false; // no such process (ESRCH)
+  }
+  // Guard PID reuse: the claimant must still be a WebTun server. Strict match
+  // on the server entry (not a broad /webtun/ substring) so unrelated
+  // processes don't keep the claim alive forever.
   try {
     const cmd = fs.readFileSync(`/proc/${c.pid}/cmdline`, 'utf8').replace(/\0/g, ' ');
-    return /server\.js|webtun/i.test(cmd);
+    const base = path.basename(cmd.split(' ')[0] || '');
+    if (/^server\.js$/.test(base) || /(^|\/)server\.js(\s|$)/.test(cmd)) return true;
+    if (/(^|\/)(webtun)(\s|$)/.test(cmd) || /node_modules[\\/]\.bin[\\/]webtun(\s|$)/.test(cmd)) return true;
+    return false;
   } catch { return true; } // non-Linux: kill-0 is the best signal available
 }
 function writeTmuxClaim(port = PORT) {
   tmuxClaimToken = crypto.randomBytes(16).toString('hex');
   const c = { pid: process.pid, token: tmuxClaimToken, startedAt: Date.now() };
-  try { fs.writeFileSync(tmuxClaimPath(port), JSON.stringify(c)); } catch {}
+  // Atomic tmp+rename with 0600: the old unconditional world-readable write
+  // raced parallel starters (both passed the read check, both swept) and was
+  // tamperable by local users.
+  try {
+    const dest = tmuxClaimPath(port);
+    const tmp = dest + '.tmp.' + process.pid;
+    fs.writeFileSync(tmp, JSON.stringify(c), { mode: 0o600 });
+    try { fs.chmodSync(tmp, 0o600); } catch {}
+    fs.renameSync(tmp, dest);
+  } catch {}
   return c;
 }
 function releaseTmuxClaim(port = PORT) {
@@ -3474,8 +3697,10 @@ if (ptySessionSweep.unref) ptySessionSweep.unref();
 // Link-local / cloud-metadata addresses that must never be a tunnel target,
 // whether they arrive as a literal or as the resolution of a hostname.
 function isBlockedTunnelIp(host) {
-  const h = String(host == null ? '' : host).toLowerCase().replace(/^\[|\]$/g, '');
+  let h = String(host == null ? '' : host).toLowerCase().replace(/^\[|\]$/g, '');
   if (!h) return false;
+  // IPv4-mapped IPv6 (::ffff:169.254.169.254): vet the embedded IPv4 too.
+  if (h.startsWith('::ffff:')) h = h.slice('::ffff:'.length).replace(/^\[|\]$/g, '');
   if (h === '100.100.100.200' || h === '192.0.0.192' || h === 'fd00:ec2::254') return true;
   if (h.startsWith('169.254.')) return true;          // IPv4 link-local (metadata)
   if (h === '169.254') return true;
@@ -3492,7 +3717,7 @@ function cleanupOrphanTmuxSessions() {
   if (!TMUX) return;
   if (!tmuxSweepsArmed) return; // a live sibling owns this namespace — hands off
   try {
-    const out = execFileSync(TMUX, ['list-sessions', '-F', '#{session_name}'], { encoding: 'utf8' }).trim();
+    const out = execFileSync(TMUX, ['list-sessions', '-F', '#{session_name}'], { encoding: 'utf8' , timeout: 5000}).trim();
     // Only our namespaced prefix — never bare 'wt-', which may belong to the user.
     // Within our family: own port-namespace + legacy names, clientless only.
     // Foreign port-namespaced sessions belong to a sibling server — never ours.
@@ -3500,9 +3725,9 @@ function cleanupOrphanTmuxSessions() {
     for (const s of sessions) {
       if (tmuxKind(s) === null) continue;
       try {
-        const clients = execFileSync(TMUX, ['list-clients', '-t', s], { stdio: 'pipe', encoding: 'utf8' }).trim();
+        const clients = execFileSync(TMUX, ['list-clients', '-t', s], { stdio: 'pipe', encoding: 'utf8' , timeout: 5000}).trim();
         if (!clients) {
-          execFileSync(TMUX, ['kill-session', '-t', s], { stdio: 'ignore' });
+          execFileSync(TMUX, ['kill-session', '-t', s], { stdio: 'ignore' , timeout: 5000});
         }
       } catch {}
     }
@@ -3510,15 +3735,15 @@ function cleanupOrphanTmuxSessions() {
 }
 
 function tmuxSessionExists(name) {
-  try { execFileSync(TMUX, ['has-session', '-t', name], { stdio: 'ignore' }); return true; } catch { return false; }
+  try { execFileSync(TMUX, ['has-session', '-t', name], { stdio: 'ignore' , timeout: 5000}); return true; } catch { return false; }
 }
 
 app.get('/api/sessions', checkPin, (req, res) => {
   const tmuxBin = getTMUX();
   if (tmuxBin) {
     try {
-      const out = execFileSync(tmuxBin, ['list-sessions', '-F', '#{session_name}'], { encoding: 'utf8' }).trim();
-      const sessions = out.split('\n')
+      const out = execFileSync(tmuxBin, ['list-sessions', '-F', '#{session_name}'], { encoding: 'utf8' , timeout: 5000}).trim();
+      const sessions = out.split('\n').filter(Boolean)
         .filter(s => { const k = tmuxKind(s); return k === 'ours' || k === 'legacy'; })
         .map(s => {
           // Strip our port segment so ids stay stable reconnect tokens;
@@ -3528,6 +3753,13 @@ app.get('/api/sessions', checkPin, (req, res) => {
             : s.slice(TMUX_PREFIX.length);
           return { id, name: s };
         });
+      // Merged listing: getTMUX() flips null→found mid-run, which used to
+      // hide pre-existing in-memory sessions (and re-route the same
+      // sessionId to another backend). Include both, tmux first.
+      const seen = new Set(sessions.map(s => s.id));
+      for (const [id] of ptySessions) {
+        if (!seen.has(id)) sessions.push({ id, name: tmuxOwnName(id) });
+      }
       return res.json({ tmux: true, sessions });
     } catch {
       return res.json({ tmux: true, sessions: [] });
@@ -3552,16 +3784,23 @@ app.delete('/api/sessions/:id', checkPin, (req, res) => {
     // user-requested kill; foreign namespaces are excluded even for crafted
     // ids (see tmuxAdoptableNames).
     const tryNames = tmuxAdoptableNames(id);
-    for (const n of tryNames) { try { execFileSync(TMUX, ['kill-session', '-t', n], { stdio: 'ignore' }); } catch {} }
-    return res.json({ success: true });
+    let found = false;
+    for (const n of tryNames) {
+      if (tmuxSessionExists(n)) {
+        found = true;
+        try { execFileSync(TMUX, ['kill-session', '-t', n], { stdio: 'ignore' , timeout: 5000}); } catch {}
+      }
+    }
+    return res.json({ success: true, alreadyGone: !found });
   }
   // In-memory session
   const entry = ptySessions.get(id);
   if (entry) {
-    try { entry.proc.kill(); } catch {}
+    try { if (entry.proc) entry.proc.kill(); } catch {}
     ptySessions.delete(id);
+    return res.json({ success: true });
   }
-  res.json({ success: true });
+  return res.json({ success: true, alreadyGone: true });
 });
 
 // ── Live terminal cwd ───────────────────────────────────────────────────
@@ -3734,7 +3973,7 @@ app.get('/api/sessions/:id/cwd', checkPin, (req, res) => {
 //     0x02 = error         (UTF-8 message)
 //     0x03 = event         (JSON: new-login alerts, session-revoked kicks)
 //   Client → Server:
-//     0x00 = input         (UTF-8) – max 64KB per message
+//     0x00 = input         (UTF-8) – max 1MB per message (client chunks ~45KB)
 //     0x01 = resize        (4B: cols uint16LE, rows uint16LE)
 //     0x02 = ping          (no payload)
 
@@ -3750,9 +3989,15 @@ const ALLOWED_WS_ORIGINS = new Set(
 );
 // Failed WS handshakes per IP (brute-force throttle), swept every minute.
 const wsAuthFails = new Map();
+const WS_AUTH_FAILS_MAX = 10000;
 const wsAuthFailsSweep = setInterval(() => {
   const _now = Date.now();
   for (const [_ip, _w] of wsAuthFails) { if (_now > _w.resetAt) wsAuthFails.delete(_ip); }
+  while (wsAuthFails.size > WS_AUTH_FAILS_MAX) {
+    const first = wsAuthFails.keys().next().value;
+    if (first === undefined) break;
+    wsAuthFails.delete(first);
+  }
 }, 60000);
 if (wsAuthFailsSweep.unref) wsAuthFailsSweep.unref();
 
@@ -3778,7 +4023,7 @@ function broadcastClientEvent(obj) {
 function peekSession(token) {
   const s = authSessions.get(token);
   if (!s) return null;
-  if (Date.now() - (s.lastSeen || 0) > SESSION_IDLE_MS) return null;
+  if (Date.now() - (s.lastSeen || 0) > SESSION_IDLE_MS) { authSessions.delete(token); return null; }
   return s;
 }
 // Is this socket's credential still good? Raw-PIN sockets (legacy) are valid
@@ -3792,6 +4037,8 @@ function wsTokenValid(token) {
 }
 // Kick every socket whose credential no longer validates — including sockets
 // that handshook while the instance was still open (no token recorded).
+// Preview WS clients (previewWSS) authenticated once at upgrade and used to
+// outlive PIN rotation/revoke forever; they are reaped here too.
 function closeInvalidSockets(reason) {
   for (const ws of wss.clients) {
     try {
@@ -3801,6 +4048,17 @@ function closeInvalidSockets(reason) {
       ws.close(1008, reason || 'Session no longer valid');
     } catch {}
   }
+  try {
+    if (typeof previewWSS !== 'undefined' && previewWSS && previewWSS.clients) {
+      for (const ws of previewWSS.clients) {
+        try {
+          const t = ws._authToken;
+          if (t && wsTokenValid(t)) continue;
+          try { ws.close(1008, reason || 'Session no longer valid'); } catch {}
+        } catch {}
+      }
+    }
+  } catch {}
 }
 // Revoke one session: notify AND close it. The 0x03 event lets the client show
 // the right UI; the close is what actually stops the shell.
@@ -3812,6 +4070,14 @@ function pushSessionRevoked(token) {
         sendClientEvent(ws, { event: 'session-revoked' });
         ws.close(1008, 'Session revoked');
       } catch {}
+    }
+    if (typeof previewWSS !== 'undefined' && previewWSS && previewWSS.clients) {
+      for (const ws of previewWSS.clients) {
+        try {
+          if (ws._authToken !== token) continue;
+          try { ws.close(1008, 'Session revoked'); } catch {}
+        } catch {}
+      }
     }
   } catch {}
 }
@@ -3867,6 +4133,12 @@ wss.on('connection', (ws, req) => {
         if (!_w || _now > _w.resetAt) _w = { count: 0, resetAt: _now + 60000 };
         _w.count++;
         wsAuthFails.set(_ip, _w);
+        // Same 10000-key eviction cap as createRateLimiter(): unbounded
+        // per-IP entries from IP rotation used to grow the map until expiry.
+        if (wsAuthFails.size > WS_AUTH_FAILS_MAX) {
+          const first = wsAuthFails.keys().next().value;
+          if (first !== undefined && first !== _ip) wsAuthFails.delete(first);
+        }
         if (_w.count > 20) { try { req.socket.destroy(); } catch {} }
       } catch {}
       ws.close(1008, 'Unauthorized'); return;
@@ -3965,7 +4237,7 @@ wss.on('connection', (ws, req) => {
         // hides underneath the status bar (e.g. a TUI footer). tmux auto-fits
         // attached clients on its own (window minus status line); just make
         // sure sessions stuck in manual by older builds go back to auto-fit.
-        try { execFileSync(TMUX, ['set-option', '-t', effectiveName, 'window-size', 'latest'], { stdio: 'ignore' }); } catch {}
+        try { execFileSync(TMUX, ['set-option', '-t', effectiveName, 'window-size', 'latest'], { stdio: 'ignore' , timeout: 5000}); } catch {}
         proc = pty.spawn(TMUX, ['attach-session', '-t', effectiveName], {
           name: 'xterm-256color', cols, rows, cwd,
           env: sessionEnv
@@ -3979,7 +4251,7 @@ wss.on('connection', (ws, req) => {
         // Pin auto-fit on our own sessions so a global tmux.conf
         // (window-size largest/manual) can't reintroduce the covered-row
         // bug described above.
-        try { execFileSync(TMUX, ['set-option', '-t', tmuxName, 'window-size', 'latest'], { stdio: 'ignore' }); } catch {}
+        try { execFileSync(TMUX, ['set-option', '-t', tmuxName, 'window-size', 'latest'], { stdio: 'ignore' , timeout: 5000}); } catch {}
       }
     } else {
       const shellArgs = os.platform() === 'win32' ? ['-NoLogo'] : ['-l'];
@@ -4017,10 +4289,17 @@ wss.on('connection', (ws, req) => {
   const useInMemory = sessionId && !TMUX;
   const useTmux = TMUX && sessionId;
 
-  proc.onExit(() => {
+  proc.onExit(({ exitCode } = {}) => {
     clearInterval(drainCheck);
-    if (useInMemory) ptySessions.delete(sessionId);
-    if (!useTmux) send(0x01, Buffer.from([0]));
+    // Keep a tombstone so reconnect-after-exit reports exited instead of
+    // silently spawning new: the old code deleted the entry first, so the
+    // second tracker below always saw undefined.
+    const code = Number.isInteger(exitCode) ? exitCode & 0xff : 0;
+    if (useInMemory) {
+      const prev = ptySessions.get(sessionId);
+      ptySessions.set(sessionId, { proc: null, exited: true, createdAt: (prev && prev.createdAt) || Date.now(), lastActive: Date.now(), attached: 0, exitCode: code });
+    }
+    if (!useTmux) send(0x01, Buffer.from([code]));
     ws.close();
   });
 
@@ -4063,14 +4342,30 @@ wss.on('connection', (ws, req) => {
       if (buf.length < 1) return;
       const type = buf[0];
       if (type === 0x00) {
-        // Limit input to 1MB per message
-        const payload = buf.slice(1, Math.min(buf.length, 1048577));
+        // Cap input at 1MB per message (backstop; the client chunks to ~45KB
+        // and the protocol doc states the same 1MB cap). Slice on a UTF-8
+        // boundary so a trailing multibyte char is never split mid-sequence.
+        let end = Math.min(buf.length, 1048577);
+        if (end > 1 && buf.length > end) {
+          let back = end - 1;
+          let cont = 0;
+          while (back > 1 && cont < 3 && buf[back] >= 0x80 && buf[back] < 0xC0) { back--; cont++; }
+          if (cont > 0 && cont < 4 && back > 1 && buf[back] >= 0xC0) {
+            const need = buf[back] >= 0xF0 ? 4 : buf[back] >= 0xE0 ? 3 : 2;
+            if (end - back < need) end = back;
+          }
+        }
+        const payload = buf.slice(1, end);
         proc.write(payload.toString('utf8'));
+      } else if (type === 0x02) {
+        // Client heartbeat (protocol 0x02 ping): mark the socket alive so the
+        // server-side ping/pong sweep below doesn't reap it. No reply needed.
+        ws.isAlive = true;
+        return;
       } else if (type === 0x01 && buf.length >= 5) {
         let c = buf.readUInt16LE(1), r = buf.readUInt16LE(3);
         c = Math.min(Math.max(2, c), 500);
         r = Math.min(Math.max(2, r), 500);
-        if (!c || !r) return;
         proc.resize(c, r);
         // NOTE: no resize-window here, deliberately. Forcing the window to
         // the full client size flips the session to window-size manual and
@@ -4125,7 +4420,8 @@ app.get('/api/search', rateLimiter, checkPin, async (req, res) => {
 
 function spawnRead(cmd, args, opts = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { stdio: [opts.input !== undefined ? 'pipe' : 'ignore', 'pipe', 'pipe'], timeout: opts.timeout || 5000 });
+    const timeoutMs = opts.timeout || 5000;
+    const child = spawn(cmd, args, { stdio: [opts.input !== undefined ? 'pipe' : 'ignore', 'pipe', 'pipe'], timeout: timeoutMs });
     // Two different caps:
     //  maxBuffer — hard limit; exceeding it aborts the command (runaway output).
     //  maxBytes  — soft limit; output keeps draining but stops being accumulated.
@@ -4159,7 +4455,18 @@ function spawnRead(cmd, args, opts = {}) {
       child.stdin.on('error', () => {});
       try { child.stdin.end(opts.input); } catch {}
     }
-    child.on('close', code => code === 0 ? resolve(stdout) : reject(new Error(stderr)));
+    child.on('close', (code, signal) => {
+      if (code === 0) return resolve(stdout);
+      // Timeout-kill used to reject with empty stderr → generic "Operation
+      // failed" via safeErr. Name timeouts so gitErrStatus can map them.
+      if (signal === 'SIGTERM' || signal === 'SIGKILL') {
+        const t = stderr.trim();
+        const e = new Error(t ? t + ` (command timed out after ${timeoutMs}ms)` : `command timed out after ${timeoutMs}ms`);
+        e.code = 'ETIMEDOUT';
+        return reject(e);
+      }
+      reject(new Error(stderr));
+    });
     child.on('error', reject);
   });
 }
@@ -4387,6 +4694,13 @@ app.post('/api/system/shutdown', checkPin, requirePinSet, (req, res) => {
 const tunnels = new Map();
 const TUNNEL_FILE = path.join(DATA_DIR, '.tunnels.json');
 const TUNNEL_URL_FILE = path.join(DATA_DIR, 'tunnel-url.txt');
+// NOTE (documented tradeoff, single-owner box): DATA_DIR is shared by every
+// instance on this box (repo checkout, global/npx, Electron), so .tunnels.json
+// / .cmdhist.json / tunnel-url.txt / .env are last-writer-wins across
+// different PORTs — two servers writing concurrently can clobber each other's
+// tunnels/history. All writes are atomic tmp+rename 0600, so files never
+// corrupt, but no cross-instance merge is attempted (single-owner model: one
+// live server per box is the supported shape).
 
 // A recycled PID can make a dead tunnel look alive. When the process start
 // time was recorded at spawn, require it to still match (Linux: starttime
@@ -4402,6 +4716,14 @@ function processStartKey(pid) {
     }
     if (os.platform() === 'darwin') {
       return execFileSync('ps', ['-p', String(pid), '-o', 'lstart='], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null;
+    }
+    if (os.platform() === 'win32') {
+      // No /proc on Windows: process creation time distinguishes a recycled
+      // PID (best-effort; null on failure keeps the command-name check).
+      try {
+        const out = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `(Get-Process -Id ${pid} -ErrorAction Stop).StartTime.ToFileTimeUtc()`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).trim();
+        return out || null;
+      } catch { return null; }
     }
   } catch {}
   return null;
@@ -4445,7 +4767,8 @@ function tunnelProcessAlive(entry) {
 
 function saveTunnels() {
   const arr = Array.from(tunnels.entries()).map(([id, t]) => ({
-    id, localUrl: t.localUrl, tunnelUrl: t.tunnelUrl, createdAt: t.createdAt, pid: t.pid, startKey: t.startKey || null
+    id, localUrl: t.localUrl, tunnelUrl: t.tunnelUrl, createdAt: t.createdAt, pid: t.pid, startKey: t.startKey || null,
+    dead: !!t.dead, restartAttempts: ((tunnelRestarts.get(id) || {}).attempts) || 0
   }));
   try {
     const tmp = TUNNEL_FILE + '.tmp';
@@ -4461,7 +4784,10 @@ function updateTunnelUrlFile() {
   try {
     const content = active.length > 0 ? active.join('\n') + '\n' : '';
     const tmp = TUNNEL_URL_FILE + '.tmp';
-    fs.writeFileSync(tmp, content);
+    // 0600 like its siblings (.tunnels.json/.env/.cmdhist.json) — it used to
+    // be written world-readable.
+    fs.writeFileSync(tmp, content, { mode: 0o600 });
+    try { fs.chmodSync(tmp, 0o600); } catch {}
     fs.renameSync(tmp, TUNNEL_URL_FILE);
   } catch {}
 }
@@ -4469,10 +4795,24 @@ function updateTunnelUrlFile() {
 function loadTunnels() {
   try {
     const arr = JSON.parse(fs.readFileSync(TUNNEL_FILE, 'utf8'));
+    let dropped = 0;
     for (const t of arr) {
-      const entry = { proc: null, localUrl: t.localUrl, tunnelUrl: t.tunnelUrl, createdAt: t.createdAt, pid: t.pid, startKey: t.startKey || null };
-      if (tunnelProcessAlive(entry)) tunnels.set(t.id, entry);
+      const entry = { proc: null, localUrl: t.localUrl, tunnelUrl: t.tunnelUrl, createdAt: t.createdAt, pid: t.pid, startKey: t.startKey || null, dead: !!t.dead };
+      if (tunnelProcessAlive(entry)) {
+        tunnels.set(t.id, entry);
+        if (Number.isInteger(t.restartAttempts) && t.restartAttempts > 0) {
+          tunnelRestarts.set(t.id, { attempts: t.restartAttempts, nextAt: Date.now() + tunnelBackoffMs(t.restartAttempts) });
+        }
+      } else if (t.dead) {
+        // Preserve gave-up entries so the give-up isn't retried 5 more times
+        // per boot forever; the sweep skips dead entries.
+        tunnels.set(t.id, entry);
+      } else {
+        dropped++;
+      }
     }
+    // Rewrite after filtering so .tunnels.json stops accumulating corpses.
+    if (dropped) { try { saveTunnels(); } catch {} }
   } catch {}
 }
 
@@ -4500,15 +4840,20 @@ function spawnCloudflared(args, opts = {}) {
   return spawn(bin, args, opts);
 }
 
+// In-flight sweep restarts (single-flight per localUrl): the sweep path used
+// to spawn a replacement with no timeout and no dedup — a hanging cloudflared
+// leaked a process per backoff tick and concurrent ticks stacked multiples.
+const restartInFlight = new Map(); // localUrl -> proc
 function restartTunnel(id, entry, onSuccess) {
   if (!entry.localUrl) return;
+  const url = entry.localUrl;
+  if (restartInFlight.has(url)) return; // sweep already starting one for this target
   try { if (entry.proc) entry.proc.kill('SIGTERM'); } catch {}
   try { if (sameCloudflaredProcess(entry)) killPid(entry.pid); } catch {}
   // The old id stays mapped until the replacement URL arrives (or the spawn
   // fails and the sweep retries later). Deleting it up front orphaned the
   // settings row: Stop then 404'd and a dead entry could never be removed.
 
-  const url = entry.localUrl;
   let proc;
   try {
     proc = spawnCloudflared(['tunnel', '--url', url], {
@@ -4518,6 +4863,24 @@ function restartTunnel(id, entry, onSuccess) {
     return;
   }
   proc.unref();
+  restartInFlight.set(url, proc);
+  let settled = false;
+  const settle = () => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(killTimer);
+    if (restartInFlight.get(url) === proc) restartInFlight.delete(url);
+  };
+  // Like POST /api/tunnel's 15s race: kill the child if no URL ever arrives.
+  const killTimer = setTimeout(() => {
+    if (settled) return;
+    try { proc.stdout.removeAllListeners('data'); } catch {}
+    try { proc.stderr.removeAllListeners('data'); } catch {}
+    try { proc.kill('SIGTERM'); } catch {}
+    try { if (proc.pid) killPid(proc.pid); } catch {}
+    settle();
+  }, 20000);
+  if (killTimer.unref) killTimer.unref();
 
   const handler = data => {
     const text = data.toString();
@@ -4525,6 +4888,7 @@ function restartTunnel(id, entry, onSuccess) {
     if (m) {
       const newUrl = m[0];
       const newId = newUrl.replace(/^https:\/\//, '').replace(/\.trycloudflare\.com$/, '');
+      settle();
       proc.stdout.removeAllListeners('data');
       proc.stderr.removeAllListeners('data');
       proc.stdout.resume();
@@ -4549,8 +4913,8 @@ function restartTunnel(id, entry, onSuccess) {
   };
   proc.stdout.on('data', handler);
   proc.stderr.on('data', handler);
-  proc.on('error', () => {});
-  proc.on('exit', () => { proc.stdout.removeAllListeners('data'); proc.stderr.removeAllListeners('data'); });
+  proc.on('error', () => { settle(); });
+  proc.on('exit', () => { proc.stdout.removeAllListeners('data'); proc.stderr.removeAllListeners('data'); settle(); });
 }
 
 const TUNNEL_CHECK_INTERVAL = 30000;
@@ -4578,6 +4942,7 @@ const tunnelSweep = setInterval(() => {
     if (st.attempts >= TUNNEL_MAX_RESTARTS) {
       entry.dead = true;
       console.log(`  Tunnel ${id} dead — giving up after ${st.attempts} restart attempts`);
+      try { saveTunnels(); } catch {}
       continue;
     }
     st.attempts += 1;
@@ -4629,22 +4994,32 @@ app.post('/api/tunnel', checkPin, async (req, res) => {
     const u = new URL(url);
     if (!['http:', 'https:'].includes(u.protocol)) return res.status(400).json({ error: 'url must be http or https' });
     if (u.username || u.password) return res.status(400).json({ error: 'url must not contain credentials' });
-    const host = u.hostname.toLowerCase();
-    // Metadata/link-local endpoints beyond the obvious one
+    const rawHost = u.hostname.toLowerCase();
+    // Normalize bracketed IPv6 (new URL keeps '[::1]' incl. brackets, so the
+    // allow/block lists below never matched IPv6 literals — normalize once).
+    const host = rawHost.replace(/^\[|\]$/g, '');
+    // Metadata/link-local endpoints beyond the obvious one (all unbracketed —
+    // matching happens against the normalized host).
     const blockedHosts = ['169.254.169.254', 'metadata.google.internal', 'instance-data',
-      'metadata.google.internal.', '100.100.100.200', '192.0.0.192', 'fd00:ec2::254', '[fd00:ec2::254]'];
+      'metadata.google.internal.', '100.100.100.200', '192.0.0.192', 'fd00:ec2::254'];
     if (blockedHosts.includes(host) || isBlockedTunnelIp(host)) return res.status(400).json({ error: 'url host blocked (SSRF)' });
     // A hostname string can hide a metadata address (evil.com → 169.254.169.254),
-    // so resolve it too. IPv4 in odd notations (2130706433, 0x7f.0.0.1) is
-    // already canonicalized by new URL(). Unresolvable names (mDNS/LAN hosts)
-    // are still allowed — this is a metadata/link-local block, not a resolver.
-    if (!/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
-      try {
-        const { address } = await dns.promises.lookup(host);
-        if (isBlockedTunnelIp(address)) return res.status(400).json({ error: 'url host resolves to a blocked address (SSRF)' });
-      } catch {}
+    // so resolve it too — EVERY address, not just the first (multi-record
+    // hostnames). Non-canonical IP literals (2130706433, 0x7f.0.0.1,
+    // ::ffff:169.254.169.254) are canonicalized through the resolver as well.
+    // Unresolvable plain names (mDNS/LAN hosts) are still allowed — this is a
+    // metadata/link-local block, not a resolver — but an unresolvable
+    // IP-looking literal is denied (fail closed: it can't be proven safe).
+    const ipLike = /^[0-9a-f.:x]+$/i.test(host) && /[0-9]/.test(host);
+    try {
+      const addrs = await dns.promises.lookup(host, { all: true });
+      for (const a of addrs || []) {
+        if (isBlockedTunnelIp(a.address)) return res.status(400).json({ error: 'url host resolves to a blocked address (SSRF)' });
+      }
+    } catch {
+      if (ipLike) return res.status(400).json({ error: 'url host could not be verified (SSRF)' });
     }
-    if (host === '0.0.0.0' || host === '[::]') return res.status(400).json({ error: 'url host is not connectable' });
+    if (host === '0.0.0.0' || host === '::') return res.status(400).json({ error: 'url host is not connectable' });
     const allowed = ['localhost', '127.0.0.1', '::1'];
     // Allow only local URLs unless ALLOW_FULL_FS true (admin opt-in for LAN tunneling)
     if (!ALLOW_FULL_FS && !allowed.includes(host)) {
@@ -4811,14 +5186,18 @@ function previewPortRejectReason(p) {
 }
 function previewError(res, port, msg, opts = {}) {
   const status = opts.status || 502;
-  const title = opts.title || `Preview :${port} unreachable`;
-  const hint = opts.hint || 'Is the app listening on 127.0.0.1:PORT?'.replace('PORT', port);
+  // :port comes from req.params (attacker-controlled path segment) and is
+  // interpolated into HTML below — escape it first (reflected XSS).
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const safePort = esc(port);
+  const title = opts.title ? esc(opts.title) : `Preview :${safePort} unreachable`;
+  const hint = opts.hint ? esc(opts.hint) : esc('Is the app listening on 127.0.0.1:PORT?'.replace('PORT', safePort));
   res.status(status).setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   // Synthetic-error marker so the tab health dot can tell "no listener"
   // apart from an upstream app's own 5xx via a body-less HEAD poll.
   res.setHeader('X-WebTun-Preview-Error', '1');
-  res.end(`<!DOCTYPE html><html><body style="font-family:sans-serif;padding:24px;background:#1a1b26;color:#c0caf5"><h3>${title}</h3><p style="color:#787c99">${msg}. ${hint}</p><p style="color:#787c99">Check with: <code>curl -v 127.0.0.1:${port}/</code> (bind 127.0.0.1, not just localhost).</p><p><button onclick="location.reload()" style="padding:8px 16px;cursor:pointer">Retry</button></p></body></html>`);
+  res.end(`<!DOCTYPE html><html><body style="font-family:sans-serif;padding:24px;background:#1a1b26;color:#c0caf5"><h3>${title}</h3><p style="color:#787c99">${esc(msg)}. ${hint}</p><p style="color:#787c99">Check with: <code>curl -v 127.0.0.1:${safePort}/</code> (bind 127.0.0.1, not just localhost).</p><p><button onclick="location.reload()" style="padding:8px 16px;cursor:pointer">Retry</button></p></body></html>`);
 }
 function handlePreviewProxy(req, res) {
   const port = req.params.port;
@@ -4867,7 +5246,8 @@ function handlePreviewProxy(req, res) {
   // Secure when the request arrived over TLS, 12h cap on a stolen-URL window.
   try {
     const q = (req.query && req.query.token) || req.headers['x-pin-token'];
-    const secure = (req.secure || req.headers['x-forwarded-proto'] === 'https') ? '; Secure' : '';
+    const trustProxyCookie = process.env.TRUST_PROXY === 'true';
+    const secure = (req.secure || (trustProxyCookie && req.headers['x-forwarded-proto'] === 'https')) ? '; Secure' : '';
     if (PIN && typeof q === 'string' && q.trim() && !parsePreviewCookie(req)) {
       res.setHeader('Set-Cookie', `${PREVIEW_COOKIE}=${encodeURIComponent(q.trim())}; Path=/api/preview/${targetPort}/; Max-Age=43200; HttpOnly; SameSite=Lax${secure}`);
     } else if (!PIN && !parsePreviewCookie(req)) {
@@ -5092,6 +5472,12 @@ server.on('upgrade', (req, socket, head) => {
   if (!previewUpgradeAuth(req, u.searchParams)) { try { socket.destroy(); } catch {} return; }
   const targetPath = (m[2] || '/') + (u.search || '');
   previewWSS.handleUpgrade(req, socket, head, clientWs => {
+    // Attribute the credential so PIN rotation / session revoke (wsAuthSweep,
+    // closeInvalidSockets, pushSessionRevoked) can reap preview sockets too.
+    try {
+      const qt = u.searchParams.get('token');
+      clientWs._authToken = (typeof qt === 'string' && qt) ? qt.trim() : parsePreviewCookie(req);
+    } catch {}
     let upstream;
     try {
       const proto = req.headers['sec-websocket-protocol'];
@@ -5131,7 +5517,7 @@ function cleanup() {
   }
   if (TMUX) {
     try {
-      const out = execFileSync(TMUX, ['list-sessions', '-F', '#{session_name}'], { encoding: 'utf8' }).trim();
+      const out = execFileSync(TMUX, ['list-sessions', '-F', '#{session_name}'], { encoding: 'utf8' , timeout: 5000}).trim();
       // Only OUR namespaced sessions: the previous `|| startsWith('wt-')`
       // killed the user's own `wt-*` tmux sessions on every SIGTERM.
       // Same rule one level down: never a sibling server's port-namespace.
@@ -5143,9 +5529,9 @@ function cleanup() {
         const k = tmuxKind(s);
         if (k === null || k === 'foreign') continue;
         if (ownTmuxSessions.has(s)) {
-          try { execFileSync(TMUX, ['kill-session', '-t', s], { stdio: 'ignore' }); } catch {}
+          try { execFileSync(TMUX, ['kill-session', '-t', s], { stdio: 'ignore' , timeout: 5000}); } catch {}
         } else if (tmuxSweepsArmed && k === 'legacy' && !tmuxHasClients(s)) {
-          try { execFileSync(TMUX, ['kill-session', '-t', s], { stdio: 'ignore' }); } catch {}
+          try { execFileSync(TMUX, ['kill-session', '-t', s], { stdio: 'ignore' , timeout: 5000}); } catch {}
         }
       }
     } catch {}
@@ -5163,6 +5549,7 @@ function startServer(opts = {}) {
   const host = opts.host || HOST;
 
   migrateLegacyState();
+  if (!_historyLoaded) { _historyLoaded = true; loadCmdHistory(); }
   loadTunnels();
   // NOTE: no orphan sweep here — it runs after the port binds (below), so a
   // process that cannot bind never destroys another instance's sessions.

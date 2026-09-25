@@ -6,16 +6,17 @@
 function previewBuildUrl(port, pth) {
   let p = String(pth || '/');
   if (!p.startsWith('/')) p = '/' + p;
-  // Encode the path (spaces/unicode in dev routes); the token stays a
-  // separate query parameter appended after.
-  return `/api/preview/${port}${encodeURI(p)}?token=${encodeURIComponent(authToken)}`;
+  // Encode each segment separately: encodeURI leaves ?&# unescaped, which
+  // corrupts the ?token= query the token is appended to.
+  const enc = p.split('/').map(seg => encodeURIComponent(seg)).join('/');
+  return `/api/preview/${port}${enc}?token=${encodeURIComponent(authToken)}`;
 }
 // Accept a pasted dev URL in either field: "http://localhost:5173/docs?a=1",
 // "127.0.0.1:5173/docs", ":5173/docs" or "5173/docs" → { port, path }.
 function parsePreviewTarget(portRaw, pathRaw) {
   const combined = `${String(portRaw == null ? '' : portRaw)} ${String(pathRaw == null ? '' : pathRaw)}`.trim();
   if (!combined) return { error: 'Port must be 1–65535' };
-  let m = combined.match(/(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::(\d{2,5}))?(\/\S*)?/i);
+  let m = combined.match(/(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::(\d{1,5}))?(\/\S*)?/i);
   if (m && m[1]) {
     const port = parseInt(m[1], 10);
     if (!Number.isInteger(port) || port < 1 || port > 65535) return { error: 'Port must be 1–65535' };
@@ -27,7 +28,7 @@ function parsePreviewTarget(portRaw, pathRaw) {
     }
     return { port, path: pth || '/' };
   }
-  m = String(portRaw == null ? '' : portRaw).trim().match(/^:?(\d{2,5})(\/\S*)?$/);
+  m = String(portRaw == null ? '' : portRaw).trim().match(/^:?(\d{1,5})(\/\S*)?$/);
   if (m) {
     const port = parseInt(m[1], 10);
     if (!Number.isInteger(port) || port < 1 || port > 65535) return { error: 'Port must be 1–65535' };
@@ -320,7 +321,7 @@ async function fillPreviewPorts() {
 const _previewHintSeen = new Map();
 function scanPreviewHint(tab, text) {
   if (!text || tab.type !== 'term') return;
-  let m = String(text).match(/(?:https?:\/\/)?(?:localhost|127\.0\.0\.1):(\d{2,5})(\/\S*)?/i);
+  let m = String(text).match(/(?:https?:\/\/)?(?:localhost|127\.0\.0\.1):(\d{1,5})(\/\S*)?/i);
   if (!m) {
     const b = String(text).match(/(?:listening|running|started|ready|port|local:?)\D{0,20}:(\d{4,5})/i);
     if (!b) return;
@@ -346,7 +347,10 @@ function previewSuggestToast(port, pth) {
   try {
     const container = document.getElementById('toast-container');
     if (!container) { toast(`App detected on :${port}`, 'info'); return; }
-    while (container.children.length >= 4) container.firstChild.remove();
+    while (container.children.length >= 4) {
+      const kids = [...container.children];
+      (kids.find(k => !k.classList.contains('error')) || kids[0]).remove();
+    }
     const el = document.createElement('div');
     el.className = 'toast info';
     const label = document.createElement('span');

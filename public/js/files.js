@@ -48,6 +48,7 @@ async function loadFiles(dir, opts = {}) {
   finally { _fgLoadActive = false; }
 }
 async function _loadFilesInner(dir) {
+  try { if (typeof abortThumbs === 'function') abortThumbs(); } catch {}
   if (loadFilesAbortController) loadFilesAbortController.abort();
   loadFilesAbortController = new AbortController();
   const seq = ++_loadSeq;
@@ -427,14 +428,31 @@ function thumbUrlFor(f) {
 }
 // Thumbnail loader: <img> can't send headers, so fetch with x-pin-token and
 // hand the element a blob URL. Revokes the previous blob to avoid leaks.
+const _thumbControllers = new Set();
+function abortThumbs() {
+  // Navigating away must not leave up to 48 thumbnail fetches in flight.
+  _thumbControllers.forEach(c => { try { c.abort(); } catch {} });
+  _thumbControllers.clear();
+}
 function loadThumbImg(img, url) {
   if (!img || !url) return;
   dropThumbUrl(img);
   img.removeAttribute('src');
-  fetch(url, { headers: authToken ? { 'x-pin-token': authToken } : {} })
+  const ctrl = new AbortController();
+  _thumbControllers.add(ctrl);
+  if (_thumbControllers.size > 64) {
+    const oldest = _thumbControllers.values().next().value;
+    try { oldest.abort(); } catch {}
+    _thumbControllers.delete(oldest);
+  }
+  fetch(url, { headers: authToken ? { 'x-pin-token': authToken } : {}, signal: ctrl.signal })
     .then(r => { if (!r.ok) throw new Error('thumb ' + r.status); return r.blob(); })
-    .then(b => { img._blobUrl = URL.createObjectURL(b); img.src = img._blobUrl; })
-    .catch(() => { img.remove(); });
+    .then(b => {
+      if (!img.isConnected) { try { URL.revokeObjectURL(URL.createObjectURL(b)); } catch {} return; }
+      img._blobUrl = URL.createObjectURL(b); img.src = img._blobUrl;
+    })
+    .catch(() => { try { if (img.isConnected) img.remove(); } catch {} })
+    .finally(() => _thumbControllers.delete(ctrl));
 }
 function dropThumbUrl(img) {
   try { if (img && img._blobUrl) URL.revokeObjectURL(img._blobUrl); } catch {}
@@ -1143,8 +1161,7 @@ document.addEventListener('click', e => {
 document.getElementById('ctx-open').onclick = () => {
   if (!ctxTarget) return;
   if (ctxTarget.isDir) loadFiles(ctxTarget.path);
-  else if (isImageFile(ctxTarget.path) || isDocFile(ctxTarget.path)) openFileEditor(ctxTarget.path);
-  else loadFiles(ctxTarget.path);
+  else openFileEditor(ctxTarget.path);
 };
 document.getElementById('ctx-edit').onclick = () => ctxTarget && openFileEditor(ctxTarget.path);
 // Opens the file as its own tab. Unlike Edit, this can hold several files open at
@@ -1217,7 +1234,7 @@ document.getElementById('ctx-folder-size').onclick = async () => {
   if (!ctxTarget) return;
   const toastEl = toast('Calculating folder size…', 'info');
   try {
-    const res = await fetch(`/api/files/size?path=${encodeURIComponent(ctxTarget.path)}`);
+    const res = await fetch(`/api/files/size?path=${encodeURIComponent(ctxTarget.path)}`, { headers: authToken ? { 'x-pin-token': authToken } : {} });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
     toastEl.remove();
@@ -1382,7 +1399,7 @@ async function pasteFile(destDir, conflictMode, resumeFrom) {
       if (r.conflict) {
         job._ok = succeeded; job._failed = failed; job._bytesDone = bytesDone;
         job.status = 'waiting'; // pauses the speed/ETA clock (G4)
-        _conflictResolve = { destDir, conflictMode: null, resumeFrom: startIdx + fi, action: fsClipboard.action, jobId: job.id };
+        _conflictResolve = { destDir, conflictMode: null, resumeFrom: startIdx + fi, action: fsClipboard.action, jobId: job.id, sources: (fsClipboard.files || []).map(f => f.path).join('\0') };
         document.getElementById('conflict-name').textContent = r.name;
         document.getElementById('conflict-dir-hint').style.display = r.isDir ? '' : 'none';
         document.getElementById('conflict-merge').style.display = r.isDir ? '' : 'none';
@@ -1422,9 +1439,11 @@ let _conflictApplyAll = false; // "apply to all" from the conflict dialog
 function resolveConflict(mode) {
   // Guard double-fire (double-click/Enter+click) and stale state
   if (_conflictBusy || !fsClipboard || !_conflictResolve) return;
-  const { destDir, resumeFrom, action, jobId } = _conflictResolve;
-  // Clipboard changed since the conflict (e.g. new copy) — don't resume stale queue
-  if (!destDir || fsClipboard.action !== action) { _conflictResolve = null; return; }
+  const { destDir, resumeFrom, action, jobId, sources } = _conflictResolve;
+  // Clipboard changed since the conflict (e.g. new copy with the same action)
+  // — don't resume the stale queue.
+  const curSources = (fsClipboard.files || []).map(f => f.path).join('\0');
+  if (!destDir || fsClipboard.action !== action || (sources != null && curSources !== sources)) { _conflictResolve = null; return; }
   // Cancel aborts the whole batch (it used to resume and count 'Cancelled' as
   // one failed item while the rest of the queue kept pasting).
   if (mode === 'cancel') {
@@ -1946,12 +1965,15 @@ async function downloadSelected() {
   // after the first. The temp zip is deleted right after the download.
   if (files.length > 1) {
     const base = (currentPath.split(/[\\/]/).filter(Boolean).pop() || 'download');
+    // Unique temp name per job: two concurrent multi-downloads shared one
+    // "<base>-download.zip" and overwrote each other mid-stream.
+    const tmpName = base + '-download-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8) + '.zip';
     const t = toast(`Zipping ${files.length} items…`, 'info');
     try {
       const r = await api('/api/files/batch-zip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sources: files, destination: joinPath(currentPath, base + '-download.zip') }),
+        body: JSON.stringify({ sources: files, destination: joinPath(currentPath, tmpName) }),
       });
       try { t.remove(); } catch {}
       if (r && r.success) {
@@ -2135,7 +2157,7 @@ function setupDragDrop() {
           await uploadFileList(filesToUpload);
         }
       } else if (e.dataTransfer.files.length) {
-        await uploadFileList(e.dataTransfer.files);
+        await uploadFileList(Array.from(e.dataTransfer.files));
       }
     } catch (err) { toast('Upload failed', 'error'); }
   });

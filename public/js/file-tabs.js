@@ -30,8 +30,12 @@ function rememberEditorPark() {
   if (_editorParkParent) return;
   const ev = editorViewEl();
   if (!ev || !ev.parentElement) return;
-  // Never record a tab wrapper as the park — that is the docked position.
-  if (ev.parentElement.classList.contains('term-wrapper')) return;
+  // Never record a tab body/wrapper as the park — the docked parent is
+  // .file-tab-body (whose parent is the .term-wrapper), not the wrapper.
+  try {
+    if (ev.parentElement.classList.contains('file-tab-body')) return;
+    if (ev.parentElement.classList.contains('term-wrapper')) return;
+  } catch {}
   _editorParkParent = ev.parentElement;
   _editorParkNext = ev.nextElementSibling;
 }
@@ -98,7 +102,10 @@ function newFileTab(path, opts = {}) {
   return tab;
 }
 
-// Move the panel into `tab`, after stashing the outgoing owner's state.
+// Per-tab restore stack: a single global was clobbered on tab→tab switches
+// (docking B while A owned the panel overwrote true→false), closing a split
+// that predated both tabs.
+let _undockRestoreStack = [];
 function dockEditorToTab(tab) {
   const ev = editorViewEl();
   if (!ev || !tab || !tab.bodyEl) return;
@@ -106,7 +113,10 @@ function dockEditorToTab(tab) {
   if (_dockedFileTabId && _dockedFileTabId !== tab.id) captureFileTabState(tabs.find(t => t.id === _dockedFileTabId));
   if (_dockedFileTabId !== tab.id) {
     // If the panel was showing in its own split, hand it back on undock.
-    _undockRestoresPanel = !tab._cameFromPanel && ev.classList.contains('open') && ev.parentElement === _editorParkParent;
+    const restores = !tab._cameFromPanel && ev.classList.contains('open') && ev.parentElement === _editorParkParent;
+    _undockRestoreStack.push({ id: tab.id, restores });
+    if (_undockRestoreStack.length > 20) _undockRestoreStack.splice(0, _undockRestoreStack.length - 20);
+    _undockRestoresPanel = restores;
   }
   ev.classList.add('docked');
   tab.bodyEl.appendChild(ev);
@@ -130,6 +140,9 @@ function dockEditorToTab(tab) {
 function undockEditor(keepCard = true) {
   const tab = tabs.find(t => t.id === _dockedFileTabId);
   if (tab) captureFileTabState(tab);
+  // Heavy docs (PDF/EPUB/Office) were left alive but hidden, defeating the
+  // single-live design. State is captured above, so remount restores it.
+  try { if (tab && tab.viewer !== 'text' && tab.viewer !== 'image') cleanupDocViewers(); } catch {}
   const ev = editorViewEl();
   if (ev) {
     ev.classList.remove('docked');
@@ -151,6 +164,13 @@ function undockEditor(keepCard = true) {
     if (tab.cardEl && tab.viewer !== 'image') tab.cardEl.hidden = false;
   }
   _dockedFileTabId = null;
+  // Pop this tab's restore entry; the flag falls back to the previous owner
+  // (or false when the stack is empty) instead of keeping a stale value.
+  try {
+    _undockRestoreStack = _undockRestoreStack.filter(e => e.id !== (tab && tab.id));
+    const top = _undockRestoreStack[_undockRestoreStack.length - 1];
+    _undockRestoresPanel = top ? !!top.restores : false;
+  } catch {}
   const tabBtn = document.getElementById('editor-tab-toggle');
   if (tabBtn) { tabBtn.title = 'Open in a tab — keep it alongside your terminals'; tabBtn.setAttribute('aria-label', 'Open in a tab'); }
   document.body.classList.remove('editor-docked');
@@ -174,6 +194,7 @@ function captureFileTabState(tab) {
       const sel = document.getElementById('office-sheet-sel');
       tab.viewState = { scroll: w ? w.scrollTop : 0, sheet: sel && sel.style.display !== 'none' ? sel.value : null };
     }
+    try { if (typeof saveTabState === 'function') saveTabState(); } catch {}
   } catch (e) { console.warn('captureFileTabState failed:', e); }
 }
 
@@ -182,6 +203,12 @@ function captureFileTabState(tab) {
 async function mountImageIntoTab(tab) {
   const body = tab.bodyEl;
   if (!body) return;
+  body.style.display = 'flex';
+  if (tab.cardEl) tab.cardEl.hidden = true;
+  // A previous failure detached tab.imgEl but left dataset.mounted set: only
+  // reuse the live node, otherwise rebuild below.
+  if (tab.imgUrl && tab.imgEl && tab.imgEl.isConnected) return;
+  if (!tab.imgEl || !tab.imgEl.isConnected) { try { delete body.dataset.mounted; } catch {} }
   if (!body.dataset.mounted) {
     body.innerHTML = '';
     const wrap = document.createElement('div');
@@ -194,24 +221,32 @@ async function mountImageIntoTab(tab) {
     tab.imgEl = img;
     tab.imgWrap = wrap;
   }
-  body.style.display = 'flex';
-  if (tab.cardEl) tab.cardEl.hidden = true;
-  if (tab.imgUrl) return;
+  try { if (tab.imgUrl) URL.revokeObjectURL(tab.imgUrl); } catch {}
+  tab.imgUrl = null;
   try {
     const r = await fetch(`/api/files/image?path=${encodeURIComponent(tab.path)}&_t=${Date.now()}`, { headers: { 'x-pin-token': authToken } });
     if (!r.ok) throw new Error('Failed to load image');
     const blob = await r.blob();
     if (tab.closed) return;
     tab.imgUrl = URL.createObjectURL(blob);
-    tab.imgEl.src = tab.imgUrl;
+    if (tab.imgEl && tab.imgEl.isConnected) tab.imgEl.src = tab.imgUrl;
+    else { try { delete body.dataset.mounted; } catch {} tab.imgEl = null; }
   } catch (e) {
     try {
-      tab.imgWrap.innerHTML = '';
-      const fail = document.createElement('div');
-      fail.className = 'ftc-fail';
-      fail.textContent = 'Failed to load image — use Download instead.';
-      tab.imgWrap.appendChild(fail);
+      if (tab.imgWrap) {
+        tab.imgWrap.innerHTML = '';
+        const fail = document.createElement('div');
+        fail.className = 'ftc-fail';
+        fail.textContent = 'Failed to load image — use Download instead.';
+        tab.imgWrap.appendChild(fail);
+      }
     } catch (_) {}
+    // Allow the next activation to retry instead of staring at the error
+    // forever until Restart clears dataset.mounted.
+    try { delete body.dataset.mounted; } catch {}
+    tab.imgEl = null;
+    try { if (tab.imgUrl) URL.revokeObjectURL(tab.imgUrl); } catch {}
+    tab.imgUrl = null;
   }
 }
 
@@ -228,10 +263,15 @@ async function mountFileTab(tab) {
     tab.seed = null;
     if (!ok || tab.closed) { abandonFileTab(tab); return; }
     showTabEditor(tab);
+    // A carried preview state (Panel→tab handoff) renders on mount.
+    if (tab.previewOn && tabPreviewKind(tab)) {
+      try { renderTabPreview(tab); paintTabPreview(tab); } catch {}
+    }
     tab.mountedOnce = true;
     // Only steal focus for the tab the user actually activated — Tile view mounts the
-    // others in the background.
-    if (activeTabId === tab.id) { try { tab.cm.focus(); } catch {} }
+    // others in the background. Not when a carried preview is showing (the
+    // editor surface is hidden).
+    if (activeTabId === tab.id && !tab.previewOn) { try { tab.cm.focus(); } catch {} }
     return;
   }
   // Heavy viewers (PDF/EPUB/Office) hold whole documents in memory, so only one is
@@ -260,9 +300,31 @@ async function mountFileTab(tab) {
   } catch (e) { console.warn('File tab open failed:', e); }
   // Every opener sets editorPath before its async work and bails out with a toast for
   // files it cannot render. A refusal would leave this tab labelled with a file the
-  // panel is not actually showing, so drop the tab rather than desync it.
-  if (editorPath !== tab.path) { abandonFileTab(tab); return; }
+  // panel is not actually showing, so drop the tab — but first restore the panel
+  // file the dock just hid, or file X stays loaded yet invisible.
+  if (editorPath !== tab.path) {
+    const stackTop = _undockRestoreStack[_undockRestoreStack.length - 1];
+    const restores = stackTop && stackTop.id === tab.id ? !!stackTop.restores : _undockRestoresPanel;
+    abandonFileTab(tab);
+    try {
+      const ev = editorViewEl();
+      if (restores && ev) {
+        ev.classList.add('open');
+        document.getElementById('content')?.classList.add('editor-open');
+      }
+    } catch {}
+    return;
+  }
   tab.mountedOnce = true;
+  // Disk revision for the open-file watcher (doc tabs are flag-only).
+  try {
+    const st = await api(`/api/files/stat?path=${encodeURIComponent(tab.path)}`);
+    if (st && !st.error && st.mtime !== undefined) {
+      tab.diskMtime = String(st.mtime);
+      tab.diskSize = st.size;
+      tab._wasMissing = false;
+    }
+  } catch {}
   if (tab.viewer === 'pdf' && s && s.page > 1) {
     const sid = tab.id;
     setTimeout(() => { try { if (tab.closed || _dockedFileTabId !== sid) return; document.getElementById('pdf-wrap-' + s.page)?.scrollIntoView(); } catch (_) {} }, 450);
@@ -412,13 +474,15 @@ async function ensureTabEditor(tab, seed) {
   // Disk revision this buffer came from — the open-file watcher compares fresh
   // stats against it (null = unknown, adopt silently on first poll).
   tab.diskMtime = data.mtime != null ? String(data.mtime) : null;
+  // stat bytes, never read length (chars): non-ASCII files phantom-flagged
+  // "Changed on disk" when chars and bytes disagreed.
   tab.diskSize = typeof data.size === 'number' ? data.size : null;
   tab.extChanged = false;
   if (data.history) { try { cm.setHistory(data.history); } catch (e) { console.warn('Undo history restore failed:', e); } }
   if (data.cursor) { try { cm.setCursor(data.cursor); } catch {} }
   cm.on('change', () => { markTabDirty(tab); scheduleTabDraft(tab); scheduleTabPreview(tab); });
   markTabDirty(tab);
-  if (data.extChanged) setTabExtChanged(tab, true);
+  if (data.extChanged) setTabExtChanged(tab, true, data.extMsg && /Deleted/.test(data.extMsg) ? data.extMsg : undefined);
   try { cm.setOption('mode', await resolveCMmode(fileTabName(tab.path))); } catch (e) { console.warn('Mode resolve failed:', e); }
   return !tab.closed;
 }
@@ -435,6 +499,11 @@ function setTabExtChanged(tab, on, msg) {
     tab.fteDot.classList.toggle('ext', on);
     tab.fteDot.setAttribute('aria-label', on ? 'File changed on disk'
       : (tab.dirty ? 'Unsaved changes' : 'No unsaved changes'));
+    // Announce external changes to screen readers.
+    try {
+      tab.fteDot.setAttribute('role', 'status');
+      tab.fteDot.setAttribute('aria-live', 'polite');
+    } catch {}
   }
   try { tab.el?.classList.toggle('has-ext', on); } catch {}
   if (tab.fteStatus) {
@@ -445,7 +514,11 @@ function setTabExtChanged(tab, on, msg) {
       tab.fteStatus.title = 'Re-read the file from disk (asks before discarding edits)';
       tab.fteStatus.setAttribute('role', 'button');
       tab.fteStatus.tabIndex = 0;
+      tab.fteStatus.setAttribute('aria-live', 'polite');
       tab.fteStatus.onclick = () => reloadTabFile(tab);
+      tab.fteStatus.onkeydown = (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); reloadTabFile(tab); }
+      };
     } else {
       if (was || tab.fteStatus.classList.contains('ext')) tab.fteStatus.textContent = '';
       tab.fteStatus.classList.remove('ext');
@@ -453,6 +526,7 @@ function setTabExtChanged(tab, on, msg) {
       tab.fteStatus.removeAttribute('role');
       tab.fteStatus.tabIndex = -1;
       tab.fteStatus.onclick = null;
+      tab.fteStatus.onkeydown = null;
     }
   }
 }
@@ -690,7 +764,9 @@ async function renderTabPreview(tab) {
     if (isFullDoc) {
       let sanitized = DOMPurify.sanitize(raw, { WHOLE_DOCUMENT: true, USE_PROFILES: { html: true }, ADD_TAGS: ['base', 'style'], ADD_ATTR: ['target'] });
       sanitized = rewriteHtmlRelativeUrls(sanitized, baseDir, ptok);
-      if (!/<base\b/i.test(sanitized)) sanitized = injectHead(sanitized, `<base href="${escHtml(baseHref)}">`);
+      // Strip author <base> (re-targets every relative asset), then ours.
+      sanitized = sanitized.replace(/<base\b[^>]*>/gi, '');
+      sanitized = injectHead(sanitized, `<base href="${escHtml(baseHref)}">`);
       if (!/<meta[^>]*color-scheme/i.test(sanitized)) sanitized = injectHead(sanitized, `<meta name="color-scheme" content="${isDark ? 'dark' : 'light'}">`);
       doc = sanitized;
     } else {
@@ -787,10 +863,13 @@ async function reloadTabFile(tab) {
   tab.cm.setValue(r.content);
   tab.original = r.content;
   if (r.mtime != null) tab.diskMtime = String(r.mtime);
-  if (typeof r.length === 'number') tab.diskSize = r.length;
+  // r.length is chars; the watcher compares stat bytes — refresh from stat.
+  await refreshTabDiskSnapshot(tab);
   setTabExtChanged(tab, false);
   markTabDirty(tab);
   flashTabStatus(tab, 'Reloaded');
+  // A manual Reload must re-render an open preview like the panel does.
+  if (tab.previewOn) { try { renderTabPreview(tab); } catch {} }
 }
 
 // Hand the file to the split panel, carrying the buffer and undo history so nothing is
@@ -808,9 +887,20 @@ async function moveTabToPanel(tab) {
   // the draft still holds the text.
   if (content !== original) safeStorage.setItem('wt-draft:' + path, content);
   const diskMtime = tab.diskMtime, diskSize = tab.diskSize, wasExt = tab.extChanged;
+  const wasExtMsg = tab.fteStatus && tab.fteStatus.classList.contains('ext') ? tab.fteStatus.textContent : null;
+  const wasPreview = !!tab.previewOn, wasFull = !!tab.htmlFull;
   await closeTab({ stopPropagation() {} }, tab.id, { force: true, noReopen: true });
   await showTextInPanel(path, content, original, history, diskMtime, diskSize);
-  if (wasExt) setPanelExtChanged(true);
+  // Carry preview state + the specific ext message (Deleted vs Changed).
+  if (wasPreview && typeof mdPreviewActive !== 'undefined' && !mdPreviewActive) {
+    try {
+      const isHtml = /\.html?$/i.test(path);
+      if (isHtml && wasFull) { try { htmlFullPreview = true; } catch {} }
+      if (!isHtml && typeof toggleMdPreview === 'function') toggleMdPreview();
+      else if (isHtml && typeof toggleHtmlPreview === 'function') toggleHtmlPreview();
+    } catch {}
+  }
+  if (wasExt) setPanelExtChanged(true, wasExtMsg && /Deleted/.test(wasExtMsg) ? wasExtMsg : undefined);
   if (cursor) { try { editor?.setCursor(cursor); } catch {} }
 }
 
@@ -846,6 +936,17 @@ function openFileAsTab(path) {
   if (fromPanel) tab._cameFromPanel = true;
   if (fromPanel && tab.viewer === 'text') {
     tab.seed = { content: editor.getValue(), original: editorOriginalContent, history: editor.getHistory(), cursor: editor.getCursor(), mtime: editorDiskMtime, size: editorDiskSize, extChanged: editorExtChanged };
+    // Carry the panel preview state so Panel→tab keeps showing the preview.
+    try {
+      if (typeof mdPreviewActive !== 'undefined' && mdPreviewActive) tab.previewOn = true;
+      if (typeof htmlFullPreview !== 'undefined' && htmlFullPreview) tab.htmlFull = true;
+    } catch {}
+    if (editorExtChanged) {
+      try {
+        const st = document.getElementById('editor-status');
+        tab.seed.extMsg = (st && /Deleted/.test(st.textContent)) ? st.textContent : null;
+      } catch {}
+    }
   } else if (fromPanel && tab.viewer === 'pdf') {
     tab.viewState = { page: _pdfCurrentPage, scale: _pdfScale };
   }

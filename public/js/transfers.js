@@ -238,6 +238,32 @@ async function uploadFileList(items) {
   const files = items.map(item => ({ file: item.file || item, name: item.path || item.webkitRelativePath || item.name }));
   const total = files.length;
   if (!total) return;
+  // Preserve dragged folder hierarchy: the multipart filename carries
+  // `dir/sub/f.txt`, so mkdir the parent dirs first instead of flattening.
+  try {
+    const dirs = new Set();
+    for (const f of files) {
+      const parts = String(f.name || '').split('/');
+      if (parts.length > 1) {
+        let acc = '';
+        for (let i = 0; i < parts.length - 1; i++) {
+          acc += (acc ? '/' : '') + parts[i];
+          dirs.add(acc);
+        }
+      }
+    }
+    const ordered = [...dirs].sort((a, b) => a.length - b.length);
+    for (const rel of ordered) {
+      if (_uploadCancelled) break;
+      try {
+        await api('/api/files/mkdir', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: currentPath.replace(/\/+$/, '') + '/' + rel }),
+        });
+      } catch {}
+    }
+  } catch {}
   const totalBytes = files.reduce((n, f) => n + ((f.file && f.file.size) || 0), 0);
   const job = txCreate('upload', total === 1 ? 'Upload ' + files[0].name : 'Upload ' + total + ' files', { total: totalBytes, filesTotal: total });
   let completed = 0;

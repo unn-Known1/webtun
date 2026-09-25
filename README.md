@@ -59,6 +59,8 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/unn-Known1/webtun/main/i
 git clone https://github.com/unn-Known1/webtun.git && cd webtun && ./setup.sh
 ```
 
+> **Windows note:** `setup.sh` / `install.sh` / `stop.sh` are bash-only and support Linux and macOS (Git Bash on Windows is not supported — the scripts exit with "Unsupported OS"). On Windows, use the Electron app above, WSL, or `npx webtun` directly (the server itself is cross-platform; only the provisioning scripts are not).
+
 ---
 
 ## User Guide
@@ -115,6 +117,7 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 - Cross-platform app for Linux, Windows, macOS
 - Native window with system tray and file dialogs
 - Self-updating: checks GitHub releases after launch and daily, installs on quit (Windows Setup + portable, Linux deb + AppImage, macOS arm64)
+- Portable `.exe` and AppImage builds cannot self-update (no installer to apply the update) — update failures are logged, and a manual update check is exposed to the UI; grab the next release from GitHub for those builds
 - Platform support: Windows x64, Linux x64, macOS arm64 (Intel Macs and Windows-on-ARM are currently unserved / emulation-only)
 - Build: `npm run dist:linux` / `npm run dist:win` / `npm run dist:mac`
 - [Download latest release](https://github.com/unn-known1/webtun/releases/latest)
@@ -197,6 +200,18 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 
 ## Changelog
 
+### v2.2.4
+- **Security hardening (full-codebase grill-review fixes)** — reflected-XSS escape in preview errors, fail-closed raw-PIN path, PIN rotation persist-first with pending-clearance, preview sockets reaped on rotate/revoke, per-UID 0600 tmux claim file
+- **Backend** — tunnel/upload SSRF closed (all-address DNS vetting, non-canonical IP deny), CWD `cloudflared` candidates removed, upload depth caps + no silent overwrite, zip running-total cap with fd-based writes, git route guards (`--` separators, root-diff reject, credential scrubbing), search walk capped + sandboxed, `JSON_LIMIT`/`JSON_LIMIT_LARGE` env knobs, merge rollback now restores overwritten files
+- **Frontend** — terminal titles forwarded, streaming decode + cross-frame OSC, paste/history tracking, forced re-login on revoke/rotation, tab active-state + viewer-position persistence, panel A→B write race fixed, WCAG-AA theme contrast, folder-size auth, AVIF support, docs corrected and synced
+- **CLI/infra** — setup PIN round-trip fix, `npm ci`, systemd double-start guard, `=` flags, host-aware healthcheck, tunnel-fail teardown, SIGKILL escalation, strict version/tag/README gate
+
+### v2.2.3
+- **Tab features** — tab-bar overhaul (pin protection, context menus, middle-click / right-click handling, keyboard reachability)
+- **File explorer fixes** — audit pass over listing, selection and rows, plus zip/unzip jobs in the Transfer Center
+- **Settings & titlebar fixes** — settings audit corrections and terminal context-menu work
+- **System stats & docs** — stats panel additions, user-guide updates and launchpad screenshots
+
 ### v2.2.2
 - **Terminal directory follows `cd`** — the file explorer's "Go to terminal directory" button (and new-tab / copy-path / bookmark from the terminal menu) now resolves the session's live directory on demand via `GET /api/sessions/:id/cwd` (tmux `pane_current_path`, `/proc` on Linux, `lsof` on macOS) instead of the stale launch dir that OSC 7 rarely updated
 - **Open files track external changes** — text buffers snapshot `mtime`/`size` from `/api/files/read` and are re-statted every 10s and on refocus: clean buffers auto-reload (`Updated from disk`), dirty buffers keep your edits and raise a persistent cyan `Changed on disk` indicator (click to reload, Save to overwrite); deleted files are flagged the same way
@@ -208,7 +223,9 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 - **Automation** — weekly Dependabot (npm + GitHub Actions), a PR check workflow running the CI `verify` steps on every pull request, and a CodeRabbit review config with repo-specific instructions for `server.js`, `docs.html` and `app.js`
 
 ### v2.2.0
-> **First release since v2.0.4.** v2.1.0–v2.1.2 were bumped and documented but never tagged or published, so everything since v2.0.4 ships here (the v2.1.x sections below are kept as-is for history). New since the 2.1.2 tree:
+> Never tagged or published — the tree described here first shipped as v2.2.1; section kept for history (same convention as the v2.1.x sections below).
+
+> Everything since v2.0.4 as of this tree (v2.1.0–v2.1.2 were bumped and documented but never tagged or published either; the v2.1.x sections below are kept as-is for history). New since the 2.1.2 tree:
 
 - **Frontend split** — the 10,491-line `public/js/app.js` is now 15 concern-sized scripts (`core`, `ui`, `tabs`, `terminal`, `files`, `transfers`, `editor-panel`, `file-tabs`, `preview`, `viewers`, `launchpad`, `settings`, `security`, `git`, `misc`), moved byte-verbatim with zero behavior change; Service Worker cache bumped to `webtun-v8`
 - **tmux ownership tracking** — shutdown kills exactly the sessions this process created (recorded, never inferred from the name); a box-shared claim file arbitrates the orphan sweeps between live same-namespace siblings; the startup sweep runs only after the port binds

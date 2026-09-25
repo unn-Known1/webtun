@@ -12,8 +12,8 @@ function printHelp() {
     webtun [options]
 
   Options:
-    --port, -p <port>     Port to listen on (default: 3000 or $PORT)
-    --host, -h <host>     Host to bind to (default: 0.0.0.0 or $HOST)
+    --port, -p <port>     Port to listen on (default: 3000 or $PORT; --port=8080 also works)
+    --host, -h <host>     Host to bind to (default: 0.0.0.0 or $HOST; --host=... also works)
     --pin <pin>           PIN for authentication (default: $PIN)
     --tunnel, -t          Start a Cloudflare Tunnel for remote access
     --help, -H              Show this help message
@@ -45,8 +45,15 @@ function printHelp() {
 
 function parseArgs(argv) {
   const opts = { tunnel: false };
+  // Accept both `--flag value` and `--flag=value` forms (only `--pin=` had
+  // the `=` form before, so `--port=8080` died with "Unknown option").
+  const splitEq = (a) => {
+    const i = a.indexOf('=');
+    if (i > 0 && a.startsWith('-')) return [a.slice(0, i), a.slice(i + 1)];
+    return [a, null];
+  };
   for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
+    const [arg, eqVal] = splitEq(argv[i]);
     if (arg === '--help' || arg === '-H') {
       printHelp();
       process.exit(0);
@@ -56,24 +63,27 @@ function parseArgs(argv) {
       process.exit(0);
     }
     if (arg === '--port' || arg === '-p') {
-      if (!argv[i+1] || argv[i+1].startsWith('-')) {
+      const raw = eqVal !== null ? eqVal : ((!argv[i+1] || argv[i+1].startsWith('-')) ? null : argv[++i]);
+      if (raw === null || raw === '') {
         console.error('Error: --port requires a value');
         process.exit(1);
       }
-      opts.port = parseInt(argv[++i], 10);
+      opts.port = parseInt(raw, 10);
       if (isNaN(opts.port) || opts.port < 1 || opts.port > 65535) {
         console.error('Error: --port requires a numeric value 1-65535');
         process.exit(1);
       }
     } else if (arg === '--host' || arg === '-h') {
-      if (!argv[i+1] || argv[i+1].startsWith('-')) {
+      const raw = eqVal !== null ? eqVal : ((!argv[i+1] || argv[i+1].startsWith('-')) ? null : argv[++i]);
+      if (raw === null || raw === '') {
         console.error('Error: --host requires a value');
         process.exit(1);
       }
-      opts.host = argv[++i];
-    } else if (arg.startsWith('--pin=')) {
+      opts.host = raw;
+    } else if (arg === '--pin' && eqVal !== null) {
       // Explicit form — the only way to pass a PIN that starts with "-".
-      process.env.PIN = arg.slice('--pin='.length);
+      // (splitEq above already stripped "=value", so no startsWith branch needed.)
+      process.env.PIN = eqVal;
     } else if (arg === '--pin') {
       // Reject -led values outright: `--pin -tunnel` (a typo for --tunnel) used
       // to silently set PIN="-tunnel" and leave the instance open.
@@ -96,7 +106,19 @@ function parseArgs(argv) {
   return opts;
 }
 
-async function startTunnel(port) {
+// The address cloudflared and the healthcheck should dial: the effective bind
+// host, except wildcard binds (0.0.0.0/::) which are dialed via loopback
+// (connecting to 0.0.0.0 fails on some platforms, and a LAN-only bind is not
+// reachable via 127.0.0.1 — the old hardcoded loopback reported "did not
+// answer" on healthy LAN-bound servers, and the tunnel pointed at localhost
+// the server wasn't listening on).
+function dialHost(host) {
+  const h = host || process.env.HOST;
+  if (!h || h === '0.0.0.0' || h === '::') return '127.0.0.1';
+  return h;
+}
+
+async function startTunnel(port, host) {
   const { spawn } = require('child_process');
   const { findCloudflared, ensureCloudflared } = require('../lib/cloudflared');
 
@@ -116,7 +138,8 @@ async function startTunnel(port) {
 
   console.log('  Starting Cloudflare Tunnel...');
 
-  const proc = spawn(bin, ['tunnel', '--url', `http://localhost:${port}`], {
+  const target = `http://${dialHost(host)}:${port}`;
+  const proc = spawn(bin, ['tunnel', '--url', target], {
     stdio: ['ignore', 'pipe', 'pipe']
   });
 
@@ -165,14 +188,25 @@ async function startTunnel(port) {
 
   const stop = () => {
     try { proc.kill('SIGTERM'); } catch {}
+    killTunnelWin32(proc);
     // Preserve a failure recorded earlier (tunnel URL timeout, non-zero
     // cloudflared exit) instead of always reporting success.
     process.exit(process.exitCode || 0);
   };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
-  // Don't orphan cloudflared on normal exit either (untracked by server manager)
-  process.on('exit', () => { try { proc.kill('SIGTERM'); } catch {} });
+  // Don't orphan cloudflared on normal exit either (untracked by server manager).
+  // Windows SIGTERM is best-effort — escalate via taskkill so a stuck child
+  // cannot linger on the port (same gap Electron's stopServerProcess closes).
+  process.on('exit', () => { try { proc.kill('SIGTERM'); } catch {}; killTunnelWin32(proc); });
+}
+
+// Best-effort win32 escalation for the tunnel child above.
+function killTunnelWin32(proc) {
+  if (process.platform !== 'win32' || !proc || !proc.pid) return;
+  try {
+    require('child_process').execFileSync('taskkill', ['/PID', String(proc.pid), '/T', '/F'], { stdio: 'ignore' });
+  } catch {}
 }
 
 function isAddrInUse(err) {
@@ -180,11 +214,12 @@ function isAddrInUse(err) {
 }
 
 // Probe the effective bind host for a free port starting at `startPort`.
-// Probing only 127.0.0.1 while the server binds 0.0.0.0 misdiagnosed a
+// The default mirrors the server's bind default (HOST or 0.0.0.0): probing
+// only 127.0.0.1 while the server binds all interfaces misdiagnosed a
 // LAN-held port as free and then failed at listen() with EADDRINUSE.
 function findFreePort(startPort, maxTries = 20, host) {
   const net = require('net');
-  const probeHost = host || process.env.HOST || '127.0.0.1';
+  const probeHost = host || process.env.HOST || '0.0.0.0';
   return new Promise((resolve, reject) => {
     const tryPort = (port, attempt) => {
       if (attempt >= maxTries || port > 65535) {
@@ -201,12 +236,12 @@ function findFreePort(startPort, maxTries = 20, host) {
 
 // Wait for the HTTP API to answer before starting a tunnel that points at it —
 // a listening socket is not proof the app is ready to serve requests.
-function waitForServer(port, timeoutMs = 5000) {
+function waitForServer(port, host, timeoutMs = 5000) {
   const http = require('http');
   const deadline = Date.now() + timeoutMs;
   return new Promise(resolve => {
     const check = () => {
-      const req = http.get(`http://127.0.0.1:${port}/api/auth/required`, res => {
+      const req = http.get(`http://${dialHost(host)}:${port}/api/auth/required`, res => {
         res.resume();
         // A 5xx means the port answers but the app is broken — that is not
         // "ready". Keep polling until the deadline rather than tunneling at
@@ -236,15 +271,21 @@ const { startServer, PORT } = require('../server');
 let listenPort = opts.port || PORT;
 
 function boot(port, allowPortFallback) {
-  return startServer({ ...opts, port }).then(() => {
+  return startServer({ ...opts, port }).then((srv) => {
     if (!opts.tunnel) return;
-    return waitForServer(port).then(up => {
+    return waitForServer(port, opts.host).then(up => {
       if (!up) {
         console.error('  Error: server did not answer on port ' + port + ' — not starting the tunnel.');
-        process.exitCode = 1;
+        // Stop the server we just started instead of leaving it serving
+        // without the requested tunnel while reporting failure.
+        const bye = () => process.exit(1);
+        try {
+          srv.close(bye);
+          setTimeout(bye, 3000).unref();
+        } catch { bye(); }
         return;
       }
-      startTunnel(port);
+      startTunnel(port, opts.host);
     });
   }).catch(err => {
     if (allowPortFallback && isAddrInUse(err)) {
