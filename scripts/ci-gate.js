@@ -103,7 +103,17 @@ function main() {
     jsTotal++;
     const buf = tryExtract(asar, archive, rel);
     if (!buf) { jsBroken.push(`${rel} (unreadable in any path form)`); continue; }
-    try { new vm.Script(buf.toString('utf8'), { filename: rel }); }
+    try {
+      try { new vm.Script(buf.toString('utf8'), { filename: rel }); }
+      catch (e) {
+        // Top-level `return` is legal in CommonJS (Node module wrapper) but
+        // illegal in a bare vm.Script — e.g. electron/main.js Squirrel guard.
+        // Retry wrapped before calling the file broken.
+        if (/Illegal return/.test(e && e.message || '')) {
+          new vm.Script('(function(exports,require,module,__filename,__dirname){' + buf.toString('utf8') + '\n})', { filename: rel });
+        } else throw e;
+      }
+    }
     catch (e) { jsBroken.push(`${rel} (${e.message.split('\n')[0]})`); }
   }
   console.log(`ci-gate: js checked=${jsTotal} broken=${jsBroken.length}`);

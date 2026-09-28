@@ -1,6 +1,10 @@
 // WebTun frontend - terminal.js (terminal WS, xterm core, keys, search, mobile.)
 
 function cleanupWebSocket(tab) {
+  if (tab._openTimer) {
+    try { clearTimeout(tab._openTimer); } catch {}
+    tab._openTimer = null;
+  }
   if (tab.ws) {
     tab.ws.onopen = null;
     tab.ws.onmessage = null;
@@ -27,6 +31,27 @@ function connectWebSocket(tab, isReconnect = false) {
   const ws = new WebSocket(wsUrl);
   tab.ws = ws;
   ws.binaryType = 'arraybuffer';
+  // Open timeout: a WS upgrade hung inside the tunnel (cloudflared edge /
+  // proxy buffering the handshake) stays in CONNECTING forever — no onopen,
+  // no onclose, no banner, just a stuck "Connecting…" overlay. Force-close
+  // so the onclose retry path below takes over.
+  try { if (tab._openTimer) clearTimeout(tab._openTimer); } catch {}
+  tab._openTimer = setTimeout(() => {
+    try {
+      if (tab.ws === ws && ws.readyState === WebSocket.CONNECTING) {
+        try { ws.close(); } catch {}
+        // If the browser never fires onclose for the aborted handshake,
+        // drive the retry path directly (guarded: onclose clears _openTimer).
+        setTimeout(() => {
+          try {
+            if (tab.ws === ws && ws.readyState !== WebSocket.OPEN && typeof ws.onclose === 'function') {
+              ws.onclose();
+            }
+          } catch {}
+        }, 1000);
+      }
+    } catch {}
+  }, 10000);
 
   const sendInput = data => {
     if (ws.readyState !== WebSocket.OPEN) {
@@ -153,6 +178,7 @@ function connectWebSocket(tab, isReconnect = false) {
   };
 
   ws.onopen = () => {
+    try { if (tab._openTimer) { clearTimeout(tab._openTimer); tab._openTimer = null; } } catch {}
     tab.reconnectDelay = 1000;
     tab.reconnectAttempts = 0;
     tab._freshRetried = false;
@@ -383,9 +409,18 @@ function handleClientEvent(payload) {
   }
 }
 
-  ws.onerror = (e) => { console.warn('WS error:', e.type); };
+  ws.onerror = () => {
+    try { console.warn('WS error on tab', tab.id); } catch {}
+    // A failed handshake through the tunnel often errors without ever
+    // opening — make sure it doesn't linger in CONNECTING.
+    try { if (ws.readyState === WebSocket.CONNECTING) ws.close(); } catch {}
+  };
 
   ws.onclose = () => {
+    try { if (tab._openTimer) { clearTimeout(tab._openTimer); tab._openTimer = null; } } catch {}
+    // The open-timeout's fallback may invoke onclose after cleanup already
+    // ran for a newer socket — never kill a live replacement.
+    if (tab.ws && tab.ws !== ws) return;
     cleanupWebSocket(tab);
     if (tab.closed) return;
     try { if (typeof refreshConnStatus === 'function') refreshConnStatus(); else updateConnStatus(false); } catch {}
@@ -413,6 +448,10 @@ function handleClientEvent(payload) {
         banner.style.display = 'block';
       }
       tab.term.writeln('\r\n\x1b[33m[Disconnected — auto-retry stopped. Press Reconnect above.]\x1b[0m');
+      // The "Connecting…" overlay covers the whole terminal (z-index 3), so
+      // without this the failure message underneath stays invisible forever.
+      try { if (typeof hideTermLoading === 'function') hideTermLoading(tab); } catch {}
+      try { if (typeof refreshConnStatus === 'function') refreshConnStatus(); } catch {}
       return;
     }
     if (banner) {
@@ -424,11 +463,16 @@ function handleClientEvent(payload) {
       banner.style.display = 'block';
     }
     tab.reconnectDelay = Math.min((tab.reconnectDelay || 1000) * 2, 15000);
-    const secs = tab.reconnectDelay / 1000;
+    // Jitter the thundering herd: after a tunnel-URL reload every tab dials
+    // at once and cloudflared serialises the upgrades, so identical backoffs
+    // re-collide on every round.
+    const jitter = Math.floor(Math.random() * 750);
+    const delay = tab.reconnectDelay + jitter;
+    const secs = (delay / 1000).toFixed(1).replace(/\.0$/, '');
     tab.term.writeln(`\r\n\x1b[33m[Disconnected — reconnecting in ${secs}s (attempt ${_attempt}/${_maxAttempts})…]\x1b[0m`);
     tab.reconnectTimer = setTimeout(() => {
       if (!tab.closed) connectWebSocket(tab, true);
-    }, tab.reconnectDelay);
+    }, delay);
   };
 
   tab.dataDisposable?.dispose();

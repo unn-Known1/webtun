@@ -343,7 +343,14 @@ setup_systemd() {
   if [[ "$lower" != "y" ]]; then return; fi
 
   SERVICE_FILE="/etc/systemd/system/webtun.service"
-  NODE_PATH="$(command -v node)"
+  # systemd has no shell and a minimal PATH, so ExecStart needs an absolute
+  # binary path — a bare `node` fails with 203/EXEC and crash-loops. `command
+  # -v` can return a bare name or function (e.g. nvm lazy-load shims), so
+  # prefer `type -P` and fail closed when nothing absolute is found.
+  NODE_PATH="$(type -P node 2>/dev/null || command -v node)"
+  if [[ "$NODE_PATH" != /* ]] || [ ! -x "$NODE_PATH" ]; then
+    die "Cannot resolve an absolute path for node (got '${NODE_PATH:-nothing}') — put Node.js ≥18 on a system PATH, then re-run setup"
+  fi
   
   # Under `sudo ./setup.sh` $USER is root, which would run the whole server as
   # root; prefer the invoking user.
@@ -518,20 +525,28 @@ if command -v cloudflared &>/dev/null; then
     echo ""
     echo "  ${BOLD}Starting Cloudflare Tunnel...${RESET}"
 
-    # Wait up to 5 seconds for the tunnel URL, then exit
-    echo "  ${YELLOW}Waiting for Cloudflare Tunnel URL...${RESET}"
-    for _ in {1..5}; do
+    # Wait up to 60 seconds for the tunnel URL — cold starts (autoupdate
+    # check, QUIC handshake/registration) routinely exceed a few seconds, and
+    # the old short wait fell through silently with no URL ever printed.
+    echo "  ${YELLOW}Waiting for Cloudflare Tunnel URL (up to 60s)...${RESET}"
+    TUNNEL_URL=""
+    for _ in {1..60}; do
       TUNNEL_URL="$(grep -oE 'https://[a-z0-9-]+\.(trycloudflare\.com|cfargotunnel\.com)' "$TUNNEL_LOG" 2>/dev/null | head -1 || true)"
-      if [ -n "$TUNNEL_URL" ]; then
-        echo ""
-        echo "  ┌─────────────────────────────────────────────────────┐"
-        echo "  │  ${GREEN}${BOLD}Public URL (share this!):${RESET}   │"
-        echo "  │  ${CYAN}${BOLD}$TUNNEL_URL${RESET}                  │"
-        echo "  └─────────────────────────────────────────────────────┘"
-        break
-      fi
+      if [ -n "$TUNNEL_URL" ]; then break; fi
       sleep 1
     done
+    if [ -n "$TUNNEL_URL" ]; then
+      echo ""
+      echo "  ┌─────────────────────────────────────────────────────┐"
+      echo "  │  ${GREEN}${BOLD}Public URL (share this!):${RESET}   │"
+      echo "  │  ${CYAN}${BOLD}$TUNNEL_URL${RESET}                  │"
+      echo "  └─────────────────────────────────────────────────────┘"
+    else
+      echo ""
+      warn "Tunnel URL did not appear within 60s — cloudflared is still running in the background."
+      echo "  ${YELLOW}Watch progress:${RESET} tail -f $TUNNEL_LOG"
+      echo "  ${YELLOW}Or run manually:${RESET} cloudflared tunnel --url http://localhost:$PORT"
+    fi
   else
     echo ""
     echo "  ${YELLOW}To start the tunnel later, run:${RESET}"

@@ -5116,6 +5116,109 @@ app.delete('/api/tunnel', checkPin, (req, res) => {
   res.json({ success: true });
 });
 
+// ── SSH access (on-demand credentials for external SSH clients) ────────
+// Optional, off by default: credentials exist only after an explicit
+// PIN-authed POST. Key-only (ed25519), current-user authorized_keys,
+// managed lines tagged `webtun:<id>` so revoke never touches foreign keys.
+// Creation/deletion require PIN protection (requirePinSet) so an open
+// instance can't mint shell access for anyone on the network.
+const sshLib = require('./lib/ssh');
+
+app.get('/api/ssh/status', rateLimiter, checkPin, async (req, res) => {
+  try {
+    res.json(await sshLib.getSshStatus(DATA_DIR));
+  } catch (e) { sendErr(res, e, 500); }
+});
+
+app.get('/api/ssh/keys', rateLimiter, checkPin, (req, res) => {
+  try {
+    res.json({ keys: sshLib.listCredentials(DATA_DIR) });
+  } catch (e) { sendErr(res, e, 500); }
+});
+
+app.post('/api/ssh/credentials', authRateLimiter, checkPin, requirePinSet, (req, res) => {
+  try {
+    sshLib.requireSshEnabled(DATA_DIR);
+    const label = req.body && req.body.label;
+    let addedBy = '';
+    try { addedBy = describeChanger(req); } catch {}
+    const cred = sshLib.createCredential(DATA_DIR, { label, addedBy });
+    // The private key is returned ONCE and never stored — don't log it.
+    console.log(`  SSH credential created: ${cred.id} (${cred.label})`);
+    res.json(cred);
+  } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
+});
+
+app.delete('/api/ssh/keys/:id', authRateLimiter, checkPin, requirePinSet, (req, res) => {
+  try {
+    const out = sshLib.revokeCredential(DATA_DIR, req.params.id);
+    try { console.log(`  SSH credential revoked: ${req.params.id} (${out.label || ''})`); } catch {}
+    res.json(out);
+  } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
+});
+
+app.post('/api/ssh/port', authRateLimiter, checkPin, requirePinSet, (req, res) => {
+  try {
+    sshLib.requireSshEnabled(DATA_DIR);
+    res.json(sshLib.setExpectedPort(DATA_DIR, req.body && req.body.port));
+  } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
+});
+
+app.post('/api/ssh/cleanup', authRateLimiter, checkPin, requirePinSet, (req, res) => {
+  try {
+    const out = sshLib.cleanupOrphanedLines(DATA_DIR);
+    try { console.log(`  SSH orphan cleanup: removed ${out.removedLines} line(s)`); } catch {}
+    res.json(out);
+  } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
+});
+
+// ── SSH easy setup (one-click sshd / firewall / Tailscale / built-in SSH)
+// Read-only checks are cheap; every fix action is allow-listed server-side,
+// sudo -n only (never a password over the wire), and PIN-gated like the rest
+// of the SSH surface. Slow installs (apt, downloads) run async: the route
+// answers 202 and the outcome lands on the next GET.
+const sshSetup = require('./lib/ssh-setup');
+
+app.get('/api/ssh/setup', rateLimiter, checkPin, async (req, res) => {
+  try {
+    const out = await sshSetup.getSetupChecks(DATA_DIR);
+    try {
+      const m = await sshSetup.refreshManagedListening(DATA_DIR);
+      const row = out.checks.find(c => c.id === 'managed-sshd');
+      if (row) {
+        row.managed = { ...row.managed, listening: m.listening, pid: m.pid || (row.managed && row.managed.pid) || 0 };
+        if (m.listening) row.detail = `Built-in SSH running on ${m.port} (pid ${m.pid})`;
+      }
+    } catch {}
+    res.json(out);
+  } catch (e) { sendErr(res, e, 500); }
+});
+
+app.post('/api/ssh/setup/:action', authRateLimiter, checkPin, requirePinSet, async (req, res) => {
+  try {
+    const action = String(req.params.action || '');
+    const body = req.body || {};
+    const port = Number(body.port);
+    const authKey = typeof body.authKey === 'string' ? body.authKey.trim().slice(0, 200) : '';
+    const out = await sshSetup.runSetupAction(DATA_DIR, action, {
+      port: Number.isInteger(port) ? port : undefined,
+      authKey,
+    });
+    if (out && out.started) return res.status(202).json(out);
+    res.json(out);
+  } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
+});
+
+// Master switch backing Settings → Features → SSH Access. Turning it OFF is
+// a real teardown: the supervised built-in sshd stops and a WebTun-started
+// Tailnet disconnects (revoke/cleanup stay available — off is never a trap).
+app.post('/api/ssh/enabled', authRateLimiter, checkPin, requirePinSet, async (req, res) => {
+  try {
+    const on = !!(req.body && req.body.on);
+    res.json(await sshSetup.setSshFeatureEnabled(DATA_DIR, on));
+  } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
+});
+
 // ── App preview (loopback reverse-proxy) ─────────────────────────────
 // Renders `localhost:PORT` apps inside a WebTun tab via same-origin iframe:
 //   iframe src=/api/preview/5173/?token=… → http.request 127.0.0.1:5173/
@@ -5542,6 +5645,10 @@ function cleanup() {
     try { entry.proc.kill(); } catch {}
   }
   ptySessions.clear();
+  // Our supervised built-in sshd dies with us (the persisted `enabled` flag
+  // survives, so the next boot restores it). The userspace Tailscale daemon
+  // is deliberately LEFT running — it owns the Tailnet connection.
+  try { require('./lib/ssh-setup').shutdownManagedSshd(DATA_DIR); } catch {}
 }
 
 function startServer(opts = {}) {
@@ -5568,6 +5675,11 @@ function startServer(opts = {}) {
         writeTmuxClaim();
         cleanupOrphanTmuxSessions();
       }
+      // Restore the built-in SSH daemon if the user left it enabled (async:
+      // a slow sshd start must not delay the ready log).
+      try {
+        require('./lib/ssh-setup').bootManagedSshd(DATA_DIR).catch(() => {});
+      } catch {}
       resolve(server);
     });
   });

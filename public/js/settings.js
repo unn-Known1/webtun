@@ -22,6 +22,7 @@ function loadSettings() {
       if (typeof s.screensaverMin === 'number' && s.screensaverMin >= 1 && s.screensaverMin <= 120) settings.screensaverMin = s.screensaverMin;
       if (typeof s.gitEnabled === 'boolean') settings.gitEnabled = s.gitEnabled;
       if (typeof s.gitSimple === 'boolean') settings.gitSimple = s.gitSimple;
+      if (typeof s.sshEnabled === 'boolean') settings.sshEnabled = s.sshEnabled;
       if (typeof s.clipboardRead === 'boolean') settings.clipboardRead = s.clipboardRead;
       if (typeof s.termRightClick === 'boolean') settings.termRightClick = s.termRightClick;
       if (typeof s.autostart === 'boolean') settings.autostart = s.autostart;
@@ -32,9 +33,10 @@ function loadSettings() {
   document.getElementById('s-scrollback').value = settings.scrollback;
   document.getElementById('s-font').value = settings.font;
   document.getElementById('s-cursor').value = settings.cursor;
-  syncToggle('blink'); syncToggle('bell'); syncToggle('clipboardRead'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver'); syncToggle('termRightClick'); syncToggle('screensaver'); syncToggle('gitEnabled'); syncToggle('gitSimple');
+  syncToggle('blink'); syncToggle('bell'); syncToggle('clipboardRead'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver'); syncToggle('termRightClick'); syncToggle('screensaver'); syncToggle('gitEnabled'); syncToggle('gitSimple'); syncToggle('sshEnabled');
   try { if (typeof applyGitEnabled === 'function') applyGitEnabled(); } catch {}
   try { if (typeof applyGitSimple === 'function') applyGitSimple(); } catch {}
+  try { if (typeof applySshEnabled === 'function') applySshEnabled(); } catch {}
   syncKeepAwakeUI();
   if (settings.keepAwake && hasWakeLock) { requestWakeLock(); }
   if (isElectron) {
@@ -52,7 +54,7 @@ const DEFAULT_SETTINGS = {
   theme: 'light', fontSize: 14, font: "'JetBrains Mono', 'SF Mono', 'Fira Code', Consolas, monospace",
   cursor: 'block', blink: true, scrollback: 5000, bell: false,
   mobilekeys: false, confirmclose: true, datasaver: false, autostart: false, keepAwake: false, termRightClick: true,
-  screensaver: false, screensaverMin: 5, gitEnabled: true, gitSimple: true,
+  screensaver: false, screensaverMin: 5, gitEnabled: true, gitSimple: true, sshEnabled: false,
   clipboardRead: false // off: OSC 52 GET (program reads your clipboard) needs consent
 };
 
@@ -119,6 +121,11 @@ function toggleSetting(k) {
   if (k === 'gitSimple') {
     try { applyGitSimple(); } catch {}
   }
+  if (k === 'sshEnabled') {
+    try { applySshEnabled(); } catch {}
+    // Server-enforced master switch (teardown on OFF). Reverts on failure.
+    try { if (typeof syncSshEnabledToServer === 'function') syncSshEnabledToServer(); } catch {}
+  }
 }
 
 function applyGitSimple() {
@@ -152,6 +159,18 @@ function updateGitFootRow() {
   foot.style.display = (advShown || moreShown) ? '' : 'none';
 }
 
+function applySshEnabled() {
+  // The header SSH button is always present, but dimmed while the feature is
+  // off — the popup itself gates every control behind the same flag.
+  const btn = document.getElementById('ssh-toggle');
+  if (!btn) return;
+  const on = settings.sshEnabled === true;
+  btn.classList.toggle('ssh-off', !on);
+  btn.setAttribute('aria-disabled', String(!on));
+  btn.title = on
+    ? 'SSH Access — on-demand keys for Termius & ssh'
+    : 'SSH Access is off — enable it in Settings → Features';
+}
 function applyGitEnabled() {
   const section = document.getElementById('git-section');
   if (!section) return;

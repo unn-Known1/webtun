@@ -57,7 +57,20 @@ const isJs = p => p.endsWith('.js');
 function assertJsSyntax(buf, name) {
   // vm.Script compiles without executing — equivalent to `node --check`
   // for the CommonJS tree this project ships (the CI gate uses --check).
-  new vm.Script(buf.toString('utf8'), { filename: name });
+  // Bare vm.Script rejects top-level `return` (Illegal return statement),
+  // but that is legal in CommonJS — Node wraps every module in
+  // (exports, require, module, __filename, __dirname). electron/main.js
+  // uses it for the Squirrel startup early-return, so retry wrapped.
+  const code = buf.toString('utf8');
+  try {
+    new vm.Script(code, { filename: name });
+  } catch (e) {
+    if (/Illegal return/.test(e && e.message || '')) {
+      new vm.Script('(function(exports,require,module,__filename,__dirname){' + code + '\n})', { filename: name });
+      return;
+    }
+    throw e;
+  }
 }
 function readFile(p) {
   try {

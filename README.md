@@ -107,6 +107,11 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 - Live status indicators, tunnels survive restarts
 - Stop/kill tunnels from settings panel
 
+### SSH Access
+- On-demand key-only credentials for Termius, VS Code Remote-SSH, plain `ssh`/`rsync`/`sftp` — nothing created until you ask (header SSH button → Generate, after enabling SSH once in Settings → Features)
+- ed25519 per device, private key shown once and never stored; per-key revoke; requires PIN protection
+- Same user as your web terminals, so files and permissions match; host fingerprints + LAN/Tailscale addresses shown for first-connect verification
+
 ### System Stats
 - CPU, Memory, Disk, Uptime — real-time with progress bars
 - GPU detection (nvidia-smi, system_profiler, WMI)
@@ -157,6 +162,7 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 | `WEBTUN_SHELL` | Override shell on Windows | PowerShell |
 | `ALLOWED_ORIGINS` | Extra WebSocket origins (comma-separated) when served from another hostname | same-origin only |
 | `PREVIEW_PORTS` | Allow-list of ports the app preview may proxy (comma-separated) | any port except WebTun's own |
+| `SSH_PORT` | Expected SSH port shown in Settings → SSH Access | `2222` |
 
 ---
 
@@ -199,6 +205,11 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 ---
 
 ## Changelog
+
+### v2.2.5
+- **SSH access (opt-in)** — on-demand key-only ed25519 credentials from a header popup for Termius/mobile/`ssh` clients: status stat-trio with port pill, one-click Easy Setup checks (sshd, firewall, Tailscale userspace serve, built-in managed sshd) with per-check fix buttons, copy-ready Tailscale/LAN recipes (Docker-bridge addresses filtered), session single-use private keys; Features toggle is server-enforced (default off) and kills managed sshd + WebTun-started Tailnet on disable
+- **Login** — Enter-to-unlock now works on every showing of the PIN screen (plus input-level fallback), not just fresh boot
+- **File properties** — permissions info button with live octal/symbolic decode
 
 ### v2.2.4
 - **Security hardening (full-codebase grill-review fixes)** — reflected-XSS escape in preview errors, fail-closed raw-PIN path, PIN rotation persist-first with pending-clearance, preview sockets reaped on rotate/revoke, per-UID 0600 tmux claim file
