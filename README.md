@@ -206,6 +206,11 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 
 ## Changelog
 
+### v2.2.5
+- **SSH access (opt-in)** — on-demand key-only ed25519 credentials from a header popup for Termius/mobile/`ssh` clients: status stat-trio with port pill, one-click Easy Setup checks (sshd, firewall, Tailscale userspace serve, built-in managed sshd) with per-check fix buttons, copy-ready Tailscale/LAN recipes (Docker-bridge addresses filtered), session single-use private keys; Features toggle is server-enforced (default off) and kills managed sshd + WebTun-started Tailnet on disable
+- **Login** — Enter-to-unlock now works on every showing of the PIN screen (plus input-level fallback), not just fresh boot
+- **File properties** — permissions info button with live octal/symbolic decode
+
 ### v2.2.4
 - **Security hardening (full-codebase grill-review fixes)** — reflected-XSS escape in preview errors, fail-closed raw-PIN path, PIN rotation persist-first with pending-clearance, preview sockets reaped on rotate/revoke, per-UID 0600 tmux claim file
 - **Backend** — tunnel/upload SSRF closed (all-address DNS vetting, non-canonical IP deny), CWD `cloudflared` candidates removed, upload depth caps + no silent overwrite, zip running-total cap with fd-based writes, git route guards (`--` separators, root-diff reject, credential scrubbing), search walk capped + sandboxed, `JSON_LIMIT`/`JSON_LIMIT_LARGE` env knobs, merge rollback now restores overwritten files
