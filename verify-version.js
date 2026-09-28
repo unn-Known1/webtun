@@ -57,9 +57,23 @@ if (lock) {
 }
 
 // A `v*` tag build must match the manifest, or CI publishes the wrong version.
-// Strict: any GITHUB_REF_NAME on a tag build must carry the `v` prefix — a
-// `2.2.3`-style tag used to slip past this check entirely.
-const tag = process.env.GITHUB_REF_NAME || '';
+// Strict: any tag build must carry the `v` prefix — a `2.2.3`-style tag used
+// to slip past this check entirely.
+//
+// Only runs on real tag builds. PR builds check out refs/pull/N/merge with
+// GITHUB_REF_NAME like `9/merge` — treating that as a tag turned every PR
+// check red. Gate on GITHUB_REF_TYPE / GITHUB_REF instead.
+const ref = process.env.GITHUB_REF || '';
+const refType = process.env.GITHUB_REF_TYPE || '';
+const refName = process.env.GITHUB_REF_NAME || '';
+const isTagBuild =
+  refType === 'tag' ||
+  ref.startsWith('refs/tags/') ||
+  // Fallback for runners/contexts without REF_TYPE: a bare `vX.Y.Z` name
+  // with no `/` is almost certainly a tag; anything with a `/` (e.g.
+  // `9/merge`) is a branch or PR ref and must not be checked as a tag.
+  (/^v\d/.test(refName) && !refName.includes('/'));
+const tag = isTagBuild ? refName : '';
 if (tag) {
   if (!tag.startsWith('v')) {
     problems.push(`git tag ${tag} is missing the required "v" prefix (want v${version}) — CI only builds v* tags`);
