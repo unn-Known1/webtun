@@ -22,6 +22,7 @@ function loadSettings() {
       if (typeof s.screensaverMin === 'number' && s.screensaverMin >= 1 && s.screensaverMin <= 120) settings.screensaverMin = s.screensaverMin;
       if (typeof s.gitEnabled === 'boolean') settings.gitEnabled = s.gitEnabled;
       if (typeof s.gitSimple === 'boolean') settings.gitSimple = s.gitSimple;
+      if (typeof s.sshEnabled === 'boolean') settings.sshEnabled = s.sshEnabled;
       if (typeof s.clipboardRead === 'boolean') settings.clipboardRead = s.clipboardRead;
       if (typeof s.termRightClick === 'boolean') settings.termRightClick = s.termRightClick;
       if (typeof s.autostart === 'boolean') settings.autostart = s.autostart;
@@ -32,9 +33,10 @@ function loadSettings() {
   document.getElementById('s-scrollback').value = settings.scrollback;
   document.getElementById('s-font').value = settings.font;
   document.getElementById('s-cursor').value = settings.cursor;
-  syncToggle('blink'); syncToggle('bell'); syncToggle('clipboardRead'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver'); syncToggle('termRightClick'); syncToggle('screensaver'); syncToggle('gitEnabled'); syncToggle('gitSimple');
+  syncToggle('blink'); syncToggle('bell'); syncToggle('clipboardRead'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver'); syncToggle('termRightClick'); syncToggle('screensaver'); syncToggle('gitEnabled'); syncToggle('gitSimple'); syncToggle('sshEnabled');
   try { if (typeof applyGitEnabled === 'function') applyGitEnabled(); } catch {}
   try { if (typeof applyGitSimple === 'function') applyGitSimple(); } catch {}
+  try { if (typeof applySshEnabled === 'function') applySshEnabled(); } catch {}
   syncKeepAwakeUI();
   if (settings.keepAwake && hasWakeLock) { requestWakeLock(); }
   if (isElectron) {
@@ -52,7 +54,7 @@ const DEFAULT_SETTINGS = {
   theme: 'light', fontSize: 14, font: "'JetBrains Mono', 'SF Mono', 'Fira Code', Consolas, monospace",
   cursor: 'block', blink: true, scrollback: 5000, bell: false,
   mobilekeys: false, confirmclose: true, datasaver: false, autostart: false, keepAwake: false, termRightClick: true,
-  screensaver: false, screensaverMin: 5, gitEnabled: true, gitSimple: true,
+  screensaver: false, screensaverMin: 5, gitEnabled: true, gitSimple: true, sshEnabled: false,
   clipboardRead: false // off: OSC 52 GET (program reads your clipboard) needs consent
 };
 
@@ -119,6 +121,9 @@ function toggleSetting(k) {
   if (k === 'gitSimple') {
     try { applyGitSimple(); } catch {}
   }
+  if (k === 'sshEnabled') {
+    try { applySshEnabled(); } catch {}
+  }
 }
 
 function applyGitSimple() {
@@ -152,6 +157,18 @@ function updateGitFootRow() {
   foot.style.display = (advShown || moreShown) ? '' : 'none';
 }
 
+function applySshEnabled() {
+  // The header SSH button is always present, but dimmed while the feature is
+  // off — the popup itself gates every control behind the same flag.
+  const btn = document.getElementById('ssh-toggle');
+  if (!btn) return;
+  const on = settings.sshEnabled === true;
+  btn.classList.toggle('ssh-off', !on);
+  btn.setAttribute('aria-disabled', String(!on));
+  btn.title = on
+    ? 'SSH Access — on-demand keys for Termius & ssh'
+    : 'SSH Access is off — enable it in Settings → Features';
+}
 function applyGitEnabled() {
   const section = document.getElementById('git-section');
   if (!section) return;
@@ -192,9 +209,6 @@ function openSettings() {
     // Tunnel ids change on auto-restart and dead rows otherwise linger until
     // reload — resync every time the panel opens, like sessions above.
     try { restoreTunnels(); } catch {}
-    // SSH status (listening ports, keys) is cheap and host-specific — resync
-    // on every open so the Termius recipe never shows stale IPs/ports.
-    try { refreshSshStatus(); } catch {}
     // Replay staggered card entrance on every open
     panel.classList.remove('sec-anim');
     void panel.offsetWidth;
@@ -242,7 +256,6 @@ const _secIcons = {
   terminal: '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>',
   interface: '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/><circle cx="9" cy="6" r="2.2"/><circle cx="15" cy="12" r="2.2"/><circle cx="7" cy="18" r="2.2"/>',
   tunnel: '<path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>',
-  ssh: '<rect x="2" y="7" width="20" height="10" rx="2"/><path d="M6 11h.01M10 11h.01M14 11h.01M18 11h.01M7 14h10"/>',
   system: '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>',
   features: '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/>',
   reset: '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>',

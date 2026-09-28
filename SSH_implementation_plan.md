@@ -507,3 +507,27 @@ UI (`public/js/ssh.js`, `public/index.html`):
 Docs: `/docs` SSH callout covers the port setting + orphan cleanup. No new
 precached assets, so no `sw.js` bump. Live re-verified: port set/fallback,
 planted-orphan cleanup, create → `LOGIN_OK` → revoke → denied, guards intact.
+
+---
+
+## 13. UI move — header popup + Features toggle (2026-09-28)
+
+Per request: SSH lives in its own popup, not in Settings.
+
+- **Header button** `#ssh-toggle` directly after the Command Library button:
+  `>_` icon with an `SSH` caption below it (`.hdr-stack-btn`), plus an
+  `SSH Access` entry in the overflow (⋯) menu for narrow screens.
+- **`#ssh-overlay`** (`modal-lg`, standard `openOverlay` conventions):
+  hosts the full SSH UI (status, generate, show-once key, key list, orphan
+  cleanup, port, recipe, setup hint) — same element IDs, `ssh.js` untouched
+  except gate logic.
+- **Settings → Features → SSH Access toggle only** (`settings.sshEnabled`,
+  default **off**, persisted in `wt-settings`, covered by Reset). The header
+  icon is always present but dimmed while off; the popup shows a gate card
+  ("SSH is turned off" + Open Settings shortcut) and every mutation
+  double-guards via `requireSshEnabled()`. No status fetch happens while
+  gated. Server-side PIN/approval gates are unchanged.
+- Docs (`/docs` steps re-numbered, section counts back to seven) and README
+  updated to the new flow. Verified: stub-DOM harness (gated = no API calls,
+  all mutations toasted-blocked; enabled = status fetched), syntax + smoke,
+  all 25 element IDs present exactly once.

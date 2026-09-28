@@ -108,7 +108,7 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 - Stop/kill tunnels from settings panel
 
 ### SSH Access
-- On-demand key-only credentials for Termius, VS Code Remote-SSH, plain `ssh`/`rsync`/`sftp` — nothing created until you ask (Settings → SSH Access → Generate)
+- On-demand key-only credentials for Termius, VS Code Remote-SSH, plain `ssh`/`rsync`/`sftp` — nothing created until you ask (header SSH button → Generate, after enabling SSH once in Settings → Features)
 - ed25519 per device, private key shown once and never stored; per-key revoke; requires PIN protection
 - Same user as your web terminals, so files and permissions match; host fingerprints + LAN/Tailscale addresses shown for first-connect verification
 

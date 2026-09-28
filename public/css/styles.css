@@ -526,6 +526,10 @@ body.editor-docked #editor-resize-handle { display: none; }
 .icon-btn { width: 36px; height: 36px; min-width: 36px; min-height: 36px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius); color: var(--fg2); transition: background var(--transition-fast), color var(--transition-fast); }
 .icon-btn:hover { background: var(--bg4); color: var(--fg); }
 .icon-btn.active { color: var(--accent); }
+/* Stacked header button: icon with a small caption below (SSH next to Command Library) */
+.hdr-stack-btn { flex-direction: column; gap: 1px; }
+.hdr-stack-btn .hdr-cap { font-size: 8px; font-weight: 700; letter-spacing: 0.5px; line-height: 1; font-family: var(--font-ui); }
+#ssh-toggle.ssh-off { opacity: 0.45; }
 
 .keep-awake { display: flex; align-items: center; justify-content: center; margin-left: 4px; cursor: pointer; width: 36px; height: 36px; min-width: 36px; border-radius: var(--radius); color: var(--fg2); transition: background var(--transition-fast), color var(--transition-fast); }
 .keep-awake:hover { background: var(--bg4); color: var(--fg); }

@@ -8,6 +8,41 @@
 let _sshStatus = null;
 let _sshKeys = [];
 
+// Feature flag: Settings → Features → SSH Access. The header button is always
+// visible, but every control in the popup stays locked until this is on.
+function sshEnabled() {
+  try { return typeof settings !== 'undefined' && settings.sshEnabled === true; } catch { return false; }
+}
+
+function openSshPanel() {
+  try { hideTabMenus(); } catch {}
+  const on = sshEnabled();
+  const gate = document.getElementById('ssh-gate');
+  const body = document.getElementById('ssh-body');
+  const refreshBtn = document.getElementById('ssh-refresh-btn');
+  if (gate) gate.style.display = on ? 'none' : '';
+  if (body) body.style.display = on ? '' : 'none';
+  if (refreshBtn) refreshBtn.style.display = on ? '' : 'none';
+  try { applySshEnabled(); } catch {}
+  openOverlay('ssh-overlay');
+  if (on) { try { refreshSshStatus(); } catch {} }
+}
+
+function closeSshPanel() {
+  closeOverlay('ssh-overlay');
+}
+
+function openSshSettings() {
+  closeOverlay('ssh-overlay');
+  setTimeout(() => { try { openSettings(); } catch {} }, 60);
+}
+
+function requireSshEnabled() {
+  if (sshEnabled()) return true;
+  toast('Enable SSH in Settings → Features first', 'warning');
+  return false;
+}
+
 function sshEffectivePort(s) {
   if (s && Number.isInteger(s.effectivePort)) return s.effectivePort;
   if (s && Number.isInteger(s.port)) return s.port;
@@ -97,6 +132,7 @@ function renderSshOrphans(s) {
 }
 
 async function cleanupSshOrphans() {
+  if (!requireSshEnabled()) return;
   const n = _sshStatus ? Number(_sshStatus.orphaned || 0) : 0;
   const ok = await confirmDialog({
     title: 'Remove orphaned keys?',
@@ -242,6 +278,7 @@ function renderSshKeys() {
 }
 
 async function generateSshCredential() {
+  if (!requireSshEnabled()) return;
   const btn = document.getElementById('ssh-generate-btn');
   if (!btn || btn.dataset.busy === 'true' || btn.disabled) return;
   const labelEl = document.getElementById('ssh-label');
@@ -333,6 +370,7 @@ function downloadSshOnceKey() {
 }
 
 async function saveSshPort() {
+  if (!requireSshEnabled()) return;
   const btn = document.getElementById('ssh-port-btn');
   if (btn && btn.dataset.busy === 'true') return;
   const input = document.getElementById('ssh-port');
@@ -358,6 +396,7 @@ async function saveSshPort() {
 }
 
 async function revokeSshKey(id, label, fingerprint, createdAt) {
+  if (!requireSshEnabled()) return;
   let when = '';
   try { when = createdAt ? new Date(createdAt).toLocaleString() : ''; } catch {}
   const ok = await confirmDialog({
