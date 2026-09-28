@@ -107,6 +107,11 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 - Live status indicators, tunnels survive restarts
 - Stop/kill tunnels from settings panel
 
+### SSH Access
+- On-demand key-only credentials for Termius, VS Code Remote-SSH, plain `ssh`/`rsync`/`sftp` — nothing created until you ask (Settings → SSH Access → Generate)
+- ed25519 per device, private key shown once and never stored; per-key revoke; requires PIN protection
+- Same user as your web terminals, so files and permissions match; host fingerprints + LAN/Tailscale addresses shown for first-connect verification
+
 ### System Stats
 - CPU, Memory, Disk, Uptime — real-time with progress bars
 - GPU detection (nvidia-smi, system_profiler, WMI)
@@ -157,6 +162,7 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 | `WEBTUN_SHELL` | Override shell on Windows | PowerShell |
 | `ALLOWED_ORIGINS` | Extra WebSocket origins (comma-separated) when served from another hostname | same-origin only |
 | `PREVIEW_PORTS` | Allow-list of ports the app preview may proxy (comma-separated) | any port except WebTun's own |
+| `SSH_PORT` | Expected SSH port shown in Settings → SSH Access | `2222` |
 
 ---
 

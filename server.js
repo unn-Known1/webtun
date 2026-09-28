@@ -5116,6 +5116,60 @@ app.delete('/api/tunnel', checkPin, (req, res) => {
   res.json({ success: true });
 });
 
+// ── SSH access (on-demand credentials for external SSH clients) ────────
+// Optional, off by default: credentials exist only after an explicit
+// PIN-authed POST. Key-only (ed25519), current-user authorized_keys,
+// managed lines tagged `webtun:<id>` so revoke never touches foreign keys.
+// Creation/deletion require PIN protection (requirePinSet) so an open
+// instance can't mint shell access for anyone on the network.
+const sshLib = require('./lib/ssh');
+
+app.get('/api/ssh/status', rateLimiter, checkPin, async (req, res) => {
+  try {
+    res.json(await sshLib.getSshStatus(DATA_DIR));
+  } catch (e) { sendErr(res, e, 500); }
+});
+
+app.get('/api/ssh/keys', rateLimiter, checkPin, (req, res) => {
+  try {
+    res.json({ keys: sshLib.listCredentials(DATA_DIR) });
+  } catch (e) { sendErr(res, e, 500); }
+});
+
+app.post('/api/ssh/credentials', authRateLimiter, checkPin, requirePinSet, (req, res) => {
+  try {
+    const label = req.body && req.body.label;
+    let addedBy = '';
+    try { addedBy = describeChanger(req); } catch {}
+    const cred = sshLib.createCredential(DATA_DIR, { label, addedBy });
+    // The private key is returned ONCE and never stored — don't log it.
+    console.log(`  SSH credential created: ${cred.id} (${cred.label})`);
+    res.json(cred);
+  } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
+});
+
+app.delete('/api/ssh/keys/:id', authRateLimiter, checkPin, requirePinSet, (req, res) => {
+  try {
+    const out = sshLib.revokeCredential(DATA_DIR, req.params.id);
+    try { console.log(`  SSH credential revoked: ${req.params.id} (${out.label || ''})`); } catch {}
+    res.json(out);
+  } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
+});
+
+app.post('/api/ssh/port', authRateLimiter, checkPin, requirePinSet, (req, res) => {
+  try {
+    res.json(sshLib.setExpectedPort(DATA_DIR, req.body && req.body.port));
+  } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
+});
+
+app.post('/api/ssh/cleanup', authRateLimiter, checkPin, requirePinSet, (req, res) => {
+  try {
+    const out = sshLib.cleanupOrphanedLines(DATA_DIR);
+    try { console.log(`  SSH orphan cleanup: removed ${out.removedLines} line(s)`); } catch {}
+    res.json(out);
+  } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
+});
+
 // ── App preview (loopback reverse-proxy) ─────────────────────────────
 // Renders `localhost:PORT` apps inside a WebTun tab via same-origin iframe:
 //   iframe src=/api/preview/5173/?token=… → http.request 127.0.0.1:5173/

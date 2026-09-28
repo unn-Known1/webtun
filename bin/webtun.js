@@ -31,6 +31,7 @@ function printHelp() {
     WEBTUN_SHELL          override the shell on Windows (e.g. /usr/bin/bash for Git Bash)
     ALLOWED_ORIGINS       extra WebSocket origins, comma-separated (custom hostnames)
     PREVIEW_PORTS         restrict app-preview targets, comma-separated (default: any)
+    SSH_PORT              expected SSH port shown in Settings → SSH Access (default: 2222)
     XDG_CONFIG_HOME       where runtime state lives (default: ~/.config/webtun)
 
   Examples:

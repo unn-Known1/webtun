@@ -192,6 +192,9 @@ function openSettings() {
     // Tunnel ids change on auto-restart and dead rows otherwise linger until
     // reload — resync every time the panel opens, like sessions above.
     try { restoreTunnels(); } catch {}
+    // SSH status (listening ports, keys) is cheap and host-specific — resync
+    // on every open so the Termius recipe never shows stale IPs/ports.
+    try { refreshSshStatus(); } catch {}
     // Replay staggered card entrance on every open
     panel.classList.remove('sec-anim');
     void panel.offsetWidth;
@@ -239,6 +242,7 @@ const _secIcons = {
   terminal: '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>',
   interface: '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/><circle cx="9" cy="6" r="2.2"/><circle cx="15" cy="12" r="2.2"/><circle cx="7" cy="18" r="2.2"/>',
   tunnel: '<path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>',
+  ssh: '<rect x="2" y="7" width="20" height="10" rx="2"/><path d="M6 11h.01M10 11h.01M14 11h.01M18 11h.01M7 14h10"/>',
   system: '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>',
   features: '<circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/>',
   reset: '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>',

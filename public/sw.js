@@ -1,4 +1,4 @@
-const CACHE = 'webtun-v9';
+const CACHE = 'webtun-v10';
 const PRECACHE = [
   '/',
   '/index.html',
@@ -16,6 +16,7 @@ const PRECACHE = [
   '/js/launchpad.js',
   '/js/settings.js',
   '/js/security.js',
+  '/js/ssh.js',
   '/js/git.js',
   '/js/misc.js',
   '/js/theme-init.js',
