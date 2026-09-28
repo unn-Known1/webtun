@@ -39,7 +39,9 @@ async function resetSettings() {
   document.getElementById('s-font').value = settings.font;
   document.getElementById('s-cursor').value = settings.cursor;
   document.getElementById('s-screensaver-min').value = settings.screensaverMin;
-  syncToggle('blink'); syncToggle('bell'); syncToggle('clipboardRead'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver'); syncToggle('termRightClick'); syncToggle('screensaver'); syncToggle('gitEnabled'); syncToggle('gitSimple'); syncToggle('autostart');
+  syncToggle('blink'); syncToggle('bell'); syncToggle('clipboardRead'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver'); syncToggle('termRightClick'); syncToggle('screensaver'); syncToggle('gitEnabled'); syncToggle('gitSimple'); syncToggle('sshEnabled'); syncToggle('autostart');
+  try { if (typeof applySshEnabled === 'function') applySshEnabled(); } catch {}
+  try { if (typeof syncSshEnabledToServer === 'function') syncSshEnabledToServer(); } catch {}
   // keepAwake is a header checkbox, not a settings toggle — resync it
   try { if (typeof syncKeepAwakeUI === 'function') syncKeepAwakeUI(); } catch {}
   // Clear an active auto-screensaver and the search filter (sections stay hidden otherwise)
@@ -660,4 +662,16 @@ function showPinScreen() {
   });
   tabs = [];
   activeTabId = null;
+  // Enter-to-unlock must work on EVERY showing of this screen, not just first
+  // load: init() wires it only on the fresh-boot PIN path, so sessions that
+  // resume via stored token (or get kicked here by a 401/revoke later) ended
+  // up with an input where Enter did nothing. Idempotent remove+add.
+  try {
+    const pinIn = document.getElementById('pin-input');
+    if (pinIn && typeof handlePinKeydown === 'function') {
+      pinIn.removeEventListener('keydown', handlePinKeydown);
+      pinIn.addEventListener('keydown', handlePinKeydown);
+      pinIn.focus();
+    }
+  } catch {}
 }

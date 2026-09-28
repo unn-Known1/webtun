@@ -1575,7 +1575,44 @@ async function openProperties(path) {
   if (canChmod) {
     const inp = document.getElementById('props-mode');
     inp.value = st.permissions || st.mode || '';
+    try { updatePropsModeDecode(); } catch {}
   }
+}
+
+// "Permissions (octal)" ⓘ helper: toggles the explainer; the decode line
+// under the input always reflects the currently typed value.
+function togglePropsModeHelp() {
+  const help = document.getElementById('props-mode-help');
+  const btn = document.getElementById('props-mode-info-btn');
+  if (!help) return;
+  const open = help.style.display === 'none';
+  help.style.display = open ? '' : 'none';
+  if (btn) btn.setAttribute('aria-expanded', String(open));
+}
+
+function decodeOctalMode(mode) {
+  const m = String(mode || '').trim();
+  if (!/^[0-7]{3,4}$/.test(m)) return '';
+  const digits = m.slice(-3).split('').map(Number);
+  const names = ['owner', 'group', 'others'];
+  const rwx = digits.map(d => ((d & 4) ? 'r' : '-') + ((d & 2) ? 'w' : '-') + ((d & 1) ? 'x' : '-')).join('');
+  const words = digits.map(d => {
+    const bits = [];
+    if (d & 4) bits.push('read');
+    if (d & 2) bits.push('write');
+    if (d & 1) bits.push('execute');
+    return bits.length ? bits.join('+') : 'nothing';
+  });
+  let out = `${m} → ${rwx} — ` + names.map((n, i) => `${n}: ${words[i]}`).join('; ');
+  if (m.length === 4 && m[0] !== '0') out += ' (leading digit = special bits: setuid/setgid/sticky)';
+  return out;
+}
+
+function updatePropsModeDecode() {
+  const el = document.getElementById('props-mode-decode');
+  const inp = document.getElementById('props-mode');
+  if (!el || !inp) return;
+  el.textContent = decodeOctalMode(inp.value);
 }
 
 async function savePropsMode() {

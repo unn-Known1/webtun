@@ -5138,6 +5138,7 @@ app.get('/api/ssh/keys', rateLimiter, checkPin, (req, res) => {
 
 app.post('/api/ssh/credentials', authRateLimiter, checkPin, requirePinSet, (req, res) => {
   try {
+    sshLib.requireSshEnabled(DATA_DIR);
     const label = req.body && req.body.label;
     let addedBy = '';
     try { addedBy = describeChanger(req); } catch {}
@@ -5158,6 +5159,7 @@ app.delete('/api/ssh/keys/:id', authRateLimiter, checkPin, requirePinSet, (req, 
 
 app.post('/api/ssh/port', authRateLimiter, checkPin, requirePinSet, (req, res) => {
   try {
+    sshLib.requireSshEnabled(DATA_DIR);
     res.json(sshLib.setExpectedPort(DATA_DIR, req.body && req.body.port));
   } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
 });
@@ -5204,6 +5206,16 @@ app.post('/api/ssh/setup/:action', authRateLimiter, checkPin, requirePinSet, asy
     });
     if (out && out.started) return res.status(202).json(out);
     res.json(out);
+  } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
+});
+
+// Master switch backing Settings → Features → SSH Access. Turning it OFF is
+// a real teardown: the supervised built-in sshd stops and a WebTun-started
+// Tailnet disconnects (revoke/cleanup stay available — off is never a trap).
+app.post('/api/ssh/enabled', authRateLimiter, checkPin, requirePinSet, async (req, res) => {
+  try {
+    const on = !!(req.body && req.body.on);
+    res.json(await sshSetup.setSshFeatureEnabled(DATA_DIR, on));
   } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
 });
 

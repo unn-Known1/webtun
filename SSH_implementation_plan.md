@@ -568,3 +568,26 @@ Goal set by review: the app handles everything, the user taps once per row.
   login tap is the user's identity and can't be automated; a Docker deploy
   still needs one host-side grant (published port or host Tailscale) — the
   wizard says exactly which.
+
+---
+
+## 15. Toggle-off is a real kill switch (2026-09-28)
+
+Answer to "does the Settings toggle turn SSH off while connected?": it did
+not (client-side UI lock only) — now it does, for everything WebTun owns.
+
+- Server-persisted master switch (`enabled`, default off) in `.ssh-state.json`,
+  flipped via `POST /api/ssh/enabled` whenever the Features toggle (or Reset)
+  changes. Creation, port changes and all constructive setup actions 403
+  while off; status/keys/revoke/cleanup stay available.
+- Toggle-off teardown (`setSshFeatureEnabled`): stops the supervised built-in
+  sshd and disconnects a Tailnet WebTun itself brought up
+  (provenance-tracked `tailscaleManaged` — a user's own Tailnet is never
+  touched). Issued keys are deliberately NOT auto-revoked; a Tailscale
+  Disconnect button appears on the wizard row when applicable.
+- Boot restores nothing while disabled. The popup gate follows the server
+  value once status arrives (multi-device drift safe).
+- Verified live: create-while-disabled → 403; enable → create + managed
+  start; disable → managed port closed + create 403 + status readable;
+  revoke-while-disabled works; a real orphan from early testing was caught
+  by `orphaned: 1` and cleaned.

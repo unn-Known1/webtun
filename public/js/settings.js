@@ -123,6 +123,8 @@ function toggleSetting(k) {
   }
   if (k === 'sshEnabled') {
     try { applySshEnabled(); } catch {}
+    // Server-enforced master switch (teardown on OFF). Reverts on failure.
+    try { if (typeof syncSshEnabledToServer === 'function') syncSshEnabledToServer(); } catch {}
   }
 }
 

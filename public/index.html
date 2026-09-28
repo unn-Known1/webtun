@@ -56,7 +56,7 @@
     <div class="pin-eyebrow">Secure access</div>
     <h1 style="display:flex;align-items:center;justify-content:center;gap:6px"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="10" y2="8"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="6" y1="16" x2="8" y2="16"/><line x1="12" y1="8" x2="18" y2="8"/><line x1="12" y1="12" x2="18" y2="12"/><line x1="12" y1="16" x2="16" y2="16"/><line x1="10" y1="16" x2="10" y2="16"/></svg>WebTun</h1>
     <p>Enter PIN to continue</p>
-    <input id="pin-input" type="password" placeholder="••••" autocomplete="off" maxlength="64" inputmode="text" aria-label="PIN code">
+    <input id="pin-input" type="password" placeholder="••••" autocomplete="off" maxlength="64" inputmode="text" aria-label="PIN code" onkeydown="if(event.key==='Enter'){event.preventDefault();submitPin()}">
     <div id="pin-error" role="alert"></div>
     <div style="margin-top:12px">
       <button class="btn btn-primary" id="pin-unlock-btn" onclick="submitPin()">Unlock</button>
@@ -906,62 +906,59 @@
 
 <!-- SSH Access popup -->
 <div class="overlay" id="ssh-overlay" role="dialog" aria-modal="true" aria-label="SSH Access">
-  <div class="modal modal-lg">
+  <div class="modal">
     <h2 style="display:flex;align-items:center;gap:6px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>SSH Access</h2>
-    <div style="font-size:11px;color:var(--fg3);margin:-12px 0 6px">Key-only shell access for external apps (Termius, VS&nbsp;Code Remote-SSH, <span style="font-family:var(--font)">ssh</span>). Off until you generate a key — nothing is created automatically.</div>
-    <div id="ssh-gate" style="display:none;border:1px solid var(--border);border-radius:8px;padding:14px;text-align:center">
-      <div style="font-size:13px;font-weight:700;margin-bottom:4px">SSH is turned off</div>
-      <div style="font-size:12px;color:var(--fg2);margin-bottom:10px">Enable it in Settings → Features → SSH Access to generate keys and connect Termius &amp; co.</div>
+    <div class="ssh-sub">Key-only shell access for external apps (Termius, VS&nbsp;Code Remote-SSH, <span style="font-family:var(--font)">ssh</span>). Off until you generate a key — nothing is created automatically.</div>
+    <div id="ssh-gate" class="ssh-gate" style="display:none">
+      <div class="ssh-gate-title">SSH is turned off</div>
+      <div class="ssh-gate-sub">Enable it in Settings → Features → SSH Access to generate keys and connect Termius &amp; co.</div>
       <button class="btn btn-primary" onclick="openSshSettings()">Open Settings</button>
     </div>
     <div id="ssh-body">
-      <div style="font-size:12px;font-weight:700;margin-top:2px">Easy setup <span style="font-weight:400;color:var(--fg3)">— one tap per row, the app does the rest</span></div>
-      <div id="ssh-setup-list" style="display:flex;flex-direction:column;gap:6px;margin-top:6px"></div>
-      <div id="ssh-setup-result" style="display:none;font-size:11px;margin-top:6px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px;white-space:pre-wrap;overflow-wrap:anywhere"></div>
-      <div id="ssh-tskey-row" style="display:none;gap:6px;margin-top:6px">
-        <input type="password" id="ssh-tskey" placeholder="tskey-auth-… (optional, headless login)" autocomplete="off" style="flex:1;min-width:0">
-        <button class="btn btn-primary" id="ssh-tskey-btn" style="height:28px;padding:0 12px;font-size:12px;flex-shrink:0" onclick="tailscaleUpWithKey()">Connect</button>
+      <div class="ssh-sec-t">Status</div>
+      <div id="ssh-status"></div>
+      <div id="ssh-unmanaged-note" class="ssh-warnline" style="display:none"></div>
+      <div class="ssh-sec-t">Easy setup</div>
+      <div style="font-size:11px;color:var(--fg3)">One tap per row — the app does the rest.</div>
+      <div id="ssh-setup-list"></div>
+      <div id="ssh-setup-result" class="ssh-note-box" style="display:none"></div>
+      <div id="ssh-tskey-row" class="ssh-inline-row" style="display:none">
+        <input type="password" id="ssh-tskey" placeholder="tskey-auth-… (optional, headless login)" autocomplete="off">
+        <button class="btn btn-primary" id="ssh-tskey-btn" onclick="tailscaleUpWithKey()">Connect</button>
       </div>
-      <div style="font-size:12px;font-weight:700;margin-top:12px">Credentials</div>
-      <div id="ssh-status" style="font-size:11px;color:var(--fg2);min-height:16px;margin-top:2px"></div>
-      <div id="ssh-unmanaged-note" style="display:none;font-size:11px;color:var(--amber, #e5a50a);margin-top:4px"></div>
-      <div class="setting-row" style="flex-wrap:wrap;gap:6px;margin-top:6px">
-        <label for="ssh-label" style="flex:0 0 auto">New key label</label>
-        <div style="display:flex;flex:1;gap:6px;min-width:0">
-          <input type="text" id="ssh-label" value="" maxlength="64" placeholder="e.g. Termius on iPhone" style="flex:1;min-width:0" oninput="clearFieldError('ssh-field-error')" onkeydown="if(event.key==='Enter'){event.preventDefault();generateSshCredential()}">
-          <button class="btn btn-primary" id="ssh-generate-btn" style="height:28px;padding:0 12px;font-size:12px;flex-shrink:0" onclick="generateSshCredential()">Generate</button>
-        </div>
+      <div class="ssh-sec-t">Credentials</div>
+      <div class="ssh-inline-row">
+        <input type="text" id="ssh-label" value="" maxlength="64" placeholder="New key label, e.g. Termius on iPhone" oninput="clearFieldError('ssh-field-error')" onkeydown="if(event.key==='Enter'){event.preventDefault();generateSshCredential()}">
+        <button class="btn btn-primary" id="ssh-generate-btn" onclick="generateSshCredential()">Generate</button>
       </div>
       <div class="field-error" id="ssh-field-error" role="alert"></div>
-      <div id="ssh-once" style="display:none;margin-top:8px;border:1px solid var(--amber, #e5a50a);border-radius:8px;padding:10px">
-        <div style="font-size:12px;font-weight:700;color:var(--amber, #e5a50a)">Copy this private key now — it will never be shown again</div>
-        <div id="ssh-once-warn" style="display:none;font-size:11px;color:var(--fg2);margin-top:4px"></div>
-        <textarea id="ssh-once-key" readonly rows="6" spellcheck="false" style="width:100%;margin-top:6px;font-family:var(--font);font-size:11px" onclick="this.select()"></textarea>
-        <div class="tunnel-url" id="ssh-once-cmd" style="margin-top:6px;user-select:all" title="Click to copy" role="button" tabindex="0" onclick="copyText(document.getElementById('ssh-once-cmd').textContent)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();copyText(document.getElementById('ssh-once-cmd').textContent)}"></div>
-        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
-          <button class="btn btn-primary" style="flex:1" onclick="copySshOnceKey()">Copy private key</button>
-          <button class="btn btn-ghost" style="flex:1" onclick="downloadSshOnceKey()">Download .key file</button>
-          <button class="btn btn-ghost" style="flex:1" onclick="dismissSshOnce()">I've saved it</button>
+      <div id="ssh-once" class="ssh-once" style="display:none">
+        <div class="ssh-once-title">Copy this private key now — it will never be shown again</div>
+        <div id="ssh-once-warn" class="ssh-once-warn" style="display:none"></div>
+        <textarea id="ssh-once-key" readonly rows="6" spellcheck="false" onclick="this.select()"></textarea>
+        <div class="ssh-cmd" id="ssh-once-cmd" title="Click to copy" role="button" tabindex="0" onclick="copyText(document.getElementById('ssh-once-cmd').textContent)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();copyText(document.getElementById('ssh-once-cmd').textContent)}"></div>
+        <div class="ssh-once-actions">
+          <button class="btn btn-primary" onclick="copySshOnceKey()">Copy private key</button>
+          <button class="btn btn-ghost" onclick="downloadSshOnceKey()">Download .key file</button>
+          <button class="btn btn-ghost" onclick="dismissSshOnce()">I've saved it</button>
         </div>
-        <div style="font-size:11px;color:var(--fg3);margin-top:6px">Save as <span style="font-family:var(--font)">~/.ssh/webtun-key</span> (<span style="font-family:var(--font)">chmod 600</span>), or import into Termius via Keychain → + → New Key → paste.</div>
+        <div class="ssh-once-hint">Save as <span style="font-family:var(--font)">~/.ssh/webtun-key</span> (<span style="font-family:var(--font)">chmod 600</span>), or import into Termius via Keychain → + → New Key → paste.</div>
       </div>
-      <div id="ssh-keys-empty" style="display:none;font-size:11px;color:var(--fg3);margin-top:8px">No SSH keys yet — label and Generate one above. Each key works like a device login and can be revoked individually.</div>
-      <div id="ssh-keys-list" style="display:none;flex-direction:column;gap:6px;margin-top:8px"></div>
+      <div id="ssh-keys-empty" class="ssh-empty" style="display:none">No SSH keys yet — label and Generate one above. Each key works like a device login and can be revoked individually.</div>
+      <div id="ssh-keys-list" style="display:none"></div>
       <div id="ssh-orphans" style="display:none;margin-top:8px">
         <button class="btn btn-ghost" id="ssh-cleanup-btn" onclick="cleanupSshOrphans()" style="height:28px;padding:0 12px;font-size:12px"></button>
       </div>
-      <div class="setting-row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
-        <label for="ssh-port" style="flex:0 0 auto">Expected SSH port</label>
-        <div style="display:flex;flex:1;gap:6px;min-width:0">
-          <input type="number" id="ssh-port" min="1" max="65535" value="2222" style="flex:1;min-width:0" oninput="clearFieldError('ssh-field-error')" onkeydown="if(event.key==='Enter'){event.preventDefault();saveSshPort()}">
-          <button class="btn btn-ghost" id="ssh-port-btn" style="height:28px;padding:0 12px;font-size:12px;flex-shrink:0" onclick="saveSshPort()">Save</button>
-        </div>
+      <div class="ssh-inline-row">
+        <input type="number" id="ssh-port" min="1" max="65535" value="2222" oninput="clearFieldError('ssh-field-error')" onkeydown="if(event.key==='Enter'){event.preventDefault();saveSshPort()}" title="Expected SSH port">
+        <button class="btn btn-ghost" id="ssh-port-btn" onclick="saveSshPort()">Save port</button>
       </div>
-      <div style="font-size:11px;color:var(--fg3);margin-top:2px">Tells the recipes which port to show. Set <span style="font-family:var(--font)">SSH_PORT</span> in <span style="font-family:var(--font)">.env</span> to make it permanent.</div>
-      <div id="ssh-recipe" style="margin-top:4px"></div>
-      <div id="ssh-setup-hint" style="display:none;margin-top:8px">
-        <div style="font-size:11px;color:var(--fg3)">sshd isn't listening yet on this host. Run the setup for your OS once, then generate keys above:</div>
-        <pre id="ssh-setup-cmds" style="font-family:var(--font);font-size:11px;white-space:pre-wrap;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:4px"></pre>
+      <div class="ssh-hint">Tells the recipes which port to show. Set <span style="font-family:var(--font)">SSH_PORT</span> in <span style="font-family:var(--font)">.env</span> to make it permanent.</div>
+      <div class="ssh-sec-t">Connect</div>
+      <div id="ssh-recipe"></div>
+      <div id="ssh-setup-hint" style="display:none">
+        <div class="ssh-hint">sshd isn't listening yet on this host. Run the setup for your OS once, then generate keys above:</div>
+        <pre id="ssh-setup-cmds" class="ssh-pre"></pre>
       </div>
     </div>
     <div class="modal-actions">
@@ -1080,8 +1077,17 @@
     <h2>Properties</h2>
     <div id="props-body"></div>
     <div class="modal-row" id="props-mode-row">
-      <label for="props-mode">Permissions (octal)</label>
-      <input type="text" id="props-mode" inputmode="numeric" maxlength="4" placeholder="755" autocomplete="off" onkeydown="if(event.key==='Enter')savePropsMode()">
+      <label for="props-mode" style="display:flex;align-items:center;gap:6px">Permissions (octal)
+        <button class="icon-btn props-info-btn" id="props-mode-info-btn" aria-label="What do permission numbers mean?" title="What do permission numbers mean?" aria-expanded="false" onclick="togglePropsModeHelp()">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        </button>
+      </label>
+      <input type="text" id="props-mode" inputmode="numeric" maxlength="4" placeholder="755" autocomplete="off" onkeydown="if(event.key==='Enter')savePropsMode()" oninput="updatePropsModeDecode()">
+      <div id="props-mode-decode" style="font-size:11px;color:var(--fg2);margin-top:4px;min-height:14px" aria-live="polite"></div>
+      <div id="props-mode-help" style="display:none;font-size:11px;color:var(--fg2);line-height:1.7;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-top:6px">
+        Each digit stands for <b>Owner</b>, <b>Group</b>, <b>Others</b> — add the bits: <b>Read&nbsp;4</b> + <b>Write&nbsp;2</b> + <b>Execute&nbsp;1</b> (so 7&nbsp;=&nbsp;read+write+execute, 5&nbsp;=&nbsp;read+execute).<br>
+        Common codes: <span style="font-family:var(--font)">755</span> scripts &amp; folders · <span style="font-family:var(--font)">644</span> plain files · <span style="font-family:var(--font)">700</span>/<span style="font-family:var(--font)">600</span> private (only you) · <span style="font-family:var(--font)">777</span> everyone — avoid it.
+      </div>
       <div class="field-error" id="props-error" role="alert"></div>
     </div>
     <div class="modal-actions">

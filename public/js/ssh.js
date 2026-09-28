@@ -9,13 +9,21 @@ let _sshStatus = null;
 let _sshKeys = [];
 
 // Feature flag: Settings → Features → SSH Access. The header button is always
-// visible, but every control in the popup stays locked until this is on.
-function sshEnabled() {
+// visible, but every control in the popup stays locked until this is on —
+// client-side AND server-side (another device may have flipped it).
+let _sshServerEnabled = null; // null = unknown yet, honoured once status arrives
+
+function sshClientEnabled() {
   try { return typeof settings !== 'undefined' && settings.sshEnabled === true; } catch { return false; }
 }
 
-function openSshPanel() {
-  try { hideTabMenus(); } catch {}
+function sshEnabled() {
+  if (!sshClientEnabled()) return false;
+  if (_sshServerEnabled === false) return false;
+  return true;
+}
+
+function applySshGate() {
   const on = sshEnabled();
   const gate = document.getElementById('ssh-gate');
   const body = document.getElementById('ssh-body');
@@ -23,9 +31,42 @@ function openSshPanel() {
   if (gate) gate.style.display = on ? 'none' : '';
   if (body) body.style.display = on ? '' : 'none';
   if (refreshBtn) refreshBtn.style.display = on ? '' : 'none';
+  return on;
+}
+
+function openSshPanel() {
+  try { hideTabMenus(); } catch {}
   try { applySshEnabled(); } catch {}
+  applySshGate();
   openOverlay('ssh-overlay');
-  if (on) { try { refreshSshStatus(); } catch {} }
+  if (sshClientEnabled()) { try { refreshSshStatus(); } catch {} }
+}
+
+// Push the Features toggle to the server so OFF is enforced there too (and
+// performs the teardown). Reverts the toggle if the server refuses.
+async function syncSshEnabledToServer() {
+  const on = sshClientEnabled();
+  const r = await api('/api/ssh/enabled', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ on }),
+  }).catch(() => null);
+  if (!r || r.error) {
+    try {
+      settings.sshEnabled = !on;
+      saveSettings();
+      syncToggle('sshEnabled');
+      applySshEnabled();
+    } catch {}
+    toast('Could not update SSH on the server: ' + ((r && r.error) || 'network error'), 'error');
+    return;
+  }
+  if (Array.isArray(r.notes) && r.notes.length && !on) {
+    toast('SSH off — ' + r.notes.join('; '), 'info');
+  } else {
+    toast(on ? 'SSH enabled' : 'SSH disabled', on ? 'success' : 'info');
+  }
+  try { await refreshSshStatus(); } catch {}
 }
 
 function closeSshPanel() {
@@ -62,6 +103,10 @@ async function refreshSshStatus() {
       return;
     }
     _sshStatus = r;
+    // Another device may have flipped the master switch — the gate follows
+    // the server value once known (client flag alone is not enough).
+    if (typeof r.enabled === 'boolean') _sshServerEnabled = r.enabled;
+    applySshGate();
     renderSshStatus(r);
     await refreshSshKeys();
     try { await refreshSshSetup(); } catch {}
@@ -109,49 +154,73 @@ async function refreshSshSetup() {
 
 function sshSetupRow(c) {
   const row = document.createElement('div');
-  row.className = 'tunnel-row';
+  row.className = 'ssh-check';
 
   const dot = document.createElement('span');
-  dot.className = 'tunnel-status';
   const good = c.ok === true && !c.warn;
-  dot.style.background = good ? 'var(--green)' : (c.warn ? 'var(--yellow)' : 'var(--red)');
-  dot.style.color = 'var(--bg)';
+  dot.className = 'ssh-pill ' + (good ? 'ok' : (c.warn ? 'warn' : 'bad'));
   dot.textContent = good ? 'OK' : (c.warn ? '?' : '!');
   dot.title = c.detail || '';
   row.appendChild(dot);
 
+  const body = document.createElement('div');
+  body.className = 'ssh-check-body';
+
   const label = document.createElement('div');
-  label.className = 'tunnel-label';
+  label.className = 'ssh-check-name';
   label.textContent = SSH_CHECK_LABELS[c.id] || c.id;
   label.title = c.detail || '';
-  row.appendChild(label);
+  body.appendChild(label);
 
-  const inner = document.createElement('div');
-  inner.className = 'tunnel-inner';
-
-  const meta = document.createElement('span');
-  meta.className = 'tunnel-url';
-  meta.style.cursor = 'default';
-  meta.style.whiteSpace = 'normal';
+  const meta = document.createElement('div');
+  meta.className = 'ssh-check-detail';
   meta.textContent = c.detail || '';
-  inner.appendChild(meta);
+  body.appendChild(meta);
+
+  if (!good && c.manual) {
+    const m = document.createElement('span');
+    m.className = 'ssh-manual';
+    m.textContent = c.manual;
+    m.title = 'Run this yourself — click to copy';
+    m.setAttribute('role', 'button');
+    m.setAttribute('tabindex', '0');
+    const copyManual = () => copyText(c.manual);
+    m.addEventListener('click', copyManual);
+    m.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); copyManual(); }
+    });
+    body.appendChild(m);
+  }
+  row.appendChild(body);
+
+  const actions = document.createElement('div');
+  actions.className = 'ssh-check-actions';
 
   // Per-row actions.
+  if (c.id === 'tailscale' && c.canDown) {
+    const b = document.createElement('button');
+    b.className = 'btn btn-ghost';
+    b.textContent = 'Disconnect';
+    b.title = 'Leave the Tailnet (only shown because WebTun brought it up)';
+    b.addEventListener('click', async () => {
+      const ok = await confirmDialog({ title: 'Disconnect Tailscale?', message: 'This host leaves your Tailnet — phone access over Tailscale stops until you reconnect.', okText: 'Disconnect', danger: true });
+      if (ok) runSshSetupAction('tailscale-down');
+    });
+    actions.appendChild(b);
+  }
   if (c.id === 'managed-sshd' && c.managed) {
     const live = !!(c.managed.listening || c.managed.alive);
     const b = document.createElement('button');
     b.className = live ? 'btn btn-ghost' : 'btn btn-primary';
-    b.style.cssText = 'height:26px;padding:0 10px;font-size:11px;flex-shrink:0';
     b.textContent = live ? 'Stop' : 'Start';
     b.title = live ? 'Stop the built-in SSH server' : 'Start a built-in SSH server (no root needed)';
     b.addEventListener('click', () => runSshSetupAction(live ? 'stop-managed' : 'start-managed', {
       confirm: live ? null : { title: 'Start built-in SSH?', message: 'Runs an SSH server as this user (key-only, no system changes). Reachable wherever this host is reachable.' },
     }));
-    inner.appendChild(b);
+    actions.appendChild(b);
   } else if (c.fix) {
     const b = document.createElement('button');
     b.className = 'btn btn-primary';
-    b.style.cssText = 'height:26px;padding:0 10px;font-size:11px;flex-shrink:0';
     b.textContent = c.id === 'tailscale' ? 'Connect' : 'Fix it';
     b.title = 'Run the fix automatically';
     b.addEventListener('click', () => runSshSetupAction(c.fix, {
@@ -166,20 +235,9 @@ function sshSetupRow(c) {
           : 'Runs the system command for you (uses passwordless sudo when available; otherwise it prints the exact command to run).',
       },
     }));
-    inner.appendChild(b);
+    actions.appendChild(b);
   }
-  if (!good && c.manual) {
-    const m = document.createElement('span');
-    m.className = 'tunnel-url';
-    m.style.cssText = 'user-select:all;overflow-x:auto;white-space:nowrap;max-width:100%';
-    m.textContent = c.manual;
-    m.title = 'Run this yourself — click to copy';
-    m.setAttribute('role', 'button');
-    m.setAttribute('tabindex', '0');
-    m.addEventListener('click', () => copyText(c.manual));
-    inner.appendChild(m);
-  }
-  row.appendChild(inner);
+  row.appendChild(actions);
   return row;
 }
 
@@ -194,8 +252,7 @@ function renderSshSetupResult(last) {
   const url = out.match(/https:\/\/login\.tailscale\.com\/\S+/);
   box.innerHTML = '';
   const head = document.createElement('div');
-  head.style.fontWeight = '700';
-  head.style.color = last.ok ? 'var(--green)' : 'var(--amber, #e5a50a)';
+  head.className = 'ssh-note-head ' + (last.ok ? 'ok' : 'attn');
   head.textContent = last.ok ? 'Done.' : 'Needs a hand.';
   box.appendChild(head);
   if (url) {
@@ -204,8 +261,6 @@ function renderSshSetupResult(last) {
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
     a.textContent = 'Tap to sign Tailscale in →';
-    a.style.display = 'inline-block';
-    a.style.margin = '6px 0';
     box.appendChild(a);
   }
   const rest = document.createElement('div');
@@ -288,6 +343,21 @@ async function tailscaleUpWithKey() {
   }
 }
 
+function sshStat(k, v) {
+  const cell = document.createElement('div');
+  cell.className = 'ssh-stat';
+  const kk = document.createElement('div');
+  kk.className = 'ssh-stat-k';
+  kk.textContent = k;
+  const vv = document.createElement('div');
+  vv.className = 'ssh-stat-v';
+  vv.textContent = v;
+  vv.title = v;
+  cell.appendChild(kk);
+  cell.appendChild(vv);
+  return cell;
+}
+
 function renderSshStatus(s) {
   const statusEl = document.getElementById('ssh-status');
   const hintEl = document.getElementById('ssh-setup-hint');
@@ -319,13 +389,35 @@ function renderSshStatus(s) {
   }
 
   if (statusEl) {
-    const live = Object.entries(s.listening || {}).filter(([, v]) => v).map(([p]) => p);
-    const parts = [];
-    parts.push(`User: ${(s.user || '(unknown)')}`);
-    parts.push(`Port: ${sshEffectivePort(s)}`);
-    parts.push(live.length ? `Listening on: ${live.join(', ')}` : 'sshd not detected on this host yet — see setup steps below');
-    if (s.keyCount > 0) parts.push(`${s.keyCount}/${s.maxKeys} keys`);
-    statusEl.textContent = parts.join('  •  ');
+    statusEl.innerHTML = '';
+    const grid = document.createElement('div');
+    grid.className = 'ssh-stats';
+    grid.appendChild(sshStat('User', s.user || '—'));
+    grid.appendChild(sshStat('Port', String(sshEffectivePort(s))));
+    grid.appendChild(sshStat('Keys', s.keyCount > 0 ? `${s.keyCount}/${s.maxKeys}` : 'none'));
+    statusEl.appendChild(grid);
+    const listenRow = document.createElement('div');
+    listenRow.className = 'ssh-listen-row';
+    const entries = Object.entries(s.listening || {});
+    const live = entries.filter(([, v]) => v);
+    if (live.length) {
+      listenRow.appendChild(document.createTextNode('Listening on '));
+      entries.forEach(([p, v]) => {
+        const pill = document.createElement('span');
+        pill.className = 'ssh-pill ' + (v ? 'ok' : 'dim');
+        pill.textContent = ':' + p;
+        pill.title = v ? `sshd answering on port ${p}` : `nothing on port ${p}`;
+        listenRow.appendChild(pill);
+      });
+    } else {
+      listenRow.appendChild(document.createTextNode('Not listening yet — '));
+      const pill = document.createElement('span');
+      pill.className = 'ssh-pill bad';
+      pill.textContent = 'sshd not detected';
+      pill.title = 'See the setup steps below';
+      listenRow.appendChild(pill);
+    }
+    statusEl.appendChild(listenRow);
   }
   if (hintEl) {
     const needsSetup = !sshAnyListening(s);
@@ -394,11 +486,16 @@ function sshCommand(user, port, host) {
 
 function makeCopyRow(text, caption) {
   const cmd = document.createElement('div');
-  cmd.className = 'tunnel-url';
-  cmd.style.cssText = 'user-select:all;overflow-x:auto;white-space:nowrap;margin-top:4px';
+  cmd.className = 'ssh-cmd';
   if (caption) cmd.title = caption + ' — click to copy';
   else cmd.title = 'Click to copy';
-  cmd.textContent = text;
+  const tag = document.createElement('span');
+  tag.className = 'ssh-pill dim';
+  tag.textContent = caption || 'ssh';
+  const code = document.createElement('code');
+  code.textContent = text;
+  cmd.appendChild(tag);
+  cmd.appendChild(code);
   cmd.setAttribute('role', 'button');
   cmd.setAttribute('tabindex', '0');
   cmd.addEventListener('click', () => copyText(text));
@@ -415,8 +512,8 @@ function renderSshRecipe(el, s) {
   const port = sshEffectivePort(s);
 
   const title = document.createElement('div');
-  title.style.cssText = 'font-size:11px;color:var(--fg3);margin:8px 0 4px';
-  title.textContent = 'Connect with any SSH client (key login — no password):';
+  title.className = 'ssh-hint';
+  title.textContent = 'Connect with any SSH client (key login — no password). Tap a command to copy it:';
   el.appendChild(title);
 
   // One command per reachable address — the phone on Tailscale and the laptop
@@ -431,7 +528,7 @@ function renderSshRecipe(el, s) {
   // Tailnet address to offer.
   if (!s.tailscaleIp) {
     const reach = document.createElement('div');
-    reach.style.cssText = 'font-size:11px;color:var(--amber, #e5a50a);margin-top:6px;line-height:1.6';
+    reach.className = 'ssh-warnline';
     reach.textContent = 'Phone on mobile data (not home Wi-Fi)? These addresses will time out. ' +
       'Install Tailscale on this server + your phone (same account) and use the Tailnet IP — ' +
       'or connect to this server\u2019s public IP with the firewall port open.';
@@ -440,7 +537,7 @@ function renderSshRecipe(el, s) {
 
   const primary = hosts[0] ? hosts[0].value : 'server-ip';
   const termius = document.createElement('div');
-  termius.style.cssText = 'font-size:11px;color:var(--fg2);margin-top:6px;line-height:1.6';
+  termius.className = 'ssh-hint';
   termius.innerHTML =
     '<b>Termius (mobile):</b> Hosts → + → New Host → ' +
     `Hostname <b>${escapeHtml(primary)}</b>, Port <b>${port}</b>, Username <b>${escapeHtml(user)}</b> → ` +
@@ -451,7 +548,7 @@ function renderSshRecipe(el, s) {
 
   if (s.hostFingerprints && s.hostFingerprints.length) {
     const fp = document.createElement('div');
-    fp.style.cssText = 'font-size:11px;color:var(--fg2);margin-top:4px;overflow-wrap:anywhere';
+    fp.className = 'ssh-fp';
     fp.textContent = 'Host fingerprints: ' +
       s.hostFingerprints.map(h => `${h.type} ${h.fingerprint}`).join('   ');
     el.appendChild(fp);
@@ -481,38 +578,37 @@ function renderSshKeys() {
     list.style.display = 'none';
     return;
   }
-  list.style.display = 'flex';
+  list.style.display = '';
   _sshKeys.forEach(k => {
     const row = document.createElement('div');
-    row.className = 'tunnel-row';
+    row.className = 'ssh-key';
+
+    const body = document.createElement('div');
+    body.className = 'ssh-check-body';
 
     const label = document.createElement('div');
-    label.className = 'tunnel-label';
+    label.className = 'ssh-check-name';
     label.textContent = k.label || k.id;
     label.title = `${k.type || ''}  ${k.fingerprint || ''}`;
-    row.appendChild(label);
+    body.appendChild(label);
 
-    const inner = document.createElement('div');
-    inner.className = 'tunnel-inner';
-
-    const meta = document.createElement('span');
-    meta.className = 'tunnel-url';
-    meta.style.cursor = 'default';
+    const meta = document.createElement('div');
+    meta.className = 'ssh-check-detail';
     let when = '';
     try { when = k.createdAt ? new Date(k.createdAt).toLocaleDateString() : ''; } catch {}
     meta.textContent = [k.fingerprint || '', when].filter(Boolean).join('  •  ');
     meta.title = `Added ${k.createdAt ? new Date(k.createdAt).toLocaleString() : 'unknown'}${k.addedBy ? ' by ' + k.addedBy : ''}`;
-    inner.appendChild(meta);
+    body.appendChild(meta);
+    row.appendChild(body);
 
     const del = document.createElement('button');
-    del.className = 'icon-btn tunnel-btn stop';
+    del.className = 'icon-btn ssh-ico danger';
     del.title = 'Revoke this key';
     del.setAttribute('aria-label', `Revoke SSH key ${k.label || k.id}`);
     del.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
     del.addEventListener('click', () => revokeSshKey(k.id, k.label, k.fingerprint, k.createdAt));
-    inner.appendChild(del);
+    row.appendChild(del);
 
-    row.appendChild(inner);
     list.appendChild(row);
   });
 }
