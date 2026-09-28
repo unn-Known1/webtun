@@ -343,7 +343,14 @@ setup_systemd() {
   if [[ "$lower" != "y" ]]; then return; fi
 
   SERVICE_FILE="/etc/systemd/system/webtun.service"
-  NODE_PATH="$(command -v node)"
+  # systemd has no shell and a minimal PATH, so ExecStart needs an absolute
+  # binary path — a bare `node` fails with 203/EXEC and crash-loops. `command
+  # -v` can return a bare name or function (e.g. nvm lazy-load shims), so
+  # prefer `type -P` and fail closed when nothing absolute is found.
+  NODE_PATH="$(type -P node 2>/dev/null || command -v node)"
+  if [[ "$NODE_PATH" != /* ]] || [ ! -x "$NODE_PATH" ]; then
+    die "Cannot resolve an absolute path for node (got '${NODE_PATH:-nothing}') — put Node.js ≥18 on a system PATH, then re-run setup"
+  fi
   
   # Under `sudo ./setup.sh` $USER is root, which would run the whole server as
   # root; prefer the invoking user.
