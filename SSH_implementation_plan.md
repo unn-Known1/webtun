@@ -531,3 +531,40 @@ Per request: SSH lives in its own popup, not in Settings.
   updated to the new flow. Verified: stub-DOM harness (gated = no API calls,
   all mutations toasted-blocked; enabled = status fetched), syntax + smoke,
   all 25 element IDs present exactly once.
+
+---
+
+## 14. Easy Setup — one-click sshd / firewall / Tailscale (2026-09-28)
+
+Goal set by review: the app handles everything, the user taps once per row.
+
+- **New `lib/ssh-setup.js`**: read-only `getSetupChecks()` (sshd binary,
+  listening, pubkey posture via `sshd -T` incl. sudo fallback, ufw/firewalld
+  port state, Tailscale up/IP, managed daemon, key count) and allow-listed
+  `runSetupAction()` — `install-sshd` / `enable-sshd` / `open-firewall` /
+  `install-tailscale` / `tailscale-up` / `start-managed` / `stop-managed`.
+  Privilege is `sudo -n` only (never a password over the wire); slow jobs
+  answer 202 and resolve into `lastAction`, polled by the UI. Anything
+  undoable without privilege returns the exact manual command instead.
+- **Tailscale without root**: official installer under `sudo -n` when
+  available (downloaded size-capped first — never blind curl|sh), else
+  userspace static binaries (`pkgs.tailscale.com`, arch-aware, `tar`
+  unpack) into `DATA_DIR/tailscale` with a supervised `tailscaled
+  --state/--socket` that survives server restarts by design. `tailscale-up`
+  takes an optional one-time auth key (validated `tskey-auth-…`, never
+  stored) or surfaces the device-login URL as a tappable link.
+- **Built-in managed sshd** (zero-privilege escape hatch, esp. containers):
+  host keys in `DATA_DIR/managed-sshd`, spawned as the server user on a high
+  port, key-only, absolute-path `sshd` (re-exec requirement), port-busy
+  guard (never adopts another listener), supervised single child, booted
+  after HTTP bind when `enabled`, killed on `cleanup()` without clearing the
+  flag. Verified live: start → real key login (`MANAGED_E2E_OK`) → boot
+  auto-restore → stop → port closed, `authorized_keys` pristine.
+- **Wizard UI** at the top of the SSH popup: per-check status dots, Fix-it
+  buttons behind confirm dialogs, copyable manual fallbacks, auth-key row
+  shown only for the un-logged-in tailscale step, result box with login link.
+- State shape extended (`managedSshd` preserved across key saves — a
+  drop-field bug caught during build). Remaining honest limits: the Tailnet
+  login tap is the user's identity and can't be automated; a Docker deploy
+  still needs one host-side grant (published port or host Tailscale) — the
+  wizard says exactly which.

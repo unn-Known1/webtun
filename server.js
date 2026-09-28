@@ -5170,6 +5170,43 @@ app.post('/api/ssh/cleanup', authRateLimiter, checkPin, requirePinSet, (req, res
   } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
 });
 
+// ── SSH easy setup (one-click sshd / firewall / Tailscale / built-in SSH)
+// Read-only checks are cheap; every fix action is allow-listed server-side,
+// sudo -n only (never a password over the wire), and PIN-gated like the rest
+// of the SSH surface. Slow installs (apt, downloads) run async: the route
+// answers 202 and the outcome lands on the next GET.
+const sshSetup = require('./lib/ssh-setup');
+
+app.get('/api/ssh/setup', rateLimiter, checkPin, async (req, res) => {
+  try {
+    const out = await sshSetup.getSetupChecks(DATA_DIR);
+    try {
+      const m = await sshSetup.refreshManagedListening(DATA_DIR);
+      const row = out.checks.find(c => c.id === 'managed-sshd');
+      if (row) {
+        row.managed = { ...row.managed, listening: m.listening, pid: m.pid || (row.managed && row.managed.pid) || 0 };
+        if (m.listening) row.detail = `Built-in SSH running on ${m.port} (pid ${m.pid})`;
+      }
+    } catch {}
+    res.json(out);
+  } catch (e) { sendErr(res, e, 500); }
+});
+
+app.post('/api/ssh/setup/:action', authRateLimiter, checkPin, requirePinSet, async (req, res) => {
+  try {
+    const action = String(req.params.action || '');
+    const body = req.body || {};
+    const port = Number(body.port);
+    const authKey = typeof body.authKey === 'string' ? body.authKey.trim().slice(0, 200) : '';
+    const out = await sshSetup.runSetupAction(DATA_DIR, action, {
+      port: Number.isInteger(port) ? port : undefined,
+      authKey,
+    });
+    if (out && out.started) return res.status(202).json(out);
+    res.json(out);
+  } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
+});
+
 // ── App preview (loopback reverse-proxy) ─────────────────────────────
 // Renders `localhost:PORT` apps inside a WebTun tab via same-origin iframe:
 //   iframe src=/api/preview/5173/?token=… → http.request 127.0.0.1:5173/
@@ -5596,6 +5633,10 @@ function cleanup() {
     try { entry.proc.kill(); } catch {}
   }
   ptySessions.clear();
+  // Our supervised built-in sshd dies with us (the persisted `enabled` flag
+  // survives, so the next boot restores it). The userspace Tailscale daemon
+  // is deliberately LEFT running — it owns the Tailnet connection.
+  try { require('./lib/ssh-setup').shutdownManagedSshd(DATA_DIR); } catch {}
 }
 
 function startServer(opts = {}) {
@@ -5622,6 +5663,11 @@ function startServer(opts = {}) {
         writeTmuxClaim();
         cleanupOrphanTmuxSessions();
       }
+      // Restore the built-in SSH daemon if the user left it enabled (async:
+      // a slow sshd start must not delay the ready log).
+      try {
+        require('./lib/ssh-setup').bootManagedSshd(DATA_DIR).catch(() => {});
+      } catch {}
       resolve(server);
     });
   });

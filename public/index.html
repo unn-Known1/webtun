@@ -915,6 +915,14 @@
       <button class="btn btn-primary" onclick="openSshSettings()">Open Settings</button>
     </div>
     <div id="ssh-body">
+      <div style="font-size:12px;font-weight:700;margin-top:2px">Easy setup <span style="font-weight:400;color:var(--fg3)">— one tap per row, the app does the rest</span></div>
+      <div id="ssh-setup-list" style="display:flex;flex-direction:column;gap:6px;margin-top:6px"></div>
+      <div id="ssh-setup-result" style="display:none;font-size:11px;margin-top:6px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px;white-space:pre-wrap;overflow-wrap:anywhere"></div>
+      <div id="ssh-tskey-row" style="display:none;gap:6px;margin-top:6px">
+        <input type="password" id="ssh-tskey" placeholder="tskey-auth-… (optional, headless login)" autocomplete="off" style="flex:1;min-width:0">
+        <button class="btn btn-primary" id="ssh-tskey-btn" style="height:28px;padding:0 12px;font-size:12px;flex-shrink:0" onclick="tailscaleUpWithKey()">Connect</button>
+      </div>
+      <div style="font-size:12px;font-weight:700;margin-top:12px">Credentials</div>
       <div id="ssh-status" style="font-size:11px;color:var(--fg2);min-height:16px;margin-top:2px"></div>
       <div id="ssh-unmanaged-note" style="display:none;font-size:11px;color:var(--amber, #e5a50a);margin-top:4px"></div>
       <div class="setting-row" style="flex-wrap:wrap;gap:6px;margin-top:6px">

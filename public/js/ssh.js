@@ -64,8 +64,227 @@ async function refreshSshStatus() {
     _sshStatus = r;
     renderSshStatus(r);
     await refreshSshKeys();
+    try { await refreshSshSetup(); } catch {}
   } catch (e) {
     if (statusEl) statusEl.textContent = 'Could not load SSH status';
+  }
+}
+
+// ── Easy Setup wizard ────────────────────────────────────────────────────
+// One tap per row: the app runs the fix itself (non-interactive sudo only —
+// it never asks for a password) and reports back. Anything it cannot do is
+// shown as a copyable command instead of a dead button.
+
+const SSH_CHECK_LABELS = {
+  'sshd-binary': 'SSH server',
+  'sshd-listening': 'Listening',
+  'pubkey-auth': 'Key auth',
+  'firewall': 'Firewall',
+  'tailscale': 'Tailscale',
+  'managed-sshd': 'Built-in SSH',
+  'key': 'Credential',
+};
+
+let _sshSetupBusy = false;
+
+async function refreshSshSetup() {
+  const list = document.getElementById('ssh-setup-list');
+  if (!list) return;
+  const r = await api('/api/ssh/setup').catch(() => null);
+  if (!r || r.error || !Array.isArray(r.checks)) {
+    list.innerHTML = '';
+    return;
+  }
+  renderSshSetupResult(r.lastAction);
+  list.innerHTML = '';
+  r.checks.forEach(c => list.appendChild(sshSetupRow(c)));
+  // The auth-key row belongs to the tailscale step: show it only while that
+  // step offers a tailscale-up fix (installed, not logged in).
+  const tsRow = document.getElementById('ssh-tskey-row');
+  if (tsRow) {
+    const ts = r.checks.find(x => x.id === 'tailscale');
+    tsRow.style.display = (ts && ts.fix === 'tailscale-up') ? 'flex' : 'none';
+  }
+}
+
+function sshSetupRow(c) {
+  const row = document.createElement('div');
+  row.className = 'tunnel-row';
+
+  const dot = document.createElement('span');
+  dot.className = 'tunnel-status';
+  const good = c.ok === true && !c.warn;
+  dot.style.background = good ? 'var(--green)' : (c.warn ? 'var(--yellow)' : 'var(--red)');
+  dot.style.color = 'var(--bg)';
+  dot.textContent = good ? 'OK' : (c.warn ? '?' : '!');
+  dot.title = c.detail || '';
+  row.appendChild(dot);
+
+  const label = document.createElement('div');
+  label.className = 'tunnel-label';
+  label.textContent = SSH_CHECK_LABELS[c.id] || c.id;
+  label.title = c.detail || '';
+  row.appendChild(label);
+
+  const inner = document.createElement('div');
+  inner.className = 'tunnel-inner';
+
+  const meta = document.createElement('span');
+  meta.className = 'tunnel-url';
+  meta.style.cursor = 'default';
+  meta.style.whiteSpace = 'normal';
+  meta.textContent = c.detail || '';
+  inner.appendChild(meta);
+
+  // Per-row actions.
+  if (c.id === 'managed-sshd' && c.managed) {
+    const live = !!(c.managed.listening || c.managed.alive);
+    const b = document.createElement('button');
+    b.className = live ? 'btn btn-ghost' : 'btn btn-primary';
+    b.style.cssText = 'height:26px;padding:0 10px;font-size:11px;flex-shrink:0';
+    b.textContent = live ? 'Stop' : 'Start';
+    b.title = live ? 'Stop the built-in SSH server' : 'Start a built-in SSH server (no root needed)';
+    b.addEventListener('click', () => runSshSetupAction(live ? 'stop-managed' : 'start-managed', {
+      confirm: live ? null : { title: 'Start built-in SSH?', message: 'Runs an SSH server as this user (key-only, no system changes). Reachable wherever this host is reachable.' },
+    }));
+    inner.appendChild(b);
+  } else if (c.fix) {
+    const b = document.createElement('button');
+    b.className = 'btn btn-primary';
+    b.style.cssText = 'height:26px;padding:0 10px;font-size:11px;flex-shrink:0';
+    b.textContent = c.id === 'tailscale' ? 'Connect' : 'Fix it';
+    b.title = 'Run the fix automatically';
+    b.addEventListener('click', () => runSshSetupAction(c.fix, {
+      confirm: {
+        title: c.fix === 'install-sshd' ? 'Install OpenSSH server?'
+          : c.fix === 'enable-sshd' ? 'Enable the SSH service?'
+          : c.fix === 'open-firewall' ? 'Open the SSH port in the firewall?'
+          : c.fix === 'install-tailscale' ? 'Install Tailscale?'
+          : 'Connect Tailscale?',
+        message: c.fix === 'tailscale-up'
+          ? 'Brings this host onto your Tailnet. If a browser login is needed, the sign-in link appears below — one tap, once.'
+          : 'Runs the system command for you (uses passwordless sudo when available; otherwise it prints the exact command to run).',
+      },
+    }));
+    inner.appendChild(b);
+  }
+  if (!good && c.manual) {
+    const m = document.createElement('span');
+    m.className = 'tunnel-url';
+    m.style.cssText = 'user-select:all;overflow-x:auto;white-space:nowrap;max-width:100%';
+    m.textContent = c.manual;
+    m.title = 'Run this yourself — click to copy';
+    m.setAttribute('role', 'button');
+    m.setAttribute('tabindex', '0');
+    m.addEventListener('click', () => copyText(c.manual));
+    inner.appendChild(m);
+  }
+  row.appendChild(inner);
+  return row;
+}
+
+function renderSshSetupResult(last) {
+  const box = document.getElementById('ssh-setup-result');
+  if (!box) return;
+  if (!last || !last.done) { box.style.display = 'none'; box.textContent = ''; return; }
+  box.style.display = '';
+  const out = String(last.output || '');
+  // A Tailscale device-login URL is the one interactive moment: make it a
+  // real tappable link instead of buried text.
+  const url = out.match(/https:\/\/login\.tailscale\.com\/\S+/);
+  box.innerHTML = '';
+  const head = document.createElement('div');
+  head.style.fontWeight = '700';
+  head.style.color = last.ok ? 'var(--green)' : 'var(--amber, #e5a50a)';
+  head.textContent = last.ok ? 'Done.' : 'Needs a hand.';
+  box.appendChild(head);
+  if (url) {
+    const a = document.createElement('a');
+    a.href = url[0];
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.textContent = 'Tap to sign Tailscale in →';
+    a.style.display = 'inline-block';
+    a.style.margin = '6px 0';
+    box.appendChild(a);
+  }
+  const rest = document.createElement('div');
+  rest.textContent = url ? out.replace(url[0], '').trim() : out;
+  if (rest.textContent) box.appendChild(rest);
+}
+
+async function runSshSetupAction(action, opts = {}) {
+  if (!requireSshEnabled()) return;
+  if (_sshSetupBusy) return;
+  if (opts.confirm) {
+    const ok = await confirmDialog({ title: opts.confirm.title, message: opts.confirm.message, okText: 'Run it' });
+    if (!ok) return;
+  }
+  _sshSetupBusy = true;
+  try {
+    const r = await api('/api/ssh/setup/' + encodeURIComponent(action), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ port: sshEffectivePort(_sshStatus) }),
+    });
+    if (!r || r.error) {
+      renderSshSetupResult({ done: true, ok: false, output: (r && r.error) || 'Action failed' });
+      return;
+    }
+    if (r.started) {
+      // Slow job (package install / download): poll the checklist until it
+      // reports done. Bounded: 3 polls over ~15s, then leave the result box
+      // to the next manual refresh.
+      toast('Working on it — watch this space…', 'info');
+      for (let i = 0; i < 3; i++) {
+        await new Promise(res => setTimeout(res, 5000));
+        await refreshSshStatus().catch(() => {});
+        try {
+          const s = await api('/api/ssh/setup').catch(() => null);
+          if (s && s.lastAction && s.lastAction.done && s.lastAction.action === action) break;
+        } catch {}
+      }
+    } else {
+      renderSshSetupResult({ done: true, ok: r.ok !== false, output: r.output || 'Done.' });
+      toast(r.ok === false ? 'Setup step needs attention' : 'Setup step done', r.ok === false ? 'warning' : 'success');
+    }
+    try { await refreshSshStatus(); } catch {}
+  } finally {
+    _sshSetupBusy = false;
+  }
+}
+
+async function tailscaleUpWithKey() {
+  if (!requireSshEnabled()) return;
+  const input = document.getElementById('ssh-tskey');
+  const btn = document.getElementById('ssh-tskey-btn');
+  const key = input ? input.value.trim() : '';
+  if (!key) {
+    // No key pasted = interactive path (login URL appears in the result box).
+    return runSshSetupAction('tailscale-up', { confirm: { title: 'Connect Tailscale?', message: 'If a browser login is needed, the sign-in link appears below.' } });
+  }
+  if (btn && btn.dataset.busy === 'true') return;
+  setBtnBusy(btn, true);
+  try {
+    const r = await api('/api/ssh/setup/tailscale-up', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ authKey: key }),
+    });
+    // The key is one-time: wipe the field whatever happened.
+    if (input) input.value = '';
+    if (!r || r.error) {
+      renderSshSetupResult({ done: true, ok: false, output: (r && r.error) || 'Connect failed' });
+      return;
+    }
+    if (r.started) { toast('Connecting Tailscale…', 'info'); }
+    else {
+      renderSshSetupResult({ done: true, ok: r.ok !== false, output: r.output || 'Done.' });
+      toast('Tailscale connected', 'success');
+    }
+    try { await refreshSshStatus(); } catch {}
+  } finally {
+    setBtnBusy(btn, false);
   }
 }
 
@@ -156,8 +375,16 @@ function sshHostChoices(s) {
     hosts.push({ label, value });
   };
   if (s.tailscaleIp) push('Tailscale', s.tailscaleIp);
-  (s.lanIps || []).forEach(ip => push('LAN', ip));
-  push('This machine', '127.0.0.1');
+  // lanIps entries are { ip, iface } (new) or plain strings (older server) —
+  // the interface name tells same-Wi-Fi users which address is their real LAN.
+  (s.lanIps || []).forEach(entry => {
+    const ip = typeof entry === 'string' ? entry : (entry && entry.ip);
+    const iface = entry && typeof entry === 'object' && entry.iface ? ` (${entry.iface})` : '';
+    if (ip) push('LAN' + iface, ip);
+  });
+  // Last resort, and a classic trap: 127.0.0.1 only ever reaches sshd from
+  // the server itself. Label it honestly so nobody pastes it into Termius.
+  push('Server itself only — never from your phone', '127.0.0.1');
   return hosts;
 }
 
@@ -199,6 +426,18 @@ function renderSshRecipe(el, s) {
     el.appendChild(row);
   });
 
+  // Timeout is the #1 phone failure: LAN rows only work on the same Wi-Fi,
+  // and 127.0.0.1 never works remotely. Say so outright when there is no
+  // Tailnet address to offer.
+  if (!s.tailscaleIp) {
+    const reach = document.createElement('div');
+    reach.style.cssText = 'font-size:11px;color:var(--amber, #e5a50a);margin-top:6px;line-height:1.6';
+    reach.textContent = 'Phone on mobile data (not home Wi-Fi)? These addresses will time out. ' +
+      'Install Tailscale on this server + your phone (same account) and use the Tailnet IP — ' +
+      'or connect to this server\u2019s public IP with the firewall port open.';
+    el.appendChild(reach);
+  }
+
   const primary = hosts[0] ? hosts[0].value : 'server-ip';
   const termius = document.createElement('div');
   termius.style.cssText = 'font-size:11px;color:var(--fg2);margin-top:6px;line-height:1.6';
@@ -206,6 +445,7 @@ function renderSshRecipe(el, s) {
     '<b>Termius (mobile):</b> Hosts → + → New Host → ' +
     `Hostname <b>${escapeHtml(primary)}</b>, Port <b>${port}</b>, Username <b>${escapeHtml(user)}</b> → ` +
     'Keychain → + → New Key → paste the private key shown once after Generate → select it under SSH Key. ' +
+    'Never use 127.0.0.1 as the hostname — that address is the server talking to itself. ' +
     'On first connect, verify the host fingerprint shown below.';
   el.appendChild(termius);
 
