@@ -961,7 +961,7 @@ body.datasaver #transfers-btn.has-active .tx-up, body.datasaver #transfers-btn.h
 /* ═══════════════════════════════════════════════════════
    TABS
    ═══════════════════════════════════════════════════════ */
-.tab { position: relative; display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 8px 0 12px; border-radius: var(--radius); background: var(--bg3); color: var(--fg2); cursor: pointer; flex-shrink: 0; font-size: 12px; white-space: nowrap; user-select: none; min-width: 0; max-width: 220px; border: 1px solid transparent; border-bottom: none; transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast); }
+.tab { position: relative; display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 8px 0 12px; border-radius: 6px 6px 0 0; background: var(--bg3); color: var(--fg2); cursor: pointer; flex-shrink: 0; font-size: 12px; white-space: nowrap; user-select: none; min-width: 0; max-width: 220px; border: 1px solid transparent; border-bottom: none; transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast); }
 .tab.dragging { opacity: 0.45; box-shadow: 0 6px 18px var(--shadow-color); }
 /* Inset marker (not a border) so the drop indicator never shifts layout. */
 .tab.drag-over { box-shadow: inset 2px 0 0 var(--accent); }
@@ -2223,24 +2223,26 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
     background: color-mix(in srgb, var(--bg) 95%, transparent);
     border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
   }
-  #new-tab-btn, .tab-nav-btn { display: none !important; }
+  #new-tab-btn, .tab-nav-btn { display: flex !important; }
   .tab {
-    height: 26px;
-    min-height: 26px;
+    height: 28px;
+    min-height: 28px;
     padding: 0 8px 0 10px;
-    border-radius: 13px;
-    font-size: 11px;
+    border-radius: 6px 6px 0 0;
+    font-size: 11.5px;
     font-weight: 500;
     background: var(--bg3);
-    border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
-    gap: 4px;
+    border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+    border-bottom: none;
+    gap: 5px;
   }
   .tab.active {
-    background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+    background: var(--bg4);
     color: var(--accent);
-    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    border-color: var(--border);
+    border-bottom: none;
     font-weight: 600;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    box-shadow: inset 0 2px 0 var(--accent), 0 0 10px color-mix(in srgb, var(--accent) 20%, transparent);
   }
   .tab.active .tab-title {
     color: var(--accent);

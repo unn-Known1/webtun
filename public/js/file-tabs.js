@@ -460,15 +460,54 @@ async function ensureTabEditor(tab, seed) {
   if (!data || tab.closed) return false;
   buildTabEditorChrome(tab);
   if (!tab.fteHost) return false;
-  const cm = CodeMirror(tab.fteHost, Object.assign({}, CM_BASE_OPTIONS, {
-    value: data.content,
-    extraKeys: {
-      'Ctrl-S': () => saveTabFile(tab),
-      'Cmd-S': () => saveTabFile(tab),
-      // Esc is intentionally inert in a tile: there is no panel to close here.
-      'Esc': () => {},
-    },
-  }));
+
+  const loaded = typeof ensureCodeMirrorLoaded === 'function' ? await ensureCodeMirrorLoaded() : (typeof CodeMirror !== 'undefined');
+  let cm = null;
+  if (loaded && typeof CodeMirror !== 'undefined') {
+    try {
+      cm = CodeMirror(tab.fteHost, Object.assign({}, CM_BASE_OPTIONS, {
+        value: data.content,
+        extraKeys: {
+          'Ctrl-S': () => saveTabFile(tab),
+          'Cmd-S': () => saveTabFile(tab),
+          // Esc is intentionally inert in a tile: there is no panel to close here.
+          'Esc': () => {},
+        },
+      }));
+    } catch (e) {
+      console.warn('CodeMirror tab creation failed:', e);
+    }
+  }
+
+  if (!cm) {
+    const ta = document.createElement('textarea');
+    ta.style.width = '100%';
+    ta.style.height = '100%';
+    ta.style.background = 'var(--bg)';
+    ta.style.color = 'var(--fg)';
+    ta.style.fontFamily = 'var(--font)';
+    ta.style.fontSize = '13px';
+    ta.style.border = 'none';
+    ta.style.padding = '12px';
+    ta.style.outline = 'none';
+    ta.value = data.content;
+    ta.addEventListener('input', () => { markTabDirty(tab); scheduleTabDraft(tab); scheduleTabPreview(tab); });
+    tab.fteHost.appendChild(ta);
+    cm = {
+      getValue: () => ta.value,
+      setValue: (v) => { ta.value = v; },
+      focus: () => ta.focus(),
+      refresh: () => {},
+      setOption: () => {},
+      on: (ev, fn) => { if (ev === 'change') ta.addEventListener('input', fn); },
+      getHistory: () => null,
+      setHistory: () => {},
+      getCursor: () => ({ line: 0, ch: 0 }),
+      setCursor: () => {},
+      isFallback: true
+    };
+  }
+
   tab.cm = cm;
   tab.original = data.original != null ? data.original : data.content;
   // Disk revision this buffer came from — the open-file watcher compares fresh
@@ -480,7 +519,9 @@ async function ensureTabEditor(tab, seed) {
   tab.extChanged = false;
   if (data.history) { try { cm.setHistory(data.history); } catch (e) { console.warn('Undo history restore failed:', e); } }
   if (data.cursor) { try { cm.setCursor(data.cursor); } catch {} }
-  cm.on('change', () => { markTabDirty(tab); scheduleTabDraft(tab); scheduleTabPreview(tab); });
+  if (!cm.isFallback) {
+    cm.on('change', () => { markTabDirty(tab); scheduleTabDraft(tab); scheduleTabPreview(tab); });
+  }
   markTabDirty(tab);
   if (data.extChanged) setTabExtChanged(tab, true, data.extMsg && /Deleted/.test(data.extMsg) ? data.extMsg : undefined);
   try { cm.setOption('mode', await resolveCMmode(fileTabName(tab.path))); } catch (e) { console.warn('Mode resolve failed:', e); }

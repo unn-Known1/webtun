@@ -76,6 +76,35 @@ function adjustTermMenuPosition(menu) {
 
 const isElectron = !!(window.electronAPI && window.electronAPI.isElectron);
 
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing) {
+      if (typeof CodeMirror !== 'undefined' || !src.includes('codemirror')) return resolve();
+      existing.addEventListener('load', () => resolve());
+      existing.addEventListener('error', (e) => reject(e));
+      setTimeout(() => resolve(), 500);
+      return;
+    }
+    const s = document.createElement('script');
+    s.src = src;
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = (e) => reject(new Error('Failed to load ' + src));
+    document.head.appendChild(s);
+  });
+}
+
+async function ensureCodeMirrorLoaded() {
+  if (typeof CodeMirror !== 'undefined') return true;
+  try {
+    await loadScript('https://cdn.jsdelivr.net/npm/codemirror@5.65.18/lib/codemirror.min.js');
+  } catch (e) {
+    console.warn('CodeMirror core script failed to load:', e);
+  }
+  return typeof CodeMirror !== 'undefined';
+}
+
 function uuid() {
   try {
     if (crypto.randomUUID) return crypto.randomUUID();
