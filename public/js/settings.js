@@ -38,7 +38,7 @@ function loadSettings() {
   try { if (typeof applyGitSimple === 'function') applyGitSimple(); } catch {}
   try { if (typeof applySshEnabled === 'function') applySshEnabled(); } catch {}
   syncKeepAwakeUI();
-  if (settings.keepAwake && hasWakeLock) { requestWakeLock().catch(() => {}); }
+  if (settings.keepAwake) { requestWakeLock().catch(() => {}); }
   if (isElectron) {
     document.querySelectorAll('.electron-only').forEach(el => el.style.display = '');
     window.electronAPI.getAutostart().then(enabled => {
@@ -759,23 +759,83 @@ function _fsEscHandler(e) {
 // Terminal fullscreen removed — per request, terminal fullscreen should not cover sidebar
 // toggleTerminalFullscreen and _termFsEscHandler intentionally removed
 let wakeLock = null;
+let wakeVideo = null;
 window.wakeLock = null;
-const hasWakeLock = 'wakeLock' in navigator;
+const hasWakeLock = typeof navigator !== 'undefined' && 'wakeLock' in navigator;
+window.hasWakeLock = hasWakeLock;
 
 async function requestWakeLock() {
-  if (!hasWakeLock) return false;
+  // 1. Primary: Native W3C Screen Wake Lock API
+  if ('wakeLock' in navigator) {
+    try {
+      const lock = await navigator.wakeLock.request('screen');
+      wakeLock = lock;
+      window.wakeLock = lock;
+      lock.addEventListener('release', () => {
+        if (wakeLock === lock) {
+          wakeLock = null;
+          window.wakeLock = null;
+        }
+      });
+      return true;
+    } catch (err) {
+      // Native wakeLock is restricted by iframe permissions policy — fail silently and proceed to video fallback
+    }
+  }
+
+  // 2. Fallback: Hidden silent video loop (works in iframes, HTTP, WebViews, legacy browsers)
   try {
-    wakeLock = await navigator.wakeLock.request('screen');
+    if (!wakeVideo) {
+      wakeVideo = document.createElement('video');
+      wakeVideo.muted = true;
+      wakeVideo.volume = 0;
+      wakeVideo.setAttribute('muted', '');
+      wakeVideo.setAttribute('playsinline', '');
+      wakeVideo.setAttribute('webkit-playsinline', '');
+      wakeVideo.loop = true;
+      wakeVideo.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;z-index:-9999';
+      
+      if (typeof HTMLCanvasElement !== 'undefined' && HTMLCanvasElement.prototype.captureStream) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 1;
+        canvas.height = 1;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.fillRect(0, 0, 1, 1);
+          // Continuous micro-repaint keeps stream active across all browser engines
+          setInterval(() => { try { ctx.fillRect(0, 0, 1, 1); } catch {} }, 1000);
+        }
+        wakeVideo.srcObject = canvas.captureStream(1);
+      } else {
+        wakeVideo.src = 'data:video/mp4;base64,AAAAHGZ0eXBpc29tAAAAAGlzb21pc28ybXA0MgAAAAptZGF0AAAAAB4AAAAGaGVhZAAAAAAAC3Bpc3AAMAAAAAABAAAAA21vb3YAAABsbXZoZAAAAADXUTIn11EyJwAAM4QAAAEsAAABAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAABR0a2hkAAAAAQAAAAAAAABf434AAAEsAAAAAAABAAAAAAAAAAAAAAABAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAEAAAAAAG1kaWEAAAAgbWRoZAAAAADXUTIn11EyJwAAM4QAAAEsAAAAAAAAAAAAAAAAYaGRscgAAAAAAd2lkZW9zc3BhAAAAAAAAAAAAACRtaW5mAAAAFHZtaGQAAAAA';
+      }
+      document.body.appendChild(wakeVideo);
+    }
+    await wakeVideo.play();
+    wakeLock = 'video-fallback';
     window.wakeLock = wakeLock;
-    wakeLock.addEventListener('release', () => {
-      wakeLock = null;
-      window.wakeLock = null;
-    });
+    window.wakeVideo = wakeVideo;
     return true;
   } catch (err) {
+    console.warn('Video fallback wake lock failed:', err);
     wakeLock = null;
     window.wakeLock = null;
+    window.wakeVideo = null;
     return false;
+  }
+}
+
+async function releaseWakeLock() {
+  if (wakeLock === 'video-fallback') {
+    if (wakeVideo) {
+      try { wakeVideo.pause(); } catch {}
+    }
+    wakeLock = null;
+    window.wakeLock = null;
+  } else if (wakeLock && typeof wakeLock.release === 'function') {
+    try { await wakeLock.release(); } catch {}
+    wakeLock = null;
+    window.wakeLock = null;
   }
 }
 
@@ -784,17 +844,17 @@ async function toggleKeepAwake(enabled) {
   saveSettings();
   if (enabled) {
     const ok = await requestWakeLock().catch(() => false);
-    if (!ok && !isElectron) {
-      toast('Screen wake lock not supported or denied', 'error');
-    } else if (!ok && isElectron) {
-      toast('Wake lock not available in Electron', 'info');
+    if (!ok) {
+      settings.keepAwake = false;
+      saveSettings();
+      if (!isElectron) {
+        toast('Screen wake lock not supported or denied', 'error');
+      } else {
+        toast('Wake lock not available in Electron', 'info');
+      }
     }
   } else {
-    if (wakeLock) {
-      try { await wakeLock.release(); } catch {}
-      wakeLock = null;
-      window.wakeLock = null;
-    }
+    await releaseWakeLock();
   }
   syncKeepAwakeUI();
 }

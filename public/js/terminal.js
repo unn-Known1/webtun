@@ -1439,13 +1439,19 @@ function showTermSelectionBar(clientX, clientY) {
     return;
   }
   bar.style.display = 'flex';
+  const vv = window.visualViewport;
+  const vpWidth = vv ? vv.width : window.innerWidth;
+  const vpHeight = vv ? vv.height : window.innerHeight;
+  const vpOffsetLeft = vv ? vv.offsetLeft : 0;
+  const vpOffsetTop = vv ? vv.offsetTop : 0;
+
   const barW = bar.offsetWidth || 180;
   const barH = bar.offsetHeight || 36;
-  let left = (clientX || (window.innerWidth / 2)) - (barW / 2);
-  let top = (clientY || (window.innerHeight / 2)) - barH - 16;
+  let left = (clientX || (vpOffsetLeft + vpWidth / 2)) - (barW / 2);
+  let top = (clientY || (vpOffsetTop + vpHeight / 2)) - barH - 16;
 
-  left = Math.max(8, Math.min(window.innerWidth - barW - 8, left));
-  top = Math.max(48, Math.min(window.innerHeight - barH - 60, top));
+  left = Math.max(vpOffsetLeft + 8, Math.min(vpOffsetLeft + vpWidth - barW - 8, left));
+  top = Math.max(vpOffsetTop + 48, Math.min(vpOffsetTop + vpHeight - barH - 60, top));
 
   bar.style.left = left + 'px';
   bar.style.top = top + 'px';
@@ -1599,6 +1605,17 @@ function setupVisualViewport() {
         // Samsung Internet: innerHeight resizes, not visualViewport. Use layout viewport height via window.innerHeight vs vvH
         // On iOS, keyboard shows as vvH < innerHeight. On Samsung, opposite. Take max diff and ignore when scaled (pinch zoom).
         if (vvScale !== 1) return; // ignore pinch-zoom (U61, U65)
+
+        // Verify if a text input or terminal textarea currently holds focus
+        const active = document.activeElement;
+        const isInputFocused = !!(active && (
+          active.tagName === 'INPUT' ||
+          active.tagName === 'TEXTAREA' ||
+          active.isContentEditable ||
+          active.classList.contains('xterm-helper-textarea') ||
+          (typeof active.closest === 'function' && active.closest('.xterm'))
+        ));
+
         const diff = vvH - window.innerHeight;
         const absDiff = Math.abs(diff);
         // Fallback: visualViewport offsetTop > 10 means the visual viewport panned
@@ -1607,20 +1624,23 @@ function setupVisualViewport() {
         // Height the keyboard actually covers.
         //  iOS keeps the layout viewport and shrinks the visual one → innerHeight - vvH.
         //  Android/Samsung shrink innerHeight too → ≈0, and nothing needs compensating.
-        // Using absDiff alone was wrong on the offsetTop path: it added a handful of
-        // pixels of margin where hundreds of pixels were covered.
         const covered = Math.max(0, window.innerHeight - vvH - offsetTop);
-        const isKeyboard = absDiff > 50 && diff < 0;
-        const keyboardOpen = isKeyboard || offsetTop > 10 || covered > 50;
+        const isKeyboard = absDiff > 80 && diff < 0;
+        // Keyboard is only considered open when an actual input element has focus
+        const keyboardOpen = isInputFocused && (covered > 100 || offsetTop > 10 || isKeyboard);
         // Never reserve more than 60% of the viewport — a bogus metric must not
         // collapse the terminal to nothing.
-        const keyboardMargin = Math.min(covered, Math.round(window.innerHeight * 0.6));
+        const keyboardMargin = keyboardOpen ? Math.min(covered, Math.round(window.innerHeight * 0.6)) : 0;
         const mobileKeys = document.getElementById('mobile-keys');
         const selRow = document.getElementById('mkey-sel-row');
         const terminals = document.getElementById('terminals');
+        const editorView = document.getElementById('editor-view');
+        const splitArea = document.getElementById('editor-split-area');
         if (!terminals) return;
         if (keyboardOpen) {
           terminals.style.marginBottom = keyboardMargin + 'px';
+          if (editorView) editorView.style.marginBottom = keyboardMargin + 'px';
+          if (splitArea) splitArea.style.marginBottom = keyboardMargin + 'px';
           // Dock mobile key bar above software keyboard so ESC/TAB/arrows remain accessible
           if (mobileKeys && window.innerWidth <= 768 && settings.mobilekeys !== false) {
             mobileKeys.style.display = 'flex';
@@ -1636,6 +1656,8 @@ function setupVisualViewport() {
           if (mnav) mnav.style.display = 'none';
         } else {
           terminals.style.marginBottom = '0';
+          if (editorView) editorView.style.marginBottom = '0';
+          if (splitArea) splitArea.style.marginBottom = '0';
           if (mobileKeys) {
             mobileKeys.classList.remove('keyboard-docked');
             mobileKeys.style.bottom = '';
@@ -1658,6 +1680,21 @@ function setupVisualViewport() {
         const activeTab = typeof getActiveTab === 'function' ? getActiveTab() : null;
         if (activeTab?.type === 'term') {
           setTimeout(() => { try { fitTerm(activeTab); } catch {} }, 160);
+        } else if (activeTab?.type === 'file' && activeTab?.cm) {
+          setTimeout(() => {
+            try {
+              activeTab.cm.refresh();
+              activeTab.cm.scrollIntoView(activeTab.cm.getCursor());
+            } catch {}
+          }, 160);
+        }
+        if (typeof editorCM !== 'undefined' && editorCM) {
+          setTimeout(() => {
+            try {
+              editorCM.refresh();
+              editorCM.scrollIntoView(editorCM.getCursor());
+            } catch {}
+          }, 160);
         }
       }, 100);
     };
@@ -1724,8 +1761,17 @@ function hideMobileKeyboard() {
   if (tab?.term?.textarea) {
     try { tab.term.textarea.blur(); } catch {}
   }
+  try {
+    document.querySelectorAll('.xterm-helper-textarea, .xterm textarea, textarea, input').forEach(el => {
+      try { el.blur(); } catch {}
+    });
+  } catch {}
   const terminals = document.getElementById('terminals');
   if (terminals) terminals.style.marginBottom = '0';
+  const editorView = document.getElementById('editor-view');
+  if (editorView) editorView.style.marginBottom = '0';
+  const splitArea = document.getElementById('editor-split-area');
+  if (splitArea) splitArea.style.marginBottom = '0';
   const mk = document.getElementById('mobile-keys');
   if (mk) {
     mk.classList.remove('keyboard-docked');

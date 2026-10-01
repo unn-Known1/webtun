@@ -732,34 +732,39 @@ function setupTabInlineRename(tabTitleSpan, tab) {
 function setupTabSwipeGesture(tabEl, id) {
   let swipeStartX = 0, swipeStartY = 0;
   let swipeStartScroll = 0;
+  let isVerticalSwipe = false;
   tabEl.addEventListener('touchstart', e => {
     swipeStartX = e.touches[0].clientX;
     swipeStartY = e.touches[0].clientY;
-    swipeStartScroll = tabEl.parentElement.scrollLeft;
+    swipeStartScroll = tabEl.parentElement ? tabEl.parentElement.scrollLeft : 0;
+    isVerticalSwipe = false;
   }, { passive: true });
   tabEl.addEventListener('touchmove', e => {
     if (swipeStartX === 0) return;
-    if (tabEl.parentElement.scrollLeft !== swipeStartScroll) { swipeStartX = 0; return; }
     const dx = e.touches[0].clientX - swipeStartX;
     const dy = e.touches[0].clientY - swipeStartY;
-    // Require horizontal swipe dominant (dx > dy*1.5) to avoid scroll confusion (U59)
-    if (Math.abs(dx) < Math.abs(dy) * 1.5) return;
-    if (Math.abs(dx) > 5) {
-      e.preventDefault();
-      tabEl.style.transform = `translateX(${dx}px)`;
-      tabEl.style.opacity = Math.max(0.3, 1 - Math.abs(dx) / 200);
-      tabEl.style.background = `rgba(247,118,142,${Math.min(Math.abs(dx) / 80, 1) * 0.2})`;
+    // If horizontal scroll is active or movement is predominantly horizontal, ignore swipe-to-close to allow smooth tab strip scrolling
+    if (Math.abs(dx) > Math.abs(dy)) return;
+    // Upward swipe gesture for tab dismissal (dy < -8)
+    if (dy < -8 && Math.abs(dy) > Math.abs(dx) * 1.5) {
+      isVerticalSwipe = true;
+      if (e.cancelable) e.preventDefault();
+      tabEl.style.transform = `translateY(${dy}px)`;
+      tabEl.style.opacity = Math.max(0.3, 1 - Math.abs(dy) / 120);
+      tabEl.style.background = `rgba(247,118,142,${Math.min(Math.abs(dy) / 60, 1) * 0.25})`;
     }
   }, { passive: false });
   tabEl.addEventListener('touchend', e => {
     if (swipeStartX === 0) return;
-    const dx = e.changedTouches[0].clientX - swipeStartX;
     const dy = e.changedTouches[0].clientY - swipeStartY;
+    const dx = e.changedTouches[0].clientX - swipeStartX;
     tabEl.style.transform = '';
     tabEl.style.opacity = '';
     tabEl.style.background = '';
-    if (Math.abs(dx) > 90 && Math.abs(dx) > Math.abs(dy) * 1.5) closeTab({ stopPropagation() {} }, id);
-    swipeStartX = 0; swipeStartY = 0;
+    if (isVerticalSwipe && dy < -50 && Math.abs(dy) > Math.abs(dx) * 1.5) {
+      closeTab({ stopPropagation() {} }, id);
+    }
+    swipeStartX = 0; swipeStartY = 0; isVerticalSwipe = false;
   }, { passive: true });
 }
 
@@ -879,6 +884,7 @@ function newTab(title, sessionId, dir, opts = {}) {
 
 async function activateTab(id) {
   activeTabId = id;
+  try { if (navigator.vibrate && window.innerWidth <= 768) navigator.vibrate(12); } catch {}
   tabs.forEach(t => {
     t.el?.classList.toggle('active', t.id === id);
     if (t.el) {

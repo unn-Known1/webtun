@@ -28,9 +28,8 @@ async function resetSettings() {
         try { startSysIconPulse(); } catch {}
       }
     }
-    if (wasAwake && !settings.keepAwake && typeof wakeLock !== 'undefined' && wakeLock) {
-      try { wakeLock.release(); } catch {}
-      wakeLock = null;
+    if (wasAwake && !settings.keepAwake) {
+      try { if (typeof releaseWakeLock === 'function') releaseWakeLock(); } catch {}
     }
   } catch {}
   document.getElementById('s-theme').value = settings.theme;
@@ -935,12 +934,17 @@ function setupFileListTouch() {
   list.dataset._touchSetup = '1';
 
   let longPressTimer = null;
+  let touchStartX = 0;
+  let touchStartY = 0;
 
   list.addEventListener('touchstart', e => {
     const item = e.target.closest('.file-item');
-    if (!item || e.target.closest('.file-name, .file-meta')) return;
+    if (!item) return;
 
     const touch = e.touches[0];
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+
     const file = {
       path: item.dataset.path,
       name: fileRowName(item, item.dataset.path),
@@ -951,16 +955,24 @@ function setupFileListTouch() {
 
     longPressTimer = setTimeout(() => {
       longPressTimer = null;
+      try { if (navigator.vibrate) navigator.vibrate(30); } catch {}
       showCtxMenu({
         clientX: touch.clientX,
         clientY: touch.clientY,
         preventDefault() {}
       }, file);
-    }, 500);
-  }, { passive: false });
+    }, 450);
+  }, { passive: true });
 
-  list.addEventListener('touchmove', () => {
-    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+  list.addEventListener('touchmove', e => {
+    if (longPressTimer && e.touches[0]) {
+      const dx = Math.abs(e.touches[0].clientX - touchStartX);
+      const dy = Math.abs(e.touches[0].clientY - touchStartY);
+      if (dx > 8 || dy > 8) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+    }
   }, { passive: true });
 
   list.addEventListener('touchend', () => {

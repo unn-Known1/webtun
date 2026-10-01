@@ -17,5 +17,18 @@
       // guarded anyway). applyTheme() in app.js re-asserts both at init.
       document.documentElement.dataset.theme = theme;
       if (document.body) document.body.dataset.theme = theme;
+
+      const themeColors = {
+        light: '#ffffff',
+        tokyonight: '#1a1b26',
+        dracula: '#282a36',
+        nord: '#2e3440',
+        gruvbox: '#282828',
+        catppuccin: '#1e1e2e'
+      };
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta && themeColors[theme]) {
+        meta.content = themeColors[theme];
+      }
     } catch(e){ console.warn('Settings init error:', e); }
   })();
