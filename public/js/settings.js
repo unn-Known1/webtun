@@ -205,6 +205,10 @@ function openSettings() {
   // sidebar/header/tab strip can't be clicked or tabbed behind the dialog.
   if (!isOpen) {
     panel.classList.add('open');
+    if (window.innerWidth <= 768) {
+      document.getElementById('drawer-backdrop')?.classList.add('active');
+      if (typeof triggerHaptic === 'function') triggerHaptic('light');
+    }
     setupSettingsSections();
     updateSecurityUI();
     try { refreshSessions(); } catch {}
@@ -231,6 +235,9 @@ function openSettings() {
     setBackdropInert(false);
     removeFocusTrap();
     document.removeEventListener('click', closeSettingsOnClickOutside, true);
+    if (!document.getElementById('sidebar')?.classList.contains('mobile-open')) {
+      document.getElementById('drawer-backdrop')?.classList.remove('active');
+    }
   }
 }
 function closeSettings() {
@@ -240,6 +247,9 @@ function closeSettings() {
   setBackdropInert(false);
   removeFocusTrap();
   document.removeEventListener('click', closeSettingsOnClickOutside, true);
+  if (!document.getElementById('sidebar')?.classList.contains('mobile-open')) {
+    document.getElementById('drawer-backdrop')?.classList.remove('active');
+  }
 }
 function closeSettingsOnClickOutside(e) {
   const panel = document.getElementById('settings-panel');
@@ -456,9 +466,17 @@ function applySidebarState() {
   if (isMobile) {
     sb.classList.remove('hidden');
     sb.classList.toggle('mobile-open', sidebarOpen);
+    const backdrop = document.getElementById('drawer-backdrop');
+    if (backdrop) backdrop.classList.toggle('active', sidebarOpen);
+    const mnavExplorer = document.getElementById('mnav-explorer');
+    if (mnavExplorer) mnavExplorer.classList.toggle('active', sidebarOpen);
   } else {
     sb.classList.remove('mobile-open');
     sb.classList.toggle('hidden', !sidebarOpen);
+    const backdrop = document.getElementById('drawer-backdrop');
+    if (backdrop) backdrop.classList.remove('active');
+    const mnavExplorer = document.getElementById('mnav-explorer');
+    if (mnavExplorer) mnavExplorer.classList.remove('active');
   }
   try { safeStorage.setItem('wt-sidebar-collapsed', String(!sidebarOpen)); } catch {}
 }
@@ -476,6 +494,7 @@ wireSidebarResizeSync();
 // Honor a persisted collapsed state on boot without forcing mobile open.
 try { if (safeStorage.getItem('wt-sidebar-collapsed') === 'true') applySidebarState(); } catch {}
 function toggleSidebar() {
+  if (typeof triggerHaptic === 'function') triggerHaptic('light');
   const sb = document.getElementById('sidebar');
   sidebarOpen = !sidebarOpen;
   if (!sb) { try { safeStorage.setItem('wt-sidebar-collapsed', String(!sidebarOpen)); } catch {} return; }

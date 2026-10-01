@@ -297,6 +297,15 @@ async function _loadFilesInner(dir) {
   list.replaceChildren(fragment);
   observeThumbs();
 
+  // Reset scroll position to top when navigating to a different directory
+  if (!prevPath || prevPath !== currentPath) {
+    const wrap = document.getElementById('file-list-wrap');
+    if (wrap) {
+      wrap.scrollTop = 0;
+      wrap.scrollLeft = 0;
+    }
+  }
+
   if (list.children.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'file-list-empty';
@@ -1127,27 +1136,46 @@ function showCtxMenu(e, file) {
   document.getElementById('ctx-props').style.display = '';
   document.getElementById('ctx-folder-size').style.display = file.isDir ? '' : 'none';
   document.getElementById('ctx-extract').style.display = file.isDir ? 'none' : (file.ext === '.zip' ? '' : 'none');
-  // Measure after content is set
-  const mw = menu.offsetWidth, mh = menu.offsetHeight;
-  const vw = window.innerWidth, vh = window.innerHeight;
-  let left = e.clientX, top = e.clientY;
-  // Flip horizontally if overflowing right
-  if (left + mw > vw) left = Math.max(0, e.clientX - mw);
-  // Flip vertically if overflowing bottom
-  if (top + mh > vh) top = Math.max(0, e.clientY - mh);
-  // Clamp to viewport
-  left = Math.max(0, Math.min(left, vw - mw));
-  top = Math.max(0, Math.min(top, vh - mh));
-  menu.style.left = left + 'px';
-  menu.style.top = top + 'px';
+  const isMobile = window.innerWidth <= 768;
+  if (isMobile) {
+    if (typeof triggerHaptic === 'function') triggerHaptic('light');
+    const backdrop = document.getElementById('drawer-backdrop');
+    if (backdrop) backdrop.classList.add('active');
+    menu.style.left = '';
+    menu.style.top = '';
+  } else {
+    // Measure after content is set
+    const mw = menu.offsetWidth, mh = menu.offsetHeight;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    let left = e.clientX, top = e.clientY;
+    // Flip horizontally if overflowing right
+    if (left + mw > vw) left = Math.max(0, e.clientX - mw);
+    // Flip vertically if overflowing bottom
+    if (top + mh > vh) top = Math.max(0, e.clientY - mh);
+    // Clamp to viewport
+    left = Math.max(0, Math.min(left, vw - mw));
+    top = Math.max(0, Math.min(top, vh - mh));
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+  }
   menu.classList.add('open');
   menu.style.display = '';
   const firstItem = menu.querySelector('.ctx-item');
-  if (firstItem) firstItem.focus();
+  if (firstItem && !isMobile) firstItem.focus();
 }
 
 document.addEventListener('click', e => {
-  document.getElementById('ctx-menu').classList.remove('open');
+  const ctx = document.getElementById('ctx-menu');
+  if (ctx && ctx.classList.contains('open')) {
+    ctx.classList.remove('open');
+    if (window.innerWidth <= 768) {
+      const sb = document.getElementById('sidebar');
+      const sp = document.getElementById('settings-panel');
+      if (!sb?.classList.contains('mobile-open') && !sp?.classList.contains('open')) {
+        document.getElementById('drawer-backdrop')?.classList.remove('active');
+      }
+    }
+  }
   // TR-05: clicks inside the terminal menu are owned by the item handlers
   // (which restore focus to the terminal on action). An outside click
   // dismisses without stealing focus — otherwise clicking into the explorer

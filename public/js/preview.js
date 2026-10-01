@@ -5,6 +5,10 @@
 // pointed at /api/preview/:port/ instead of xterm + /ws.
 function previewBuildUrl(port, pth) {
   let p = String(pth || '/');
+  const prefix = `/api/preview/${port}`;
+  if (p.startsWith(prefix)) {
+    p = p.slice(prefix.length) || '/';
+  }
   if (!p.startsWith('/')) p = '/' + p;
   // Encode each segment separately: encodeURI leaves ?&# unescaped, which
   // corrupts the ?token= query the token is appended to.
@@ -81,7 +85,7 @@ function createPreviewWrapper(tab) {
   // No allow-same-origin on purpose: previewed pages stay opaque-origin so they
   // can't touch WebTun's localStorage/session token. Downloads + dialogs on.
   frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-popups allow-downloads allow-modals');
-  frame.setAttribute('referrerpolicy', 'no-referrer');
+  frame.setAttribute('referrerpolicy', 'same-origin');
   wrapper.appendChild(bar);
   wrapper.appendChild(loading);
   wrapper.appendChild(frame);
@@ -142,6 +146,10 @@ function wirePreviewNavMessages() {
     try {
       const tab = tabs.find(t => t.type === 'preview' && !t.closed && t.iframe && e.source === t.iframe.contentWindow);
       if (!tab) return;
+      const prefix = `/api/preview/${tab.port}`;
+      if (pth.startsWith(prefix)) {
+        pth = pth.slice(prefix.length) || '/';
+      }
       tab.previewPath = pth;
       if (tab.pathInput && document.activeElement !== tab.pathInput) tab.pathInput.value = pth;
       saveTabState();
@@ -249,11 +257,13 @@ function newPreviewTab(port, pth, opts = {}) {
 function newPreviewPrompt() {
   const inp = document.getElementById('preview-port-input');
   if (inp) {
+    try { inp.setAttribute('list', 'preview-ports-list'); } catch {}
     try {
       const recent = getPreviewRecent();
       inp.value = recent.length ? String(recent[0].port) : '8000';
     } catch { inp.value = '8000'; }
     clearFieldError('preview-error');
+    try { fillPreviewPorts(); } catch {}
   }
   openOverlay('preview-overlay');
   setTimeout(() => { try { inp.focus(); inp.select(); } catch {} }, 100);

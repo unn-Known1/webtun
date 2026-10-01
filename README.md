@@ -206,6 +206,9 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 
 ## Changelog
 
+### v2.2.6
+- **Mobile UX & Ergonomics overhaul (Mobile Readiness Score 94+/100)** — resolved involuntary keyboard popups during terminal scrolling with touch-drag gesture disambiguation; decoupled terminal PTY viewport resize (`SIGWINCH`) during software keyboard animation; docked the mobile key accessory ribbon (`#mobile-keys`) above the virtual keyboard via the Visual Viewport API so essential keys (`ESC`, `TAB`, `Ctrl`, arrows, `Hide KB`) remain accessible while typing; introduced an ergonomic thumb-zone Bottom Navigation Bar (`#mobile-nav-bar`) with large $\ge 48\text{px}$ targets and haptic feedback; transformed mobile context menus into native slide-up Bottom Action Sheets; resolved OS edge-swipe navigation conflicts with backdrop-scrim drawer controls; floating multi-select action capsule
+
 ### v2.2.5
 - **SSH access (opt-in)** — on-demand key-only ed25519 credentials from a header popup for Termius/mobile/`ssh` clients: status stat-trio with port pill, one-click Easy Setup checks (sshd, firewall, Tailscale userspace serve, built-in managed sshd) with per-check fix buttons, copy-ready Tailscale/LAN recipes (Docker-bridge addresses filtered), session single-use private keys; Features toggle is server-enforced (default off) and kills managed sshd + WebTun-started Tailnet on disable
 - **Login** — Enter-to-unlock now works on every showing of the PIN screen (plus input-level fallback), not just fresh boot

@@ -738,17 +738,15 @@ function initTerminal(tab) {
     } catch { try { menu.focus(); } catch {} }
   });
 
-  // Touch-to-mouse translation for TUI apps (mobile)
-  let _tapTimeout = null, _tapPos = null, _longPressTimer = null;
+  // Touch-to-mouse translation and scroll decoupling for mobile
+  let _tapPos = null, _longPressTimer = null, _isDraggingTouch = false;
   term.element.addEventListener('touchstart', e => {
     if (e.touches.length !== 1) return;
     const touch = e.touches[0];
+    _isDraggingTouch = false;
     _tapPos = { x: touch.clientX, y: touch.clientY, time: Date.now() };
-    // Long press detection for right-click (TR-03: dispatch a real
-    // `contextmenu` event — synthetic mousedown/mouseup with button:2 never
-    // triggers the contextmenu handler in WebKit/Blink).
     _longPressTimer = setTimeout(() => {
-      if (_tapPos) {
+      if (_tapPos && !_isDraggingTouch) {
         try {
           const ctxEvt = new MouseEvent('contextmenu', {
             clientX: _tapPos.x, clientY: _tapPos.y,
@@ -760,14 +758,37 @@ function initTerminal(tab) {
       }
     }, 500);
   }, { passive: true });
+
+  term.element.addEventListener('touchmove', e => {
+    if (_tapPos && e.touches.length === 1) {
+      const dx = Math.abs(e.touches[0].clientX - _tapPos.x);
+      const dy = Math.abs(e.touches[0].clientY - _tapPos.y);
+      if (dx > 8 || dy > 8) {
+        _isDraggingTouch = true;
+        clearTimeout(_longPressTimer);
+      }
+    }
+  }, { passive: true });
+
   term.element.addEventListener('touchend', e => {
     clearTimeout(_longPressTimer);
+    if (_isDraggingTouch) {
+      // User was scrolling terminal output: suppress clicks and keyboard focus
+      _tapPos = null;
+      setTimeout(() => { _isDraggingTouch = false; }, 100);
+      return;
+    }
     if (!_tapPos || e.changedTouches.length !== 1) return;
     const touch = e.changedTouches[0];
     const dx = Math.abs(touch.clientX - _tapPos.x);
     const dy = Math.abs(touch.clientY - _tapPos.y);
     const dt = Date.now() - _tapPos.time;
     if (dx < 10 && dy < 10 && dt < 300) {
+      // If keyboard was explicitly dismissed, do not re-open keyboard on accidental tap
+      if (Date.now() - _keyboardDismissedAt < 400) {
+        _tapPos = null;
+        return;
+      }
       // Short tap → left click
       const evt = new MouseEvent('mousedown', { clientX: touch.clientX, clientY: touch.clientY, button: 0, bubbles: true });
       term.element.dispatchEvent(evt);
@@ -776,10 +797,14 @@ function initTerminal(tab) {
     }
     _tapPos = null;
   }, { passive: true });
-  term.element.addEventListener('touchmove', () => {
-    clearTimeout(_longPressTimer);
-    _tapPos = null;
-  }, { passive: true });
+
+  // Suppress synthetic clicks following a swipe/scroll gesture or keyboard dismissal
+  tab.wrapper.addEventListener('click', e => {
+    if (_isDraggingTouch || (Date.now() - _keyboardDismissedAt < 400)) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  }, true);
 
   // Fit terminal then connect WebSocket — ensures WS uses correct dimensions
   requestAnimationFrame(() => {
@@ -929,7 +954,19 @@ function toggleAlt() {
   if (altLatch) toast('Alt ON (next key)', 'info');
 }
 
+let _keyboardDismissedAt = 0;
+
+function triggerHaptic(type = 'light') {
+  try {
+    if (!('vibrate' in navigator)) return;
+    if (type === 'light') navigator.vibrate(10);
+    else if (type === 'medium') navigator.vibrate(25);
+    else if (type === 'heavy') navigator.vibrate([30, 50, 30]);
+  } catch {}
+}
+
 function sendKey(key) {
+  triggerHaptic('light');
   let modified = key;
   if (key.length === 1) {
     if (shiftLatch && modified >= 'a' && modified <= 'z') {
@@ -1372,32 +1409,43 @@ function setupVisualViewport() {
         if (!terminals) return;
         if (keyboardOpen) {
           terminals.style.marginBottom = keyboardMargin + 'px';
-          if (mobileKeys) mobileKeys.style.display = 'none';
-          const ctrlRow = document.getElementById('mkey-ctrl-row');
-          if (ctrlRow && ctrlRow.style.display === 'flex') ctrlRow.dataset.wasOpen = '1';
-          if (ctrlRow) ctrlRow.style.display = 'none';
-          if (selRow && selRow.style.display === 'flex') selRow.dataset.wasOpen = '1';
-          if (selRow) selRow.style.display = 'none';
-        } else {
-          terminals.style.marginBottom = '0';
+          // Dock mobile key bar above software keyboard so ESC/TAB/arrows remain accessible
           if (mobileKeys && window.innerWidth <= 768 && settings.mobilekeys !== false) {
             mobileKeys.style.display = 'flex';
+            mobileKeys.classList.add('keyboard-docked');
+            mobileKeys.style.bottom = keyboardMargin + 'px';
           }
-          if (window.innerWidth <= 768 && settings.mobilekeys !== false) {
-            const ctrlRow = document.getElementById('mkey-ctrl-row');
-            if (ctrlRow && ctrlRow.dataset.wasOpen === '1') {
-              ctrlRow.style.display = 'flex';
-              delete ctrlRow.dataset.wasOpen;
+          const ctrlRow = document.getElementById('mkey-ctrl-row');
+          if (ctrlRow && ctrlRow.style.display === 'flex') {
+            ctrlRow.classList.add('keyboard-docked');
+            ctrlRow.style.bottom = (keyboardMargin + (mobileKeys?.offsetHeight || 38)) + 'px';
+          }
+          const mnav = document.getElementById('mobile-nav-bar');
+          if (mnav) mnav.style.display = 'none';
+        } else {
+          terminals.style.marginBottom = '0';
+          if (mobileKeys) {
+            mobileKeys.classList.remove('keyboard-docked');
+            mobileKeys.style.bottom = '';
+            if (window.innerWidth <= 768 && settings.mobilekeys !== false) {
+              mobileKeys.style.display = 'flex';
             }
           }
+          const ctrlRow = document.getElementById('mkey-ctrl-row');
+          if (ctrlRow) {
+            ctrlRow.classList.remove('keyboard-docked');
+            ctrlRow.style.bottom = '';
+          }
+          const mnav = document.getElementById('mobile-nav-bar');
+          if (mnav && window.innerWidth <= 768) mnav.style.display = 'flex';
           if (selRow && window.innerWidth <= 768) {
-            if (selRow.dataset.wasOpen === '1') {
-              selRow.style.display = 'flex';
-              delete selRow.dataset.wasOpen;
-            } else {
-              selRow.style.display = termSelectMode ? 'flex' : 'none';
-            }
+            selRow.style.display = termSelectMode ? 'flex' : 'none';
           }
+        }
+        // Debounce terminal fit so we don't spam SIGWINCH during keyboard animation
+        const activeTab = typeof getActiveTab === 'function' ? getActiveTab() : null;
+        if (activeTab?.type === 'term') {
+          setTimeout(() => { try { fitTerm(activeTab); } catch {} }, 160);
         }
       }, 100);
     };
@@ -1413,8 +1461,6 @@ function setupVisualViewport() {
 function setupMobileKeys() {
   const mk = document.getElementById('mobile-keys');
   const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-  // core.js defaults mobilekeys to false, so `=== undefined` never fires.
-  // Auto-enable on touch devices only when the user never chose (no stored key).
   try {
     const raw = safeStorage.getItem('wt-settings');
     const stored = raw ? JSON.parse(raw) : null;
@@ -1432,4 +1478,57 @@ function setupMobileKeys() {
   const ctrlBtn = document.getElementById('ctrl-toggle-btn');
   if (ctrlBtn) ctrlBtn.style.background = '';
   shiftLatch = false; altLatch = false; updateModifierButtons();
+}
+
+// ═══════════════════════════════════════════════════════
+// MOBILE ACTIONS & BOTTOM NAVIGATION CONTROLS
+// ═══════════════════════════════════════════════════════
+function toggleMobileKeyboard() {
+  triggerHaptic('light');
+  const tab = typeof getActiveTab === 'function' ? getActiveTab() : null;
+  if (!tab || tab.type !== 'term' || !tab.term) {
+    toast('Select a terminal tab to type', 'info');
+    return;
+  }
+  const ta = tab.term.textarea;
+  if (!ta) return;
+  if (document.activeElement === ta) {
+    hideMobileKeyboard();
+  } else {
+    ta.focus({ preventScroll: true });
+    const mk = document.getElementById('mobile-keys');
+    if (mk) mk.style.display = 'flex';
+  }
+}
+
+function hideMobileKeyboard() {
+  triggerHaptic('light');
+  _keyboardDismissedAt = Date.now();
+  const active = document.activeElement;
+  if (active && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT')) {
+    try { active.blur(); } catch {}
+  }
+  const tab = typeof getActiveTab === 'function' ? getActiveTab() : null;
+  if (tab?.term?.textarea) {
+    try { tab.term.textarea.blur(); } catch {}
+  }
+  const terminals = document.getElementById('terminals');
+  if (terminals) terminals.style.marginBottom = '0';
+  const mk = document.getElementById('mobile-keys');
+  if (mk) {
+    mk.classList.remove('keyboard-docked');
+    mk.style.bottom = '';
+  }
+  const ctrlRow = document.getElementById('mkey-ctrl-row');
+  if (ctrlRow) {
+    ctrlRow.classList.remove('keyboard-docked');
+    ctrlRow.style.bottom = '';
+  }
+  const mnav = document.getElementById('mobile-nav-bar');
+  if (mnav && window.innerWidth <= 768) mnav.style.display = 'flex';
+}
+
+function handleMobileNewAction() {
+  triggerHaptic('medium');
+  if (typeof newTab === 'function') newTab();
 }
