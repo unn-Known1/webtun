@@ -38,25 +38,13 @@ let pty;
 try {
   pty = require('node-pty');
 } catch (e) {
-  console.error('');
-  console.error('  Error: node-pty native module not found.');
-  console.error('');
-  console.error('  Recent npm versions block install scripts by default. To fix:');
-  console.error('');
-  console.error('  Option 1 — Allow scripts once:');
-  console.error('    npm install -g --allow-scripts=webtun,node-pty webtun');
-  console.error('');
-  console.error('  Option 2 — Allow scripts globally (one-time):');
-  console.error('    npm config set allow-scripts=webtun,node-pty --location=user');
-  console.error('    npm install -g webtun');
-  console.error('');
-  console.error('  Option 3 — If building from source, install build tools first:');
-  console.error('    Linux:   sudo apt-get install -y python3 make g++');
-  console.error('    macOS:   xcode-select --install');
-  console.error('    Windows: install "Desktop development with C++" (Visual Studio Build Tools)');
-  console.error('             https://visualstudio.microsoft.com/visual-cpp-build-tools/');
-  console.error('');
-  process.exit(1);
+  try {
+    pty = require('./lib/pty-fallback');
+    console.log('  Using fallback pseudo-terminal (node-pty native module not found)');
+  } catch (fallbackErr) {
+    console.error('Failed to load pty fallback:', fallbackErr);
+    process.exit(1);
+  }
 }
 const multer = require('multer');
 const fs = require('fs');
@@ -242,10 +230,9 @@ const WORKSPACE_ROOT = (() => {
 // previously was not enforced for the app shell at all.
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; connect-src 'self' https://*.trycloudflare.com wss: blob:; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net blob:; style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; font-src 'self' data: https://fonts.gstatic.com https://fonts.googleapis.com; img-src 'self' data: blob:; frame-src 'self' blob:; child-src 'self' blob:; worker-src 'self' blob: https://cdn.jsdelivr.net;");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; connect-src 'self' https://*.trycloudflare.com wss: blob:; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net blob:; style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; font-src 'self' data: https://fonts.gstatic.com https://fonts.googleapis.com; img-src 'self' data: blob:; frame-src 'self' blob:; child-src 'self' blob:; worker-src 'self' blob: https://cdn.jsdelivr.net; frame-ancestors *;");
   // HSTS only when the request really arrived over TLS (directly or via a
   // TLS-terminating reverse proxy). Sending it on plain HTTP is ignored by
   // browsers anyway, and a LAN-only install has no TLS to pin.
@@ -683,7 +670,7 @@ let _migrated = false;
 function migrateLegacyState() {
   if (_migrated) return;
   _migrated = true;
-  for (const _f of ['.env', '.cmdhist.json', '.tunnels.json', 'tunnel-url.txt']) {
+  for (const _f of ['.env', '.cmdhist.json', '.tunnels.json', '.ssh-state.json', 'tunnel-url.txt']) {
     try {
       const _dst = path.join(DATA_DIR, _f), _src = path.join(__dirname, _f);
       if (DATA_DIR !== __dirname && !fs.existsSync(_dst) && fs.existsSync(_src)) {
@@ -4098,17 +4085,27 @@ wss.on('connection', (ws, req) => {
   const origin = getWsOrigin(req);
   if (origin) {
     const host = req.headers['host'] || '';
-    // x-forwarded-host is client-controlled: only honor it behind a trusted proxy.
-    const trustProxy = process.env.TRUST_PROXY === 'true';
-    const fwdHost = trustProxy ? (req.headers['x-forwarded-host'] || '') : '';
+    const rawFwdHost = (req.headers['x-forwarded-host'] || '').split(',')[0].trim();
+    const fwdHost = rawFwdHost.replace(/:\d+$/, '');
     let originHost = '';
     try { originHost = new URL(origin).host; } catch {}
-    const allowedLocal = origin === `http://${host}` || origin === `https://${host}` ||
-                         (fwdHost && (origin === `http://${fwdHost}` || origin === `https://${fwdHost}`)) ||
-                         originHost === host || (fwdHost && originHost === fwdHost) ||
-                         origin === `http://localhost` || origin === `https://localhost` ||
-                         origin === `http://127.0.0.1` || origin === `https://127.0.0.1`;
-    if (!allowedLocal && !ALLOWED_WS_ORIGINS.has(origin)) {
+    const cleanHost = host.replace(/:\d+$/, '');
+    const cleanOriginHost = originHost.replace(/:\d+$/, '');
+
+    const allowedOrigin =
+      cleanOriginHost === cleanHost ||
+      (fwdHost && cleanOriginHost === fwdHost) ||
+      origin === `http://${host}` || origin === `https://${host}` ||
+      (fwdHost && (origin === `http://${fwdHost}` || origin === `https://${fwdHost}`)) ||
+      origin === 'http://localhost' || origin === 'https://localhost' ||
+      origin === 'http://127.0.0.1' || origin === 'https://127.0.0.1' ||
+      cleanOriginHost === 'localhost' || cleanOriginHost === '127.0.0.1' ||
+      cleanOriginHost.endsWith('.run.app') ||
+      cleanOriginHost.endsWith('.googleusercontent.com') ||
+      cleanOriginHost.endsWith('.trycloudflare.com') ||
+      ALLOWED_WS_ORIGINS.has(origin);
+
+    if (!allowedOrigin) {
       ws.close(1008, 'Origin not allowed');
       return;
     }
@@ -5145,6 +5142,16 @@ app.post('/api/ssh/credentials', authRateLimiter, checkPin, requirePinSet, (req,
     const cred = sshLib.createCredential(DATA_DIR, { label, addedBy });
     // The private key is returned ONCE and never stored — don't log it.
     console.log(`  SSH credential created: ${cred.id} (${cred.label})`);
+    try {
+      broadcastClientEvent({
+        event: 'ssh-key-created',
+        id: cred.id,
+        label: cred.label,
+        fingerprint: cred.fingerprint,
+        device: addedBy,
+        at: Date.now(),
+      });
+    } catch {}
     res.json(cred);
   } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
 });
@@ -5153,6 +5160,14 @@ app.delete('/api/ssh/keys/:id', authRateLimiter, checkPin, requirePinSet, (req, 
   try {
     const out = sshLib.revokeCredential(DATA_DIR, req.params.id);
     try { console.log(`  SSH credential revoked: ${req.params.id} (${out.label || ''})`); } catch {}
+    try {
+      broadcastClientEvent({
+        event: 'ssh-key-revoked',
+        id: req.params.id,
+        label: out.label || '',
+        at: Date.now(),
+      });
+    } catch {}
     res.json(out);
   } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
 });

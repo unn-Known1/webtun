@@ -126,6 +126,9 @@ function closeOverlay(id) {
   const overlay = document.getElementById(id);
   if (!overlay) return;
   overlay.classList.remove('open');
+  if (id === 'ssh-overlay' && typeof dismissSshOnce === 'function') {
+    try { dismissSshOnce(); } catch {}
+  }
   removeFocusTrap();
   // Capture before nulling: the timeout fires after this function returns.
   const lf = lastFocusedElement;

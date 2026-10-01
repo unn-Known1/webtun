@@ -1,8 +1,14 @@
-const CACHE = 'webtun-v10';
+const CACHE = 'webtun-v11';
 const PRECACHE = [
   '/',
   '/index.html',
   '/css/styles.css',
+  '/vendor/xterm.css',
+  '/vendor/xterm.js',
+  '/vendor/addon-fit.js',
+  '/vendor/addon-web-links.js',
+  '/vendor/addon-unicode11.js',
+  '/vendor/addon-webgl.js',
   '/js/core.js',
   '/js/ui.js',
   '/js/tabs.js',

@@ -38,7 +38,7 @@ function loadSettings() {
   try { if (typeof applyGitSimple === 'function') applyGitSimple(); } catch {}
   try { if (typeof applySshEnabled === 'function') applySshEnabled(); } catch {}
   syncKeepAwakeUI();
-  if (settings.keepAwake && hasWakeLock) { requestWakeLock(); }
+  if (settings.keepAwake && hasWakeLock) { requestWakeLock().catch(() => {}); }
   if (isElectron) {
     document.querySelectorAll('.electron-only').forEach(el => el.style.display = '');
     window.electronAPI.getAutostart().then(enabled => {
@@ -739,16 +739,23 @@ function _fsEscHandler(e) {
 
 // Terminal fullscreen removed — per request, terminal fullscreen should not cover sidebar
 // toggleTerminalFullscreen and _termFsEscHandler intentionally removed
+let wakeLock = null;
+window.wakeLock = null;
 const hasWakeLock = 'wakeLock' in navigator;
 
 async function requestWakeLock() {
   if (!hasWakeLock) return false;
   try {
     wakeLock = await navigator.wakeLock.request('screen');
-    wakeLock.addEventListener('release', () => { wakeLock = null; });
+    window.wakeLock = wakeLock;
+    wakeLock.addEventListener('release', () => {
+      wakeLock = null;
+      window.wakeLock = null;
+    });
     return true;
   } catch (err) {
-    console.warn('Wake Lock error:', err);
+    wakeLock = null;
+    window.wakeLock = null;
     return false;
   }
 }
@@ -757,14 +764,18 @@ async function toggleKeepAwake(enabled) {
   settings.keepAwake = enabled;
   saveSettings();
   if (enabled) {
-    const ok = await requestWakeLock();
+    const ok = await requestWakeLock().catch(() => false);
     if (!ok && !isElectron) {
       toast('Screen wake lock not supported or denied', 'error');
     } else if (!ok && isElectron) {
       toast('Wake lock not available in Electron', 'info');
     }
   } else {
-    if (wakeLock) { wakeLock.release(); wakeLock = null; }
+    if (wakeLock) {
+      try { await wakeLock.release(); } catch {}
+      wakeLock = null;
+      window.wakeLock = null;
+    }
   }
   syncKeepAwakeUI();
 }
@@ -784,7 +795,9 @@ function syncKeepAwakeUI() {
 }
 
 document.addEventListener('visibilitychange', async () => {
-  if (document.visibilityState === 'visible' && settings.keepAwake && !wakeLock) {
-    await requestWakeLock();
-  }
+  try {
+    if (document.visibilityState === 'visible' && settings.keepAwake && !wakeLock) {
+      await requestWakeLock().catch(() => {});
+    }
+  } catch {}
 });

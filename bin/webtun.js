@@ -16,6 +16,8 @@ function printHelp() {
     --host, -h <host>     Host to bind to (default: 0.0.0.0 or $HOST; --host=... also works)
     --pin <pin>           PIN for authentication (default: $PIN)
     --tunnel, -t          Start a Cloudflare Tunnel for remote access
+    --ssh                 Enable SSH Access on startup
+    --ssh-port <port>     Expected SSH port (default: 2222 or $SSH_PORT)
     --help, -H              Show this help message
     --version, -v           Show version number
     (note: -h means --host, not help)
@@ -98,6 +100,21 @@ function parseArgs(argv) {
       i++;
     } else if (arg === '--tunnel' || arg === '-t') {
       opts.tunnel = true;
+    } else if (arg === '--ssh') {
+      opts.ssh = true;
+    } else if (arg === '--ssh-port') {
+      const raw = eqVal !== null ? eqVal : ((!argv[i+1] || argv[i+1].startsWith('-')) ? null : argv[++i]);
+      if (raw === null || raw === '') {
+        console.error('Error: --ssh-port requires a value');
+        process.exit(1);
+      }
+      const p = parseInt(raw, 10);
+      if (isNaN(p) || p < 1 || p > 65535) {
+        console.error('Error: --ssh-port requires a numeric value 1-65535');
+        process.exit(1);
+      }
+      process.env.SSH_PORT = String(p);
+      opts.sshPort = p;
     } else {
       console.error(`Unknown option: ${arg}`);
       printHelp();
@@ -312,6 +329,18 @@ function boot(port, allowPortFallback) {
     console.error('Failed to start server:', err.message);
     process.exit(1);
   });
+}
+
+// If --ssh flag was passed, ensure the master feature switch is enabled in state
+if (opts.ssh) {
+  try {
+    const { _loadState, _saveState } = require('../lib/ssh');
+    const st = _loadState();
+    if (!st.enabled) {
+      st.enabled = true;
+      _saveState(undefined, st);
+    }
+  } catch {}
 }
 
 // Only auto-move ports when the port was implicit (default or $PORT) — an

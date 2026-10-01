@@ -9,6 +9,9 @@
 <meta name="theme-color" content="#f9f9fb">
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="X-Content-Type-Options" content="nosniff">
+<meta name="description" content="Self-hosted web terminal with Cloudflare Tunnel, file explorer, and PWA support">
+<meta property="og:title" content="WebTun">
+<meta property="og:description" content="Self-hosted web terminal with Cloudflare Tunnel, file explorer, and PWA support">
 <!-- NOTE: no SRI on the Google Fonts CSS above: it is UA-sniffed per browser,
      so a pinned hash would break rendering. All version-pinned jsdelivr
      assets below carry integrity+crossorigin. -->
@@ -19,12 +22,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css" integrity="sha384-tStR1zLfWgsiXCF3IgfB3lBa8KmBe/lG287CL9WCeKgQYcp1bjb4/+mwN6oti4Co" crossorigin="anonymous">
-<script defer src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js" integrity="sha384-J4qzUjBl1FxyLsl/kQPQIOeINsmp17OHYXDOMpMxlKX53ZfYsL+aWHpgArvOuof9" crossorigin="anonymous"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js" integrity="sha384-XGqKrV8Jrukp1NITJbOEHwg01tNkuXr6uB6YEj69ebpYU3v7FvoGgEg23C1Gcehk" crossorigin="anonymous"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0.11.0/lib/addon-web-links.min.js" integrity="sha384-S1biLeI8L/bFduIVvCxbn/l4EtaG4nTqQjGF7qCYTbsGXGFe8KgIKXtw4+UWxprv" crossorigin="anonymous"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/@xterm/addon-unicode11@0.7.0/lib/addon-unicode11.min.js" integrity="sha384-exTEMxNHLX1A0MtReXfNULfIa0ExAdUCJ0rWQjGF5Sa2LgRHGVvKDTEzHVHrWcJd" crossorigin="anonymous"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/@xterm/addon-webgl@0.18.0/lib/addon-webgl.min.js" integrity="sha384-suTk5GfzCaPxAJRzhqzQQvM81UskMll+stLgqXpay997ORTnMRm1IAJi143VfhXU" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="/vendor/xterm.css">
+<script defer src="/vendor/xterm.js"></script>
+<script defer src="/vendor/addon-fit.js"></script>
+<script defer src="/vendor/addon-web-links.js"></script>
+<script defer src="/vendor/addon-unicode11.js"></script>
+<script defer src="/vendor/addon-webgl.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js" integrity="sha384-H+hy9ULve6xfxRkWIh/YOtvDdpXgV2fmAGQkIDTxIgZwNoaoBal14Di2YTMR6MzR" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js" integrity="sha384-eEu5CTj3qGvu9PdJuS+YlkNi7d2XxQROAFYOr59zgObtlcux1ae1Il3u7jvdCSWu" crossorigin="anonymous"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/lib/codemirror.min.css" integrity="sha384-EAMaqTIrSR3wOlf2EQj7Kkx5ZCHPjHmlYJsFof5IB8dzXMASyR8eIwXgp+IGz/rs" crossorigin="anonymous">

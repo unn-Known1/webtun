@@ -416,13 +416,17 @@ function handleClientEvent(payload) {
     try { if (ws.readyState === WebSocket.CONNECTING) ws.close(); } catch {}
   };
 
-  ws.onclose = () => {
+  ws.onclose = event => {
     try { if (tab._openTimer) { clearTimeout(tab._openTimer); tab._openTimer = null; } } catch {}
     // The open-timeout's fallback may invoke onclose after cleanup already
     // ran for a newer socket — never kill a live replacement.
     if (tab.ws && tab.ws !== ws) return;
     cleanupWebSocket(tab);
     if (tab.closed) return;
+    if (event && event.code === 1008 && event.reason === 'Unauthorized') {
+      try { showPinScreen(); } catch {}
+      return;
+    }
     try { if (typeof refreshConnStatus === 'function') refreshConnStatus(); else updateConnStatus(false); } catch {}
     tab.reconnectAttempts = (tab.reconnectAttempts || 0) + 1;
     const _attempt = tab.reconnectAttempts;
@@ -498,6 +502,16 @@ function manualReconnect() {
   });
 }
 function initTerminal(tab) {
+  if (typeof Terminal === 'undefined') {
+    tab._termInitRetries = (tab._termInitRetries || 0) + 1;
+    if (tab._termInitRetries < 60) {
+      setTimeout(() => initTerminal(tab), 50);
+      return;
+    }
+    console.error('Terminal library (xterm.js) is not available');
+    return;
+  }
+
   const cfg = {
     fontFamily: settings.font,
     fontSize: settings.fontSize,
@@ -514,23 +528,25 @@ function initTerminal(tab) {
   };
 
   const term = new Terminal(cfg);
-  const fitAddon = new FitAddon.FitAddon();
-  const webLinksAddon = new WebLinksAddon.WebLinksAddon();
+  const fitAddon = (typeof FitAddon !== 'undefined' && FitAddon.FitAddon) ? new FitAddon.FitAddon() : null;
+  const webLinksAddon = (typeof WebLinksAddon !== 'undefined' && WebLinksAddon.WebLinksAddon) ? new WebLinksAddon.WebLinksAddon() : null;
 
-  term.loadAddon(fitAddon);
-  term.loadAddon(webLinksAddon);
+  if (fitAddon) term.loadAddon(fitAddon);
+  if (webLinksAddon) term.loadAddon(webLinksAddon);
 
   try {
-    const unicodeAddon = new Unicode11Addon.Unicode11Addon();
-    term.loadAddon(unicodeAddon);
-    term.unicode.activeVersion = '11';
+    if (typeof Unicode11Addon !== 'undefined' && Unicode11Addon.Unicode11Addon) {
+      const unicodeAddon = new Unicode11Addon.Unicode11Addon();
+      term.loadAddon(unicodeAddon);
+      term.unicode.activeVersion = '11';
+    }
   } catch (_) {}
 
   // GPU-accelerated renderer — falls back to canvas if WebGL unavailable.
   // Guard counts LIVE WebGL contexts (not just tabs), so init churn can never
   // exhaust the browser's ~16-context budget.
   const liveGL = (typeof tabs !== 'undefined' ? tabs : []).filter(t => t && t._webglAddon).length;
-  if (liveGL < 4) {
+  if (liveGL < 4 && typeof WebglAddon !== 'undefined' && WebglAddon.WebglAddon) {
     try {
       const webglAddon = new WebglAddon.WebglAddon();
       webglAddon.onContextLoss(() => {

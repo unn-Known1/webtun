@@ -23,6 +23,7 @@
     "node": ">=18.0.0"
   },
   "scripts": {
+    "build": "npm run version:check && node -e \"require('./server.js'); console.log('build ok')\"",
     "start": "node server.js",
     "test": "npm run version:check && node -e \"require('./server.js'); console.log('smoke ok')\"",
     "dev": "nodemon server.js",
