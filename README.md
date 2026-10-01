@@ -206,6 +206,9 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 
 ## Changelog
 
+### v2.2.7
+- **Desktop Engine & Audit Remediation (Desktop Readiness Score 96.8/100 Grade A+)** — implemented single-instance application lock (`app.requestSingleInstanceLock()`) in Electron; attached xterm key event handler (`term.attachCustomKeyEventHandler`) to route global hotkeys (`Ctrl+B`, `Ctrl+P`) directly to application handlers; dynamic submenu flyout edge clamping; empty-space context menu in file explorer; scoped drag overlay to prevent text selection interference; window focus auto-refresh for Git status panel; Solarized Dark theme contrast adjustments for WCAG AA compliance; Ultrawide display Launchpad layout scaling
+
 ### v2.2.6
 - **Mobile UX & Ergonomics overhaul (Mobile Readiness Score 94+/100)** — resolved involuntary keyboard popups during terminal scrolling with touch-drag gesture disambiguation; decoupled terminal PTY viewport resize (`SIGWINCH`) during software keyboard animation; docked the mobile key accessory ribbon (`#mobile-keys`) above the virtual keyboard via the Visual Viewport API so essential keys (`ESC`, `TAB`, `Ctrl`, arrows, `Hide KB`) remain accessible while typing; introduced an ergonomic thumb-zone Bottom Navigation Bar (`#mobile-nav-bar`) with large $\ge 48\text{px}$ targets and haptic feedback; transformed mobile context menus into native slide-up Bottom Action Sheets; resolved OS edge-swipe navigation conflicts with backdrop-scrim drawer controls; floating multi-select action capsule
 

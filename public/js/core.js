@@ -60,6 +60,18 @@ function adjustTermMenuPosition(menu) {
   // the clamped origin, not the pre-clamp one.
   if (newLeft !== rect.left) menu.style.left = newLeft + 'px';
   if (newTop !== rect.top) menu.style.top = newTop + 'px';
+
+  // Dynamic flyout submenu alignment: if parent menu is near the right viewport boundary, fly out left
+  const sub = menu.querySelector('#term-ctx-more-items, .ctx-submenu-items');
+  if (sub) {
+    if (rect.right + 210 > vw) {
+      sub.style.left = 'auto';
+      sub.style.right = '100%';
+    } else {
+      sub.style.left = '100%';
+      sub.style.right = 'auto';
+    }
+  }
 }
 
 const isElectron = !!(window.electronAPI && window.electronAPI.isElectron);

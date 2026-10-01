@@ -564,6 +564,21 @@ function initTerminal(tab) {
 
   term.open(tab.wrapper);
 
+  term.attachCustomKeyEventHandler(e => {
+    if (e.type === 'keydown' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+      const key = e.key.toLowerCase();
+      if (key === 'b') {
+        if (typeof toggleSidebar === 'function') toggleSidebar();
+        return false;
+      }
+      if (key === 'p') {
+        if (typeof openFinder === 'function') openFinder();
+        return false;
+      }
+    }
+    return true;
+  });
+
   tab.term = term;
   tab.fitAddon = fitAddon;
   tab.closed = false;

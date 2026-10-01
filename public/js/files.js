@@ -617,13 +617,16 @@ function setupFileListContextMenu() {
   list.dataset._ctxSetup = '1';
   list.addEventListener('contextmenu', e => {
     const item = e.target.closest('.file-item');
-    if (!item || !item.dataset.path) return;
-    const curPath = item.dataset.path;
-    const curIsDir = item.dataset.isDir === 'true';
-    const curName = fileRowName(item, curPath);
-    const m = curPath.match(/\.([^.]+)$/);
-    const ext = m ? '.' + m[1].toLowerCase() : '';
-    showCtxMenu(e, { path: curPath, name: curName, isDir: curIsDir, ext });
+    if (item && item.dataset.path) {
+      const curPath = item.dataset.path;
+      const curIsDir = item.dataset.isDir === 'true';
+      const curName = fileRowName(item, curPath);
+      const m = curPath.match(/\.([^.]+)$/);
+      const ext = m ? '.' + m[1].toLowerCase() : '';
+      showCtxMenu(e, { path: curPath, name: curName, isDir: curIsDir, ext });
+    } else if (currentPath) {
+      showCtxMenu(e, { path: currentPath, name: '', isDir: true, ext: '', isBlankSpace: true });
+    }
   });
 }
 
@@ -2156,12 +2159,18 @@ function setupDragDrop() {
   let dragCnt = 0;
 
   function isFileDrag(e) {
+    if (e.target && e.target.closest && (e.target.closest('.CodeMirror') || e.target.closest('.xterm'))) return false;
     const types = e.dataTransfer?.types;
     if (!types) return false;
+    let hasFiles = false;
     for (let i = 0; i < types.length; i++) {
-      if (types[i] === 'Files') return true;
+      if (types[i] === 'Files') hasFiles = true;
     }
-    return false;
+    if (!hasFiles) return false;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      if (e.dataTransfer.items[0].kind === 'string') return false;
+    }
+    return true;
   }
 
   document.addEventListener('dragenter', e => {

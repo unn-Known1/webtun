@@ -17,6 +17,11 @@ function toggleGitPanel() {
   try { safeStorage.setItem('wt-git-open', gitOpen); } catch(e) { console.warn(e); }
   if (gitOpen && gitRepo && gitRoot) refreshGitPanel(currentPath, true);
 }
+window.addEventListener('focus', () => {
+  if (gitOpen && gitRepo && gitRoot && typeof currentPath !== 'undefined' && currentPath) {
+    refreshGitPanel(currentPath, true);
+  }
+});
 async function refreshGitPanel(dir, manual) {
   const section = document.getElementById('git-section');
   if (!section) return;
