@@ -738,44 +738,169 @@ function initTerminal(tab) {
     } catch { try { menu.focus(); } catch {} }
   });
 
-  // Touch-to-mouse translation and scroll decoupling for mobile
-  let _tapPos = null, _longPressTimer = null, _isDraggingTouch = false;
+  // Touch-to-mouse translation, smooth scrolling, and selection for mobile
+  let _tapPos = null;
+  let _lastTapTime = 0;
+  let _lastTapPos = null;
+  let _longPressTimer = null;
+  let _isDraggingTouch = false;
+  let _isSelectingDrag = false;
+  let _selAnchor = null;
+  let _touchAccumY = 0;
+  let _lastTouchY = 0;
+  let _lastTouchX = 0;
+
   term.element.addEventListener('touchstart', e => {
-    if (e.touches.length !== 1) return;
+    if (e.touches.length !== 1) {
+      clearTimeout(_longPressTimer);
+      return;
+    }
     const touch = e.touches[0];
     _isDraggingTouch = false;
+    _isSelectingDrag = false;
+    _touchAccumY = 0;
+    _lastTouchY = touch.clientY;
+    _lastTouchX = touch.clientX;
     _tapPos = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+
+    // Check for double tap
+    const now = Date.now();
+    const dt = now - _lastTapTime;
+    const isDoubleTap = _lastTapPos && dt < 320 && Math.hypot(touch.clientX - _lastTapPos.x, touch.clientY - _lastTapPos.y) < 25;
+
+    if (isDoubleTap) {
+      clearTimeout(_longPressTimer);
+      _lastTapTime = 0;
+      _lastTapPos = null;
+      const cellInfo = getTermCellFromTouch(tab, touch.clientX, touch.clientY);
+      if (cellInfo && selectWordAtCell(tab, cellInfo)) {
+        showTermSelectionBar(touch.clientX, touch.clientY);
+        try { navigator.vibrate?.(20); } catch {}
+      }
+      return;
+    }
+    _lastTapTime = now;
+    _lastTapPos = { x: touch.clientX, y: touch.clientY };
+
+    // Long press for text selection
     _longPressTimer = setTimeout(() => {
       if (_tapPos && !_isDraggingTouch) {
-        try {
-          const ctxEvt = new MouseEvent('contextmenu', {
-            clientX: _tapPos.x, clientY: _tapPos.y,
-            button: 2, bubbles: true, cancelable: true
-          });
-          term.element.dispatchEvent(ctxEvt);
-        } catch {}
-        _tapPos = null;
+        const cellInfo = getTermCellFromTouch(tab, _tapPos.x, _tapPos.y);
+        if (cellInfo) {
+          _isSelectingDrag = true;
+          _selAnchor = { col: cellInfo.col, bufRow: cellInfo.bufRow };
+          selectWordAtCell(tab, cellInfo);
+          showTermSelectionBar(_tapPos.x, _tapPos.y);
+          try { navigator.vibrate?.(25); } catch {}
+        }
       }
-    }, 500);
+    }, 380);
   }, { passive: true });
 
   term.element.addEventListener('touchmove', e => {
-    if (_tapPos && e.touches.length === 1) {
-      const dx = Math.abs(e.touches[0].clientX - _tapPos.x);
-      const dy = Math.abs(e.touches[0].clientY - _tapPos.y);
-      if (dx > 8 || dy > 8) {
-        _isDraggingTouch = true;
-        clearTimeout(_longPressTimer);
+    if (e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    const totalDx = Math.abs(touch.clientX - (_tapPos ? _tapPos.x : touch.clientX));
+    const totalDy = Math.abs(touch.clientY - (_tapPos ? _tapPos.y : touch.clientY));
+
+    if (totalDx > 8 || totalDy > 8) {
+      if (!_isSelectingDrag) clearTimeout(_longPressTimer);
+    }
+
+    if (_isSelectingDrag && _selAnchor) {
+      e.preventDefault();
+      const cellInfo = getTermCellFromTouch(tab, touch.clientX, touch.clientY);
+      if (cellInfo) {
+        const startRow = Math.min(_selAnchor.bufRow, cellInfo.bufRow);
+        const endRow = Math.max(_selAnchor.bufRow, cellInfo.bufRow);
+        if (startRow === endRow) {
+          const startCol = Math.min(_selAnchor.col, cellInfo.col);
+          const endCol = Math.max(_selAnchor.col, cellInfo.col);
+          term.select(startCol, startRow, Math.max(1, endCol - startCol + 1));
+        } else {
+          term.selectLines(startRow, endRow);
+        }
+        showTermSelectionBar(touch.clientX, touch.clientY);
+      }
+      return;
+    }
+
+    if (termSelectMode) {
+      e.preventDefault();
+      const cellInfo = getTermCellFromTouch(tab, touch.clientX, touch.clientY);
+      if (cellInfo) {
+        if (!_selAnchor) _selAnchor = { col: cellInfo.col, bufRow: cellInfo.bufRow };
+        const startRow = Math.min(_selAnchor.bufRow, cellInfo.bufRow);
+        const endRow = Math.max(_selAnchor.bufRow, cellInfo.bufRow);
+        if (startRow === endRow) {
+          const startCol = Math.min(_selAnchor.col, cellInfo.col);
+          const endCol = Math.max(_selAnchor.col, cellInfo.col);
+          term.select(startCol, startRow, Math.max(1, endCol - startCol + 1));
+        } else {
+          term.selectLines(startRow, endRow);
+        }
+        showTermSelectionBar(touch.clientX, touch.clientY);
+      }
+      return;
+    }
+
+    // Touch scroll handling (vertical dominant)
+    const dy = _lastTouchY - touch.clientY;
+    const dx = _lastTouchX - touch.clientX;
+    _lastTouchY = touch.clientY;
+    _lastTouchX = touch.clientX;
+
+    if (totalDy > 6 && totalDy > totalDx * 0.7) {
+      _isDraggingTouch = true;
+      e.preventDefault();
+
+      const isTracking = xtermMouseTracking(term);
+      if (isTracking) {
+        // Fullscreen TUI apps like opencode / vim / tmux / htop: dispatch wheel to viewport
+        try {
+          const vp = tab.wrapper.querySelector('.xterm-viewport');
+          if (vp) {
+            vp.dispatchEvent(new WheelEvent('wheel', {
+              deltaY: dy * 3,
+              deltaMode: 0,
+              clientX: touch.clientX,
+              clientY: touch.clientY,
+              bubbles: true,
+              cancelable: true
+            }));
+          }
+        } catch (_) {}
+      } else {
+        // Normal terminal buffer scroll
+        const lineHeight = xtermCharHeight(term, tab.wrapper) || 16;
+        _touchAccumY += dy;
+        const step = lineHeight * 0.55;
+        if (Math.abs(_touchAccumY) >= step) {
+          const lines = Math.trunc(_touchAccumY / step);
+          term.scrollLines(lines);
+          _touchAccumY -= lines * step;
+        }
       }
     }
-  }, { passive: true });
+  }, { passive: false });
 
   term.element.addEventListener('touchend', e => {
     clearTimeout(_longPressTimer);
+    if (_isSelectingDrag) {
+      _isSelectingDrag = false;
+      _selAnchor = null;
+      if (e.changedTouches.length) {
+        showTermSelectionBar(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+      }
+      return;
+    }
+    if (termSelectMode) {
+      _selAnchor = null;
+      return;
+    }
     if (_isDraggingTouch) {
-      // User was scrolling terminal output: suppress clicks and keyboard focus
       _tapPos = null;
-      setTimeout(() => { _isDraggingTouch = false; }, 100);
+      setTimeout(() => { _isDraggingTouch = false; }, 120);
       return;
     }
     if (!_tapPos || e.changedTouches.length !== 1) return;
@@ -783,13 +908,18 @@ function initTerminal(tab) {
     const dx = Math.abs(touch.clientX - _tapPos.x);
     const dy = Math.abs(touch.clientY - _tapPos.y);
     const dt = Date.now() - _tapPos.time;
+
     if (dx < 10 && dy < 10 && dt < 300) {
-      // If keyboard was explicitly dismissed, do not re-open keyboard on accidental tap
+      // If selection bar is visible and user taps outside it, clear selection
+      if (term.hasSelection()) {
+        term.clearSelection();
+        hideTermSelectionBar();
+      }
       if (Date.now() - _keyboardDismissedAt < 400) {
         _tapPos = null;
         return;
       }
-      // Short tap → left click
+      // Short tap -> mouse click
       const evt = new MouseEvent('mousedown', { clientX: touch.clientX, clientY: touch.clientY, button: 0, bubbles: true });
       term.element.dispatchEvent(evt);
       const upEvt = new MouseEvent('mouseup', { clientX: touch.clientX, clientY: touch.clientY, button: 0, bubbles: true });
@@ -1253,19 +1383,99 @@ function cleanupScrollHandlers() {
   _scrollHandlers = [];
 }
 
+function getTermCellFromTouch(tab, clientX, clientY) {
+  const term = tab?.term;
+  if (!term || !term.element) return null;
+  const metrics = xtermCellMetrics(term);
+  const cellW = metrics?.actualCellWidth || (term.element.clientWidth / Math.max(1, term.cols || 80));
+  const cellH = metrics?.actualCellHeight || xtermCharHeight(term, tab.wrapper) || 16;
+  const rect = term.element.getBoundingClientRect();
+  const col = Math.max(0, Math.min((term.cols || 80) - 1, Math.floor((clientX - rect.left) / Math.max(1, cellW))));
+  const row = Math.max(0, Math.min((term.rows || 24) - 1, Math.floor((clientY - rect.top) / Math.max(1, cellH))));
+  const bufRow = term.buffer.active.viewportY + row;
+  return { col, row, bufRow, cellW, cellH, rect };
+}
+
+function selectWordAtCell(tab, cellInfo) {
+  if (!tab?.term || !cellInfo) return false;
+  const term = tab.term;
+  const line = term.buffer.active.getLine(cellInfo.bufRow);
+  if (!line) return false;
+  const str = line.translateToString(true);
+  if (!str) return false;
+
+  const col = cellInfo.col;
+  if (col >= str.length) {
+    if (str.trim().length > 0) {
+      term.select(0, cellInfo.bufRow, str.length);
+      return true;
+    }
+    return false;
+  }
+
+  const isWordChar = c => /[a-zA-Z0-9_\-\/\.:@~]/.test(c);
+  let start = col;
+  let end = col;
+
+  if (isWordChar(str[col])) {
+    while (start > 0 && isWordChar(str[start - 1])) start--;
+    while (end < str.length - 1 && isWordChar(str[end + 1])) end++;
+  } else {
+    while (start > 0 && !isWordChar(str[start - 1]) && str[start - 1] !== ' ') start--;
+    while (end < str.length - 1 && !isWordChar(str[end + 1]) && str[end + 1] !== ' ') end++;
+  }
+
+  const len = Math.max(1, (end - start) + 1);
+  term.select(start, cellInfo.bufRow, len);
+  return true;
+}
+
+function showTermSelectionBar(clientX, clientY) {
+  const bar = document.getElementById('term-selection-bar');
+  if (!bar) return;
+  const tab = getActiveTab();
+  if (!tab?.term?.hasSelection()) {
+    bar.style.display = 'none';
+    return;
+  }
+  bar.style.display = 'flex';
+  const barW = bar.offsetWidth || 180;
+  const barH = bar.offsetHeight || 36;
+  let left = (clientX || (window.innerWidth / 2)) - (barW / 2);
+  let top = (clientY || (window.innerHeight / 2)) - barH - 16;
+
+  left = Math.max(8, Math.min(window.innerWidth - barW - 8, left));
+  top = Math.max(48, Math.min(window.innerHeight - barH - 60, top));
+
+  bar.style.left = left + 'px';
+  bar.style.top = top + 'px';
+}
+
+function hideTermSelectionBar() {
+  const bar = document.getElementById('term-selection-bar');
+  if (bar) bar.style.display = 'none';
+}
+
+function clearTermSelection() {
+  const tab = getActiveTab();
+  if (tab?.term) tab.term.clearSelection();
+  hideTermSelectionBar();
+}
+
 function copyTermSelection() {
   const tab = getActiveTab();
   if (!tab?.term) return;
   const sel = tab.term.getSelection();
   if (sel) {
     navigator.clipboard.writeText(sel).then(() => {
-      toast('Copied to clipboard', 'success');
+      toast('Copied to clipboard', 'success', { log: false });
     }).catch(() => {
-      toast('Copy failed', 'error');
+      toast('Copy failed', 'error', { log: false });
     });
     tab.term.clearSelection();
+    hideTermSelectionBar();
   } else {
-    toast('No text selected', 'info');
+    toast('No text selected', 'info', { log: false });
   }
 }
 
@@ -1340,7 +1550,8 @@ function selectAllTerm() {
     tab.term.focus();
     tab.term.selectAll();
     if (restore && ta) ta.disabled = true;
-    toast('All text selected', 'success');
+    showTermSelectionBar(window.innerWidth / 2, window.innerHeight / 2);
+    toast('All text selected', 'success', { log: false });
   }
 }
 
@@ -1350,7 +1561,8 @@ function selectTermLine() {
   const buf = tab.term.buffer.active;
   const cursorY = buf.baseY + buf.cursorY;
   tab.term.selectLines(cursorY, cursorY);
-  toast('Line selected', 'success');
+  showTermSelectionBar(window.innerWidth / 2, window.innerHeight / 2);
+  toast('Line selected', 'success', { log: false });
 }
 
 function termScrollUp() {

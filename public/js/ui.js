@@ -767,6 +767,7 @@ function hideAllCtxMenus() {
   try { document.getElementById('ctx-menu')?.classList.remove('open'); } catch {}
   // No focus steal: an outside click into the explorer/editor keeps its focus.
   try { if (typeof hideTermCtxMenu === 'function') hideTermCtxMenu(false); } catch {}
+  try { if (typeof hideTermSelectionBar === 'function') hideTermSelectionBar(); } catch {}
   if (window.innerWidth <= 768) {
     const sb = document.getElementById('sidebar');
     const sp = document.getElementById('settings-panel');

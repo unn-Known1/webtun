@@ -561,56 +561,17 @@
     <!-- Notification Center -->
     <div id="notif-panel" role="dialog" aria-label="Notifications">
       <div class="notif-panel-header">
-        <span class="notif-panel-title">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-          Notifications
-          <span id="notif-head-count"></span>
-        </span>
-        <div class="notif-header-actions">
-          <button class="icon-btn" id="notif-prefs-toggle" onclick="toggleNotifPrefs()" title="Notification Settings" aria-label="Notification Settings">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-          </button>
+        <span style="font-size:14px;font-weight:700;display:flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>Notifications <span id="notif-head-count"></span></span>
+        <span style="display:flex;align-items:center;gap:4px">
           <button class="notif-clear-btn" id="notif-clear-all" onclick="clearAllNotifs()" title="Clear all notifications">Clear all</button>
           <button class="icon-btn" onclick="closeNotifPanel()" title="Close notifications" aria-label="Close notifications">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
-        </div>
+        </span>
       </div>
-
-      <!-- Quick Preferences Tray -->
-      <div id="notif-prefs-tray" style="display:none">
-        <div class="notif-pref-row">
-          <label for="notif-pref-sound">Sound chime on alert</label>
-          <input type="checkbox" id="notif-pref-sound" onchange="setNotifPref('sound', this.checked)">
-        </div>
-        <div class="notif-pref-row">
-          <label for="notif-pref-banners">Show toast popups</label>
-          <input type="checkbox" id="notif-pref-banners" checked onchange="setNotifPref('banners', this.checked)">
-        </div>
-        <div class="notif-pref-row">
-          <label for="notif-desktop-btn">Desktop push notifications</label>
-          <button class="btn btn-sm" id="notif-desktop-btn" onclick="toggleDesktopNotifPerm()">Enable</button>
-        </div>
-      </div>
-
-      <!-- Filter / Search Row -->
-      <div class="notif-filter-bar">
-        <div class="notif-search-wrap">
-          <svg class="notif-search-ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input id="notif-search-input" type="text" placeholder="Filter notifications…" oninput="filterNotifs()">
-          <button id="notif-search-clear" onclick="clearNotifSearch()" style="display:none" title="Clear filter">✕</button>
-        </div>
-        <div class="notif-type-chips">
-          <button class="notif-chip active" id="chip-all" data-type="all" onclick="setNotifFilterType('all')">All <span class="chip-num" id="notif-chip-all-count">0</span></button>
-          <button class="notif-chip chip-error" id="chip-error" data-type="error" onclick="setNotifFilterType('error')">Errors <span class="chip-num" id="notif-chip-error-count">0</span></button>
-          <button class="notif-chip chip-warning" id="chip-warning" data-type="warning" onclick="setNotifFilterType('warning')">Warnings <span class="chip-num" id="notif-chip-warning-count">0</span></button>
-          <button class="notif-chip chip-success" id="chip-success" data-type="success" onclick="setNotifFilterType('success')">Success <span class="chip-num" id="notif-chip-success-count">0</span></button>
-        </div>
-      </div>
-
       <div class="notif-panel-body">
         <div id="notif-list"></div>
-        <div id="notif-empty"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span>All caught up — notifications stay here until you clear them.</span></div>
+        <div id="notif-empty"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span>All caught up — notifications stay here until you clear them.</span></div>
       </div>
     </div>
 
@@ -904,6 +865,23 @@
   <div class="ctx-sep"></div>
   <div class="ctx-item danger" id="term-ctx-clear" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg> Clear</div>
   <div class="ctx-item sheet-cancel-item" onclick="hideAllCtxMenus()" role="menuitem" style="display:none">Cancel</div>
+</div>
+
+<!-- Floating touch selection action bar -->
+<div id="term-selection-bar" role="toolbar" aria-label="Selection actions" style="display:none">
+  <button class="tsel-btn" id="tsel-copy" onclick="copyTermSelection()" title="Copy selected text">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+    <span>Copy</span>
+  </button>
+  <button class="tsel-btn" id="tsel-line" onclick="selectTermLine()" title="Select line">
+    <span>Line</span>
+  </button>
+  <button class="tsel-btn" id="tsel-all" onclick="selectAllTerm()" title="Select all">
+    <span>All</span>
+  </button>
+  <button class="tsel-btn tsel-close" onclick="clearTermSelection()" title="Dismiss selection" aria-label="Dismiss selection">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+  </button>
 </div>
 
 <!-- Tab context menu (right-click a tab) -->
