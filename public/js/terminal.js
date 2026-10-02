@@ -1177,26 +1177,60 @@ function utf8ToB64(str) {
 // carries the resolved [data-theme=…]; documentElement only had it after an
 // explicit applyTheme(), so the first terminal painted with the wrong palette.
 function getXtermTheme() {
-  const s = getComputedStyle(document.body || document.documentElement);
-  const g = v => s.getPropertyValue(v).trim();
+  const root = document.documentElement || document.body;
+  const body = document.body || document.documentElement;
+  const s = getComputedStyle(root);
+  const sBody = getComputedStyle(body);
+  const g = v => (s.getPropertyValue(v) || sBody.getPropertyValue(v) || '').trim();
+
+  const bg = g('--bg') || '#1a1b26';
+  const fg = g('--fg') || '#c0caf5';
+  const accent = g('--accent') || '#7aa2f7';
+  const accent2 = g('--accent2') || '#bb9af7';
+  const green = g('--green') || '#9ece6a';
+  const red = g('--red') || '#f7768e';
+  const yellow = g('--yellow') || '#e0af68';
+  const cyan = g('--cyan') || '#7dcfff';
+  const fg2 = g('--fg2') || '#9aa0c3';
+
+  const themeName = (root.dataset.theme || body.dataset.theme || '').toLowerCase();
+  const isLight = g('color-scheme') === 'light' || themeName === 'light' || themeName === 'catppuccin-latte' || themeName === 'nord-light';
+
   return {
-    background: g('--bg'), foreground: g('--fg'), cursor: g('--accent'),
-    cursorAccent: g('--bg'), selectionBackground: g('--accent') + '44',
-    black: '#000000', red: g('--red'), green: g('--green'), yellow: g('--yellow'),
-    blue: g('--accent'), magenta: g('--accent2'), cyan: g('--cyan'), white: g('--fg'),
-    brightBlack: g('--fg2'), brightRed: g('--red'), brightGreen: g('--green'),
-    brightYellow: g('--yellow'), brightBlue: g('--accent'), brightMagenta: g('--accent2'),
-    brightCyan: g('--cyan'), brightWhite: '#ffffff'
+    background: bg,
+    foreground: fg,
+    cursor: accent,
+    cursorAccent: bg,
+    selectionBackground: accent + '44',
+    black: isLight ? '#1f1f30' : '#000000',
+    red: red,
+    green: green,
+    yellow: yellow,
+    blue: accent,
+    magenta: accent2,
+    cyan: cyan,
+    white: fg,
+    brightBlack: fg2,
+    brightRed: red,
+    brightGreen: green,
+    brightYellow: yellow,
+    brightBlue: accent,
+    brightMagenta: accent2,
+    brightCyan: cyan,
+    brightWhite: isLight ? fg : '#ffffff'
   };
 }
 
 function getXtermSelectionTheme() {
-  const s = getComputedStyle(document.body || document.documentElement);
-  const g = v => s.getPropertyValue(v).trim();
+  const root = document.documentElement || document.body;
+  const body = document.body || document.documentElement;
+  const s = getComputedStyle(root);
+  const sBody = getComputedStyle(body);
+  const g = v => (s.getPropertyValue(v) || sBody.getPropertyValue(v) || '').trim();
   return {
     extension: true,
-    foreground: g('--bg'),
-    background: g('--accent') + '44'
+    foreground: g('--bg') || '#1a1b26',
+    background: (g('--accent') || '#7aa2f7') + '44'
   };
 }
 // ═══════════════════════════════════════════════════════

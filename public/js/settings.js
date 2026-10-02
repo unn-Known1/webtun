@@ -7,7 +7,7 @@ function loadSettings() {
   try {
     const s = JSON.parse(safeStorage.getItem('wt-settings'));
     if (s && typeof s === 'object' && !Array.isArray(s)) {
-      if (typeof s.theme === 'string' && ['system','tokyonight','light','catppuccin-latte','nord-light','solarized','gruvbox','dracula','monokai'].includes(s.theme)) settings.theme = s.theme;
+      if (typeof s.theme === 'string' && ['system','tokyonight','tokyo-night','light','catppuccin-latte','nord-light','solarized','gruvbox','dracula','monokai'].includes(s.theme)) settings.theme = s.theme;
       if (typeof s.fontSize === 'number' && s.fontSize >= 8 && s.fontSize <= 32) settings.fontSize = s.fontSize;
       if (typeof s.scrollback === 'number' && s.scrollback >= 100 && s.scrollback <= 50000) settings.scrollback = s.scrollback;
       if (typeof s.font === 'string') settings.font = s.font;
@@ -29,6 +29,7 @@ function loadSettings() {
     }
   } catch(e) { console.warn(e); }
   document.getElementById('s-theme').value = settings.theme;
+  try { applyTheme(settings.theme, false); } catch {}
   document.getElementById('s-fontsize').value = settings.fontSize;
   document.getElementById('s-scrollback').value = settings.scrollback;
   document.getElementById('s-font').value = settings.font;
@@ -405,16 +406,26 @@ function filterSettings(q) {
 }
 function applyTheme(theme, save = true) {
   let resolved = theme;
+  if (theme === 'tokyo-night') resolved = 'tokyonight';
   if (theme === 'system') {
     resolved = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dracula' : 'light';
   }
-  document.body.dataset.theme = resolved;
   document.documentElement.dataset.theme = resolved;
+  if (document.body) document.body.dataset.theme = resolved;
   settings.theme = theme;
-  document.getElementById('s-theme').value = theme;
-  tabs.forEach(t => { if (t.term) { t.term.options.theme = getXtermTheme(); t.term.options.selectionTheme = getXtermSelectionTheme(); } });
-  const themeColor = getComputedStyle(document.body).getPropertyValue('--bg2').trim();
-  document.querySelector('meta[name="theme-color"]').content = themeColor;
+  const sel = document.getElementById('s-theme');
+  if (sel) sel.value = theme;
+  tabs.forEach(t => {
+    if (t.term) {
+      t.term.options.theme = getXtermTheme();
+      t.term.options.selectionTheme = getXtermSelectionTheme();
+      try { t.term.clearTextureAtlas?.(); } catch {}
+      try { t.term.refresh(0, t.term.rows - 1); } catch {}
+    }
+  });
+  const themeColor = getComputedStyle(document.documentElement || document.body).getPropertyValue('--bg2').trim();
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta && themeColor) meta.content = themeColor;
   if (save) saveSettings();
 }
 

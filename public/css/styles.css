@@ -52,7 +52,7 @@
   --font: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
   --font-ui: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
-[data-theme="tokyonight"] {
+[data-theme="tokyonight"], [data-theme="tokyo-night"] {
   color-scheme: dark;
   --bg: #1a1b26; --bg2: #16161e; --bg3: #24283b; --bg4: #2a2d3e;
   --border: #3b3f52; --fg: #c0caf5; --fg2: #9aa0c3; --fg3: #8b91b8;

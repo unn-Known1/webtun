@@ -8,21 +8,26 @@
     try {
       const settings = JSON.parse(safeStorage.getItem('wt-settings')) || {};
       let theme = settings.theme || 'light';
+      if (theme === 'tokyo-night') theme = 'tokyonight';
       if (theme === 'system') {
         theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dracula' : 'light';
       }
-      // This runs synchronously at body start, first paint still pending:
-      // set the theme on documentElement (where the CSS variables live) so
-      // no unthemed flash occurs, and on body too (present at this point —
-      // guarded anyway). applyTheme() in app.js re-asserts both at init.
       document.documentElement.dataset.theme = theme;
-      if (document.body) document.body.dataset.theme = theme;
+      if (document.body) {
+        document.body.dataset.theme = theme;
+      } else {
+        document.addEventListener('DOMContentLoaded', function() {
+          document.documentElement.dataset.theme = theme;
+          if (document.body) document.body.dataset.theme = theme;
+        });
+      }
 
       const themeColors = {
         light: '#f9f9fb',
         'catppuccin-latte': '#eff1f5',
         'nord-light': '#f8fafc',
         tokyonight: '#1a1b26',
+        'tokyo-night': '#1a1b26',
         dracula: '#282a36',
         nord: '#2e3440',
         gruvbox: '#282828',
