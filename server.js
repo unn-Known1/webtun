@@ -2913,14 +2913,14 @@ app.get('/api/git/status', rateLimiter, checkPin, async (req, res) => {
       if (e.status === 404) return res.json({ git: true, isRepo: false });
       throw e;
     }
-    const raw = await spawnRead('git', ['-C', root, 'status', '--porcelain=v1', '-b'], { timeout: 20000 });
+    const raw = await spawnRead('git', ['-C', root, 'status', '--porcelain=v1', '-b'], { timeout: 60000 });
     const st = parseGitStatus(raw);
     // Per-file line stats (GitHub-style +added/-removed) via numstat.
     // Best-effort: never fail the whole status when numstat fails.
     try {
       const [unstagedRaw, stagedRaw] = await Promise.all([
-        spawnRead('git', ['-C', root, 'diff', '--numstat'], { timeout: 20000 }).catch(() => ''),
-        spawnRead('git', ['-C', root, 'diff', '--cached', '--numstat'], { timeout: 20000 }).catch(() => ''),
+        spawnRead('git', ['-C', root, 'diff', '--numstat'], { timeout: 60000 }).catch(() => ''),
+        spawnRead('git', ['-C', root, 'diff', '--cached', '--numstat'], { timeout: 60000 }).catch(() => ''),
       ]);
       const unstagedMap = parseGitNumstat(unstagedRaw);
       const stagedMap = parseGitNumstat(stagedRaw);

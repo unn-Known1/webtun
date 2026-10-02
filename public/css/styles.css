@@ -267,6 +267,7 @@ svg { display: block; }
 .term-wrapper { position: absolute; inset: 0; padding: 4px; display: none; touch-action: pan-y; -webkit-overflow-scrolling: touch; overscroll-behavior: none; }
 .term-wrapper.active { display: flex; }
 .xterm { flex: 1; }
+.xterm, .xterm .xterm-viewport, .xterm-screen { background-color: var(--bg) !important; }
 .term-loading {
   position: absolute; inset: 0; z-index: 3;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
@@ -942,8 +943,8 @@ body.datasaver #transfers-btn.has-active .tx-up, body.datasaver #transfers-btn.h
 }
 #more-btn { display: none; }
 #more-menu {
-  position: absolute;
-  top: calc(100% + 4px);
+  position: fixed;
+  top: calc(var(--header-h, 36px) + 4px);
   right: calc(8px + env(safe-area-inset-right, 0px));
   background: var(--bg2);
   border: 1px solid var(--border);
@@ -2442,18 +2443,18 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
   #more-menu {
     position: fixed !important;
     top: auto !important;
-    bottom: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
+    bottom: calc(58px + env(safe-area-inset-bottom, 0px)) !important;
     right: 12px !important;
     left: 12px !important;
     width: auto !important;
     max-width: 360px !important;
-    margin-left: auto !important;
+    margin: 0 0 0 auto !important;
     border-radius: 16px !important;
     background: var(--bg2) !important;
     border: 1px solid var(--border) !important;
     box-shadow: 0 -8px 32px var(--shadow-color) !important;
     padding: 8px !important;
-    z-index: var(--z-menu) !important;
+    z-index: var(--z-menu, 500) !important;
   }
   .mm-item {
     min-height: 44px;

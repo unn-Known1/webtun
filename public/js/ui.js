@@ -760,9 +760,10 @@ function clearAllNotifs() {
 // #ctx-menu/#term-ctx-menu lives in files.js (document click handler) —
 // left-clicks are excluded here so they can reach the explorer/editor
 // without this handler racing them.
-const _CTX_MENU_SELS = '#ctx-menu,#term-ctx-menu,#tab-ctx-menu,#new-tab-menu,#tab-list-menu';
+const _CTX_MENU_SELS = '#ctx-menu,#term-ctx-menu,#tab-ctx-menu,#new-tab-menu,#tab-list-menu,#more-menu';
 function hideAllCtxMenus() {
   try { if (typeof hideTabMenus === 'function') hideTabMenus(); } catch {}
+  try { if (typeof closeMoreMenu === 'function') closeMoreMenu(); } catch {}
   try { document.getElementById('ctx-menu')?.classList.remove('open'); } catch {}
   // No focus steal: an outside click into the explorer/editor keeps its focus.
   try { if (typeof hideTermCtxMenu === 'function') hideTermCtxMenu(false); } catch {}
@@ -770,7 +771,7 @@ function hideAllCtxMenus() {
   if (window.innerWidth <= 768) {
     const sb = document.getElementById('sidebar');
     const sp = document.getElementById('settings-panel');
-    if (!sb?.classList.contains('mobile-open') && !sp?.classList.contains('open')) {
+    if (!sb?.classList.contains('mobile-open') && !sp?.classList.contains('open') && !document.getElementById('tab-list-menu')?.offsetParent && !document.getElementById('more-menu')?.classList.contains('open')) {
       document.getElementById('drawer-backdrop')?.classList.remove('active');
     }
   }
@@ -790,10 +791,12 @@ function closeAllDrawers() {
     if (typeof closeNotifPanel === 'function') closeNotifPanel();
   }
   hideAllCtxMenus();
+  try { if (typeof closeMoreMenu === 'function') closeMoreMenu(); } catch {}
   const backdrop = document.getElementById('drawer-backdrop');
   if (backdrop) backdrop.classList.remove('active');
   document.getElementById('mnav-explorer')?.classList.remove('active');
   document.getElementById('mnav-tabs')?.classList.remove('active');
+  document.getElementById('mnav-more')?.classList.remove('active');
 }
 let _ctxAutoDismissWired = false;
 function setupCtxAutoDismiss() {

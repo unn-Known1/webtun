@@ -622,8 +622,9 @@ async function unlockApp() {
 async function api(url, opts = {}) {
   opts.headers = opts.headers || {};
   opts.headers['x-pin-token'] = authToken;
+  const timeoutMs = opts.timeout || (typeof url === 'string' && url.includes('/api/git/') ? 65000 : 30000);
   const timeoutCtrl = new AbortController();
-  const timeoutId = setTimeout(() => timeoutCtrl.abort(), 30000);
+  const timeoutId = setTimeout(() => timeoutCtrl.abort(), timeoutMs);
   const userSignal = opts.signal || null;
   if (userSignal) {
     userSignal.addEventListener('abort', () => timeoutCtrl.abort(), { once: true });
@@ -655,7 +656,7 @@ async function api(url, opts = {}) {
     clearTimeout(timeoutId);
     if (userSignal?.aborted) throw new DOMException('Aborted', 'AbortError');
     console.warn('api() fetch error:', e);
-    if (e && e.name === 'AbortError') return { error: 'Request timed out (30s)' };
+    if (e && e.name === 'AbortError') return { error: `Request timed out (${Math.round(timeoutMs / 1000)}s)` };
     return { error: 'Network error' };
   }
 }

@@ -206,6 +206,61 @@ function connectWebSocket(tab, isReconnect = false) {
   // unterminated OSC is held in oscBuf and prepended to the next frame.
   let oscBuf = '';
   if (!tab._termDecoder) { try { tab._termDecoder = new TextDecoder(); } catch {} }
+  function handleOsc52(value, tab) {
+    const parts = value.split(';');
+    const targets = parts[0];
+    const isCopyTarget = !targets || targets.includes('c') || targets.includes('p') || targets.includes('s');
+    const b64 = parts.slice(1).join(';');
+    if (b64) {
+      // SET clipboard — always honored (a program can only overwrite,
+      // never read). UTF-8 safe, so emoji/CJK are no longer dropped.
+      try {
+        const decoded = b64ToUtf8(b64);
+        if (isCopyTarget) {
+          navigator.clipboard.writeText(decoded).then(() => {
+            const now = Date.now();
+            if (!tab._lastOsc52Toast || now - tab._lastOsc52Toast > 1500) {
+              tab._lastOsc52Toast = now;
+              try { toast('Copied to clipboard', 'success', { log: false }); } catch {}
+            }
+          }).catch(() => {
+            try {
+              const ta = document.createElement('textarea');
+              ta.value = decoded;
+              ta.style.position = 'fixed';
+              ta.style.opacity = '0';
+              document.body.appendChild(ta);
+              ta.select();
+              document.execCommand('copy');
+              document.body.removeChild(ta);
+              const now = Date.now();
+              if (!tab._lastOsc52Toast || now - tab._lastOsc52Toast > 1500) {
+                tab._lastOsc52Toast = now;
+                try { toast('Copied to clipboard', 'success', { log: false }); } catch {}
+              }
+            } catch (_) {}
+          });
+        }
+      } catch (_) {}
+    } else if (settings.clipboardRead) {
+      // GET clipboard — opt-in (Settings → Terminal). Any remote
+      // output could otherwise pull the local clipboard into the
+      // session with no prompt at all.
+      navigator.clipboard.readText().then(text => {
+        const response = '\x1b]52;c;' + utf8ToB64(text) + '\x07';
+        if (tab.ws && tab.ws.readyState === WebSocket.OPEN) {
+          const enc = new TextEncoder().encode(response);
+          const buf = new Uint8Array(1 + enc.length);
+          buf[0] = 0x00; buf.set(enc, 1);
+          tab.ws.send(buf.buffer);
+        }
+      }).catch(() => {});
+    } else if (!tab._clipReadHintShown) {
+      tab._clipReadHintShown = true;
+      toast('A program asked to read your clipboard — enable "Allow terminal clipboard read" in Settings', 'warning');
+    }
+  }
+
   function processTerminalOutput(data) {
     let chunk;
     if (typeof data === 'string') chunk = data;
@@ -215,6 +270,30 @@ function connectWebSocket(tab, isReconnect = false) {
     let out = '';
     let i = 0;
     while (i < str.length) {
+      // If trailing char is bare ESC, buffer it for next chunk to avoid splitting introducer
+      if (i === str.length - 1 && str[i] === '\x1b') {
+        oscBuf = '\x1b';
+        break;
+      }
+
+      // Check for tmux DCS wrapped sequence: \x1bPtmux;\x1b...
+      if (str.startsWith('\x1bPtmux;\x1b', i) || str.startsWith('\x1bPtmux;', i)) {
+        const pfxLen = str.startsWith('\x1bPtmux;\x1b', i) ? 8 : 7;
+        const dcsEnd = str.indexOf('\x1b\\', i + pfxLen);
+        if (dcsEnd !== -1) {
+          const inner = str.substring(i + pfxLen, dcsEnd).replace(/\x1b\x1b/g, '\x1b');
+          if (inner.startsWith('\x1b]52;') || inner.startsWith(']52;')) {
+            handleOsc52(inner.startsWith('\x1b]') ? inner.substring(4) : inner.substring(3), tab);
+            i = dcsEnd + 2;
+            continue;
+          }
+        } else {
+          oscBuf = str.substring(i);
+          if (oscBuf.length > 1048576) { out += oscBuf; oscBuf = ''; }
+          break;
+        }
+      }
+
       // Look for ESC ] (OSC introducer)
       if (str[i] === '\x1b' && str[i + 1] === ']') {
         const endIdx = str.indexOf('\x07', i + 2);
@@ -240,36 +319,7 @@ function connectWebSocket(tab, isReconnect = false) {
               // Handled silently — available for future command tracking
             } else if (code === '52') {
               // OSC 52: Clipboard operations
-              const parts = value.split(';');
-              const targets = parts[0] || 'c';
-              const b64 = parts.slice(1).join(';');
-              if (b64) {
-                // SET clipboard — always honored (a program can only overwrite,
-                // never read). UTF-8 safe, so emoji/CJK are no longer dropped.
-                try {
-                  const decoded = b64ToUtf8(b64);
-                  if (targets.includes('c') || targets.includes('p')) {
-                    navigator.clipboard.writeText(decoded).catch(() => {});
-                  }
-                } catch (_) {}
-              } else if (settings.clipboardRead) {
-                // GET clipboard — opt-in (Settings → Terminal). Any remote
-                // output could otherwise pull the local clipboard into the
-                // session with no prompt at all: a stray
-                // `printf '\e]52;c;?'`, a malicious script, a pasted payload.
-                navigator.clipboard.readText().then(text => {
-                  const response = '\x1b]52;c;' + utf8ToB64(text) + '\x07';
-                  if (tab.ws && tab.ws.readyState === WebSocket.OPEN) {
-                    const enc = new TextEncoder().encode(response);
-                    const buf = new Uint8Array(1 + enc.length);
-                    buf[0] = 0x00; buf.set(enc, 1);
-                    tab.ws.send(buf.buffer);
-                  }
-                }).catch(() => {});
-              } else if (!tab._clipReadHintShown) {
-                tab._clipReadHintShown = true;
-                toast('A program asked to read your clipboard — enable "Allow terminal clipboard read" in Settings', 'warning');
-              }
+              handleOsc52(value, tab);
             } else {
               // OSC 0/1/2 (window/icon titles) and anything else we do not
               // consume: forward verbatim so xterm fires onTitleChange.
@@ -282,7 +332,7 @@ function connectWebSocket(tab, isReconnect = false) {
           // Unterminated OSC at the end of this frame: hold it for the next
           // frame instead of leaking escape garbage into the terminal.
           oscBuf = str.substring(i);
-          if (oscBuf.length > 4096) { out += oscBuf; oscBuf = ''; }
+          if (oscBuf.length > 1048576) { out += oscBuf; oscBuf = ''; }
           break;
         }
       }
@@ -524,7 +574,9 @@ function initTerminal(tab) {
     convertEol: false,
     bellStyle: settings.bell ? 'sound' : 'none',
     smoothScrollDuration: 80,
-    selectionTheme: getXtermSelectionTheme()
+    selectionTheme: getXtermSelectionTheme(),
+    trimTrailingWhitespace: true,
+    rightClickSelectsWord: true
   };
 
   const term = new Terminal(cfg);
@@ -565,15 +617,37 @@ function initTerminal(tab) {
   term.open(tab.wrapper);
 
   term.attachCustomKeyEventHandler(e => {
-    if (e.type === 'keydown' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
-      const key = e.key.toLowerCase();
-      if (key === 'b') {
-        if (typeof toggleSidebar === 'function') toggleSidebar();
+    if (e.type === 'keydown') {
+      const isCmd = e.ctrlKey || e.metaKey;
+      const key = e.key ? e.key.toLowerCase() : '';
+      // Ctrl+Shift+C: standard terminal copy
+      if (isCmd && e.shiftKey && key === 'c') {
+        if (term.hasSelection()) {
+          copyTermSelection();
+          return false;
+        }
+      }
+      // Ctrl+Shift+V: standard terminal paste
+      if (isCmd && e.shiftKey && key === 'v') {
+        pasteToTerminal();
         return false;
       }
-      if (key === 'p') {
-        if (typeof openFinder === 'function') openFinder();
-        return false;
+      // Plain Ctrl+C / Cmd+C when text is selected: copy instead of sending SIGINT
+      if (isCmd && !e.shiftKey && !e.altKey && key === 'c') {
+        if (term.hasSelection()) {
+          copyTermSelection();
+          return false;
+        }
+      }
+      if (isCmd && !e.shiftKey && !e.altKey) {
+        if (key === 'b') {
+          if (typeof toggleSidebar === 'function') toggleSidebar();
+          return false;
+        }
+        if (key === 'p') {
+          if (typeof openFinder === 'function') openFinder();
+          return false;
+        }
       }
     }
     return true;
@@ -1154,8 +1228,11 @@ function sendCtrlP() {
 
 // UTF-8 safe base64 (OSC 52). atob/btoa are Latin-1 only and throw on
 // emoji/CJK — those payloads silently lost the clipboard sync entirely.
+// Sanitizes whitespace, line breaks (RFC 2045), and URL-safe chars.
 function b64ToUtf8(b64) {
-  const bin = atob(b64);
+  let clean = (b64 || '').replace(/[\s\r\n]+/g, '').replace(/-/g, '+').replace(/_/g, '/');
+  while (clean.length % 4) clean += '=';
+  const bin = atob(clean);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return new TextDecoder().decode(bytes);
@@ -1520,12 +1597,25 @@ function clearTermSelection() {
 function copyTermSelection() {
   const tab = getActiveTab();
   if (!tab?.term) return;
-  const sel = tab.term.getSelection();
+  let sel = tab.term.getSelection();
   if (sel) {
+    sel = sel.split('\n').map(l => l.replace(/[ \t]+$/, '')).join('\n');
     navigator.clipboard.writeText(sel).then(() => {
       toast('Copied to clipboard', 'success', { log: false });
     }).catch(() => {
-      toast('Copy failed', 'error', { log: false });
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = sel;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        toast('Copied to clipboard', 'success', { log: false });
+      } catch {
+        toast('Copy failed', 'error', { log: false });
+      }
     });
     tab.term.clearSelection();
     hideTermSelectionBar();
@@ -1533,6 +1623,25 @@ function copyTermSelection() {
     toast('No text selected', 'info', { log: false });
   }
 }
+
+// Clean trailing grid padding from terminal selections on standard copy
+document.addEventListener('copy', e => {
+  const tab = getActiveTab();
+  if (tab?.term?.hasSelection()) {
+    const isTerm = e.target?.closest?.('.xterm, #terminals, .term-wrapper') ||
+                   document.activeElement?.closest?.('.xterm, #terminals, .term-wrapper');
+    if (isTerm) {
+      let sel = tab.term.getSelection();
+      if (sel) {
+        sel = sel.split('\n').map(l => l.replace(/[ \t]+$/, '')).join('\n');
+        if (e.clipboardData) {
+          e.clipboardData.setData('text/plain', sel);
+          e.preventDefault();
+        }
+      }
+    }
+  }
+});
 
 let _pasteInput = null;
 

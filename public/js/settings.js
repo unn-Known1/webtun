@@ -527,25 +527,47 @@ let moreMenuOpen = false;
 function closeMoreMenu() {
   const menu = document.getElementById('more-menu');
   const btn = document.getElementById('more-btn');
+  const mbtn = document.getElementById('mnav-more');
   if (menu) menu.classList.remove('open');
   if (btn) btn.classList.remove('active');
+  if (mbtn) mbtn.classList.remove('active');
   document.removeEventListener('click', closeMoreMenuOnClickOutside, true);
+  if (window.innerWidth <= 768) {
+    const backdrop = document.getElementById('drawer-backdrop');
+    if (backdrop && !document.getElementById('sidebar')?.classList.contains('mobile-open') && !document.getElementById('settings-panel')?.classList.contains('open') && !document.getElementById('tab-list-menu')?.offsetParent) {
+      backdrop.classList.remove('active');
+    }
+  }
   moreMenuOpen = false;
 }
 function closeMoreMenuOnClickOutside(e) {
   const menu = document.getElementById('more-menu');
   const btn = document.getElementById('more-btn');
+  const mbtn = document.getElementById('mnav-more');
   if (menu && menu.contains(e.target)) return;
   if (btn && btn.contains(e.target)) return;
+  if (mbtn && mbtn.contains(e.target)) return;
   closeMoreMenu();
 }
-function toggleMoreMenu() {
+function toggleMoreMenu(e) {
+  if (e) {
+    try { e.preventDefault(); e.stopPropagation(); } catch {}
+  }
   if (moreMenuOpen) { closeMoreMenu(); return; }
+  try { if (typeof hideTabMenus === 'function') hideTabMenus(); } catch {}
+  try { if (typeof hideAllCtxMenus === 'function') hideAllCtxMenus(); } catch {}
   moreMenuOpen = true;
   const menu = document.getElementById('more-menu');
   const btn = document.getElementById('more-btn');
+  const mbtn = document.getElementById('mnav-more');
   if (menu) menu.classList.add('open');
   if (btn) btn.classList.add('active');
+  if (mbtn) mbtn.classList.add('active');
+  if (window.innerWidth <= 768) {
+    if (typeof triggerHaptic === 'function') triggerHaptic('light');
+    const backdrop = document.getElementById('drawer-backdrop');
+    if (backdrop) backdrop.classList.add('active');
+  }
   setTimeout(() => {
     document.addEventListener('click', closeMoreMenuOnClickOutside, true);
     const first = menu && menu.querySelector('.mm-item');
