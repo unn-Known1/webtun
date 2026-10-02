@@ -2,7 +2,7 @@
 # Landing page for WebTun
 
 Assumption: reader is a homelab owner or solo dev with one VPS or home server who hates VPN setup.
-Assumption: prices match founder/pricing-strategy.md: Community $0, Pro $12, Team $19, launch $8 lock for 200 buyers.
+Assumption: prices match founder/pricing-strategy.md: Community $0, Pro $12 or $115 per year, Team $19 per admin or $182 per year, launch $8 or $76 and $14 or $134 for 90 days for 200 buyers locked 24 months.
 
 ## 1. Hero
 
@@ -37,7 +37,7 @@ You create a Cloudflare tunnel from Settings and share the URL, with PIN plus de
 1. Run it: type npx webtun on your server, open localhost:3000.
 2. Lock it: set a PIN in Settings plus Security, approve your phone as a trusted device.
 3. Use it: open terminal tabs, edit files, start a tunnel for remote nights.
-4. Upgrade it: paste a Pro key to light up SSH keys and a third tunnel in under a minute.
+4. Upgrade it in pilot: paste a Pro key to light up SSH keys and a third tunnel in under a minute, needs the license build from founder/mvp-scope.md.
 
 Total path stays under 5 minutes on a fresh VPS, because no account signup sits in front of first shell.
 
@@ -48,15 +48,15 @@ Stage: early paid pilot on top of a shipped 2.2.8 free base. Use pilot quotes, n
 [Quote from a homelab owner: nights away per month before versus after, and what they replaced]
 [Quote from a solo dev: time to reach a VPS log from a phone, and what broke before]
 
-Get both by trading launch Pro at $8 for a photo plus a bug report, because photos of phone plus tunnel convert this crowd.
+Get both by trading launch Pro at $8 for a photo plus a bug report with written FTC disclosure of the trade, because photos of phone plus tunnel convert this crowd.
 
 ## 6. Pricing preview
 
 Free versus Pro table, full tiers on pricing page:
 
-Community $0: noncommercial, 2 tunnels, 3 devices, history 200, community support.
+Community $0: noncommercial, 2 tunnels and 3 devices after 6 month grace, history 200 up from 50 today, community support. Caps marked new, file tabs at 10 as today.
 Pro $12 per server per month, $115 per year: commercial use, unlimited tunnels, 5 devices, SSH ed25519 keys, history 1000, email support.
-Team $19 per admin per month, 3 minimum: up to 10 admins, shared library, audit CSV, policy UI, priority chat.
+Team $19 per admin per month, $182 per year, 3 minimum equals $57 per month: up to 10 admins, shared library, audit CSV, policy UI, priority chat. SSO roadmap only, not shipped.
 
 Worth it line: one avoided late drive home pays for a year of Pro, because remote shell plus files beats fuel and time.
 
@@ -72,7 +72,7 @@ What about my data and privacy?
 Shells, files, and tunnels run on your box. Stripe handles cards, the license holds plan plus seats plus expiry only, and PIN plus session approval plus origin checks guard routes, because your keystrokes should never cross our servers.
 
 What changes for current free users?
-Nothing for 6 months. Current installs keep current tunnel behavior, then the 2 tunnel Free cap applies with 60 days notice, because surprise caps spark forks.
+Nothing for 6 months. Current installs keep current tunnels plus SSH plus history, then Free caps of 2 tunnels, 3 devices, history 200 apply with 60 days notice, because surprise caps spark forks.
 
 Do you offer refunds?
 Yes, 30 days, no forms. Email from your Stripe receipt and we revoke the key the same day, because $8 to $12 should feel safe to try.
@@ -81,10 +81,10 @@ Yes, 30 days, no forms. Email from your Stripe receipt and we revoke the key the
 
 Headline: Reach your server tonight without opening a port
 Button: Open my server in a browser
-Risk reversal: launch Pro at $8 per month for the first 200 buyers, locked 24 months, 30 day refund, because early buyers fund support with zero risk.
+Risk reversal: launch Pro at $8 per month or $76 per year for 90 days for the first 200 buyers, locked 24 months, 30 day refund, because early buyers fund support with zero risk.
 
 ## 9. SEO metadata
 
-Title tag: WebTun: self hosted web terminal, files and tunnels (57 chars)
-Meta description: WebTun puts your Linux terminal, file manager, git panel, and Cloudflare tunnels in one browser tab. Install with npx, guard with PIN, add SSH keys on Pro. (158 chars)
+Title tag: WebTun: self hosted web terminal, files and tunnels (51 chars)
+Meta description: WebTun puts your Linux terminal, file manager, git panel, and Cloudflare tunnels in one browser tab. Install with npx, guard with PIN, add SSH keys on Pro. (155 chars)
 Keywords: self hosted web terminal, browser SSH client, Cloudflare tunnel UI

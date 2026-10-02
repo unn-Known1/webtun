@@ -26,28 +26,28 @@ If below: add Apple Pay plus Google Pay to checkout and put a test key flow in d
 2. Upgrade click to paid rate
 Definition: Stripe paid sessions divided by Upgrade clicks from Settings plus Security within 7 days.
 Current: no data, instrument click event this week.
-Targets: 3 percent, 5 percent, 7 percent.
+Targets: 3 percent by day 30, 5 percent by day 60, 7 percent by day 90.
 Why: separates traffic from offer strength, because visits can grow while price blocks.
 If below: move Free versus Pro table above the fold and add the $8 lock timer, because urgency plus clarity lifts dev tool checkout.
 
 3. Key paste success
 Definition: license verify ok divided by verify attempts from server log per week.
 Current: no data, log ok versus fail from lib/license.js from day one.
-Targets: 90 percent, 93 percent, 95 percent.
+Targets: 90 percent by day 30, 93 percent by day 60, 95 percent by day 90.
 Why: decides if key format plus UI works, because failed paste looks like a broken product.
 If below: shorten key, add copy button plus paste button, accept whitespace trim, because email clients wrap long keys.
 
 4. Week 4 active paid
 Definition: share of paid servers with a tunnel start or SSH key use in the last 7 days at week 4 after purchase.
 Current: no data, compute from tunnels Map plus POST /api/ssh/credentials counts.
-Targets: 70 percent, 80 percent, 85 percent.
+Targets: 70 percent by day 30 cohort, 80 percent by day 60, 85 percent by day 90.
 Why: predicts renewal, because idle boxes cancel at month 2.
 If below: send day 3 SSH recipe plus day 10 third tunnel nudge, because both events mark value found.
 
 5. Refund rate
 Definition: refunds divided by paid orders in the trailing 30 days from Stripe.
 Current: 0 with no sales.
-Targets: under 4 percent, under 3 percent, under 2 percent.
+Targets: under 4 percent by day 30, under 3 percent by day 60, under 2 percent by day 90.
 Why: flags cap shock or grace bugs, because surprise limits drive refunds before support tickets.
 If above: extend grace to 14 days and rewrite cap toasts to name the exact limit, because clear errors cut anger refunds.
 
@@ -71,7 +71,7 @@ If above: extend grace to 14 days and rewrite cap toasts to name the exact limit
 
 Pricing sources checked 2026-10-03: PostHog free 1M events at https://posthog.com/pricing, Stripe fees at https://stripe.com/pricing, Plausible plans at https://plausible.io/pricing.
 
-Events to track, 12 total:
+Events to track, 13 total:
 1. upgrade_click, fires on Upgrade button, tells top of funnel size.
 2. checkout_start, fires on Stripe redirect, tells intent after price view.
 3. checkout_paid, fires on webhook success, tells conversion.
@@ -92,7 +92,7 @@ Week of: ___
 Paid servers: ___ (last week: ___)
 Upgrade to paid: ___ percent (target: ___ percent)
 Key paste success: ___ percent (target: ___ percent)
-Week 4 active: ___ percent (target: ___ percent)
+Week 4 active paid: ___ percent (target: ___ percent)
 Refund rate: ___ percent (target: ___ percent)
 
 What worked: ___
@@ -104,4 +104,4 @@ Run Mondays, 15 minutes max, owner plus one support reader, because speed beats 
 
 ## 6. Investor ready metrics
 
-No raise planned in 6 months, so keep this light. When asked later, show MRR, refund churn, week 4 active, and CAC from the $120 quote bounty pool, all from Stripe plus PostHog exports above, because paid proofs beat pitch claims.
+No raise planned in 6 months, so keep this light. When asked later, show MRR, refund churn, week 4 active, and CAC from the $120 launch pool with $50 bounties plus $70 VPS, all from Stripe plus PostHog exports above, because paid proofs beat pitch claims.

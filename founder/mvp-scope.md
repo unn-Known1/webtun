@@ -10,13 +10,13 @@ Scope is the paid license layer only. The app already ships, so triage covers ga
 | Ed25519 license verify in lib/license.js | Must have | No paid gate works without offline key checks because servers run offline behind tunnels. |
 | Stripe checkout plus webhook that signs keys | Must have | Takes money and issues keys without manual email because manual keys do not scale past 20 buyers. |
 | Settings plus Security paste key box with status | Must have | Gives the buy to paid path in under 60 seconds because admins live in that panel already. |
-| Gate POST /api/ssh/credentials behind Pro | Must have | SSH keys are the top paid reason and the route already needs PIN, so one check gates it. |
+| Gate all SSH routes behind Pro | Must have | SSH keys are the top paid reason and every route already needs PIN, so one check must cover credentials plus port plus setup plus enabled or bypasses stay open. |
 | Gate concurrent tunnels to 2 free and unlimited paid | Should have | Creates a visible paywall for power users because most solos hit 3 tunnels first. |
-| Gate trusted devices to 3 free and 5 Pro and 10 Team | Should have | Turns existing session list into Team value because extra phones and laptops force upgrades. |
-| History cap 200 free and 1000 Pro plus export | Should have | Cheap to build since .cmdhist.json already stores max, and export sells audit value. |
+| Gate trusted sessions to 3 free and 5 Pro and 10 Team admins | Should have | Turns existing session list into Team value because extra phones and laptops force upgrades. |
+| History cap 200 free and 1000 Pro plus export | Should have | Needs clamp change in server.js plus misc.js since today caps at 500, and export sells audit value. |
 | PREVIEW_PORTS plus ALLOWED_ORIGINS UI editor | Should have | Moves two env only knobs into Settings because Teams pay for policy control. |
-| Shared command library plus bookmarks export | Should have | Reuses commands.js and places files, so sharing is a file export before any sync server. |
-| Audit export CSV | Should have | Bundles history plus ssh events plus session list because compliance buyers ask for it first. |
+| Shared command library plus bookmarks export | Should have | Needs new small API since both live client side today, so file export ships before any sync server. |
+| Audit export CSV | Should have | Needs new route since no /api/audit exists, and it bundles history plus ssh events plus session list because compliance buyers ask for it first. |
 | OIDC SSO | Won't have | Needs new deps plus CSP review plus IdP testing, weeks of work before any SSO buyer exists. |
 | SCIM and org directory sync | Won't have | Only matters past 50 seats, and no directory buyer is waiting now. |
 | Usage metering per GB or per minute | Won't have | Self hosted use is easy to fake and disputes cost more than it earns at this stage. |
@@ -47,7 +47,7 @@ Step 5: User hits annual upsell with save $29 note and stays, or team lead click
 
 ## 4. Technical scope
 
-Build vs buy: build lib/license.js plus checkLicense middleware plus gates, because they are 200 lines and touch checkPin patterns. Buy Stripe Billing plus Checkout plus Customer Portal, because tax plus cards plus отмены plus portal are not worth rebuilding. Buy Resend or Postmark for key email, because SMTP self hosting hurts deliverability.
+Build vs buy: build lib/license.js plus checkLicense middleware plus gates, because they are 200 lines and touch checkPin patterns. Buy Stripe Billing plus Checkout plus Customer Portal, because tax plus cards plus refunds plus portal are not worth rebuilding. Buy Resend or Postmark for key email, because SMTP self hosting hurts deliverability.
 
 Stack: Node plus Express already in repo, node:crypto Ed25519, no new prod deps because packaging rules favor zero deps. Webhook signer runs as one more Express route on the same VPS or a $0 Railway service, not a new stack.
 
@@ -55,7 +55,7 @@ Build time for one full stack dev:
 1. License sign plus verify plus DATA_DIR/license.json 0600: 6 hours, because format plus atomic write plus tests.
 2. Stripe checkout plus webhook plus portal link: 6 hours, because webhook secret plus seat count mapping.
 3. Settings UI paste plus status plus grace banner: 5 hours, because it mirrors PIN panels.
-4. SSH gate plus tunnel cap plus device cap plus history cap: 5 hours, because four small middleware checks plus toasts.
+4. SSH gate on all SSH routes plus tunnel cap plus device cap plus history clamp: 5 hours, because four small middleware checks plus toasts.
 5. Docs update in public/docs.html plus TOC: 2 hours, because rule needs it in the same change.
 Total: 24 hours across 3 weeks at 8 hours per week, because solo pace with review.
 

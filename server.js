@@ -259,6 +259,11 @@ function parseJsonLimit(raw, fallback) {
 }
 const JSON_LIMIT_BASE = parseJsonLimit(process.env.JSON_LIMIT, '2mb');
 const JSON_LIMIT_LARGE = parseJsonLimit(process.env.JSON_LIMIT_LARGE, '12mb');
+// Stripe billing webhook needs the raw body for signature checks, so it is
+// registered before the JSON parser below (which would consume it).
+app.post('/api/billing/webhook', express.raw({ type: '*/*', limit: '1mb' }), (req, res) => {
+  billingWebhookHandler(req, res).catch(e => { try { sendErr(res, e, 500); } catch { try { res.status(500).end(); } catch {} } });
+});
 const LARGE_JSON_ROUTES = new Set(['/api/files/write']);
 app.use((req, res, next) => {
   // Trailing-slash tolerant: /api/files/write/ gets the large budget too.
