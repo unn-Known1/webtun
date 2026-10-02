@@ -7,7 +7,7 @@ function loadSettings() {
   try {
     const s = JSON.parse(safeStorage.getItem('wt-settings'));
     if (s && typeof s === 'object' && !Array.isArray(s)) {
-      if (typeof s.theme === 'string' && ['system','tokyonight','light','solarized','gruvbox','dracula','monokai'].includes(s.theme)) settings.theme = s.theme;
+      if (typeof s.theme === 'string' && ['system','tokyonight','light','catppuccin-latte','nord-light','solarized','gruvbox','dracula','monokai'].includes(s.theme)) settings.theme = s.theme;
       if (typeof s.fontSize === 'number' && s.fontSize >= 8 && s.fontSize <= 32) settings.fontSize = s.fontSize;
       if (typeof s.scrollback === 'number' && s.scrollback >= 100 && s.scrollback <= 50000) settings.scrollback = s.scrollback;
       if (typeof s.font === 'string') settings.font = s.font;

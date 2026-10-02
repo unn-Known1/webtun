@@ -19,7 +19,9 @@
       if (document.body) document.body.dataset.theme = theme;
 
       const themeColors = {
-        light: '#ffffff',
+        light: '#f9f9fb',
+        'catppuccin-latte': '#eff1f5',
+        'nord-light': '#f8fafc',
         tokyonight: '#1a1b26',
         dracula: '#282a36',
         nord: '#2e3440',

@@ -68,6 +68,22 @@
   --red: #c03050; --yellow: #9a6a00; --cyan: #1e7590;
   --shadow-color: rgba(0,0,0,0.12);
 }
+[data-theme="catppuccin-latte"] {
+  color-scheme: light;
+  --bg: #eff1f5; --bg2: #e6e9ef; --bg3: #dce0e8; --bg4: #ccd0da;
+  --border: #bcc0cc; --fg: #4c4f69; --fg2: #5c5f77; --fg3: #6c6f85;
+  --accent: #1e66f5; --accent2: #8839ef; --green: #40a02b;
+  --red: #d20f39; --yellow: #df8e1d; --cyan: #179299;
+  --shadow-color: rgba(76,79,105,0.12);
+}
+[data-theme="nord-light"] {
+  color-scheme: light;
+  --bg: #f8fafc; --bg2: #f1f5f9; --bg3: #e2e8f0; --bg4: #cbd5e1;
+  --border: #cbd5e1; --fg: #0f172a; --fg2: #334155; --fg3: #475569;
+  --accent: #0284c7; --accent2: #6366f1; --green: #16a34a;
+  --red: #dc2626; --yellow: #d97706; --cyan: #0891b2;
+  --shadow-color: rgba(15,23,42,0.1);
+}
 [data-theme="solarized"] {
   color-scheme: dark;
   --bg: #002b36; --bg2: #073642; --bg3: #083f4d; --bg4: #0a4a5a;
