@@ -7,7 +7,7 @@ function loadSettings() {
   try {
     const s = JSON.parse(safeStorage.getItem('wt-settings'));
     if (s && typeof s === 'object' && !Array.isArray(s)) {
-      if (typeof s.theme === 'string' && ['system','tokyonight','light','solarized','gruvbox','dracula','monokai'].includes(s.theme)) settings.theme = s.theme;
+      if (typeof s.theme === 'string' && ['system','tokyonight','tokyo-night','light','catppuccin-latte','nord-light','solarized','gruvbox','dracula','monokai'].includes(s.theme)) settings.theme = s.theme;
       if (typeof s.fontSize === 'number' && s.fontSize >= 8 && s.fontSize <= 32) settings.fontSize = s.fontSize;
       if (typeof s.scrollback === 'number' && s.scrollback >= 100 && s.scrollback <= 50000) settings.scrollback = s.scrollback;
       if (typeof s.font === 'string') settings.font = s.font;
@@ -29,6 +29,7 @@ function loadSettings() {
     }
   } catch(e) { console.warn(e); }
   document.getElementById('s-theme').value = settings.theme;
+  try { applyTheme(settings.theme, false); } catch {}
   document.getElementById('s-fontsize').value = settings.fontSize;
   document.getElementById('s-scrollback').value = settings.scrollback;
   document.getElementById('s-font').value = settings.font;
@@ -38,7 +39,7 @@ function loadSettings() {
   try { if (typeof applyGitSimple === 'function') applyGitSimple(); } catch {}
   try { if (typeof applySshEnabled === 'function') applySshEnabled(); } catch {}
   syncKeepAwakeUI();
-  if (settings.keepAwake && hasWakeLock) { requestWakeLock(); }
+  if (settings.keepAwake) { requestWakeLock().catch(() => {}); }
   if (isElectron) {
     document.querySelectorAll('.electron-only').forEach(el => el.style.display = '');
     window.electronAPI.getAutostart().then(enabled => {
@@ -205,6 +206,10 @@ function openSettings() {
   // sidebar/header/tab strip can't be clicked or tabbed behind the dialog.
   if (!isOpen) {
     panel.classList.add('open');
+    if (window.innerWidth <= 768) {
+      document.getElementById('drawer-backdrop')?.classList.add('active');
+      if (typeof triggerHaptic === 'function') triggerHaptic('light');
+    }
     setupSettingsSections();
     updateSecurityUI();
     try { refreshSessions(); } catch {}
@@ -231,6 +236,9 @@ function openSettings() {
     setBackdropInert(false);
     removeFocusTrap();
     document.removeEventListener('click', closeSettingsOnClickOutside, true);
+    if (!document.getElementById('sidebar')?.classList.contains('mobile-open')) {
+      document.getElementById('drawer-backdrop')?.classList.remove('active');
+    }
   }
 }
 function closeSettings() {
@@ -240,6 +248,9 @@ function closeSettings() {
   setBackdropInert(false);
   removeFocusTrap();
   document.removeEventListener('click', closeSettingsOnClickOutside, true);
+  if (!document.getElementById('sidebar')?.classList.contains('mobile-open')) {
+    document.getElementById('drawer-backdrop')?.classList.remove('active');
+  }
 }
 function closeSettingsOnClickOutside(e) {
   const panel = document.getElementById('settings-panel');
@@ -395,16 +406,26 @@ function filterSettings(q) {
 }
 function applyTheme(theme, save = true) {
   let resolved = theme;
+  if (theme === 'tokyo-night') resolved = 'tokyonight';
   if (theme === 'system') {
     resolved = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dracula' : 'light';
   }
-  document.body.dataset.theme = resolved;
   document.documentElement.dataset.theme = resolved;
+  if (document.body) document.body.dataset.theme = resolved;
   settings.theme = theme;
-  document.getElementById('s-theme').value = theme;
-  tabs.forEach(t => { if (t.term) { t.term.options.theme = getXtermTheme(); t.term.options.selectionTheme = getXtermSelectionTheme(); } });
-  const themeColor = getComputedStyle(document.body).getPropertyValue('--bg2').trim();
-  document.querySelector('meta[name="theme-color"]').content = themeColor;
+  const sel = document.getElementById('s-theme');
+  if (sel) sel.value = theme;
+  tabs.forEach(t => {
+    if (t.term) {
+      t.term.options.theme = getXtermTheme();
+      t.term.options.selectionTheme = getXtermSelectionTheme();
+      try { t.term.clearTextureAtlas?.(); } catch {}
+      try { t.term.refresh(0, t.term.rows - 1); } catch {}
+    }
+  });
+  const themeColor = getComputedStyle(document.documentElement || document.body).getPropertyValue('--bg2').trim();
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta && themeColor) meta.content = themeColor;
   if (save) saveSettings();
 }
 
@@ -456,9 +477,17 @@ function applySidebarState() {
   if (isMobile) {
     sb.classList.remove('hidden');
     sb.classList.toggle('mobile-open', sidebarOpen);
+    const backdrop = document.getElementById('drawer-backdrop');
+    if (backdrop) backdrop.classList.toggle('active', sidebarOpen);
+    const mnavExplorer = document.getElementById('mnav-explorer');
+    if (mnavExplorer) mnavExplorer.classList.toggle('active', sidebarOpen);
   } else {
     sb.classList.remove('mobile-open');
     sb.classList.toggle('hidden', !sidebarOpen);
+    const backdrop = document.getElementById('drawer-backdrop');
+    if (backdrop) backdrop.classList.remove('active');
+    const mnavExplorer = document.getElementById('mnav-explorer');
+    if (mnavExplorer) mnavExplorer.classList.remove('active');
   }
   try { safeStorage.setItem('wt-sidebar-collapsed', String(!sidebarOpen)); } catch {}
 }
@@ -476,6 +505,7 @@ wireSidebarResizeSync();
 // Honor a persisted collapsed state on boot without forcing mobile open.
 try { if (safeStorage.getItem('wt-sidebar-collapsed') === 'true') applySidebarState(); } catch {}
 function toggleSidebar() {
+  if (typeof triggerHaptic === 'function') triggerHaptic('light');
   const sb = document.getElementById('sidebar');
   sidebarOpen = !sidebarOpen;
   if (!sb) { try { safeStorage.setItem('wt-sidebar-collapsed', String(!sidebarOpen)); } catch {} return; }
@@ -497,25 +527,47 @@ let moreMenuOpen = false;
 function closeMoreMenu() {
   const menu = document.getElementById('more-menu');
   const btn = document.getElementById('more-btn');
+  const mbtn = document.getElementById('mnav-more');
   if (menu) menu.classList.remove('open');
   if (btn) btn.classList.remove('active');
+  if (mbtn) mbtn.classList.remove('active');
   document.removeEventListener('click', closeMoreMenuOnClickOutside, true);
+  if (window.innerWidth <= 768) {
+    const backdrop = document.getElementById('drawer-backdrop');
+    if (backdrop && !document.getElementById('sidebar')?.classList.contains('mobile-open') && !document.getElementById('settings-panel')?.classList.contains('open') && !document.getElementById('tab-list-menu')?.offsetParent) {
+      backdrop.classList.remove('active');
+    }
+  }
   moreMenuOpen = false;
 }
 function closeMoreMenuOnClickOutside(e) {
   const menu = document.getElementById('more-menu');
   const btn = document.getElementById('more-btn');
+  const mbtn = document.getElementById('mnav-more');
   if (menu && menu.contains(e.target)) return;
   if (btn && btn.contains(e.target)) return;
+  if (mbtn && mbtn.contains(e.target)) return;
   closeMoreMenu();
 }
-function toggleMoreMenu() {
+function toggleMoreMenu(e) {
+  if (e) {
+    try { e.preventDefault(); e.stopPropagation(); } catch {}
+  }
   if (moreMenuOpen) { closeMoreMenu(); return; }
+  try { if (typeof hideTabMenus === 'function') hideTabMenus(); } catch {}
+  try { if (typeof hideAllCtxMenus === 'function') hideAllCtxMenus(); } catch {}
   moreMenuOpen = true;
   const menu = document.getElementById('more-menu');
   const btn = document.getElementById('more-btn');
+  const mbtn = document.getElementById('mnav-more');
   if (menu) menu.classList.add('open');
   if (btn) btn.classList.add('active');
+  if (mbtn) mbtn.classList.add('active');
+  if (window.innerWidth <= 768) {
+    if (typeof triggerHaptic === 'function') triggerHaptic('light');
+    const backdrop = document.getElementById('drawer-backdrop');
+    if (backdrop) backdrop.classList.add('active');
+  }
   setTimeout(() => {
     document.addEventListener('click', closeMoreMenuOnClickOutside, true);
     const first = menu && menu.querySelector('.mm-item');
@@ -739,17 +791,84 @@ function _fsEscHandler(e) {
 
 // Terminal fullscreen removed — per request, terminal fullscreen should not cover sidebar
 // toggleTerminalFullscreen and _termFsEscHandler intentionally removed
-const hasWakeLock = 'wakeLock' in navigator;
+let wakeLock = null;
+let wakeVideo = null;
+window.wakeLock = null;
+const hasWakeLock = typeof navigator !== 'undefined' && 'wakeLock' in navigator;
+window.hasWakeLock = hasWakeLock;
 
 async function requestWakeLock() {
-  if (!hasWakeLock) return false;
+  // 1. Primary: Native W3C Screen Wake Lock API
+  if ('wakeLock' in navigator) {
+    try {
+      const lock = await navigator.wakeLock.request('screen');
+      wakeLock = lock;
+      window.wakeLock = lock;
+      lock.addEventListener('release', () => {
+        if (wakeLock === lock) {
+          wakeLock = null;
+          window.wakeLock = null;
+        }
+      });
+      return true;
+    } catch (err) {
+      // Native wakeLock is restricted by iframe permissions policy — fail silently and proceed to video fallback
+    }
+  }
+
+  // 2. Fallback: Hidden silent video loop (works in iframes, HTTP, WebViews, legacy browsers)
   try {
-    wakeLock = await navigator.wakeLock.request('screen');
-    wakeLock.addEventListener('release', () => { wakeLock = null; });
+    if (!wakeVideo) {
+      wakeVideo = document.createElement('video');
+      wakeVideo.muted = true;
+      wakeVideo.volume = 0;
+      wakeVideo.setAttribute('muted', '');
+      wakeVideo.setAttribute('playsinline', '');
+      wakeVideo.setAttribute('webkit-playsinline', '');
+      wakeVideo.loop = true;
+      wakeVideo.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;z-index:-9999';
+      
+      if (typeof HTMLCanvasElement !== 'undefined' && HTMLCanvasElement.prototype.captureStream) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 1;
+        canvas.height = 1;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.fillRect(0, 0, 1, 1);
+          // Continuous micro-repaint keeps stream active across all browser engines
+          setInterval(() => { try { ctx.fillRect(0, 0, 1, 1); } catch {} }, 1000);
+        }
+        wakeVideo.srcObject = canvas.captureStream(1);
+      } else {
+        wakeVideo.src = 'data:video/mp4;base64,AAAAHGZ0eXBpc29tAAAAAGlzb21pc28ybXA0MgAAAAptZGF0AAAAAB4AAAAGaGVhZAAAAAAAC3Bpc3AAMAAAAAABAAAAA21vb3YAAABsbXZoZAAAAADXUTIn11EyJwAAM4QAAAEsAAABAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAABR0a2hkAAAAAQAAAAAAAABf434AAAEsAAAAAAABAAAAAAAAAAAAAAABAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAEAAAAAAG1kaWEAAAAgbWRoZAAAAADXUTIn11EyJwAAM4QAAAEsAAAAAAAAAAAAAAAAYaGRscgAAAAAAd2lkZW9zc3BhAAAAAAAAAAAAACRtaW5mAAAAFHZtaGQAAAAA';
+      }
+      document.body.appendChild(wakeVideo);
+    }
+    await wakeVideo.play();
+    wakeLock = 'video-fallback';
+    window.wakeLock = wakeLock;
+    window.wakeVideo = wakeVideo;
     return true;
   } catch (err) {
-    console.warn('Wake Lock error:', err);
+    console.warn('Video fallback wake lock failed:', err);
+    wakeLock = null;
+    window.wakeLock = null;
+    window.wakeVideo = null;
     return false;
+  }
+}
+
+async function releaseWakeLock() {
+  if (wakeLock === 'video-fallback') {
+    if (wakeVideo) {
+      try { wakeVideo.pause(); } catch {}
+    }
+    wakeLock = null;
+    window.wakeLock = null;
+  } else if (wakeLock && typeof wakeLock.release === 'function') {
+    try { await wakeLock.release(); } catch {}
+    wakeLock = null;
+    window.wakeLock = null;
   }
 }
 
@@ -757,14 +876,18 @@ async function toggleKeepAwake(enabled) {
   settings.keepAwake = enabled;
   saveSettings();
   if (enabled) {
-    const ok = await requestWakeLock();
-    if (!ok && !isElectron) {
-      toast('Screen wake lock not supported or denied', 'error');
-    } else if (!ok && isElectron) {
-      toast('Wake lock not available in Electron', 'info');
+    const ok = await requestWakeLock().catch(() => false);
+    if (!ok) {
+      settings.keepAwake = false;
+      saveSettings();
+      if (!isElectron) {
+        toast('Screen wake lock not supported or denied', 'error');
+      } else {
+        toast('Wake lock not available in Electron', 'info');
+      }
     }
   } else {
-    if (wakeLock) { wakeLock.release(); wakeLock = null; }
+    await releaseWakeLock();
   }
   syncKeepAwakeUI();
 }
@@ -784,7 +907,9 @@ function syncKeepAwakeUI() {
 }
 
 document.addEventListener('visibilitychange', async () => {
-  if (document.visibilityState === 'visible' && settings.keepAwake && !wakeLock) {
-    await requestWakeLock();
-  }
+  try {
+    if (document.visibilityState === 'visible' && settings.keepAwake && !wakeLock) {
+      await requestWakeLock().catch(() => {});
+    }
+  } catch {}
 });

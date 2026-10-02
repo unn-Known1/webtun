@@ -297,6 +297,15 @@ async function _loadFilesInner(dir) {
   list.replaceChildren(fragment);
   observeThumbs();
 
+  // Reset scroll position to top when navigating to a different directory
+  if (!prevPath || prevPath !== currentPath) {
+    const wrap = document.getElementById('file-list-wrap');
+    if (wrap) {
+      wrap.scrollTop = 0;
+      wrap.scrollLeft = 0;
+    }
+  }
+
   if (list.children.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'file-list-empty';
@@ -608,13 +617,16 @@ function setupFileListContextMenu() {
   list.dataset._ctxSetup = '1';
   list.addEventListener('contextmenu', e => {
     const item = e.target.closest('.file-item');
-    if (!item || !item.dataset.path) return;
-    const curPath = item.dataset.path;
-    const curIsDir = item.dataset.isDir === 'true';
-    const curName = fileRowName(item, curPath);
-    const m = curPath.match(/\.([^.]+)$/);
-    const ext = m ? '.' + m[1].toLowerCase() : '';
-    showCtxMenu(e, { path: curPath, name: curName, isDir: curIsDir, ext });
+    if (item && item.dataset.path) {
+      const curPath = item.dataset.path;
+      const curIsDir = item.dataset.isDir === 'true';
+      const curName = fileRowName(item, curPath);
+      const m = curPath.match(/\.([^.]+)$/);
+      const ext = m ? '.' + m[1].toLowerCase() : '';
+      showCtxMenu(e, { path: curPath, name: curName, isDir: curIsDir, ext });
+    } else if (currentPath) {
+      showCtxMenu(e, { path: currentPath, name: '', isDir: true, ext: '', isBlankSpace: true });
+    }
   });
 }
 
@@ -1127,27 +1139,46 @@ function showCtxMenu(e, file) {
   document.getElementById('ctx-props').style.display = '';
   document.getElementById('ctx-folder-size').style.display = file.isDir ? '' : 'none';
   document.getElementById('ctx-extract').style.display = file.isDir ? 'none' : (file.ext === '.zip' ? '' : 'none');
-  // Measure after content is set
-  const mw = menu.offsetWidth, mh = menu.offsetHeight;
-  const vw = window.innerWidth, vh = window.innerHeight;
-  let left = e.clientX, top = e.clientY;
-  // Flip horizontally if overflowing right
-  if (left + mw > vw) left = Math.max(0, e.clientX - mw);
-  // Flip vertically if overflowing bottom
-  if (top + mh > vh) top = Math.max(0, e.clientY - mh);
-  // Clamp to viewport
-  left = Math.max(0, Math.min(left, vw - mw));
-  top = Math.max(0, Math.min(top, vh - mh));
-  menu.style.left = left + 'px';
-  menu.style.top = top + 'px';
+  const isMobile = window.innerWidth <= 768;
+  if (isMobile) {
+    if (typeof triggerHaptic === 'function') triggerHaptic('light');
+    const backdrop = document.getElementById('drawer-backdrop');
+    if (backdrop) backdrop.classList.add('active');
+    menu.style.left = '';
+    menu.style.top = '';
+  } else {
+    // Measure after content is set
+    const mw = menu.offsetWidth, mh = menu.offsetHeight;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    let left = e.clientX, top = e.clientY;
+    // Flip horizontally if overflowing right
+    if (left + mw > vw) left = Math.max(0, e.clientX - mw);
+    // Flip vertically if overflowing bottom
+    if (top + mh > vh) top = Math.max(0, e.clientY - mh);
+    // Clamp to viewport
+    left = Math.max(0, Math.min(left, vw - mw));
+    top = Math.max(0, Math.min(top, vh - mh));
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+  }
   menu.classList.add('open');
   menu.style.display = '';
   const firstItem = menu.querySelector('.ctx-item');
-  if (firstItem) firstItem.focus();
+  if (firstItem && !isMobile) firstItem.focus();
 }
 
 document.addEventListener('click', e => {
-  document.getElementById('ctx-menu').classList.remove('open');
+  const ctx = document.getElementById('ctx-menu');
+  if (ctx && ctx.classList.contains('open')) {
+    ctx.classList.remove('open');
+    if (window.innerWidth <= 768) {
+      const sb = document.getElementById('sidebar');
+      const sp = document.getElementById('settings-panel');
+      if (!sb?.classList.contains('mobile-open') && !sp?.classList.contains('open')) {
+        document.getElementById('drawer-backdrop')?.classList.remove('active');
+      }
+    }
+  }
   // TR-05: clicks inside the terminal menu are owned by the item handlers
   // (which restore focus to the terminal on action). An outside click
   // dismisses without stealing focus — otherwise clicking into the explorer
@@ -2128,12 +2159,18 @@ function setupDragDrop() {
   let dragCnt = 0;
 
   function isFileDrag(e) {
+    if (e.target && e.target.closest && (e.target.closest('.CodeMirror') || e.target.closest('.xterm'))) return false;
     const types = e.dataTransfer?.types;
     if (!types) return false;
+    let hasFiles = false;
     for (let i = 0; i < types.length; i++) {
-      if (types[i] === 'Files') return true;
+      if (types[i] === 'Files') hasFiles = true;
     }
-    return false;
+    if (!hasFiles) return false;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      if (e.dataTransfer.items[0].kind === 'string') return false;
+    }
+    return true;
   }
 
   document.addEventListener('dragenter', e => {

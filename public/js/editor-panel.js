@@ -35,21 +35,29 @@ const CM_BASE_OPTIONS = {
   viewportMargin: 100,
 };
 
-function initCodeMirror() {
+async function initCodeMirror() {
   if (editor) return editor;
+  const loaded = typeof ensureCodeMirrorLoaded === 'function' ? await ensureCodeMirrorLoaded() : (typeof CodeMirror !== 'undefined');
+  if (!loaded || typeof CodeMirror === 'undefined') return null;
   const ta = document.getElementById('editor-textarea');
-  editor = CodeMirror.fromTextArea(ta, Object.assign({}, CM_BASE_OPTIONS, {
-    extraKeys: {
-      'Ctrl-S': () => saveFile(),
-      'Cmd-S': () => saveFile(),
-      'Esc': () => {
-        if (document.querySelector('.overlay.open')) return;
-        closeEditor();
-      },
-    }
-  }));
-  editor.on('change', () => { updateEditorDirty(); autoSaveDraft(); schedulePreviewLiveReload(); });
-  return editor;
+  if (!ta) return null;
+  try {
+    editor = CodeMirror.fromTextArea(ta, Object.assign({}, CM_BASE_OPTIONS, {
+      extraKeys: {
+        'Ctrl-S': () => saveFile(),
+        'Cmd-S': () => saveFile(),
+        'Esc': () => {
+          if (document.querySelector('.overlay.open')) return;
+          closeEditor();
+        },
+      }
+    }));
+    editor.on('change', () => { updateEditorDirty(); autoSaveDraft(); schedulePreviewLiveReload(); });
+    return editor;
+  } catch (e) {
+    console.warn('initCodeMirror failed:', e);
+    return null;
+  }
 }
 let _autoSaveTimer = null;
 function autoSaveDraft() {
@@ -133,6 +141,7 @@ const CM_LAZY_MODES = {
 };
 const _cmModeFailed = new Set();
 function cmModeLoaded(name) {
+  if (typeof CodeMirror === 'undefined') return false;
   try {
     return !!((CodeMirror.modes && CodeMirror.modes[name]) || (CodeMirror.mimeModes && CodeMirror.mimeModes[name]));
   } catch { return false; }
@@ -288,15 +297,32 @@ async function showTextInPanel(path, content, original, history, mtime, size) {
   cleanupDocViewers();
   document.getElementById('editor-save-btn').style.display = '';
 
-  const cm = initCodeMirror();
-  cm.setValue(openContent);
-  cm.setOption('mode', await resolveCMmode(fileName));
-  if (myGen !== _panelGen) return; // superseded: a newer open owns the panel now
-  cm.setOption('readOnly', false);
-  document.querySelector('.CodeMirror').style.display = '';
-  cm.refresh();
-  // (The textarea is hidden by CodeMirror — its oninput never fires. The
-  // CodeMirror `change` handler owns dirty state.)
+  const cm = await initCodeMirror();
+  if (cm) {
+    cm.setValue(openContent);
+    try { cm.setOption('mode', await resolveCMmode(fileName)); } catch {}
+    if (myGen !== _panelGen) return; // superseded: a newer open owns the panel now
+    cm.setOption('readOnly', false);
+    const cmEl = document.querySelector('.CodeMirror');
+    if (cmEl) cmEl.style.display = '';
+    try { cm.refresh(); } catch {}
+  } else {
+    const ta = document.getElementById('editor-textarea');
+    if (ta) {
+      ta.value = openContent;
+      ta.style.display = 'block';
+      ta.style.width = '100%';
+      ta.style.height = '100%';
+      ta.style.background = 'var(--bg)';
+      ta.style.color = 'var(--fg)';
+      ta.style.fontFamily = 'var(--font)';
+      ta.style.fontSize = '13px';
+      ta.style.border = 'none';
+      ta.style.padding = '12px';
+      ta.style.outline = 'none';
+      ta.oninput = () => { updateEditorDirty(); autoSaveDraft(); schedulePreviewLiveReload(); };
+    }
+  }
   updateEditorDirty();
 
   const preview = document.getElementById('editor-preview');

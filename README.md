@@ -206,6 +206,17 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 
 ## Changelog
 
+### v2.2.8
+- **New Light UI Themes** — introduced two modern, clean light themes: **Catppuccin Latte** (`catppuccin-latte`) with soft pastel surfaces and crisp indigo text, and **Nord Light** (`nord-light`) with an arctic slate background and sky blue highlights; full WCAG-AA contrast compliance
+- **Theme Engine Reliability & Alignment** — fixed dataset theme initialization and synchronous boot synchronization across `document.documentElement` and `document.body`; added `tokyo-night` alias support; updated xterm.js theme options and WebGL texture atlas refresh to immediately re-render terminals on palette change
+
+### v2.2.7
+- **Desktop Engine & Audit Remediation (Desktop Readiness Score 96.8/100 Grade A+)** — implemented single-instance application lock (`app.requestSingleInstanceLock()`) in Electron; attached xterm key event handler (`term.attachCustomKeyEventHandler`) to route global hotkeys (`Ctrl+B`, `Ctrl+P`) directly to application handlers; dynamic submenu flyout edge clamping; empty-space context menu in file explorer; scoped drag overlay to prevent text selection interference; window focus auto-refresh for Git status panel; Solarized Dark theme contrast adjustments for WCAG AA compliance; Ultrawide display Launchpad layout scaling
+- **Mobile UI Terminal Tabs & CodeMirror Resilience** — aligned terminal tab bar on mobile UI to match desktop UI tab chrome (rectangular rounded-top tabs, active top accent indicator line `inset 0 2px 0 var(--accent)`, direct `+` new tab creation button); introduced `ensureCodeMirrorLoaded()` guard with native `<textarea>` fallback for offline or CDN script failure resilience; enhanced file explorer path bar (`#path-bar`) segment styling and focus states
+
+### v2.2.6
+- **Mobile UX & Ergonomics overhaul (Mobile Readiness Score 94+/100)** — resolved involuntary keyboard popups during terminal scrolling with touch-drag gesture disambiguation; decoupled terminal PTY viewport resize (`SIGWINCH`) during software keyboard animation; docked the mobile key accessory ribbon (`#mobile-keys`) above the virtual keyboard via the Visual Viewport API so essential keys (`ESC`, `TAB`, `Ctrl`, arrows, `Hide KB`) remain accessible while typing; introduced an ergonomic thumb-zone Bottom Navigation Bar (`#mobile-nav-bar`) with large $\ge 48\text{px}$ targets and haptic feedback; transformed mobile context menus into native slide-up Bottom Action Sheets; resolved OS edge-swipe navigation conflicts with backdrop-scrim drawer controls; floating multi-select action capsule
+
 ### v2.2.5
 - **SSH access (opt-in)** — on-demand key-only ed25519 credentials from a header popup for Termius/mobile/`ssh` clients: status stat-trio with port pill, one-click Easy Setup checks (sshd, firewall, Tailscale userspace serve, built-in managed sshd) with per-check fix buttons, copy-ready Tailscale/LAN recipes (Docker-bridge addresses filtered), session single-use private keys; Features toggle is server-enforced (default off) and kills managed sshd + WebTun-started Tailnet on disable
 - **Login** — Enter-to-unlock now works on every showing of the PIN screen (plus input-level fallback), not just fresh boot

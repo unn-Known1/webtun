@@ -70,6 +70,7 @@ async function syncSshEnabledToServer() {
 }
 
 function closeSshPanel() {
+  try { dismissSshOnce(); } catch {}
   closeOverlay('ssh-overlay');
 }
 

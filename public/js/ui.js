@@ -28,9 +28,8 @@ async function resetSettings() {
         try { startSysIconPulse(); } catch {}
       }
     }
-    if (wasAwake && !settings.keepAwake && typeof wakeLock !== 'undefined' && wakeLock) {
-      try { wakeLock.release(); } catch {}
-      wakeLock = null;
+    if (wasAwake && !settings.keepAwake) {
+      try { if (typeof releaseWakeLock === 'function') releaseWakeLock(); } catch {}
     }
   } catch {}
   document.getElementById('s-theme').value = settings.theme;
@@ -126,6 +125,9 @@ function closeOverlay(id) {
   const overlay = document.getElementById(id);
   if (!overlay) return;
   overlay.classList.remove('open');
+  if (id === 'ssh-overlay' && typeof dismissSshOnce === 'function') {
+    try { dismissSshOnce(); } catch {}
+  }
   removeFocusTrap();
   // Capture before nulling: the timeout fires after this function returns.
   const lf = lastFocusedElement;
@@ -240,74 +242,270 @@ function showFieldError(id, msg) {
 function clearFieldError(id) { showFieldError(id, ''); }
 
 const TOAST_ICONS = {
-  success: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>',
-  error: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+  success: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>',
+  error: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
   warning: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
   info: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>'
 };
 
-function toast(msg, type = 'info') {
+// Notification Preferences (wt-notif-prefs)
+function getNotifPref(key, fallback) {
+  try {
+    const prefs = JSON.parse(safeStorage.getItem('wt-notif-prefs') || '{}');
+    return prefs[key] !== undefined ? prefs[key] : fallback;
+  } catch { return fallback; }
+}
+
+function setNotifPref(key, val) {
+  try {
+    const prefs = JSON.parse(safeStorage.getItem('wt-notif-prefs') || '{}');
+    prefs[key] = val;
+    safeStorage.setItem('wt-notif-prefs', JSON.stringify(prefs));
+  } catch {}
+}
+
+function toggleNotifPrefs() {
+  const tray = document.getElementById('notif-prefs-tray');
+  if (!tray) return;
+  const isHidden = tray.style.display === 'none';
+  tray.style.display = isHidden ? 'flex' : 'none';
+  if (isHidden) {
+    const snd = document.getElementById('notif-pref-sound');
+    const bnr = document.getElementById('notif-pref-banners');
+    if (snd) snd.checked = !!getNotifPref('sound', false);
+    if (bnr) bnr.checked = getNotifPref('banners', true) !== false;
+    updateDesktopNotifBtn();
+  }
+}
+
+function updateDesktopNotifBtn() {
+  const btn = document.getElementById('notif-desktop-btn');
+  if (!btn) return;
+  if (!('Notification' in window)) {
+    btn.textContent = 'Unsupported';
+    btn.disabled = true;
+    return;
+  }
+  if (Notification.permission === 'granted') {
+    const enabled = getNotifPref('desktop', false);
+    btn.textContent = enabled ? 'Enabled' : 'Disabled';
+    btn.className = 'btn btn-sm ' + (enabled ? 'btn-primary' : '');
+  } else if (Notification.permission === 'denied') {
+    btn.textContent = 'Blocked in Browser';
+    btn.disabled = true;
+  } else {
+    btn.textContent = 'Request Permission';
+  }
+}
+
+async function toggleDesktopNotifPerm() {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'default') {
+    const perm = await Notification.requestPermission();
+    if (perm === 'granted') {
+      setNotifPref('desktop', true);
+      toast('Desktop notifications enabled', 'success', { log: false });
+    }
+  } else if (Notification.permission === 'granted') {
+    const cur = getNotifPref('desktop', false);
+    setNotifPref('desktop', !cur);
+    toast(!cur ? 'Desktop notifications enabled' : 'Desktop notifications disabled', 'info', { log: false });
+  }
+  updateDesktopNotifBtn();
+}
+
+function playNotifSound(type) {
+  if (!getNotifPref('sound', false)) return;
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    if (ctx.state === 'suspended') ctx.resume();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    if (type === 'error') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(220, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(110, ctx.currentTime + 0.2);
+      gain.gain.setValueAtTime(0.08, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.2);
+    } else if (type === 'success') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(523.25, ctx.currentTime);
+      osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.08);
+      osc.frequency.setValueAtTime(783.99, ctx.currentTime + 0.16);
+      gain.gain.setValueAtTime(0.06, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.3);
+    } else {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(440, ctx.currentTime);
+      osc.frequency.setValueAtTime(554.37, ctx.currentTime + 0.07);
+      gain.gain.setValueAtTime(0.05, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.22);
+    }
+  } catch {}
+}
+
+function sendDesktopNotification(msg, type) {
+  if (!getNotifPref('desktop', false)) return;
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (document.visibilityState === 'visible' && document.hasFocus()) return;
+  try {
+    const title = 'WebTun: ' + (type ? type.toUpperCase() : 'Alert');
+    const n = new Notification(title, {
+      body: String(msg),
+      icon: '/icon-192.png',
+      badge: '/icon.svg',
+      silent: true
+    });
+    n.onclick = () => { window.focus(); n.close(); };
+  } catch {}
+}
+
+function toast(msg, type = 'info', opts = {}) {
+  // Option to skip logging into Notification Center drawer for internal status popups
+  if (opts.log !== false) {
+    try { logNotification(msg, type); } catch {}
+  }
+  if (opts.sound !== false) playNotifSound(type);
+  if (opts.desktop !== false) sendDesktopNotification(msg, type);
+
+  // Check if visual banners are disabled
+  if (getNotifPref('banners', true) === false) return null;
+
   const el = document.createElement('div');
   el.className = `toast ${type}`;
   el.setAttribute('role', 'status');
-  el.innerHTML = (TOAST_ICONS[type] || '') + '<span></span>';
-  el.querySelector('span').textContent = msg;
+
+  const contentWrap = document.createElement('div');
+  contentWrap.className = 'toast-content';
+
+  const iconSpan = document.createElement('span');
+  iconSpan.className = 'toast-ico';
+  iconSpan.innerHTML = TOAST_ICONS[type] || TOAST_ICONS.info;
+  contentWrap.appendChild(iconSpan);
+
+  const textSpan = document.createElement('span');
+  textSpan.className = 'toast-text';
+  textSpan.textContent = msg;
+  contentWrap.appendChild(textSpan);
+  el.appendChild(contentWrap);
+
+  // Quick Action Buttons
+  const actionsWrap = document.createElement('div');
+  actionsWrap.className = 'toast-actions';
+
+  // Copy button
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'toast-btn toast-copy';
+  copyBtn.setAttribute('aria-label', 'Copy message');
+  copyBtn.title = 'Copy';
+  copyBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  copyBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    try {
+      navigator.clipboard.writeText(msg);
+      copyBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>';
+      copyBtn.style.color = 'var(--green)';
+      setTimeout(() => {
+        copyBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+        copyBtn.style.color = '';
+      }, 1200);
+    } catch {}
+  });
+  actionsWrap.appendChild(copyBtn);
+
+  // Dismiss button
+  const x = document.createElement('button');
+  x.className = 'toast-btn toast-x';
+  x.setAttribute('aria-label', 'Dismiss notification');
+  x.title = 'Dismiss';
+  x.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+  x.addEventListener('click', (e) => { e.stopPropagation(); try { el.remove(); } catch {} });
+  actionsWrap.appendChild(x);
+  el.appendChild(actionsWrap);
+
+  // Animated Progress Countdown Bar
+  const duration = type === 'error' ? 6500 : 3500;
+  const progress = document.createElement('div');
+  progress.className = 'toast-progress';
+  progress.style.animationDuration = `${duration}ms`;
+  el.appendChild(progress);
+
   const mk = document.getElementById('mobile-keys');
   if (mk && mk.style.display !== 'none' && window.getComputedStyle(mk).display !== 'none') {
     el.style.marginBottom = 'var(--mobilekey-h)';
   }
-  // Manual dismiss: errors especially must not be evicted silently.
-  const x = document.createElement('button');
-  x.className = 'toast-x';
-  x.setAttribute('aria-label', 'Dismiss notification');
-  x.textContent = '\u00d7';
-  x.addEventListener('click', (e) => { e.stopPropagation(); try { el.remove(); } catch {} });
-  el.appendChild(x);
+
   const container = document.getElementById('toast-container');
+  if (!container) return el;
   container.appendChild(el);
-  // Cap at 4, but never evict an error for an info burst: drop the oldest
-  // non-error first, and only an error when nothing else is left.
+
+  // Cap at 4 toasts
   while (container.children.length > 4) {
     const kids = [...container.children];
     const victim = kids.find(k => !k.classList.contains('error') && k !== el) || kids.find(k => k !== el);
     if (!victim) break;
     victim.remove();
   }
-  // Hover pauses the auto-dismiss so rapid bursts stay readable.
-  let ttl = setTimeout(() => el.remove(), type === 'error' ? 6000 : 3000);
-  el.addEventListener('mouseenter', () => { clearTimeout(ttl); });
-  el.addEventListener('mouseleave', () => { ttl = setTimeout(() => el.remove(), 1500); });
-  // The popup is transient — the Notification Center keeps it until cleared.
-  try { logNotification(msg, type); } catch {}
+
+  // Hover pauses the countdown
+  let startTime = Date.now();
+  let remaining = duration;
+  let ttl = setTimeout(() => el.remove(), remaining);
+
+  el.addEventListener('mouseenter', () => {
+    clearTimeout(ttl);
+    remaining -= (Date.now() - startTime);
+    progress.style.animationPlayState = 'paused';
+  });
+  el.addEventListener('mouseleave', () => {
+    startTime = Date.now();
+    progress.style.animationPlayState = 'running';
+    ttl = setTimeout(() => el.remove(), Math.max(remaining, 1000));
+  });
+
   return el;
 }
 
 // ── Notification Center (bell drawer, mirrors the settings panel) ─────────
-// Every toast is logged here (newest last, cap 100) and stays until cleared.
-// The header badge counts arrivals while the panel is closed; opening marks
-// them read without deleting anything.
 const NOTIF_MAX = 100;
 let notifLog = [];
 let notifSeq = 0;
 let notifUnread = 0;
+let _notifFilterType = 'all';
+let _notifFilterQuery = '';
+
 try {
   const saved = JSON.parse(safeStorage.getItem('wt-notifs') || 'null');
   if (Array.isArray(saved)) {
-    notifLog = saved.filter(n => n && typeof n.msg === 'string').slice(-NOTIF_MAX);
+    notifLog = saved.filter(n => n && typeof n.msg === 'string' && n.msg !== 'All notifications cleared').slice(-NOTIF_MAX);
     notifSeq = notifLog.reduce((m, n) => Math.max(m, Number(n.id) || 0), 0);
     notifUnread = notifLog.length;
   }
 } catch {}
+
 function persistNotifs() {
   try { safeStorage.setItem('wt-notifs', JSON.stringify(notifLog.slice(-NOTIF_MAX))); } catch {}
   try { safeStorage.setItem('wt-notifs-unread', String(notifUnread)); } catch {}
 }
+
 try {
   const u = parseInt(safeStorage.getItem('wt-notifs-unread') || '', 10);
   if (Number.isInteger(u) && u >= 0) notifUnread = Math.min(u, notifLog.length);
 } catch {}
 
 function logNotification(msg, type) {
+  if (msg === 'All notifications cleared') return;
   const t = (type === 'success' || type === 'error' || type === 'warning') ? type : 'info';
   notifLog.push({ id: ++notifSeq, msg: String(msg == null ? '' : msg), type: t, time: Date.now() });
   if (notifLog.length > NOTIF_MAX) notifLog.splice(0, notifLog.length - NOTIF_MAX);
@@ -324,44 +522,145 @@ function updateNotifBadge() {
   if (count) count.textContent = notifUnread > 99 ? '99+' : String(notifUnread);
   if (btn) btn.classList.toggle('has-unread', notifUnread > 0);
   if (head) head.textContent = notifLog.length ? `(${notifLog.length})` : '';
+
+  // Update chip count counters in drawer
+  const counts = { all: notifLog.length, error: 0, warning: 0, success: 0 };
+  notifLog.forEach(n => {
+    if (counts[n.type] !== undefined) counts[n.type]++;
+  });
+  const allEl = document.getElementById('notif-chip-all-count');
+  const errEl = document.getElementById('notif-chip-error-count');
+  const warnEl = document.getElementById('notif-chip-warning-count');
+  const succEl = document.getElementById('notif-chip-success-count');
+  if (allEl) allEl.textContent = counts.all;
+  if (errEl) errEl.textContent = counts.error;
+  if (warnEl) warnEl.textContent = counts.warning;
+  if (succEl) succEl.textContent = counts.success;
+}
+
+function setNotifFilterType(type) {
+  _notifFilterType = type;
+  document.querySelectorAll('.notif-chip').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.type === type);
+  });
+  renderNotifPanel();
+}
+
+function filterNotifs() {
+  const input = document.getElementById('notif-search-input');
+  _notifFilterQuery = (input?.value || '').toLowerCase().trim();
+  const clearBtn = document.getElementById('notif-search-clear');
+  if (clearBtn) clearBtn.style.display = _notifFilterQuery ? 'inline-flex' : 'none';
+  renderNotifPanel();
+}
+
+function clearNotifSearch() {
+  const input = document.getElementById('notif-search-input');
+  if (input) input.value = '';
+  _notifFilterQuery = '';
+  const clearBtn = document.getElementById('notif-search-clear');
+  if (clearBtn) clearBtn.style.display = 'none';
+  renderNotifPanel();
 }
 
 function renderNotifPanel() {
   const box = document.getElementById('notif-list');
   if (!box) return;
   box.innerHTML = '';
-  const empty = document.getElementById('notif-empty');
-  if (empty) empty.style.display = notifLog.length ? 'none' : 'flex';
+
   const clearBtn = document.getElementById('notif-clear-all');
   if (clearBtn) clearBtn.disabled = !notifLog.length;
-  // Newest first.
-  for (let i = notifLog.length - 1; i >= 0; i--) {
-    const n = notifLog[i];
+
+  // Filter list by type and query
+  const filtered = notifLog.filter(n => {
+    if (_notifFilterType !== 'all' && n.type !== _notifFilterType) return false;
+    if (_notifFilterQuery && !n.msg.toLowerCase().includes(_notifFilterQuery)) return false;
+    return true;
+  });
+
+  const empty = document.getElementById('notif-empty');
+  if (empty) {
+    empty.style.display = filtered.length ? 'none' : 'flex';
+    const emptySpan = empty.querySelector('span');
+    if (emptySpan) {
+      if (_notifFilterQuery || _notifFilterType !== 'all') {
+        emptySpan.textContent = 'No matching notifications found.';
+      } else {
+        emptySpan.textContent = 'All caught up — notifications stay here until you clear them.';
+      }
+    }
+  }
+
+  // Newest first
+  for (let i = filtered.length - 1; i >= 0; i--) {
+    const n = filtered[i];
     const row = document.createElement('div');
     row.className = 'notif-item ' + n.type;
     row.dataset.nid = String(n.id);
+
     const ico = document.createElement('span');
+    ico.className = 'notif-ico';
     ico.setAttribute('aria-hidden', 'true');
     ico.innerHTML = TOAST_ICONS[n.type] || TOAST_ICONS.info;
-    const txt = document.createElement('span');
-    txt.className = 'notif-msg';
-    txt.textContent = n.msg;
+
+    const mainWrap = document.createElement('div');
+    mainWrap.className = 'notif-item-main';
+
+    const topRow = document.createElement('div');
+    topRow.className = 'notif-item-top';
+
+    const typeBadge = document.createElement('span');
+    typeBadge.className = 'notif-tag notif-tag-' + n.type;
+    typeBadge.textContent = n.type.toUpperCase();
+    topRow.appendChild(typeBadge);
+
     const d = new Date(n.time);
     const when = document.createElement('span');
     when.className = 'notif-time';
-    try {
-      when.textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      when.title = d.toLocaleString();
-    } catch { when.textContent = ''; }
+    const ago = Date.now() - n.time;
+    when.textContent = ago < 60000 ? 'just now' : ago < 3600000 ? Math.floor(ago / 60000) + 'm ago' : ago < 86400000 ? Math.floor(ago / 3600000) + 'h ago' : d.toLocaleDateString();
+    when.title = d.toLocaleString();
+    topRow.appendChild(when);
+    mainWrap.appendChild(topRow);
+
+    const txt = document.createElement('div');
+    txt.className = 'notif-msg';
+    txt.textContent = n.msg;
+    mainWrap.appendChild(txt);
+
+    // Actions
+    const actions = document.createElement('div');
+    actions.className = 'notif-item-actions';
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'notif-btn notif-copy';
+    copyBtn.title = 'Copy message';
+    copyBtn.setAttribute('aria-label', 'Copy message');
+    copyBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+    copyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      try {
+        navigator.clipboard.writeText(n.msg);
+        toast('Copied notification text', 'info', { log: false });
+      } catch {}
+    });
+    actions.appendChild(copyBtn);
+
     const x = document.createElement('button');
-    x.className = 'notif-x';
+    x.className = 'notif-btn notif-x';
     x.setAttribute('aria-label', 'Dismiss notification');
     x.title = 'Dismiss';
-    x.textContent = '✕';
-    x.addEventListener('click', () => clearNotifItem(n.id));
-    row.append(ico, txt, when, x);
+    x.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    x.addEventListener('click', (e) => {
+      e.stopPropagation();
+      clearNotifItem(n.id);
+    });
+    actions.appendChild(x);
+
+    row.append(ico, mainWrap, actions);
     box.appendChild(row);
   }
+
   updateNotifBadge();
   setupNotifSwipe();
 }
@@ -461,12 +760,43 @@ function clearAllNotifs() {
 // #ctx-menu/#term-ctx-menu lives in files.js (document click handler) —
 // left-clicks are excluded here so they can reach the explorer/editor
 // without this handler racing them.
-const _CTX_MENU_SELS = '#ctx-menu,#term-ctx-menu,#tab-ctx-menu,#new-tab-menu,#tab-list-menu';
+const _CTX_MENU_SELS = '#ctx-menu,#term-ctx-menu,#tab-ctx-menu,#new-tab-menu,#tab-list-menu,#more-menu';
 function hideAllCtxMenus() {
   try { if (typeof hideTabMenus === 'function') hideTabMenus(); } catch {}
+  try { if (typeof closeMoreMenu === 'function') closeMoreMenu(); } catch {}
   try { document.getElementById('ctx-menu')?.classList.remove('open'); } catch {}
   // No focus steal: an outside click into the explorer/editor keeps its focus.
   try { if (typeof hideTermCtxMenu === 'function') hideTermCtxMenu(false); } catch {}
+  try { if (typeof hideTermSelectionBar === 'function') hideTermSelectionBar(); } catch {}
+  if (window.innerWidth <= 768) {
+    const sb = document.getElementById('sidebar');
+    const sp = document.getElementById('settings-panel');
+    if (!sb?.classList.contains('mobile-open') && !sp?.classList.contains('open') && !document.getElementById('tab-list-menu')?.offsetParent && !document.getElementById('more-menu')?.classList.contains('open')) {
+      document.getElementById('drawer-backdrop')?.classList.remove('active');
+    }
+  }
+}
+
+function closeAllDrawers() {
+  const sb = document.getElementById('sidebar');
+  if (sb && sb.classList.contains('mobile-open')) {
+    if (typeof toggleSidebar === 'function') toggleSidebar();
+  }
+  const settingsPanel = document.getElementById('settings-panel');
+  if (settingsPanel && settingsPanel.classList.contains('open')) {
+    if (typeof closeSettings === 'function') closeSettings();
+  }
+  const notifPanel = document.getElementById('notif-panel');
+  if (notifPanel && notifPanel.classList.contains('open')) {
+    if (typeof closeNotifPanel === 'function') closeNotifPanel();
+  }
+  hideAllCtxMenus();
+  try { if (typeof closeMoreMenu === 'function') closeMoreMenu(); } catch {}
+  const backdrop = document.getElementById('drawer-backdrop');
+  if (backdrop) backdrop.classList.remove('active');
+  document.getElementById('mnav-explorer')?.classList.remove('active');
+  document.getElementById('mnav-tabs')?.classList.remove('active');
+  document.getElementById('mnav-more')?.classList.remove('active');
 }
 let _ctxAutoDismissWired = false;
 function setupCtxAutoDismiss() {
@@ -538,16 +868,19 @@ function setupSwipeGestures() {
     const sidebar = document.getElementById('sidebar');
     if (!sidebar) return;
 
-    if (touchStartX < 30 && dx > 50 && Math.abs(dy) < 100) {
-      if (sidebar.classList.contains('hidden') || sidebar.style.transform) {
+    // Disambiguate against OS system back gestures: ignore swipes starting right at screen edge (<20px)
+    if (touchStartX >= 20 && touchStartX <= 65 && dx > 60 && Math.abs(dy) < 60) {
+      if (!sidebar.classList.contains('mobile-open') || sidebar.classList.contains('hidden')) {
+        if (typeof triggerHaptic === 'function') triggerHaptic('light');
         toggleSidebar();
         touchStartX = 0;
       }
     }
 
-    if (dx < -50 && Math.abs(dy) < 100) {
-      const sRect = sidebar.getBoundingClientRect();
-      if (sRect.left >= 0 && sRect.width > 100) {
+    // Swipe left to dismiss open sidebar
+    if (dx < -60 && Math.abs(dy) < 60) {
+      if (sidebar.classList.contains('mobile-open')) {
+        if (typeof triggerHaptic === 'function') triggerHaptic('light');
         toggleSidebar();
         touchStartX = 0;
       }
@@ -604,12 +937,17 @@ function setupFileListTouch() {
   list.dataset._touchSetup = '1';
 
   let longPressTimer = null;
+  let touchStartX = 0;
+  let touchStartY = 0;
 
   list.addEventListener('touchstart', e => {
     const item = e.target.closest('.file-item');
-    if (!item || e.target.closest('.file-name, .file-meta')) return;
+    if (!item) return;
 
     const touch = e.touches[0];
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+
     const file = {
       path: item.dataset.path,
       name: fileRowName(item, item.dataset.path),
@@ -620,16 +958,24 @@ function setupFileListTouch() {
 
     longPressTimer = setTimeout(() => {
       longPressTimer = null;
+      try { if (navigator.vibrate) navigator.vibrate(30); } catch {}
       showCtxMenu({
         clientX: touch.clientX,
         clientY: touch.clientY,
         preventDefault() {}
       }, file);
-    }, 500);
-  }, { passive: false });
+    }, 450);
+  }, { passive: true });
 
-  list.addEventListener('touchmove', () => {
-    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+  list.addEventListener('touchmove', e => {
+    if (longPressTimer && e.touches[0]) {
+      const dx = Math.abs(e.touches[0].clientX - touchStartX);
+      const dy = Math.abs(e.touches[0].clientY - touchStartY);
+      if (dx > 8 || dy > 8) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+    }
   }, { passive: true });
 
   list.addEventListener('touchend', () => {

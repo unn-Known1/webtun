@@ -213,6 +213,9 @@ function finderKeydown(e) {
 // silently become an empty library).
 const defaultCmds = () => (Array.isArray(window.DEFAULT_CMDS) ? window.DEFAULT_CMDS : []);
 
+let _activeCmdCat = 'all';
+let _editingCmdOriginal = null;
+
 function getCmdLib() {
   try { return JSON.parse(safeStorage.getItem('wt-cmdlib')) || []; } catch(e) { return []; }
 }
@@ -241,8 +244,11 @@ function toggleCmdLib() {
   // drawer for audits.
   if (!isOpen) panel.setAttribute('aria-modal', 'true');
   else panel.removeAttribute('aria-modal');
-  document.getElementById('cmd-lib-toggle').classList.toggle('active', !isOpen);
-  document.getElementById('cmd-lib-toggle').setAttribute('aria-expanded', String(!isOpen));
+  const toggleBtn = document.getElementById('cmd-lib-toggle');
+  if (toggleBtn) {
+    toggleBtn.classList.toggle('active', !isOpen);
+    toggleBtn.setAttribute('aria-expanded', String(!isOpen));
+  }
   if (!isOpen) {
     loadHistMax();
     switchCmdTab('library');
@@ -250,9 +256,10 @@ function toggleCmdLib() {
     installFocusTrap(panel);
     setTimeout(() => {
       document.addEventListener('click', closeCmdLibOnClickOutside, true);
-      panel.querySelector('input, button')?.focus();
+      document.getElementById('cmd-lib-search')?.focus();
     }, 50);
   } else {
+    cancelEditCustomCmd();
     setCmdLibInert(false);
     removeFocusTrap();
     document.removeEventListener('click', closeCmdLibOnClickOutside, true);
@@ -262,25 +269,157 @@ function toggleCmdLib() {
 function closeCmdLibOnClickOutside(e) {
   const panel = document.getElementById('cmd-lib-panel');
   const btn = document.getElementById('cmd-lib-toggle');
-  if (!panel.classList.contains('open')) {
+  if (!panel || !panel.classList.contains('open')) {
     document.removeEventListener('click', closeCmdLibOnClickOutside, true);
     return;
   }
-  if (panel.contains(e.target) || btn.contains(e.target)) return;
+  if (panel.contains(e.target) || (btn && btn.contains(e.target))) return;
   toggleCmdLib();
   setCmdLibInert(false);
   removeFocusTrap();
 }
 
+function onCmdSearchInput() {
+  const q = document.getElementById('cmd-lib-search')?.value || '';
+  const clearBtn = document.getElementById('cmd-search-clear-btn');
+  if (clearBtn) clearBtn.style.display = q ? 'flex' : 'none';
+  const isHist = document.getElementById('cmd-tab-hist')?.classList.contains('active');
+  if (isHist) {
+    renderCmdHist();
+  } else {
+    renderCmdLib();
+  }
+}
+
+function clearCmdSearch() {
+  const search = document.getElementById('cmd-lib-search');
+  if (search) {
+    search.value = '';
+    search.focus();
+  }
+  const clearBtn = document.getElementById('cmd-search-clear-btn');
+  if (clearBtn) clearBtn.style.display = 'none';
+  const isHist = document.getElementById('cmd-tab-hist')?.classList.contains('active');
+  if (isHist) renderCmdHist();
+  else renderCmdLib();
+}
+
+function selectCmdCategory(cat) {
+  _activeCmdCat = cat;
+  renderCmdLib();
+}
+
+function copyCmdText(text, btn) {
+  if (!text) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).catch(() => {
+      copyFallback(text);
+    });
+  } else {
+    copyFallback(text);
+  }
+  if (btn) {
+    const origHtml = btn.innerHTML;
+    btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.innerHTML = origHtml;
+      btn.classList.remove('copied');
+    }, 1500);
+  }
+  toast('Copied to clipboard', 'info');
+}
+
+function copyFallback(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try { document.execCommand('copy'); } catch {}
+  document.body.removeChild(ta);
+}
+
+function pasteCmdToTerminal(cmd) {
+  const tab = getActiveTab();
+  if (!tab || !tab.term) {
+    toast('No active terminal to paste into', 'warning');
+    return;
+  }
+  tab.term.focus();
+  tab.term.paste(cmd);
+  toggleCmdLib();
+  toast('Command pasted into terminal', 'info');
+}
+
 function renderCmdLib(filter) {
   const list = document.getElementById('cmd-lib-list');
+  if (!list) return;
   const custom = getCmdLib();
-  const q = (filter || document.getElementById('cmd-lib-search').value || '').toLowerCase();
+  const q = (filter !== undefined ? filter : (document.getElementById('cmd-lib-search')?.value || '')).toLowerCase().trim();
   const all = defaultCmds().concat(custom.map(c => ({ ...c, custom: true })));
-  const filtered = q ? all.filter(c => c.name.toLowerCase().includes(q) || c.cmd.toLowerCase().includes(q) || (c.cat || '').toLowerCase().includes(q)) : all;
+
+  // Update Library Tab badge count
+  const countBadge = document.getElementById('cmd-lib-count');
+  if (countBadge) countBadge.textContent = all.length;
+
+  // Build category list with item counts
+  const catCounts = { 'all': all.length };
+  const catList = new Set();
+  all.forEach(c => {
+    const cat = c.cat || (c.custom ? 'My Commands' : 'Other');
+    catList.add(cat);
+    catCounts[cat] = (catCounts[cat] || 0) + 1;
+  });
+
+  // Populate datalist for category autocomplete
+  const datalist = document.getElementById('cmd-cat-datalist');
+  if (datalist) {
+    datalist.innerHTML = '';
+    catList.forEach(cat => {
+      const opt = document.createElement('option');
+      opt.value = cat;
+      datalist.appendChild(opt);
+    });
+  }
+
+  // Render category chips
+  const chipsContainer = document.getElementById('cmd-lib-cat-chips');
+  if (chipsContainer) {
+    chipsContainer.innerHTML = '';
+    const allChip = document.createElement('button');
+    allChip.className = 'cmd-cat-chip' + (_activeCmdCat === 'all' ? ' active' : '');
+    allChip.innerHTML = `All <span class="chip-count">${all.length}</span>`;
+    allChip.onclick = () => selectCmdCategory('all');
+    chipsContainer.appendChild(allChip);
+
+    Array.from(catList).sort().forEach(cat => {
+      const chip = document.createElement('button');
+      chip.className = 'cmd-cat-chip' + (_activeCmdCat === cat ? ' active' : '');
+      chip.innerHTML = `${escapeHtml(cat)} <span class="chip-count">${catCounts[cat] || 0}</span>`;
+      chip.onclick = () => selectCmdCategory(cat);
+      chipsContainer.appendChild(chip);
+    });
+  }
+
+  // Filter commands by query and selected category
+  const filtered = all.filter(c => {
+    const cat = c.cat || (c.custom ? 'My Commands' : 'Other');
+    if (_activeCmdCat !== 'all' && cat !== _activeCmdCat) return false;
+    if (!q) return true;
+    return c.name.toLowerCase().includes(q) || c.cmd.toLowerCase().includes(q) || cat.toLowerCase().includes(q);
+  });
 
   if (filtered.length === 0) {
-    list.innerHTML = '<div id="cmd-lib-empty">No commands found</div>';
+    list.innerHTML = `
+      <div id="cmd-lib-empty">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.4;margin-bottom:8px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <div>No matching commands found</div>
+        ${q ? `<button class="btn btn-sm" style="margin-top:8px" onclick="clearCmdSearch()">Clear Search</button>` : ''}
+      </div>
+    `;
     return;
   }
 
@@ -295,57 +434,135 @@ function renderCmdLib(filter) {
   Object.keys(cats).forEach(cat => {
     const section = document.createElement('div');
     section.className = 'cmd-lib-section';
-    const title = document.createElement('div');
+
+    const header = document.createElement('div');
+    header.className = 'cmd-lib-section-header';
+    const title = document.createElement('span');
     title.className = 'cmd-lib-section-title';
     title.textContent = cat;
-    section.appendChild(title);
+    const countSpan = document.createElement('span');
+    countSpan.className = 'cmd-lib-section-count';
+    countSpan.textContent = cats[cat].length;
+    header.appendChild(title);
+    header.appendChild(countSpan);
+    section.appendChild(header);
 
     cats[cat].forEach(c => {
       const item = document.createElement('div');
-      item.className = 'cmd-lib-item';
-      item.title = c.cmd;
+      item.className = 'cmd-lib-item' + (c.custom ? ' is-custom' : '');
+      item.title = `${c.name} — Click to paste into terminal`;
+
+      const mainWrap = document.createElement('div');
+      mainWrap.className = 'cmd-lib-main';
+
+      const topRow = document.createElement('div');
+      topRow.className = 'cmd-lib-top-row';
+
       const name = document.createElement('span');
       name.className = 'cmd-lib-name';
       name.textContent = c.name;
-      const cmd = document.createElement('span');
+      topRow.appendChild(name);
+
+      if (c.custom) {
+        const customBadge = document.createElement('span');
+        customBadge.className = 'cmd-badge-custom';
+        customBadge.textContent = 'Custom';
+        topRow.appendChild(customBadge);
+      }
+
+      const catBadge = document.createElement('span');
+      catBadge.className = 'cmd-badge-cat';
+      catBadge.textContent = cat;
+      topRow.appendChild(catBadge);
+
+      mainWrap.appendChild(topRow);
+
+      const codeBox = document.createElement('div');
+      codeBox.className = 'cmd-lib-cmd-wrap';
+      const cmd = document.createElement('code');
       cmd.className = 'cmd-lib-cmd';
       cmd.textContent = c.cmd;
+      codeBox.appendChild(cmd);
+      mainWrap.appendChild(codeBox);
+
+      item.appendChild(mainWrap);
+
+      // Actions cluster
+      const actions = document.createElement('div');
+      actions.className = 'cmd-lib-actions';
+
+      // Run button
       const runBtn = document.createElement('button');
-      runBtn.className = 'cmd-lib-run';
-    runBtn.title = 'Run in terminal';
-    runBtn.setAttribute('aria-label', 'Run in terminal');
-      runBtn.setAttribute('aria-label', 'Run in terminal');
-      runBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6,3 20,12 6,21"/></svg>';
+      runBtn.className = 'cmd-action-btn cmd-lib-run';
+      runBtn.title = 'Run in terminal';
+      runBtn.setAttribute('aria-label', `Run ${c.name}`);
+      runBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6,3 20,12 6,21"/></svg>';
       runBtn.addEventListener('click', e => {
         e.stopPropagation();
         runCmdLib(c.cmd);
       });
-      item.appendChild(name);
-      item.appendChild(cmd);
-      item.appendChild(runBtn);
+      actions.appendChild(runBtn);
+
+      // Paste button
+      const pasteBtn = document.createElement('button');
+      pasteBtn.className = 'cmd-action-btn cmd-lib-paste';
+      pasteBtn.title = 'Paste into terminal';
+      pasteBtn.setAttribute('aria-label', `Paste ${c.name}`);
+      pasteBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>';
+      pasteBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        pasteCmdToTerminal(c.cmd);
+      });
+      actions.appendChild(pasteBtn);
+
+      // Copy button
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'cmd-action-btn cmd-lib-copy';
+      copyBtn.title = 'Copy command';
+      copyBtn.setAttribute('aria-label', `Copy ${c.name}`);
+      copyBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+      copyBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        copyCmdText(c.cmd, copyBtn);
+      });
+      actions.appendChild(copyBtn);
 
       if (c.custom) {
+        // Edit button
+        const editBtn = document.createElement('button');
+        editBtn.className = 'cmd-action-btn cmd-lib-edit';
+        editBtn.title = 'Edit command';
+        editBtn.setAttribute('aria-label', `Edit ${c.name}`);
+        editBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>';
+        editBtn.addEventListener('click', e => {
+          e.stopPropagation();
+          editCustomCmd(c);
+        });
+        actions.appendChild(editBtn);
+
+        // Delete button
         const delBtn = document.createElement('button');
-        delBtn.className = 'cmd-lib-del';
-        delBtn.title = 'Delete';
-        delBtn.setAttribute('aria-label', 'Delete command');
+        delBtn.className = 'cmd-action-btn cmd-lib-del';
+        delBtn.title = 'Delete command';
+        delBtn.setAttribute('aria-label', `Delete ${c.name}`);
         delBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
         delBtn.addEventListener('click', e => {
           e.stopPropagation();
           deleteCustomCmd(c.name, c.cmd);
         });
-        item.appendChild(delBtn);
+        actions.appendChild(delBtn);
       }
 
+      item.appendChild(actions);
+
+      // Clicking whole item pastes to terminal
       item.addEventListener('click', () => {
-        const tab = getActiveTab();
-        if (!tab?.term) return;
-        tab.term.focus();
-        tab.term.paste(c.cmd);
-        toggleCmdLib();
+        pasteCmdToTerminal(c.cmd);
       });
+
       section.appendChild(item);
     });
+
     list.appendChild(section);
   });
 }
@@ -370,34 +587,159 @@ async function runCmdLib(cmd) {
   sendWsInput(tab.ws, text);
   tab.term?.focus();
   addToCmdHist(cmd);
-  toast('Running: ' + cmd, 'info');
+  toast('Running: ' + (cmd.length > 30 ? cmd.slice(0, 30) + '…' : cmd), 'info');
+}
+
+function saveCustomCmdFromForm() {
+  const nameInput = document.getElementById('cmd-lib-name-input');
+  const catInput = document.getElementById('cmd-lib-cat-input');
+  const cmdInput = document.getElementById('cmd-lib-cmd-input');
+  const name = (nameInput?.value || '').trim();
+  const cat = (catInput?.value || '').trim() || 'My Commands';
+  const cmd = (cmdInput?.value || '').trim();
+
+  if (!cmd) {
+    toast('Please enter a command string', 'error');
+    cmdInput?.focus();
+    return;
+  }
+
+  let custom = getCmdLib();
+
+  if (_editingCmdOriginal) {
+    // Updating existing command
+    custom = custom.filter(c => !(c.name === _editingCmdOriginal.name && c.cmd === _editingCmdOriginal.cmd));
+    custom.push({ name: name || cmd, cmd, cat });
+    saveCmdLib(custom);
+    cancelEditCustomCmd();
+    renderCmdLib();
+    toast('Command updated', 'success');
+  } else {
+    // Adding new command
+    if (custom.some(c => c.name === name && c.cmd === cmd)) {
+      toast('Command already exists in library', 'info');
+      return;
+    }
+    custom.push({ name: name || cmd, cmd, cat });
+    saveCmdLib(custom);
+    if (nameInput) nameInput.value = '';
+    if (catInput) catInput.value = '';
+    if (cmdInput) cmdInput.value = '';
+    renderCmdLib();
+    toast('Command saved to library', 'success');
+  }
 }
 
 function addCustomCmd() {
+  saveCustomCmdFromForm();
+}
+
+function editCustomCmd(c) {
+  _editingCmdOriginal = { name: c.name, cmd: c.cmd, cat: c.cat || 'My Commands' };
   const nameInput = document.getElementById('cmd-lib-name-input');
+  const catInput = document.getElementById('cmd-lib-cat-input');
   const cmdInput = document.getElementById('cmd-lib-cmd-input');
-  const name = nameInput.value.trim();
-  const cmd = cmdInput.value.trim();
-  if (!cmd) { toast('Enter a command', 'error'); return; }
-  const custom = getCmdLib();
-  if (custom.some(c => c.name === name && c.cmd === cmd)) {
-    toast('Command already exists', 'info');
-    return;
-  }
-  custom.push({ name: name || cmd, cmd, cat: 'My Commands' });
-  saveCmdLib(custom);
-  nameInput.value = '';
-  cmdInput.value = '';
-  renderCmdLib();
-  toast('Command added', 'success');
+  const saveBtn = document.getElementById('cmd-lib-save-btn');
+  const cancelBtn = document.getElementById('cmd-lib-cancel-edit-btn');
+
+  if (nameInput) nameInput.value = c.name;
+  if (catInput) catInput.value = c.cat || 'My Commands';
+  if (cmdInput) cmdInput.value = c.cmd;
+  if (saveBtn) saveBtn.textContent = 'Update';
+  if (cancelBtn) cancelBtn.style.display = '';
+
+  cmdInput?.focus();
+  cmdInput?.select();
+}
+
+function cancelEditCustomCmd() {
+  _editingCmdOriginal = null;
+  const nameInput = document.getElementById('cmd-lib-name-input');
+  const catInput = document.getElementById('cmd-lib-cat-input');
+  const cmdInput = document.getElementById('cmd-lib-cmd-input');
+  const saveBtn = document.getElementById('cmd-lib-save-btn');
+  const cancelBtn = document.getElementById('cmd-lib-cancel-edit-btn');
+
+  if (nameInput) nameInput.value = '';
+  if (catInput) catInput.value = '';
+  if (cmdInput) cmdInput.value = '';
+  if (saveBtn) saveBtn.textContent = 'Add';
+  if (cancelBtn) cancelBtn.style.display = 'none';
 }
 
 function deleteCustomCmd(name, cmd) {
   let custom = getCmdLib();
   custom = custom.filter(c => !(c.name === name && c.cmd === cmd));
   saveCmdLib(custom);
+  if (_editingCmdOriginal && _editingCmdOriginal.name === name && _editingCmdOriginal.cmd === cmd) {
+    cancelEditCustomCmd();
+  }
   renderCmdLib();
   toast('Command removed', 'info');
+}
+
+function exportCmdLibrary() {
+  const custom = getCmdLib();
+  if (!custom || !custom.length) {
+    toast('No custom commands to export. Add some first!', 'info');
+    return;
+  }
+  const data = JSON.stringify(custom, null, 2);
+  const blob = new Blob([data], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `webtun-commands-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast(`Exported ${custom.length} custom commands`, 'success');
+}
+
+function triggerImportCmdLib() {
+  const input = document.getElementById('cmd-lib-file-input');
+  if (input) {
+    input.value = '';
+    input.click();
+  }
+}
+
+function importCmdLibFile(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const parsed = JSON.parse(reader.result);
+      if (!Array.isArray(parsed)) {
+        toast('Invalid format: JSON must be an array of commands', 'error');
+        return;
+      }
+      let valid = 0;
+      const custom = getCmdLib();
+      parsed.forEach(item => {
+        if (item && item.cmd && typeof item.cmd === 'string') {
+          const name = (item.name && typeof item.name === 'string') ? item.name : item.cmd;
+          const cat = (item.cat && typeof item.cat === 'string') ? item.cat : 'Imported';
+          if (!custom.some(c => c.name === name && c.cmd === item.cmd)) {
+            custom.push({ name, cmd: item.cmd, cat });
+            valid++;
+          }
+        }
+      });
+      if (valid > 0) {
+        saveCmdLib(custom);
+        renderCmdLib();
+        toast(`Imported ${valid} new command${valid === 1 ? '' : 's'}`, 'success');
+      } else {
+        toast('No new unique commands found in file', 'info');
+      }
+    } catch (err) {
+      toast('Failed to parse JSON file', 'error');
+    }
+  };
+  reader.readAsText(file);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -419,6 +761,8 @@ async function getCmdHist() {
     const data = await r.json();
     _cmdHistCache = data.history || [];
     if (data.max) cmdHistMax = data.max;
+    const histCountBadge = document.getElementById('cmd-hist-count');
+    if (histCountBadge) histCountBadge.textContent = _cmdHistCache.length;
     return _cmdHistCache;
   } catch { return _cmdHistCache; }
 }
@@ -450,6 +794,8 @@ async function addToCmdHist(cmd) {
   try {
     await fetch('/api/history', { method: 'POST', headers: histHeaders(), body: JSON.stringify({ cmd: clean, max: cmdHistMax }) });
     await getCmdHist();
+    const isHist = document.getElementById('cmd-tab-hist')?.classList.contains('active');
+    if (isHist) renderCmdHist();
   } catch {}
   });
 }
@@ -458,6 +804,7 @@ async function removeCmdHistItem(idx) {
     await fetch('/api/history/' + idx, { method: 'DELETE', headers: histHeadersDelete() });
     await getCmdHist();
     renderCmdHist();
+    toast('History item removed', 'info');
   } catch {}
 }
 async function clearCmdHist() {
@@ -465,8 +812,20 @@ async function clearCmdHist() {
     await fetch('/api/history', { method: 'DELETE', headers: histHeadersDelete() });
     _cmdHistCache = [];
     renderCmdHist();
+    const histCountBadge = document.getElementById('cmd-hist-count');
+    if (histCountBadge) histCountBadge.textContent = '0';
     toast('History cleared', 'info');
   } catch {}
+}
+async function confirmClearCmdHist() {
+  const ok = await confirmDialog({
+    title: 'Clear History',
+    message: 'Are you sure you want to clear all command history?',
+    okText: 'Clear All',
+    cancelText: 'Cancel',
+    danger: true
+  });
+  if (ok) clearCmdHist();
 }
 async function updateHistMax(val) {
   cmdHistMax = Math.max(10, Math.min(500, val || 50));
@@ -476,51 +835,100 @@ async function updateHistMax(val) {
     try {
       await fetch('/api/history', { method: 'POST', headers: histHeaders(), body: JSON.stringify({ max: cmdHistMax }) });
       await getCmdHist();
+      toast('History limit updated', 'info');
     } catch {}
   });
+}
+function exportCmdHist() {
+  if (!_cmdHistCache || !_cmdHistCache.length) {
+    toast('No command history to export', 'info');
+    return;
+  }
+  const lines = _cmdHistCache.map(h => h.cmd).join('\n');
+  const blob = new Blob([lines], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `webtun-history-${new Date().toISOString().slice(0, 10)}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast(`Exported ${_cmdHistCache.length} history commands`, 'success');
+}
+function saveHistToLibrary(cmd) {
+  if (!cmd) return;
+  const custom = getCmdLib();
+  if (custom.some(c => c.cmd === cmd)) {
+    toast('Command already saved in Library', 'info');
+    switchCmdTab('library');
+    return;
+  }
+  const defaultName = cmd.length > 28 ? cmd.slice(0, 28) + '…' : cmd;
+  custom.push({ name: defaultName, cmd, cat: 'Saved from History' });
+  saveCmdLib(custom);
+  toast('Saved to Library ("Saved from History")', 'success');
+  const countBadge = document.getElementById('cmd-lib-count');
+  if (countBadge) countBadge.textContent = defaultCmds().length + custom.length;
 }
 function switchCmdTab(tab) {
   const libBtn = document.getElementById('cmd-tab-lib');
   const histBtn = document.getElementById('cmd-tab-hist');
   const libList = document.getElementById('cmd-lib-list');
   const histList = document.getElementById('cmd-hist-list');
+  const chipsContainer = document.getElementById('cmd-lib-cat-chips');
   const histHeader = document.getElementById('cmd-hist-header');
   const footer = document.getElementById('cmd-lib-footer');
   const search = document.getElementById('cmd-lib-search');
+  const clearBtn = document.getElementById('cmd-search-clear-btn');
+
   if (tab === 'library') {
     libBtn.classList.add('active'); libBtn.setAttribute('aria-selected','true');
     histBtn.classList.remove('active'); histBtn.setAttribute('aria-selected','false');
     libList.style.display = '';
     histList.style.display = 'none';
+    if (chipsContainer) chipsContainer.style.display = 'flex';
     histHeader.style.display = 'none';
     footer.style.display = '';
-    search.placeholder = 'Filter commands…';
-    search.oninput = () => filterCmdLib();
-    filterCmdLib();
+    if (search) search.placeholder = 'Search commands by name, syntax, or category…';
+    renderCmdLib();
   } else {
     histBtn.classList.add('active'); histBtn.setAttribute('aria-selected','true');
     libBtn.classList.remove('active'); libBtn.setAttribute('aria-selected','false');
     histList.style.display = 'flex';
     histList.setAttribute('aria-live','polite');
     libList.style.display = 'none';
-    histHeader.style.display = '';
+    if (chipsContainer) chipsContainer.style.display = 'none';
+    histHeader.style.display = 'flex';
     footer.style.display = 'none';
-    search.placeholder = 'Filter history…';
-    search.oninput = () => renderCmdHist();
+    if (search) search.placeholder = 'Search executed command history…';
     renderCmdHist();
   }
-  search.value = '';
-  search.focus();
+  if (search) {
+    search.value = '';
+    if (clearBtn) clearBtn.style.display = 'none';
+    search.focus();
+  }
 }
 async function renderCmdHist() {
   const list = document.getElementById('cmd-hist-list');
+  if (!list) return;
   const hist = await getCmdHist();
-  const q = (document.getElementById('cmd-lib-search').value || '').toLowerCase();
+  const q = (document.getElementById('cmd-lib-search')?.value || '').toLowerCase().trim();
   const filtered = q ? hist.filter(h => h.cmd.toLowerCase().includes(q)) : hist;
+
+  const histCountBadge = document.getElementById('cmd-hist-count');
+  if (histCountBadge) histCountBadge.textContent = hist.length;
 
   list.innerHTML = '';
   if (!filtered.length) {
-    list.innerHTML = '<div id="cmd-hist-empty">No commands run yet</div>';
+    list.innerHTML = `
+      <div id="cmd-hist-empty">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.4;margin-bottom:8px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <div>${q ? 'No matching commands in history' : 'No commands run yet'}</div>
+        ${q ? `<button class="btn btn-sm" style="margin-top:8px" onclick="clearCmdSearch()">Clear Search</button>` : ''}
+      </div>
+    `;
     return;
   }
 
@@ -528,41 +936,105 @@ async function renderCmdHist() {
     const realIdx = q ? hist.indexOf(h) : i;
     const item = document.createElement('div');
     item.className = 'cmd-hist-item';
+    item.title = `${h.cmd}\nExecuted ${new Date(h.time).toLocaleString()}`;
 
-    const cmdSpan = document.createElement('span');
+    const mainWrap = document.createElement('div');
+    mainWrap.className = 'cmd-hist-main';
+
+    const cmdSpan = document.createElement('code');
     cmdSpan.className = 'cmd-hist-cmd';
     cmdSpan.textContent = h.cmd;
-    cmdSpan.title = h.cmd;
-    item.appendChild(cmdSpan);
+    mainWrap.appendChild(cmdSpan);
+
+    const metaRow = document.createElement('div');
+    metaRow.className = 'cmd-hist-meta';
+
+    if (h.count > 1) {
+      const countPill = document.createElement('span');
+      countPill.className = 'cmd-hist-count-pill';
+      countPill.textContent = `×${h.count} runs`;
+      metaRow.appendChild(countPill);
+    }
 
     const timeSpan = document.createElement('span');
     timeSpan.className = 'cmd-hist-time';
     const ago = Date.now() - h.time;
+    const formattedDate = new Date(h.time).toLocaleString();
+    timeSpan.title = formattedDate;
     timeSpan.textContent = ago < 60000 ? 'just now' : ago < 3600000 ? Math.floor(ago / 60000) + 'm ago' : ago < 86400000 ? Math.floor(ago / 3600000) + 'h ago' : new Date(h.time).toLocaleDateString();
-    if (h.count > 1) timeSpan.textContent = '×' + h.count + ' ' + timeSpan.textContent;
-    item.appendChild(timeSpan);
+    metaRow.appendChild(timeSpan);
 
+    mainWrap.appendChild(metaRow);
+    item.appendChild(mainWrap);
+
+    // Actions cluster
+    const actions = document.createElement('div');
+    actions.className = 'cmd-hist-actions-cluster';
+
+    // Run button
     const runBtn = document.createElement('button');
-    runBtn.className = 'cmd-hist-run';
+    runBtn.className = 'cmd-action-btn cmd-hist-run';
     runBtn.title = 'Run in terminal';
+    runBtn.setAttribute('aria-label', `Run ${h.cmd}`);
     runBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6,3 20,12 6,21"/></svg>';
-    runBtn.addEventListener('click', e => { e.stopPropagation(); runCmdLib(h.cmd); });
-    item.appendChild(runBtn);
+    runBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      runCmdLib(h.cmd);
+    });
+    actions.appendChild(runBtn);
 
+    // Paste button
+    const pasteBtn = document.createElement('button');
+    pasteBtn.className = 'cmd-action-btn cmd-hist-paste';
+    pasteBtn.title = 'Paste into terminal';
+    pasteBtn.setAttribute('aria-label', `Paste ${h.cmd}`);
+    pasteBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>';
+    pasteBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      pasteCmdToTerminal(h.cmd);
+    });
+    actions.appendChild(pasteBtn);
+
+    // Copy button
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'cmd-action-btn cmd-hist-copy';
+    copyBtn.title = 'Copy command';
+    copyBtn.setAttribute('aria-label', `Copy ${h.cmd}`);
+    copyBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+    copyBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      copyCmdText(h.cmd, copyBtn);
+    });
+    actions.appendChild(copyBtn);
+
+    // Save to Library button
+    const starBtn = document.createElement('button');
+    starBtn.className = 'cmd-action-btn cmd-hist-star';
+    starBtn.title = 'Save to Library';
+    starBtn.setAttribute('aria-label', `Save ${h.cmd} to Library`);
+    starBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>';
+    starBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      saveHistToLibrary(h.cmd);
+    });
+    actions.appendChild(starBtn);
+
+    // Delete button
     const delBtn = document.createElement('button');
-    delBtn.className = 'cmd-hist-del';
-    delBtn.title = 'Remove';
+    delBtn.className = 'cmd-action-btn cmd-hist-del';
+    delBtn.title = 'Remove from history';
     delBtn.setAttribute('aria-label', 'Remove from history');
     delBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-    delBtn.addEventListener('click', e => { e.stopPropagation(); removeCmdHistItem(realIdx); });
-    item.appendChild(delBtn);
+    delBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      removeCmdHistItem(realIdx);
+    });
+    actions.appendChild(delBtn);
+
+    item.appendChild(actions);
 
     item.addEventListener('click', () => {
-      const tab = getActiveTab();
-      if (!tab?.term) return;
-      tab.term.focus();
-      tab.term.paste(h.cmd);
-      toggleCmdLib();
+      pasteCmdToTerminal(h.cmd);
     });
     list.appendChild(item);
   });

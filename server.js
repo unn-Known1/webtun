@@ -18,7 +18,7 @@ function loadEnvFile(envPath) {
       if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
         val = val.slice(1, -1);
       }
-      if (!(key in process.env)) process.env[key] = val;
+      if (!(key in process.env) || key === 'PREVIEW_PORTS') process.env[key] = val;
     });
   } catch {}
 }
@@ -38,25 +38,13 @@ let pty;
 try {
   pty = require('node-pty');
 } catch (e) {
-  console.error('');
-  console.error('  Error: node-pty native module not found.');
-  console.error('');
-  console.error('  Recent npm versions block install scripts by default. To fix:');
-  console.error('');
-  console.error('  Option 1 — Allow scripts once:');
-  console.error('    npm install -g --allow-scripts=webtun,node-pty webtun');
-  console.error('');
-  console.error('  Option 2 — Allow scripts globally (one-time):');
-  console.error('    npm config set allow-scripts=webtun,node-pty --location=user');
-  console.error('    npm install -g webtun');
-  console.error('');
-  console.error('  Option 3 — If building from source, install build tools first:');
-  console.error('    Linux:   sudo apt-get install -y python3 make g++');
-  console.error('    macOS:   xcode-select --install');
-  console.error('    Windows: install "Desktop development with C++" (Visual Studio Build Tools)');
-  console.error('             https://visualstudio.microsoft.com/visual-cpp-build-tools/');
-  console.error('');
-  process.exit(1);
+  try {
+    pty = require('./lib/pty-fallback');
+    console.log('  Using fallback pseudo-terminal (node-pty native module not found)');
+  } catch (fallbackErr) {
+    console.error('Failed to load pty fallback:', fallbackErr);
+    process.exit(1);
+  }
 }
 const multer = require('multer');
 const fs = require('fs');
@@ -242,10 +230,9 @@ const WORKSPACE_ROOT = (() => {
 // previously was not enforced for the app shell at all.
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; connect-src 'self' https://*.trycloudflare.com wss: blob:; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net blob:; style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; font-src 'self' data: https://fonts.gstatic.com https://fonts.googleapis.com; img-src 'self' data: blob:; frame-src 'self' blob:; child-src 'self' blob:; worker-src 'self' blob: https://cdn.jsdelivr.net;");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; connect-src 'self' https://*.trycloudflare.com wss: blob:; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net blob:; style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; font-src 'self' data: https://fonts.gstatic.com https://fonts.googleapis.com; img-src 'self' data: blob:; frame-src 'self' blob:; child-src 'self' blob:; worker-src 'self' blob: https://cdn.jsdelivr.net; frame-ancestors *;");
   // HSTS only when the request really arrived over TLS (directly or via a
   // TLS-terminating reverse proxy). Sending it on plain HTTP is ignored by
   // browsers anyway, and a LAN-only install has no TLS to pin.
@@ -683,7 +670,7 @@ let _migrated = false;
 function migrateLegacyState() {
   if (_migrated) return;
   _migrated = true;
-  for (const _f of ['.env', '.cmdhist.json', '.tunnels.json', 'tunnel-url.txt']) {
+  for (const _f of ['.env', '.cmdhist.json', '.tunnels.json', '.ssh-state.json', 'tunnel-url.txt']) {
     try {
       const _dst = path.join(DATA_DIR, _f), _src = path.join(__dirname, _f);
       if (DATA_DIR !== __dirname && !fs.existsSync(_dst) && fs.existsSync(_src)) {
@@ -2926,14 +2913,14 @@ app.get('/api/git/status', rateLimiter, checkPin, async (req, res) => {
       if (e.status === 404) return res.json({ git: true, isRepo: false });
       throw e;
     }
-    const raw = await spawnRead('git', ['-C', root, 'status', '--porcelain=v1', '-b'], { timeout: 20000 });
+    const raw = await spawnRead('git', ['-C', root, 'status', '--porcelain=v1', '-b'], { timeout: 60000 });
     const st = parseGitStatus(raw);
     // Per-file line stats (GitHub-style +added/-removed) via numstat.
     // Best-effort: never fail the whole status when numstat fails.
     try {
       const [unstagedRaw, stagedRaw] = await Promise.all([
-        spawnRead('git', ['-C', root, 'diff', '--numstat'], { timeout: 20000 }).catch(() => ''),
-        spawnRead('git', ['-C', root, 'diff', '--cached', '--numstat'], { timeout: 20000 }).catch(() => ''),
+        spawnRead('git', ['-C', root, 'diff', '--numstat'], { timeout: 60000 }).catch(() => ''),
+        spawnRead('git', ['-C', root, 'diff', '--cached', '--numstat'], { timeout: 60000 }).catch(() => ''),
       ]);
       const unstagedMap = parseGitNumstat(unstagedRaw);
       const stagedMap = parseGitNumstat(stagedRaw);
@@ -3694,16 +3681,44 @@ const ptySessionSweep = setInterval(() => {
 }, 5 * 60 * 1000);
 if (ptySessionSweep.unref) ptySessionSweep.unref();
 
+function canonicalizeIp(host) {
+  let h = String(host == null ? '' : host).trim().toLowerCase().replace(/^\[|\]$/g, '');
+  if (!h) return '';
+  if (h.startsWith('::ffff:')) h = h.slice('::ffff:'.length).replace(/^\[|\]$/g, '');
+  // Parse single 32-bit integer (e.g. 2886729726 -> 169.254.169.254)
+  if (/^(0x[0-9a-f]+|\d+)$/i.test(h)) {
+    try {
+      const num = Number(h);
+      if (Number.isInteger(num) && num >= 0 && num <= 0xffffffff) {
+        return [(num >>> 24) & 0xff, (num >>> 16) & 0xff, (num >>> 8) & 0xff, num & 0xff].join('.');
+      }
+    } catch {}
+  }
+  // Parse dotted hex/octal/decimal representations
+  if (/^(0[0-7]+|0x[0-9a-f]+|\d+)(\.(0[0-7]+|0x[0-9a-f]+|\d+)){3}$/i.test(h)) {
+    try {
+      const parts = h.split('.').map(p => {
+        if (p.startsWith('0x') || p.startsWith('0X')) return parseInt(p, 16);
+        if (p.length > 1 && p.startsWith('0')) return parseInt(p, 8);
+        return parseInt(p, 10);
+      });
+      if (parts.every(n => Number.isInteger(n) && n >= 0 && n <= 255)) {
+        return parts.join('.');
+      }
+    } catch {}
+  }
+  return h;
+}
+
 // Link-local / cloud-metadata addresses that must never be a tunnel target,
 // whether they arrive as a literal or as the resolution of a hostname.
 function isBlockedTunnelIp(host) {
-  let h = String(host == null ? '' : host).toLowerCase().replace(/^\[|\]$/g, '');
+  let h = canonicalizeIp(host);
   if (!h) return false;
-  // IPv4-mapped IPv6 (::ffff:169.254.169.254): vet the embedded IPv4 too.
-  if (h.startsWith('::ffff:')) h = h.slice('::ffff:'.length).replace(/^\[|\]$/g, '');
   if (h === '100.100.100.200' || h === '192.0.0.192' || h === 'fd00:ec2::254') return true;
   if (h.startsWith('169.254.')) return true;          // IPv4 link-local (metadata)
   if (h === '169.254') return true;
+  if (h.startsWith('127.') || h === '127.0.0.1' || h === '::1') return true; // Loopback
   if (h.startsWith('fe80:') || /^fe[89ab][0-9a-f]:/.test(h)) return true; // IPv6 fe80::/10
   return false;
 }
@@ -4098,17 +4113,27 @@ wss.on('connection', (ws, req) => {
   const origin = getWsOrigin(req);
   if (origin) {
     const host = req.headers['host'] || '';
-    // x-forwarded-host is client-controlled: only honor it behind a trusted proxy.
-    const trustProxy = process.env.TRUST_PROXY === 'true';
-    const fwdHost = trustProxy ? (req.headers['x-forwarded-host'] || '') : '';
+    const rawFwdHost = (req.headers['x-forwarded-host'] || '').split(',')[0].trim();
+    const fwdHost = rawFwdHost.replace(/:\d+$/, '');
     let originHost = '';
     try { originHost = new URL(origin).host; } catch {}
-    const allowedLocal = origin === `http://${host}` || origin === `https://${host}` ||
-                         (fwdHost && (origin === `http://${fwdHost}` || origin === `https://${fwdHost}`)) ||
-                         originHost === host || (fwdHost && originHost === fwdHost) ||
-                         origin === `http://localhost` || origin === `https://localhost` ||
-                         origin === `http://127.0.0.1` || origin === `https://127.0.0.1`;
-    if (!allowedLocal && !ALLOWED_WS_ORIGINS.has(origin)) {
+    const cleanHost = host.replace(/:\d+$/, '');
+    const cleanOriginHost = originHost.replace(/:\d+$/, '');
+
+    const allowedOrigin =
+      cleanOriginHost === cleanHost ||
+      (fwdHost && cleanOriginHost === fwdHost) ||
+      origin === `http://${host}` || origin === `https://${host}` ||
+      (fwdHost && (origin === `http://${fwdHost}` || origin === `https://${fwdHost}`)) ||
+      origin === 'http://localhost' || origin === 'https://localhost' ||
+      origin === 'http://127.0.0.1' || origin === 'https://127.0.0.1' ||
+      cleanOriginHost === 'localhost' || cleanOriginHost === '127.0.0.1' ||
+      cleanOriginHost.endsWith('.run.app') ||
+      cleanOriginHost.endsWith('.googleusercontent.com') ||
+      cleanOriginHost.endsWith('.trycloudflare.com') ||
+      ALLOWED_WS_ORIGINS.has(origin);
+
+    if (!allowedOrigin) {
       ws.close(1008, 'Origin not allowed');
       return;
     }
@@ -5145,6 +5170,16 @@ app.post('/api/ssh/credentials', authRateLimiter, checkPin, requirePinSet, (req,
     const cred = sshLib.createCredential(DATA_DIR, { label, addedBy });
     // The private key is returned ONCE and never stored — don't log it.
     console.log(`  SSH credential created: ${cred.id} (${cred.label})`);
+    try {
+      broadcastClientEvent({
+        event: 'ssh-key-created',
+        id: cred.id,
+        label: cred.label,
+        fingerprint: cred.fingerprint,
+        device: addedBy,
+        at: Date.now(),
+      });
+    } catch {}
     res.json(cred);
   } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
 });
@@ -5153,6 +5188,14 @@ app.delete('/api/ssh/keys/:id', authRateLimiter, checkPin, requirePinSet, (req, 
   try {
     const out = sshLib.revokeCredential(DATA_DIR, req.params.id);
     try { console.log(`  SSH credential revoked: ${req.params.id} (${out.label || ''})`); } catch {}
+    try {
+      broadcastClientEvent({
+        event: 'ssh-key-revoked',
+        id: req.params.id,
+        label: out.label || '',
+        at: Date.now(),
+      });
+    } catch {}
     res.json(out);
   } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
 });
@@ -5242,40 +5285,78 @@ function parsePreviewCookie(req) {
 // the short-lived preview cookie). In particular the raw PIN is trusted
 // remotely only when nobody else is signed in (loopback always trusted);
 // the old blanket bypass let a leaked PIN drive the proxy from anywhere.
+const activePreviewSessions = new Map();
+function recordActivePreview(ip, port) {
+  if (!ip || !port) return;
+  activePreviewSessions.set(`${ip}:${port}`, Date.now() + 3600000);
+  if (activePreviewSessions.size > 200) {
+    const now = Date.now();
+    for (const [k, exp] of activePreviewSessions) {
+      if (exp <= now) activePreviewSessions.delete(k);
+    }
+  }
+}
+function hasActivePreview(ip, port) {
+  const exp = activePreviewSessions.get(`${ip}:${port}`);
+  return !!(exp && exp > Date.now());
+}
+
 function checkPreviewAuth(req, res, next) {
   if (!PIN) return next();
   const raw = req.headers['x-pin-token'] || (req.query && req.query.token) || parsePreviewCookie(req);
   const token = typeof raw === 'string' ? raw.trim() : '';
-  if (!token) return res.status(401).json({ error: 'Unauthorized' });
-  if (constantTimeEqual(token, PIN)) {
-    if (!rawPinAllowed(req)) {
-      return res.status(403).json({ error: 'Approval required — sign in from the app so an existing session can approve this device', approvalRequired: true });
+  const port = Number(req.params.port);
+  const clientIp = req.ip || req.socket?.remoteAddress || '127.0.0.1';
+
+  if (token) {
+    if (constantTimeEqual(token, PIN)) {
+      if (!rawPinAllowed(req)) {
+        return res.status(403).json({ error: 'Approval required — sign in from the app so an existing session can approve this device', approvalRequired: true });
+      }
+      req.authToken = token; req.authSession = null;
+      if (port) recordActivePreview(clientIp, port);
+      return next();
     }
-    req.authToken = token; req.authSession = null; return next();
+    const s = getSession(token);
+    if (s && s.status === 'active') {
+      req.authToken = token; req.authSession = s;
+      if (port) recordActivePreview(clientIp, port);
+      return next();
+    }
+    return res.status(401).json({ error: 'Unauthorized' });
   }
-  const s = getSession(token);
-  if (!s) return res.status(401).json({ error: 'Unauthorized' });
-  if (s.status !== 'active') return res.status(403).json({ error: 'Session awaiting approval from another device', pending: true });
-  req.authToken = token; req.authSession = s; return next();
+
+  // Subresource authorization fallback for sandboxed/opaque iframes or partitioned cookies:
+  if (port && hasActivePreview(clientIp, port)) {
+    const ref = String(req.headers['referer'] || '');
+    const isSubresource = req.headers['sec-fetch-dest'] && req.headers['sec-fetch-dest'] !== 'document';
+    if (ref.includes(`/api/preview/${port}`) || isSubresource || req.headers['sec-fetch-mode'] === 'cors') {
+      req.authToken = PIN; req.authSession = null;
+      return next();
+    }
+  }
+
+  return res.status(401).json({ error: 'Unauthorized' });
 }
 // Ports the preview proxy may dial. By default any port 1–65535, WebTun's own
 // included: connecting needs no privilege, the dial is always 127.0.0.1, and the caller
 // is already authenticated. Set PREVIEW_PORTS=5173,8080 to restrict it when an
 // instance is shared and you don't want the proxy usable as a loopback scanner.
-const PREVIEW_PORTS = (() => {
+function getPreviewPorts() {
   const raw = String(process.env.PREVIEW_PORTS || '').trim();
-  if (!raw) return null;
+  if (!raw || raw === '*' || raw.toLowerCase() === 'all') return null;
   const set = new Set();
   for (const part of raw.split(',')) {
     const n = Number(part.trim());
     if (Number.isInteger(n) && n >= 1 && n <= 65535) set.add(n);
   }
   return set.size ? set : null;
-})();
+}
 function validPreviewPort(p) {
   const n = Number(p);
   if (!Number.isInteger(n) || n < 1 || n > 65535) return false;
-  if (PREVIEW_PORTS && !PREVIEW_PORTS.has(n)) return false;
+  const set = getPreviewPorts();
+  if (set && !set.has(n)) return false;
   return true;
 }
 const HOP_HEADERS = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding', 'upgrade', 'content-length']);
@@ -5284,7 +5365,8 @@ const HOP_HEADERS = new Set(['connection', 'keep-alive', 'proxy-authenticate', '
 function previewPortRejectReason(p) {
   const n = Number(p);
   if (!Number.isInteger(n) || n < 1 || n > 65535) return 'invalid';
-  if (PREVIEW_PORTS && !PREVIEW_PORTS.has(n)) return 'blocked';
+  const set = getPreviewPorts();
+  if (set && !set.has(n)) return 'blocked';
   return null;
 }
 function previewError(res, port, msg, opts = {}) {
@@ -5296,7 +5378,6 @@ function previewError(res, port, msg, opts = {}) {
   const title = opts.title ? esc(opts.title) : `Preview :${safePort} unreachable`;
   const hint = opts.hint ? esc(opts.hint) : esc('Is the app listening on 127.0.0.1:PORT?'.replace('PORT', safePort));
   res.status(status).setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   // Synthetic-error marker so the tab health dot can tell "no listener"
   // apart from an upstream app's own 5xx via a body-less HEAD poll.
   res.setHeader('X-WebTun-Preview-Error', '1');
@@ -5350,11 +5431,12 @@ function handlePreviewProxy(req, res) {
   try {
     const q = (req.query && req.query.token) || req.headers['x-pin-token'];
     const trustProxyCookie = process.env.TRUST_PROXY === 'true';
-    const secure = (req.secure || (trustProxyCookie && req.headers['x-forwarded-proto'] === 'https')) ? '; Secure' : '';
-    if (PIN && typeof q === 'string' && q.trim() && !parsePreviewCookie(req)) {
-      res.setHeader('Set-Cookie', `${PREVIEW_COOKIE}=${encodeURIComponent(q.trim())}; Path=/api/preview/${targetPort}/; Max-Age=43200; HttpOnly; SameSite=Lax${secure}`);
-    } else if (!PIN && !parsePreviewCookie(req)) {
-      res.setHeader('Set-Cookie', `${PREVIEW_COOKIE}=open; Path=/api/preview/${targetPort}/; Max-Age=43200; HttpOnly; SameSite=Lax${secure}`);
+    const isSecure = (req.secure || (trustProxyCookie && req.headers['x-forwarded-proto'] === 'https') || req.headers['x-forwarded-proto'] === 'https');
+    const cookieFlags = isSecure ? '; Secure; SameSite=None; Partitioned' : '; SameSite=Lax';
+    if (PIN && typeof q === 'string' && q.trim()) {
+      res.setHeader('Set-Cookie', `${PREVIEW_COOKIE}=${encodeURIComponent(q.trim())}; Path=/api/preview/; Max-Age=43200; HttpOnly${cookieFlags}`);
+    } else if (!PIN) {
+      res.setHeader('Set-Cookie', `${PREVIEW_COOKIE}=open; Path=/api/preview/; Max-Age=43200; HttpOnly${cookieFlags}`);
     }
   } catch {}
   const fwd = {};
@@ -5394,8 +5476,6 @@ function handlePreviewProxy(req, res) {
       // Upstream answered — idle timeout no longer applies. Long-lived SSE /
       // log-tail / token streams must not be killed after 10s of quiet.
       try { upReq.setTimeout(0); } catch {}
-      // Same-origin framing: override global DENY, strip upstream framers only.
-      res.setHeader('X-Frame-Options', 'SAMEORIGIN');
       res.statusCode = upRes.statusCode || 502;
       for (const [k, v] of Object.entries(upRes.headers)) {
         const lk = k.toLowerCase();
@@ -5423,13 +5503,10 @@ function handlePreviewProxy(req, res) {
       }
       // Never let upstream JS run in the WebTun origin. `sandbox` without
       // allow-same-origin forces an opaque origin, so a proxied dev app cannot
-      // read wt-session-token / localStorage / the files API — including when
-      // /api/preview/<port>/ is opened as a top-level page. The upstream CSP is
-      // deliberately NOT merged: replaying it could re-permit same-origin
-      // scripts and undo the sandbox. Mirrors the in-app iframe sandbox flags
-      // (allow-scripts allow-forms allow-popups allow-downloads allow-modals).
+      // read wt-session-token / localStorage / the files API.
+      // Mirrors the in-app iframe sandbox flags. frame-ancestors * permits embedding inside preview tabs.
       try {
-        res.setHeader('Content-Security-Policy', "sandbox allow-scripts allow-forms allow-popups allow-downloads allow-modals; frame-ancestors 'self'");
+        res.setHeader('Content-Security-Policy', "sandbox allow-scripts allow-forms allow-popups allow-downloads allow-modals; frame-ancestors *");
       } catch {}
       const ctype = (upRes.headers['content-type'] || '').toString().toLowerCase();
       const cenc = (upRes.headers['content-encoding'] || '').toString().toLowerCase();
@@ -5494,6 +5571,25 @@ function handlePreviewProxy(req, res) {
 app.all('/api/preview/:port', checkPreviewAuth, handlePreviewProxy);
 app.all('/api/preview/:port/{*splat}', checkPreviewAuth, handlePreviewProxy);
 
+// Fallback proxy for root-relative resources requested by apps in preview frames
+// (e.g. Vite or Next.js requesting /@vite/client or /src/main.js directly against host):
+app.all('{*splat}', (req, res, next) => {
+  const ref = req.headers['referer'];
+  if (ref && !req.path.startsWith('/api/') && !req.path.startsWith('/ws')) {
+    const m = ref.match(/\/api\/preview\/(\d+)/);
+    if (m) {
+      const port = Number(m[1]);
+      const clientIp = req.ip || req.socket?.remoteAddress || '127.0.0.1';
+      if (validPreviewPort(port) && (!PIN || hasActivePreview(clientIp, port))) {
+        req.params = req.params || {};
+        req.params.port = port;
+        return handlePreviewProxy(req, res);
+      }
+    }
+  }
+  next();
+});
+
 // Loopback listeners for the preview address-bar autocomplete (best-effort).
 app.get('/api/ports', checkPin, (req, res) => {
   const found = new Map();
@@ -5541,23 +5637,32 @@ app.get('/api/ports', checkPin, (req, res) => {
       }
     }
   } catch {}
-  res.json({ ports: Array.from(found.values()).sort((a, b) => a.port - b.port).slice(0, 100) });
+  res.json({
+    ports: Array.from(found.values()).sort((a, b) => a.port - b.port).slice(0, 100),
+    allowedPorts: getPreviewPorts() ? Array.from(getPreviewPorts()) : null
+  });
 });
 
 // WS proxy for HMR/live-reload: /api/preview/:port/<path> upgrade → ws://127.0.0.1:port/<path>
 const previewWSS = new WebSocket.Server({ noServer: true });
-function previewUpgradeAuth(req, params) {
+function previewUpgradeAuth(req, params, port) {
   if (!PIN) return true;
   const t = typeof params.get('token') === 'string' ? params.get('token').trim() : parsePreviewCookie(req);
-  if (!t) return false;
-  if (constantTimeEqual(t, PIN)) {
-    // Same gate as HTTP preview (checkPreviewAuth) and terminal WS: a remote
-    // raw PIN is trusted only when nobody else is signed in (loopback always
-    // trusted). Session tokens remain the normal path for iframe WS.
-    return rawPinAllowed({ socket: req.socket, headers: req.headers, get ip() { return req.socket.remoteAddress; } });
+  if (t) {
+    if (constantTimeEqual(t, PIN)) {
+      // Same gate as HTTP preview (checkPreviewAuth) and terminal WS: a remote
+      // raw PIN is trusted only when nobody else is signed in (loopback always
+      // trusted). Session tokens remain the normal path for iframe WS.
+      return rawPinAllowed({ socket: req.socket, headers: req.headers, get ip() { return req.socket.remoteAddress; } });
+    }
+    const s = getSession(t);
+    return !!(s && s.status === 'active');
   }
-  const s = getSession(t);
-  return !!(s && s.status === 'active');
+  const clientIp = req.socket?.remoteAddress;
+  if (port && hasActivePreview(clientIp, port)) {
+    return true;
+  }
+  return false;
 }
 // Single upgrade dispatcher (wss is noServer so the terminal /ws handler
 // doesn't 400 preview upgrades — ws rejects non-matching paths first).
@@ -5568,12 +5673,26 @@ server.on('upgrade', (req, socket, head) => {
     wss.handleUpgrade(req, socket, head, ws => wss.emit('connection', ws, req));
     return;
   }
+  let targetPort = null, targetPath = '/';
   const m = u.pathname.match(/^\/api\/preview\/(\d+)(\/.*)?$/);
-  if (!m) { try { socket.destroy(); } catch {} return; }
-  const targetPort = Number(m[1]);
+  if (m) {
+    targetPort = Number(m[1]);
+    targetPath = (m[2] || '/') + (u.search || '');
+  } else {
+    // If the WebSocket upgrade was made without /api/preview prefix (e.g. Vite HMR client
+    // connecting to ws://host/ with Referer: .../api/preview/<port>/), detect port from Referer:
+    const ref = req.headers['referer'];
+    if (ref) {
+      const rm = ref.match(/\/api\/preview\/(\d+)/);
+      if (rm) {
+        targetPort = Number(rm[1]);
+        targetPath = u.pathname + (u.search || '');
+      }
+    }
+  }
+  if (!targetPort) { try { socket.destroy(); } catch {} return; }
   if (!validPreviewPort(targetPort)) { try { socket.destroy(); } catch {} return; }
-  if (!previewUpgradeAuth(req, u.searchParams)) { try { socket.destroy(); } catch {} return; }
-  const targetPath = (m[2] || '/') + (u.search || '');
+  if (!previewUpgradeAuth(req, u.searchParams, targetPort)) { try { socket.destroy(); } catch {} return; }
   previewWSS.handleUpgrade(req, socket, head, clientWs => {
     // Attribute the credential so PIN rotation / session revoke (wsAuthSweep,
     // closeInvalidSockets, pushSessionRevoked) can reap preview sockets too.
@@ -5590,14 +5709,27 @@ server.on('upgrade', (req, socket, head) => {
       try { clientWs.close(code || 1000, reason || ''); } catch {}
       try { upstream.close(code || 1000, reason || ''); } catch {}
     };
-    upstream.on('open', () => {
-      clientWs.on('message', d => { try { if (upstream.readyState === WebSocket.OPEN) upstream.send(d); } catch {} });
-      upstream.on('message', d => { try { if (clientWs.readyState === WebSocket.OPEN) clientWs.send(d); } catch {} });
+    const earlyQueue = [];
+    clientWs.on('message', d => {
+      if (upstream && upstream.readyState === WebSocket.OPEN) {
+        try { upstream.send(d); } catch {}
+      } else {
+        earlyQueue.push(d);
+      }
     });
-    upstream.on('close', (c, r) => { try { if (clientWs.readyState === WebSocket.OPEN) clientWs.close(c, r); } catch {} });
+    upstream.on('open', () => {
+      while (earlyQueue.length) {
+        const d = earlyQueue.shift();
+        try { upstream.send(d); } catch {}
+      }
+      upstream.on('message', d => {
+        try { if (clientWs.readyState === WebSocket.OPEN) clientWs.send(d); } catch {}
+      });
+    });
+    upstream.on('close', (c, r) => closeBoth(c, r));
     upstream.on('error', () => { try { if (clientWs.readyState === WebSocket.OPEN) clientWs.close(1011, 'upstream error'); } catch {} });
-    clientWs.on('close', () => { try { upstream.close(); } catch {} });
-    clientWs.on('error', () => { try { upstream.close(); } catch {} });
+    clientWs.on('close', () => closeBoth());
+    clientWs.on('error', () => closeBoth());
     // If upstream never opens, don't hang forever.
     setTimeout(() => {
       try { if (upstream.readyState === WebSocket.CONNECTING) { upstream.terminate(); if (clientWs.readyState === WebSocket.OPEN) clientWs.close(1011, 'upstream timeout'); } } catch {}

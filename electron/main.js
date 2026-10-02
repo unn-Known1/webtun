@@ -19,6 +19,20 @@ try {
 // the single-instance lock or register whenReady work on the way out.
 if (require('electron-squirrel-startup')) { app.quit(); return; }
 
+// Enforce single instance lock to prevent duplicate servers and state corruption
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+  return;
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
+
 // In-app updates. The GitHub provider is auto-inferred from package.json
 // repository (the same inference that emits app-update.yml). Packaged builds
 // only; silent when offline. No settings UI yet: background download +

@@ -1,6 +1,6 @@
 {
   "name": "webtun",
-  "version": "2.2.5",
+  "version": "2.2.8",
   "description": "Self-hosted web terminal with Cloudflare Tunnel, file explorer, and PWA support",
   "author": {
     "name": "Gaurang Patel",
@@ -23,6 +23,7 @@
     "node": ">=18.0.0"
   },
   "scripts": {
+    "build": "npm run version:check && node -e \"require('./server.js'); console.log('build ok')\"",
     "start": "node server.js",
     "test": "npm run version:check && node -e \"require('./server.js'); console.log('smoke ok')\"",
     "dev": "nodemon server.js",
@@ -68,8 +69,10 @@
     "electron-updater": "^6.8.9",
     "express": "^5.2.1",
     "multer": "^2.4.0",
-    "node-pty": "^1.1.0",
     "ws": "^8.21.3"
+  },
+  "optionalDependencies": {
+    "node-pty": "^1.1.0"
   },
   "devDependencies": {
     "electron": "^44.4.5",
@@ -99,7 +102,5 @@
     "safer-buffer": "npm:@socketregistry/safer-buffer@^1",
     "side-channel": "npm:@socketregistry/side-channel@^1"
   },
-  "allowScripts": {
-    "node-pty": true
-  }
+  "trustedDependencies": []
 }

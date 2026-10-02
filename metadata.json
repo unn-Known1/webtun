@@ -1,0 +1,8 @@
+{
+  "name": "WebTun",
+  "description": "Self-hosted web terminal with Cloudflare Tunnel, file explorer, and PWA support",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

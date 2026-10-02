@@ -60,9 +60,50 @@ function adjustTermMenuPosition(menu) {
   // the clamped origin, not the pre-clamp one.
   if (newLeft !== rect.left) menu.style.left = newLeft + 'px';
   if (newTop !== rect.top) menu.style.top = newTop + 'px';
+
+  // Dynamic flyout submenu alignment: if parent menu is near the right viewport boundary, fly out left
+  const sub = menu.querySelector('#term-ctx-more-items, .ctx-submenu-items');
+  if (sub) {
+    if (rect.right + 210 > vw) {
+      sub.style.left = 'auto';
+      sub.style.right = '100%';
+    } else {
+      sub.style.left = '100%';
+      sub.style.right = 'auto';
+    }
+  }
 }
 
 const isElectron = !!(window.electronAPI && window.electronAPI.isElectron);
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing) {
+      if (typeof CodeMirror !== 'undefined' || !src.includes('codemirror')) return resolve();
+      existing.addEventListener('load', () => resolve());
+      existing.addEventListener('error', (e) => reject(e));
+      setTimeout(() => resolve(), 500);
+      return;
+    }
+    const s = document.createElement('script');
+    s.src = src;
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = (e) => reject(new Error('Failed to load ' + src));
+    document.head.appendChild(s);
+  });
+}
+
+async function ensureCodeMirrorLoaded() {
+  if (typeof CodeMirror !== 'undefined') return true;
+  try {
+    await loadScript('https://cdn.jsdelivr.net/npm/codemirror@5.65.18/lib/codemirror.min.js');
+  } catch (e) {
+    console.warn('CodeMirror core script failed to load:', e);
+  }
+  return typeof CodeMirror !== 'undefined';
+}
 
 function uuid() {
   try {
@@ -581,8 +622,9 @@ async function unlockApp() {
 async function api(url, opts = {}) {
   opts.headers = opts.headers || {};
   opts.headers['x-pin-token'] = authToken;
+  const timeoutMs = opts.timeout || (typeof url === 'string' && url.includes('/api/git/') ? 65000 : 30000);
   const timeoutCtrl = new AbortController();
-  const timeoutId = setTimeout(() => timeoutCtrl.abort(), 30000);
+  const timeoutId = setTimeout(() => timeoutCtrl.abort(), timeoutMs);
   const userSignal = opts.signal || null;
   if (userSignal) {
     userSignal.addEventListener('abort', () => timeoutCtrl.abort(), { once: true });
@@ -614,7 +656,7 @@ async function api(url, opts = {}) {
     clearTimeout(timeoutId);
     if (userSignal?.aborted) throw new DOMException('Aborted', 'AbortError');
     console.warn('api() fetch error:', e);
-    if (e && e.name === 'AbortError') return { error: 'Request timed out (30s)' };
+    if (e && e.name === 'AbortError') return { error: `Request timed out (${Math.round(timeoutMs / 1000)}s)` };
     return { error: 'Network error' };
   }
 }

@@ -64,7 +64,8 @@ PIN auth via `x-pin-token` header or `?token=` query param. Empty `PIN=` means n
 
 ### UI Conventions
 - **Fonts**: `--font-ui` = IBM Plex Sans (chrome: buttons, inputs, labels, panels), `--font` = JetBrains Mono (code/path surfaces: `.file-name`, `#path-input`, `#file-breadcrumb`, `#editor-filename`, `.tunnel-url`, `.cmd-lib-cmd`, `.cmd-hist-cmd`).
-- **CDN scripts are deferred** (`<script defer>`). Don't rely on them at parse time; lazy-init (CodeMirror via `initCodeMirror()`, `marked` guarded by `typeof marked !== 'undefined'`). Terminal init happens after async unlock, so xterm is available.
+- **CDN scripts are deferred** (`<script defer>`). Don't rely on them at parse time; lazy-init (CodeMirror via `initCodeMirror()`, `marked` guarded by `typeof marked !== 'undefined'`). `ensureCodeMirrorLoaded()` guards against CDN failures with a native `<textarea>` fallback. Terminal init happens after async unlock, so xterm is available.
+- **Mobile UI & Terminal Tabs Alignment**: The mobile terminal tab bar (`#tab-bar`, `.tab`, `#new-tab-btn`) maintains desktop-aligned tab chrome (rectangular rounded-top tabs, active top accent line `inset 0 2px 0 var(--accent)`, direct `#new-tab-btn` creation). Future Mobile UI updates must preserve this desktop tab styling and target hierarchy rather than compressing tabs into pill capsule tags.
 - **Themes**: all 6 themes define explicit `color-scheme`. `:root`/`data-theme="tokyonight"` share the same palette. Keep every theme's `--fg1/2/3` WCAG-AA readable.
 - **Shared UI helpers** (all in `public/js/app.js`):
   - `setBtnBusy(btn, busy)` + `.btn.loading` — spinner state for async buttons

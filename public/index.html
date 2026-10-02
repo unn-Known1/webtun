@@ -9,6 +9,9 @@
 <meta name="theme-color" content="#f9f9fb">
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="X-Content-Type-Options" content="nosniff">
+<meta name="description" content="Self-hosted web terminal with Cloudflare Tunnel, file explorer, and PWA support">
+<meta property="og:title" content="WebTun">
+<meta property="og:description" content="Self-hosted web terminal with Cloudflare Tunnel, file explorer, and PWA support">
 <!-- NOTE: no SRI on the Google Fonts CSS above: it is UA-sniffed per browser,
      so a pinned hash would break rendering. All version-pinned jsdelivr
      assets below carry integrity+crossorigin. -->
@@ -19,12 +22,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css" integrity="sha384-tStR1zLfWgsiXCF3IgfB3lBa8KmBe/lG287CL9WCeKgQYcp1bjb4/+mwN6oti4Co" crossorigin="anonymous">
-<script defer src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js" integrity="sha384-J4qzUjBl1FxyLsl/kQPQIOeINsmp17OHYXDOMpMxlKX53ZfYsL+aWHpgArvOuof9" crossorigin="anonymous"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js" integrity="sha384-XGqKrV8Jrukp1NITJbOEHwg01tNkuXr6uB6YEj69ebpYU3v7FvoGgEg23C1Gcehk" crossorigin="anonymous"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0.11.0/lib/addon-web-links.min.js" integrity="sha384-S1biLeI8L/bFduIVvCxbn/l4EtaG4nTqQjGF7qCYTbsGXGFe8KgIKXtw4+UWxprv" crossorigin="anonymous"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/@xterm/addon-unicode11@0.7.0/lib/addon-unicode11.min.js" integrity="sha384-exTEMxNHLX1A0MtReXfNULfIa0ExAdUCJ0rWQjGF5Sa2LgRHGVvKDTEzHVHrWcJd" crossorigin="anonymous"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/@xterm/addon-webgl@0.18.0/lib/addon-webgl.min.js" integrity="sha384-suTk5GfzCaPxAJRzhqzQQvM81UskMll+stLgqXpay997ORTnMRm1IAJi143VfhXU" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="/vendor/xterm.css">
+<script defer src="/vendor/xterm.js"></script>
+<script defer src="/vendor/addon-fit.js"></script>
+<script defer src="/vendor/addon-web-links.js"></script>
+<script defer src="/vendor/addon-unicode11.js"></script>
+<script defer src="/vendor/addon-webgl.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js" integrity="sha384-H+hy9ULve6xfxRkWIh/YOtvDdpXgV2fmAGQkIDTxIgZwNoaoBal14Di2YTMR6MzR" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js" integrity="sha384-eEu5CTj3qGvu9PdJuS+YlkNi7d2XxQROAFYOr59zgObtlcux1ae1Il3u7jvdCSWu" crossorigin="anonymous"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/lib/codemirror.min.css" integrity="sha384-EAMaqTIrSR3wOlf2EQj7Kkx5ZCHPjHmlYJsFof5IB8dzXMASyR8eIwXgp+IGz/rs" crossorigin="anonymous">
@@ -107,17 +110,13 @@
     <button class="icon-btn" id="cmd-lib-toggle" aria-label="Command Library" title="Command Library" onclick="toggleCmdLib()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
     </button>
-    <button class="icon-btn hdr-stack-btn" id="ssh-toggle" aria-label="SSH Access" title="SSH Access — on-demand keys for Termius & ssh" aria-haspopup="dialog" onclick="openSshPanel()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-      <span class="hdr-cap" aria-hidden="true">SSH</span>
-    </button>
     <button class="icon-btn" id="system-stats-btn" aria-label="System Stats" title="System Stats" onclick="openSystemStats()">
       <svg id="sys-live-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="2.5" opacity="0.4"/><rect id="sys-ico-cpu" x="4.6" y="5.6" width="0" height="2.8" rx="1.4" stroke="none" style="fill:var(--accent)"/><rect x="3" y="14" width="18" height="6" rx="2.5" opacity="0.4"/><rect id="sys-ico-mem" x="4.6" y="15.6" width="0" height="2.8" rx="1.4" stroke="none" style="fill:var(--cyan)"/></svg>
     </button>
     <button class="icon-btn" id="tilesBtn" aria-label="Tiles Mode" title="Tiles Mode" onclick="toggleTiles()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
     </button>
-    <button class="icon-btn" id="more-btn" aria-label="More options" title="More options" onclick="toggleMoreMenu()">
+    <button class="icon-btn" id="more-btn" aria-label="More options" title="More options" onclick="toggleMoreMenu(event)">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
     </button>
     <button id="notif-btn" class="icon-btn" aria-label="Notifications" title="Notifications" aria-haspopup="dialog" aria-expanded="false" onclick="toggleNotifPanel()">
@@ -127,14 +126,6 @@
     <button id="settings-btn" class="icon-btn" aria-label="Settings" title="Settings" onclick="openSettings()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     </button>
-    <div id="more-menu" role="menu">
-      <button class="mm-item" role="menuitem" onclick="closeMoreMenu();openSystemStats()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="4" rx="1"/><rect x="2" y="10" width="20" height="4" rx="1"/><rect x="2" y="18" width="20" height="4" rx="1"/><circle cx="6" cy="4" r="1" fill="currentColor"/><circle cx="6" cy="12" r="1" fill="currentColor"/><circle cx="6" cy="20" r="1" fill="currentColor"/></svg> System Stats</button>
-      <button class="mm-item" role="menuitem" onclick="closeMoreMenu();toggleTiles()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> Tiles Mode</button>
-      <button class="mm-item" role="menuitem" onclick="closeMoreMenu();newPreviewPrompt()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> New Preview</button>
-      <button class="mm-item" role="menuitem" onclick="closeMoreMenu();toggleCmdLib()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> Command Library</button>
-      <button class="mm-item" role="menuitem" onclick="closeMoreMenu();openSshPanel()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> SSH Access</button>
-      <button class="mm-item" role="menuitem" onclick="closeMoreMenu();openShortcuts()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 8h6M12 8v8"/><path d="m7 12 10-4"/><path d="m7 12 10 4"/></svg> Keyboard Shortcuts</button>
-    </div>
     <div id="upload-progress"><div id="upload-progress-bar"></div><span id="upload-progress-text"></span><button id="upload-cancel-btn" aria-label="Cancel upload" title="Cancel upload" onclick="cancelUpload()">Cancel</button></div>
     <div id="transfers-livebar" aria-hidden="true"><div></div></div>
     <div id="transfers-panel" role="dialog" aria-label="File transfers">
@@ -300,15 +291,32 @@
           <button id="new-preview-btn" onclick="newPreviewPrompt()" title="New app preview" aria-label="New app preview" style="width:28px;height:28px;min-width:28px;min-height:28px;display:flex;align-items:center;justify-content:center;border-radius:var(--radius);color:var(--fg2);flex-shrink:0;background:var(--bg2);border:1px solid var(--border);margin-left:4px">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
           </button>
+          <button id="ssh-toggle" onclick="openSshPanel()" title="SSH Access — on-demand keys for Termius & ssh" aria-label="SSH Access" aria-haspopup="dialog" style="width:28px;height:28px;min-width:28px;min-height:28px;display:flex;align-items:center;justify-content:center;border-radius:var(--radius);color:var(--fg2);flex-shrink:0;background:var(--bg2);border:1px solid var(--border);margin-left:4px">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+          </button>
         </div>
         <button id="tab-scroll-right" class="tab-nav-btn" onclick="scrollTabBar(1)" title="Scroll tabs right" aria-label="Scroll tabs right" style="display:none">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
         </button>
-        <button id="tab-list-btn" class="tab-nav-btn" onclick="toggleTabListMenu(event)" title="List all tabs" aria-label="List all tabs" aria-haspopup="menu" aria-expanded="false">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-          <span id="tab-list-count" aria-hidden="true"></span>
-        </button>
         <div id="tab-list-menu" role="menu" aria-label="Open tabs" style="display:none">
+          <div class="tab-list-head" style="display:flex;align-items:center;justify-content:space-between;padding:4px 4px 8px;border-bottom:1px solid var(--border);margin-bottom:6px">
+            <span style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+              <span>Open Tabs</span>
+              <span id="tab-list-title-count" style="font-size:11px;padding:1px 6px;border-radius:10px;background:var(--bg4);color:var(--fg2)">1</span>
+            </span>
+            <div style="display:flex;align-items:center;gap:4px">
+              <button class="btn btn-ghost" onclick="hideTabMenus();newTab()" style="height:28px;padding:0 8px;font-size:11px;display:flex;align-items:center;gap:4px" title="New Terminal">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Terminal
+              </button>
+              <button class="btn btn-ghost" onclick="hideTabMenus();newPreviewPrompt()" style="height:28px;padding:0 8px;font-size:11px;display:flex;align-items:center;gap:4px" title="New Preview">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> Preview
+              </button>
+              <button class="icon-btn" onclick="hideTabMenus()" style="width:26px;height:26px;min-width:26px;min-height:26px;margin-left:4px" title="Close" aria-label="Close">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+          </div>
           <input id="tab-list-search" type="text" placeholder="Filter tabs…" aria-label="Filter tabs" autocomplete="off">
           <div id="tab-list-items" role="group"></div>
         </div>
@@ -346,27 +354,62 @@
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
               Command Library
             </h3>
-            <button class="icon-btn" style="width:24px;height:24px" onclick="toggleCmdLib()" title="Close">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
+            <div class="cmd-lib-header-actions">
+              <button class="icon-btn" id="cmd-lib-export-btn" onclick="exportCmdLibrary()" title="Export custom commands (JSON)" aria-label="Export custom commands">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              </button>
+              <button class="icon-btn" id="cmd-lib-import-btn" onclick="triggerImportCmdLib()" title="Import commands (JSON)" aria-label="Import commands">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              </button>
+              <input type="file" id="cmd-lib-file-input" accept=".json,application/json" style="display:none" onchange="importCmdLibFile(event)">
+              <button class="icon-btn" style="width:24px;height:24px" onclick="toggleCmdLib()" title="Close">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
           </div>
           <div class="cmd-lib-tabs" role="tablist">
-            <button class="cmd-lib-tab active" id="cmd-tab-lib" role="tab" aria-selected="true" aria-controls="cmd-lib-list" onclick="switchCmdTab('library')">Library</button>
-            <button class="cmd-lib-tab" id="cmd-tab-hist" role="tab" aria-selected="false" aria-controls="cmd-hist-list" onclick="switchCmdTab('history')">History</button>
+            <button class="cmd-lib-tab active" id="cmd-tab-lib" role="tab" aria-selected="true" aria-controls="cmd-lib-list" onclick="switchCmdTab('library')">
+              <span>Library</span>
+              <span class="cmd-tab-badge" id="cmd-lib-count">0</span>
+            </button>
+            <button class="cmd-lib-tab" id="cmd-tab-hist" role="tab" aria-selected="false" aria-controls="cmd-hist-list" onclick="switchCmdTab('history')">
+              <span>History</span>
+              <span class="cmd-tab-badge" id="cmd-hist-count">0</span>
+            </button>
           </div>
-          <input id="cmd-lib-search" type="text" placeholder="Filter commands…" oninput="filterCmdLib()">
-          <div id="cmd-lib-list"></div>
-          <div id="cmd-hist-list">
+          <div class="cmd-lib-search-wrap">
+            <svg class="cmd-search-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input id="cmd-lib-search" type="text" placeholder="Search commands by name, syntax, or category…" oninput="onCmdSearchInput()">
+            <button class="cmd-search-clear" id="cmd-search-clear-btn" onclick="clearCmdSearch()" aria-label="Clear filter" style="display:none" title="Clear">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div id="cmd-lib-cat-chips" class="cmd-cat-chips"></div>
+          
+          <div id="cmd-lib-list" tabindex="0" role="list"></div>
+          <div id="cmd-hist-list" tabindex="0" role="list">
             <div id="cmd-hist-empty">No commands run yet</div>
           </div>
           <div class="cmd-hist-header" id="cmd-hist-header" style="display:none">
-            <label>Keep last <input type="number" id="cmd-hist-max" min="10" max="500" value="50" onchange="updateHistMax(+this.value)"> cmds</label>
-            <button class="cmd-hist-clear" onclick="clearCmdHist()">Clear History</button>
+            <div class="cmd-hist-cfg">
+              <label>Keep last <input type="number" id="cmd-hist-max" min="10" max="500" value="50" onchange="updateHistMax(+this.value)"> cmds</label>
+            </div>
+            <div class="cmd-hist-actions">
+              <button class="btn btn-sm" onclick="exportCmdHist()" title="Export history to text file">Export</button>
+              <button class="cmd-hist-clear" onclick="confirmClearCmdHist()">Clear All</button>
+            </div>
           </div>
           <div id="cmd-lib-footer">
-            <input id="cmd-lib-name-input" type="text" placeholder="Name" onkeydown="if(event.key==='Enter')document.getElementById('cmd-lib-cmd-input').focus()">
-            <input id="cmd-lib-cmd-input" type="text" placeholder="Command (e.g. ls -la)" onkeydown="if(event.key==='Enter')addCustomCmd()">
-            <button class="btn btn-primary" onclick="addCustomCmd()">Add</button>
+            <div class="cmd-lib-form-row">
+              <input id="cmd-lib-name-input" type="text" placeholder="Command Label" onkeydown="if(event.key==='Enter')document.getElementById('cmd-lib-cat-input').focus()">
+              <input id="cmd-lib-cat-input" type="text" placeholder="Category (e.g. Docker, Dev)" list="cmd-cat-datalist" onkeydown="if(event.key==='Enter')document.getElementById('cmd-lib-cmd-input').focus()">
+              <datalist id="cmd-cat-datalist"></datalist>
+            </div>
+            <div class="cmd-lib-form-row">
+              <input id="cmd-lib-cmd-input" type="text" placeholder="Command syntax (e.g. docker ps -a)" onkeydown="if(event.key==='Enter')saveCustomCmdFromForm()">
+              <button class="btn btn-primary" id="cmd-lib-save-btn" onclick="saveCustomCmdFromForm()">Add</button>
+              <button class="btn" id="cmd-lib-cancel-edit-btn" onclick="cancelEditCustomCmd()" style="display:none">Cancel</button>
+            </div>
           </div>
         </div>
 
@@ -457,6 +500,11 @@
         <button class="mkey wide" onclick="sendKey('\x1b[3~')" title="Delete">DEL</button>
         <button class="mkey" onclick="sendKey('\x7f')" title="Backspace"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 5H9l-7 7 7 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1Z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg></button>
         <span class="mkey-sep"></span>
+        <button class="mkey" onclick="sendKey('|')" title="Pipe">|</button>
+        <button class="mkey" onclick="sendKey('/')" title="Slash">/</button>
+        <button class="mkey" onclick="sendKey('-')" title="Dash">-</button>
+        <button class="mkey" onclick="sendKey('~')" title="Tilde">~</button>
+        <span class="mkey-sep"></span>
         <button class="mkey" onclick="sendKey('\x1b[H')" title="Home">Home</button>
         <button class="mkey" onclick="sendKey('\x1b[F')" title="End">End</button>
         <button class="mkey" onclick="sendKey('\x1b[5~')" title="Page Up">PgUp</button>
@@ -469,8 +517,10 @@
         <button class="mkey" onclick="toggleAlt()" title="Toggle Alt (latches for next key)" id="alt-toggle-btn">Alt</button>
         <span class="mkey-sep"></span>
         <button class="mkey" onclick="toggleCtrlRow()" title="Toggle Ctrl keys" id="ctrl-toggle-btn">Ctrl</button>
+        <span class="mkey-sep"></span>
+        <button class="mkey mkey-hide-kb" onclick="hideMobileKeyboard()" title="Hide Keyboard" aria-label="Hide Keyboard"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg> <span>Hide</span></button>
       </div>
-      <div id="mkey-ctrl-row" style="display:none;gap:4px;padding:4px 6px;padding-bottom:calc(4px + env(safe-area-inset-bottom));background:var(--bg3);border-top:1px solid var(--border);overflow-x:auto;white-space:nowrap;flex-shrink:0">
+      <div id="mkey-ctrl-row">
         <button class="mkey" onclick="sendKey('\x01')" title="Ctrl+A (Start of line)">^A</button>
         <button class="mkey" onclick="sendKey('\x02')" title="Ctrl+B (Backward char)">^B</button>
         <button class="mkey" onclick="sendKey('\x03')" title="Ctrl+C (Interrupt)">^C</button>
@@ -568,6 +618,8 @@
             <select id="s-theme" onchange="applyTheme(this.value)">
               <option value="system">System</option>
               <option value="light">Light</option>
+              <option value="catppuccin-latte">Catppuccin Latte</option>
+              <option value="nord-light">Nord Light</option>
               <option value="tokyonight">Tokyo Night</option>
               <option value="solarized">Solarized Dark</option>
               <option value="gruvbox">Gruvbox</option>
@@ -719,6 +771,43 @@
       </div>
     </div>
   </div>
+
+  <!-- Mobile Drawer Backdrop -->
+  <div id="drawer-backdrop" class="drawer-backdrop" onclick="closeAllDrawers()"></div>
+
+  <!-- Mobile Bottom Navigation Bar -->
+  <nav id="mobile-nav-bar" role="navigation" aria-label="Mobile Navigation">
+    <button id="mnav-explorer" class="mnav-btn" onclick="toggleSidebar()" aria-label="Files">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      <span>Files</span>
+    </button>
+    <button id="mnav-tabs" class="mnav-btn" onclick="toggleTabListMenu(event)" aria-label="Tabs">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+      <span>Tabs</span>
+      <span id="mnav-tab-badge">1</span>
+    </button>
+    <button id="mnav-new" class="mnav-btn mnav-fab" onclick="handleMobileNewAction()" aria-label="New Session">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+    <button id="mnav-keyboard" class="mnav-btn" onclick="toggleMobileKeyboard()" aria-label="Input">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="10" y2="8"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="14" y1="8" x2="18" y2="8"/><line x1="14" y1="12" x2="18" y2="12"/><line x1="8" y1="16" x2="16" y2="16"/></svg>
+      <span>Input</span>
+    </button>
+    <button id="mnav-more" class="mnav-btn" onclick="toggleMoreMenu(event)" aria-label="More Options">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="12" r="1.5"/></svg>
+      <span>More</span>
+    </button>
+  </nav>
+</div>
+
+<!-- More menu -->
+<div id="more-menu" role="menu">
+  <button class="mm-item" role="menuitem" onclick="closeMoreMenu();openSystemStats()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="4" rx="1"/><rect x="2" y="10" width="20" height="4" rx="1"/><rect x="2" y="18" width="20" height="4" rx="1"/><circle cx="6" cy="4" r="1" fill="currentColor"/><circle cx="6" cy="12" r="1" fill="currentColor"/><circle cx="6" cy="20" r="1" fill="currentColor"/></svg> System Stats</button>
+  <button class="mm-item" role="menuitem" onclick="closeMoreMenu();toggleTiles()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> Tiles Mode</button>
+  <button class="mm-item" role="menuitem" onclick="closeMoreMenu();newPreviewPrompt()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> New Preview</button>
+  <button class="mm-item" role="menuitem" onclick="closeMoreMenu();toggleCmdLib()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> Command Library</button>
+  <button class="mm-item" role="menuitem" onclick="closeMoreMenu();openSshPanel()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> SSH Access</button>
+  <button class="mm-item" role="menuitem" onclick="closeMoreMenu();openShortcuts()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 8h6M12 8v8"/><path d="m7 12 10-4"/><path d="m7 12 10 4"/></svg> Keyboard Shortcuts</button>
 </div>
 
 <!-- Drop overlay -->
@@ -745,6 +834,7 @@
   <div class="ctx-item" id="ctx-open-term" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> Open Terminal Here</div>
   <div class="ctx-sep"></div>
   <div class="ctx-item danger" id="ctx-delete" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg> Delete</div>
+  <div class="ctx-item sheet-cancel-item" onclick="hideAllCtxMenus()" role="menuitem" style="display:none">Cancel</div>
 </div>
 
 <!-- Terminal context menu -->
@@ -778,6 +868,24 @@
   <!-- Danger -->
   <div class="ctx-sep"></div>
   <div class="ctx-item danger" id="term-ctx-clear" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg> Clear</div>
+  <div class="ctx-item sheet-cancel-item" onclick="hideAllCtxMenus()" role="menuitem" style="display:none">Cancel</div>
+</div>
+
+<!-- Floating touch selection action bar -->
+<div id="term-selection-bar" role="toolbar" aria-label="Selection actions" style="display:none">
+  <button class="tsel-btn" id="tsel-copy" onclick="copyTermSelection()" title="Copy selected text">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+    <span>Copy</span>
+  </button>
+  <button class="tsel-btn" id="tsel-line" onclick="selectTermLine()" title="Select line">
+    <span>Line</span>
+  </button>
+  <button class="tsel-btn" id="tsel-all" onclick="selectAllTerm()" title="Select all">
+    <span>All</span>
+  </button>
+  <button class="tsel-btn tsel-close" onclick="clearTermSelection()" title="Dismiss selection" aria-label="Dismiss selection">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+  </button>
 </div>
 
 <!-- Tab context menu (right-click a tab) -->
@@ -1022,7 +1130,7 @@
     <h2>New Preview</h2>
     <div class="modal-row">
       <label for="preview-port-input">Local port</label>
-      <input type="text" id="preview-port-input" inputmode="numeric" pattern="[0-9]*" placeholder="8000 or localhost:5173/docs" autocomplete="off" onkeydown="if(event.key==='Enter')confirmNewPreview()">
+      <input type="text" id="preview-port-input" list="preview-ports-list" inputmode="numeric" pattern="[0-9]*" placeholder="8000 or localhost:5173/docs" autocomplete="off" onkeydown="if(event.key==='Enter')confirmNewPreview()">
       <div class="field-error" id="preview-error" role="alert"></div>
     </div>
     <div class="modal-actions">

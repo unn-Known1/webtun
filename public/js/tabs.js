@@ -299,6 +299,10 @@ function updateTabOverflow() {
     const left = document.getElementById('tab-scroll-left');
     const right = document.getElementById('tab-scroll-right');
     const count = document.getElementById('tab-list-count');
+    const titleCount = document.getElementById('tab-list-title-count');
+    const mnavBadge = document.getElementById('mnav-tab-badge');
+    if (mnavBadge) mnavBadge.textContent = String(tabs.length);
+    if (titleCount) titleCount.textContent = String(tabs.length);
     if (!scroll) return;
     const overflow = scroll.scrollWidth > scroll.clientWidth + 2;
     const maxScroll = scroll.scrollWidth - scroll.clientWidth;
@@ -328,29 +332,48 @@ function scrollActiveTabIntoView() {
 // ── Tab quick-switcher (overflow menu) ──────────────────────────────────
 function toggleTabListMenu(e) {
   try {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
     const menu = document.getElementById('tab-list-menu');
     if (!menu) return;
-    if (menu.style.display === 'block') { hideTabMenus(); return; }
+    if (menu.style.display === 'flex' || menu.style.display === 'block') { hideTabMenus(); return; }
     hideTabMenus();
     renderTabListMenu('');
-    const btn = document.getElementById('tab-list-btn');
-    const r = btn ? btn.getBoundingClientRect() : { left: window.innerWidth - 240, bottom: 40 };
-    menu.style.display = 'block';
-    const mw = Math.min(300, window.innerWidth - 16);
-    menu.style.minWidth = mw + 'px';
-    menu.style.maxWidth = mw + 'px';
-    let left = Math.max(8, Math.min(r.left, window.innerWidth - mw - 8));
-    menu.style.left = left + 'px';
-    menu.style.top = ((r.bottom || 40) + 6) + 'px';
-    btn?.setAttribute('aria-expanded', 'true');
+    const isMobile = window.innerWidth <= 768;
+    if (isMobile) {
+      if (typeof triggerHaptic === 'function') triggerHaptic('light');
+      const backdrop = document.getElementById('drawer-backdrop');
+      if (backdrop) backdrop.classList.add('active');
+      document.getElementById('mnav-tabs')?.classList.add('active');
+      menu.style.left = '';
+      menu.style.right = '';
+      menu.style.top = '';
+      menu.style.bottom = '';
+      menu.style.minWidth = '';
+      menu.style.maxWidth = '';
+      menu.style.display = 'flex';
+    } else {
+      menu.style.display = 'flex';
+      const mw = Math.min(320, window.innerWidth - 16);
+      menu.style.minWidth = mw + 'px';
+      menu.style.maxWidth = mw + 'px';
+      let left = Math.max(8, window.innerWidth - mw - 16);
+      menu.style.left = left + 'px';
+      menu.style.top = '44px';
+    }
     const search = document.getElementById('tab-list-search');
-    if (search) { search.value = ''; setTimeout(() => { try { search.focus(); } catch {} }, 30); }
+    if (search) {
+      search.value = '';
+      search.oninput = () => renderTabListMenu(search.value);
+      setTimeout(() => { try { search.focus(); } catch {} }, 40);
+    }
   } catch (e) { console.warn('toggleTabListMenu failed:', e); }
 }
 
 function renderTabListMenu(filter) {
   try {
     const box = document.getElementById('tab-list-items');
+    const titleCount = document.getElementById('tab-list-title-count');
+    if (titleCount) titleCount.textContent = String(tabs.length);
     if (!box) return;
     box.innerHTML = '';
     const q = String(filter || '').trim().toLowerCase();
@@ -375,7 +398,7 @@ function renderTabListMenu(filter) {
       const close = document.createElement('button');
       close.className = 'tab-list-close';
       close.setAttribute('aria-label', 'Close ' + t.title);
-      close.textContent = '✕';
+      close.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
       close.addEventListener('click', ev => { ev.stopPropagation(); hideTabMenus(); closeTab({ stopPropagation() {} }, t.id); });
       row.append(num, dot, name, kind, close);
       row.addEventListener('click', () => { hideTabMenus(); activateTab(t.id); });
@@ -414,6 +437,13 @@ function hideTabMenus() {
     document.getElementById('tab-list-btn')?.setAttribute('aria-expanded', 'false');
   } catch {}
   try { document.getElementById('tab-ctx-color-wrap')?.classList.remove('open'); } catch {}
+  if (window.innerWidth <= 768) {
+    const backdrop = document.getElementById('drawer-backdrop');
+    if (backdrop && !document.getElementById('sidebar')?.classList.contains('mobile-open') && !document.getElementById('settings-panel')?.classList.contains('open')) {
+      backdrop.classList.remove('active');
+    }
+    document.getElementById('mnav-tabs')?.classList.remove('active');
+  }
   _tabCtxId = null;
 }
 
@@ -702,34 +732,39 @@ function setupTabInlineRename(tabTitleSpan, tab) {
 function setupTabSwipeGesture(tabEl, id) {
   let swipeStartX = 0, swipeStartY = 0;
   let swipeStartScroll = 0;
+  let isVerticalSwipe = false;
   tabEl.addEventListener('touchstart', e => {
     swipeStartX = e.touches[0].clientX;
     swipeStartY = e.touches[0].clientY;
-    swipeStartScroll = tabEl.parentElement.scrollLeft;
+    swipeStartScroll = tabEl.parentElement ? tabEl.parentElement.scrollLeft : 0;
+    isVerticalSwipe = false;
   }, { passive: true });
   tabEl.addEventListener('touchmove', e => {
     if (swipeStartX === 0) return;
-    if (tabEl.parentElement.scrollLeft !== swipeStartScroll) { swipeStartX = 0; return; }
     const dx = e.touches[0].clientX - swipeStartX;
     const dy = e.touches[0].clientY - swipeStartY;
-    // Require horizontal swipe dominant (dx > dy*1.5) to avoid scroll confusion (U59)
-    if (Math.abs(dx) < Math.abs(dy) * 1.5) return;
-    if (Math.abs(dx) > 5) {
-      e.preventDefault();
-      tabEl.style.transform = `translateX(${dx}px)`;
-      tabEl.style.opacity = Math.max(0.3, 1 - Math.abs(dx) / 200);
-      tabEl.style.background = `rgba(247,118,142,${Math.min(Math.abs(dx) / 80, 1) * 0.2})`;
+    // If horizontal scroll is active or movement is predominantly horizontal, ignore swipe-to-close to allow smooth tab strip scrolling
+    if (Math.abs(dx) > Math.abs(dy)) return;
+    // Upward swipe gesture for tab dismissal (dy < -8)
+    if (dy < -8 && Math.abs(dy) > Math.abs(dx) * 1.5) {
+      isVerticalSwipe = true;
+      if (e.cancelable) e.preventDefault();
+      tabEl.style.transform = `translateY(${dy}px)`;
+      tabEl.style.opacity = Math.max(0.3, 1 - Math.abs(dy) / 120);
+      tabEl.style.background = `rgba(247,118,142,${Math.min(Math.abs(dy) / 60, 1) * 0.25})`;
     }
   }, { passive: false });
   tabEl.addEventListener('touchend', e => {
     if (swipeStartX === 0) return;
-    const dx = e.changedTouches[0].clientX - swipeStartX;
     const dy = e.changedTouches[0].clientY - swipeStartY;
+    const dx = e.changedTouches[0].clientX - swipeStartX;
     tabEl.style.transform = '';
     tabEl.style.opacity = '';
     tabEl.style.background = '';
-    if (Math.abs(dx) > 90 && Math.abs(dx) > Math.abs(dy) * 1.5) closeTab({ stopPropagation() {} }, id);
-    swipeStartX = 0; swipeStartY = 0;
+    if (isVerticalSwipe && dy < -50 && Math.abs(dy) > Math.abs(dx) * 1.5) {
+      closeTab({ stopPropagation() {} }, id);
+    }
+    swipeStartX = 0; swipeStartY = 0; isVerticalSwipe = false;
   }, { passive: true });
 }
 
@@ -849,6 +884,7 @@ function newTab(title, sessionId, dir, opts = {}) {
 
 async function activateTab(id) {
   activeTabId = id;
+  try { if (navigator.vibrate && window.innerWidth <= 768) navigator.vibrate(12); } catch {}
   tabs.forEach(t => {
     t.el?.classList.toggle('active', t.id === id);
     if (t.el) {

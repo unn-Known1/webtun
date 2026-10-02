@@ -206,6 +206,61 @@ function connectWebSocket(tab, isReconnect = false) {
   // unterminated OSC is held in oscBuf and prepended to the next frame.
   let oscBuf = '';
   if (!tab._termDecoder) { try { tab._termDecoder = new TextDecoder(); } catch {} }
+  function handleOsc52(value, tab) {
+    const parts = value.split(';');
+    const targets = parts[0];
+    const isCopyTarget = !targets || targets.includes('c') || targets.includes('p') || targets.includes('s');
+    const b64 = parts.slice(1).join(';');
+    if (b64) {
+      // SET clipboard — always honored (a program can only overwrite,
+      // never read). UTF-8 safe, so emoji/CJK are no longer dropped.
+      try {
+        const decoded = b64ToUtf8(b64);
+        if (isCopyTarget) {
+          navigator.clipboard.writeText(decoded).then(() => {
+            const now = Date.now();
+            if (!tab._lastOsc52Toast || now - tab._lastOsc52Toast > 1500) {
+              tab._lastOsc52Toast = now;
+              try { toast('Copied to clipboard', 'success', { log: false }); } catch {}
+            }
+          }).catch(() => {
+            try {
+              const ta = document.createElement('textarea');
+              ta.value = decoded;
+              ta.style.position = 'fixed';
+              ta.style.opacity = '0';
+              document.body.appendChild(ta);
+              ta.select();
+              document.execCommand('copy');
+              document.body.removeChild(ta);
+              const now = Date.now();
+              if (!tab._lastOsc52Toast || now - tab._lastOsc52Toast > 1500) {
+                tab._lastOsc52Toast = now;
+                try { toast('Copied to clipboard', 'success', { log: false }); } catch {}
+              }
+            } catch (_) {}
+          });
+        }
+      } catch (_) {}
+    } else if (settings.clipboardRead) {
+      // GET clipboard — opt-in (Settings → Terminal). Any remote
+      // output could otherwise pull the local clipboard into the
+      // session with no prompt at all.
+      navigator.clipboard.readText().then(text => {
+        const response = '\x1b]52;c;' + utf8ToB64(text) + '\x07';
+        if (tab.ws && tab.ws.readyState === WebSocket.OPEN) {
+          const enc = new TextEncoder().encode(response);
+          const buf = new Uint8Array(1 + enc.length);
+          buf[0] = 0x00; buf.set(enc, 1);
+          tab.ws.send(buf.buffer);
+        }
+      }).catch(() => {});
+    } else if (!tab._clipReadHintShown) {
+      tab._clipReadHintShown = true;
+      toast('A program asked to read your clipboard — enable "Allow terminal clipboard read" in Settings', 'warning');
+    }
+  }
+
   function processTerminalOutput(data) {
     let chunk;
     if (typeof data === 'string') chunk = data;
@@ -215,6 +270,30 @@ function connectWebSocket(tab, isReconnect = false) {
     let out = '';
     let i = 0;
     while (i < str.length) {
+      // If trailing char is bare ESC, buffer it for next chunk to avoid splitting introducer
+      if (i === str.length - 1 && str[i] === '\x1b') {
+        oscBuf = '\x1b';
+        break;
+      }
+
+      // Check for tmux DCS wrapped sequence: \x1bPtmux;\x1b...
+      if (str.startsWith('\x1bPtmux;\x1b', i) || str.startsWith('\x1bPtmux;', i)) {
+        const pfxLen = str.startsWith('\x1bPtmux;\x1b', i) ? 8 : 7;
+        const dcsEnd = str.indexOf('\x1b\\', i + pfxLen);
+        if (dcsEnd !== -1) {
+          const inner = str.substring(i + pfxLen, dcsEnd).replace(/\x1b\x1b/g, '\x1b');
+          if (inner.startsWith('\x1b]52;') || inner.startsWith(']52;')) {
+            handleOsc52(inner.startsWith('\x1b]') ? inner.substring(4) : inner.substring(3), tab);
+            i = dcsEnd + 2;
+            continue;
+          }
+        } else {
+          oscBuf = str.substring(i);
+          if (oscBuf.length > 1048576) { out += oscBuf; oscBuf = ''; }
+          break;
+        }
+      }
+
       // Look for ESC ] (OSC introducer)
       if (str[i] === '\x1b' && str[i + 1] === ']') {
         const endIdx = str.indexOf('\x07', i + 2);
@@ -240,36 +319,7 @@ function connectWebSocket(tab, isReconnect = false) {
               // Handled silently — available for future command tracking
             } else if (code === '52') {
               // OSC 52: Clipboard operations
-              const parts = value.split(';');
-              const targets = parts[0] || 'c';
-              const b64 = parts.slice(1).join(';');
-              if (b64) {
-                // SET clipboard — always honored (a program can only overwrite,
-                // never read). UTF-8 safe, so emoji/CJK are no longer dropped.
-                try {
-                  const decoded = b64ToUtf8(b64);
-                  if (targets.includes('c') || targets.includes('p')) {
-                    navigator.clipboard.writeText(decoded).catch(() => {});
-                  }
-                } catch (_) {}
-              } else if (settings.clipboardRead) {
-                // GET clipboard — opt-in (Settings → Terminal). Any remote
-                // output could otherwise pull the local clipboard into the
-                // session with no prompt at all: a stray
-                // `printf '\e]52;c;?'`, a malicious script, a pasted payload.
-                navigator.clipboard.readText().then(text => {
-                  const response = '\x1b]52;c;' + utf8ToB64(text) + '\x07';
-                  if (tab.ws && tab.ws.readyState === WebSocket.OPEN) {
-                    const enc = new TextEncoder().encode(response);
-                    const buf = new Uint8Array(1 + enc.length);
-                    buf[0] = 0x00; buf.set(enc, 1);
-                    tab.ws.send(buf.buffer);
-                  }
-                }).catch(() => {});
-              } else if (!tab._clipReadHintShown) {
-                tab._clipReadHintShown = true;
-                toast('A program asked to read your clipboard — enable "Allow terminal clipboard read" in Settings', 'warning');
-              }
+              handleOsc52(value, tab);
             } else {
               // OSC 0/1/2 (window/icon titles) and anything else we do not
               // consume: forward verbatim so xterm fires onTitleChange.
@@ -282,7 +332,7 @@ function connectWebSocket(tab, isReconnect = false) {
           // Unterminated OSC at the end of this frame: hold it for the next
           // frame instead of leaking escape garbage into the terminal.
           oscBuf = str.substring(i);
-          if (oscBuf.length > 4096) { out += oscBuf; oscBuf = ''; }
+          if (oscBuf.length > 1048576) { out += oscBuf; oscBuf = ''; }
           break;
         }
       }
@@ -416,13 +466,17 @@ function handleClientEvent(payload) {
     try { if (ws.readyState === WebSocket.CONNECTING) ws.close(); } catch {}
   };
 
-  ws.onclose = () => {
+  ws.onclose = event => {
     try { if (tab._openTimer) { clearTimeout(tab._openTimer); tab._openTimer = null; } } catch {}
     // The open-timeout's fallback may invoke onclose after cleanup already
     // ran for a newer socket — never kill a live replacement.
     if (tab.ws && tab.ws !== ws) return;
     cleanupWebSocket(tab);
     if (tab.closed) return;
+    if (event && event.code === 1008 && event.reason === 'Unauthorized') {
+      try { showPinScreen(); } catch {}
+      return;
+    }
     try { if (typeof refreshConnStatus === 'function') refreshConnStatus(); else updateConnStatus(false); } catch {}
     tab.reconnectAttempts = (tab.reconnectAttempts || 0) + 1;
     const _attempt = tab.reconnectAttempts;
@@ -498,6 +552,16 @@ function manualReconnect() {
   });
 }
 function initTerminal(tab) {
+  if (typeof Terminal === 'undefined') {
+    tab._termInitRetries = (tab._termInitRetries || 0) + 1;
+    if (tab._termInitRetries < 60) {
+      setTimeout(() => initTerminal(tab), 50);
+      return;
+    }
+    console.error('Terminal library (xterm.js) is not available');
+    return;
+  }
+
   const cfg = {
     fontFamily: settings.font,
     fontSize: settings.fontSize,
@@ -510,27 +574,31 @@ function initTerminal(tab) {
     convertEol: false,
     bellStyle: settings.bell ? 'sound' : 'none',
     smoothScrollDuration: 80,
-    selectionTheme: getXtermSelectionTheme()
+    selectionTheme: getXtermSelectionTheme(),
+    trimTrailingWhitespace: true,
+    rightClickSelectsWord: true
   };
 
   const term = new Terminal(cfg);
-  const fitAddon = new FitAddon.FitAddon();
-  const webLinksAddon = new WebLinksAddon.WebLinksAddon();
+  const fitAddon = (typeof FitAddon !== 'undefined' && FitAddon.FitAddon) ? new FitAddon.FitAddon() : null;
+  const webLinksAddon = (typeof WebLinksAddon !== 'undefined' && WebLinksAddon.WebLinksAddon) ? new WebLinksAddon.WebLinksAddon() : null;
 
-  term.loadAddon(fitAddon);
-  term.loadAddon(webLinksAddon);
+  if (fitAddon) term.loadAddon(fitAddon);
+  if (webLinksAddon) term.loadAddon(webLinksAddon);
 
   try {
-    const unicodeAddon = new Unicode11Addon.Unicode11Addon();
-    term.loadAddon(unicodeAddon);
-    term.unicode.activeVersion = '11';
+    if (typeof Unicode11Addon !== 'undefined' && Unicode11Addon.Unicode11Addon) {
+      const unicodeAddon = new Unicode11Addon.Unicode11Addon();
+      term.loadAddon(unicodeAddon);
+      term.unicode.activeVersion = '11';
+    }
   } catch (_) {}
 
   // GPU-accelerated renderer — falls back to canvas if WebGL unavailable.
   // Guard counts LIVE WebGL contexts (not just tabs), so init churn can never
   // exhaust the browser's ~16-context budget.
   const liveGL = (typeof tabs !== 'undefined' ? tabs : []).filter(t => t && t._webglAddon).length;
-  if (liveGL < 4) {
+  if (liveGL < 4 && typeof WebglAddon !== 'undefined' && WebglAddon.WebglAddon) {
     try {
       const webglAddon = new WebglAddon.WebglAddon();
       webglAddon.onContextLoss(() => {
@@ -547,6 +615,43 @@ function initTerminal(tab) {
   }
 
   term.open(tab.wrapper);
+
+  term.attachCustomKeyEventHandler(e => {
+    if (e.type === 'keydown') {
+      const isCmd = e.ctrlKey || e.metaKey;
+      const key = e.key ? e.key.toLowerCase() : '';
+      // Ctrl+Shift+C: standard terminal copy
+      if (isCmd && e.shiftKey && key === 'c') {
+        if (term.hasSelection()) {
+          copyTermSelection();
+          return false;
+        }
+      }
+      // Ctrl+Shift+V: standard terminal paste
+      if (isCmd && e.shiftKey && key === 'v') {
+        pasteToTerminal();
+        return false;
+      }
+      // Plain Ctrl+C / Cmd+C when text is selected: copy instead of sending SIGINT
+      if (isCmd && !e.shiftKey && !e.altKey && key === 'c') {
+        if (term.hasSelection()) {
+          copyTermSelection();
+          return false;
+        }
+      }
+      if (isCmd && !e.shiftKey && !e.altKey) {
+        if (key === 'b') {
+          if (typeof toggleSidebar === 'function') toggleSidebar();
+          return false;
+        }
+        if (key === 'p') {
+          if (typeof openFinder === 'function') openFinder();
+          return false;
+        }
+      }
+    }
+    return true;
+  });
 
   tab.term = term;
   tab.fitAddon = fitAddon;
@@ -722,37 +827,188 @@ function initTerminal(tab) {
     } catch { try { menu.focus(); } catch {} }
   });
 
-  // Touch-to-mouse translation for TUI apps (mobile)
-  let _tapTimeout = null, _tapPos = null, _longPressTimer = null;
+  // Touch-to-mouse translation, smooth scrolling, and selection for mobile
+  let _tapPos = null;
+  let _lastTapTime = 0;
+  let _lastTapPos = null;
+  let _longPressTimer = null;
+  let _isDraggingTouch = false;
+  let _isSelectingDrag = false;
+  let _selAnchor = null;
+  let _touchAccumY = 0;
+  let _lastTouchY = 0;
+  let _lastTouchX = 0;
+
   term.element.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1) {
+      clearTimeout(_longPressTimer);
+      return;
+    }
+    const touch = e.touches[0];
+    _isDraggingTouch = false;
+    _isSelectingDrag = false;
+    _touchAccumY = 0;
+    _lastTouchY = touch.clientY;
+    _lastTouchX = touch.clientX;
+    _tapPos = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+
+    // Check for double tap
+    const now = Date.now();
+    const dt = now - _lastTapTime;
+    const isDoubleTap = _lastTapPos && dt < 320 && Math.hypot(touch.clientX - _lastTapPos.x, touch.clientY - _lastTapPos.y) < 25;
+
+    if (isDoubleTap) {
+      clearTimeout(_longPressTimer);
+      _lastTapTime = 0;
+      _lastTapPos = null;
+      const cellInfo = getTermCellFromTouch(tab, touch.clientX, touch.clientY);
+      if (cellInfo && selectWordAtCell(tab, cellInfo)) {
+        showTermSelectionBar(touch.clientX, touch.clientY);
+        try { navigator.vibrate?.(20); } catch {}
+      }
+      return;
+    }
+    _lastTapTime = now;
+    _lastTapPos = { x: touch.clientX, y: touch.clientY };
+
+    // Long press for text selection
+    _longPressTimer = setTimeout(() => {
+      if (_tapPos && !_isDraggingTouch) {
+        const cellInfo = getTermCellFromTouch(tab, _tapPos.x, _tapPos.y);
+        if (cellInfo) {
+          _isSelectingDrag = true;
+          _selAnchor = { col: cellInfo.col, bufRow: cellInfo.bufRow };
+          selectWordAtCell(tab, cellInfo);
+          showTermSelectionBar(_tapPos.x, _tapPos.y);
+          try { navigator.vibrate?.(25); } catch {}
+        }
+      }
+    }, 380);
+  }, { passive: true });
+
+  term.element.addEventListener('touchmove', e => {
     if (e.touches.length !== 1) return;
     const touch = e.touches[0];
-    _tapPos = { x: touch.clientX, y: touch.clientY, time: Date.now() };
-    // Long press detection for right-click (TR-03: dispatch a real
-    // `contextmenu` event — synthetic mousedown/mouseup with button:2 never
-    // triggers the contextmenu handler in WebKit/Blink).
-    _longPressTimer = setTimeout(() => {
-      if (_tapPos) {
-        try {
-          const ctxEvt = new MouseEvent('contextmenu', {
-            clientX: _tapPos.x, clientY: _tapPos.y,
-            button: 2, bubbles: true, cancelable: true
-          });
-          term.element.dispatchEvent(ctxEvt);
-        } catch {}
-        _tapPos = null;
+    const totalDx = Math.abs(touch.clientX - (_tapPos ? _tapPos.x : touch.clientX));
+    const totalDy = Math.abs(touch.clientY - (_tapPos ? _tapPos.y : touch.clientY));
+
+    if (totalDx > 8 || totalDy > 8) {
+      if (!_isSelectingDrag) clearTimeout(_longPressTimer);
+    }
+
+    if (_isSelectingDrag && _selAnchor) {
+      e.preventDefault();
+      const cellInfo = getTermCellFromTouch(tab, touch.clientX, touch.clientY);
+      if (cellInfo) {
+        const startRow = Math.min(_selAnchor.bufRow, cellInfo.bufRow);
+        const endRow = Math.max(_selAnchor.bufRow, cellInfo.bufRow);
+        if (startRow === endRow) {
+          const startCol = Math.min(_selAnchor.col, cellInfo.col);
+          const endCol = Math.max(_selAnchor.col, cellInfo.col);
+          term.select(startCol, startRow, Math.max(1, endCol - startCol + 1));
+        } else {
+          term.selectLines(startRow, endRow);
+        }
+        showTermSelectionBar(touch.clientX, touch.clientY);
       }
-    }, 500);
-  }, { passive: true });
+      return;
+    }
+
+    if (termSelectMode) {
+      e.preventDefault();
+      const cellInfo = getTermCellFromTouch(tab, touch.clientX, touch.clientY);
+      if (cellInfo) {
+        if (!_selAnchor) _selAnchor = { col: cellInfo.col, bufRow: cellInfo.bufRow };
+        const startRow = Math.min(_selAnchor.bufRow, cellInfo.bufRow);
+        const endRow = Math.max(_selAnchor.bufRow, cellInfo.bufRow);
+        if (startRow === endRow) {
+          const startCol = Math.min(_selAnchor.col, cellInfo.col);
+          const endCol = Math.max(_selAnchor.col, cellInfo.col);
+          term.select(startCol, startRow, Math.max(1, endCol - startCol + 1));
+        } else {
+          term.selectLines(startRow, endRow);
+        }
+        showTermSelectionBar(touch.clientX, touch.clientY);
+      }
+      return;
+    }
+
+    // Touch scroll handling (vertical dominant)
+    const dy = _lastTouchY - touch.clientY;
+    const dx = _lastTouchX - touch.clientX;
+    _lastTouchY = touch.clientY;
+    _lastTouchX = touch.clientX;
+
+    if (totalDy > 6 && totalDy > totalDx * 0.7) {
+      _isDraggingTouch = true;
+      e.preventDefault();
+
+      const isTracking = xtermMouseTracking(term);
+      if (isTracking) {
+        // Fullscreen TUI apps like opencode / vim / tmux / htop: dispatch wheel to viewport
+        try {
+          const vp = tab.wrapper.querySelector('.xterm-viewport');
+          if (vp) {
+            vp.dispatchEvent(new WheelEvent('wheel', {
+              deltaY: dy * 3,
+              deltaMode: 0,
+              clientX: touch.clientX,
+              clientY: touch.clientY,
+              bubbles: true,
+              cancelable: true
+            }));
+          }
+        } catch (_) {}
+      } else {
+        // Normal terminal buffer scroll
+        const lineHeight = xtermCharHeight(term, tab.wrapper) || 16;
+        _touchAccumY += dy;
+        const step = lineHeight * 0.55;
+        if (Math.abs(_touchAccumY) >= step) {
+          const lines = Math.trunc(_touchAccumY / step);
+          term.scrollLines(lines);
+          _touchAccumY -= lines * step;
+        }
+      }
+    }
+  }, { passive: false });
+
   term.element.addEventListener('touchend', e => {
     clearTimeout(_longPressTimer);
+    if (_isSelectingDrag) {
+      _isSelectingDrag = false;
+      _selAnchor = null;
+      if (e.changedTouches.length) {
+        showTermSelectionBar(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+      }
+      return;
+    }
+    if (termSelectMode) {
+      _selAnchor = null;
+      return;
+    }
+    if (_isDraggingTouch) {
+      _tapPos = null;
+      setTimeout(() => { _isDraggingTouch = false; }, 120);
+      return;
+    }
     if (!_tapPos || e.changedTouches.length !== 1) return;
     const touch = e.changedTouches[0];
     const dx = Math.abs(touch.clientX - _tapPos.x);
     const dy = Math.abs(touch.clientY - _tapPos.y);
     const dt = Date.now() - _tapPos.time;
+
     if (dx < 10 && dy < 10 && dt < 300) {
-      // Short tap → left click
+      // If selection bar is visible and user taps outside it, clear selection
+      if (term.hasSelection()) {
+        term.clearSelection();
+        hideTermSelectionBar();
+      }
+      if (Date.now() - _keyboardDismissedAt < 400) {
+        _tapPos = null;
+        return;
+      }
+      // Short tap -> mouse click
       const evt = new MouseEvent('mousedown', { clientX: touch.clientX, clientY: touch.clientY, button: 0, bubbles: true });
       term.element.dispatchEvent(evt);
       const upEvt = new MouseEvent('mouseup', { clientX: touch.clientX, clientY: touch.clientY, button: 0, bubbles: true });
@@ -760,10 +1016,14 @@ function initTerminal(tab) {
     }
     _tapPos = null;
   }, { passive: true });
-  term.element.addEventListener('touchmove', () => {
-    clearTimeout(_longPressTimer);
-    _tapPos = null;
-  }, { passive: true });
+
+  // Suppress synthetic clicks following a swipe/scroll gesture or keyboard dismissal
+  tab.wrapper.addEventListener('click', e => {
+    if (_isDraggingTouch || (Date.now() - _keyboardDismissedAt < 400)) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  }, true);
 
   // Fit terminal then connect WebSocket — ensures WS uses correct dimensions
   requestAnimationFrame(() => {
@@ -913,7 +1173,19 @@ function toggleAlt() {
   if (altLatch) toast('Alt ON (next key)', 'info');
 }
 
+let _keyboardDismissedAt = 0;
+
+function triggerHaptic(type = 'light') {
+  try {
+    if (!('vibrate' in navigator)) return;
+    if (type === 'light') navigator.vibrate(10);
+    else if (type === 'medium') navigator.vibrate(25);
+    else if (type === 'heavy') navigator.vibrate([30, 50, 30]);
+  } catch {}
+}
+
 function sendKey(key) {
+  triggerHaptic('light');
   let modified = key;
   if (key.length === 1) {
     if (shiftLatch && modified >= 'a' && modified <= 'z') {
@@ -956,8 +1228,11 @@ function sendCtrlP() {
 
 // UTF-8 safe base64 (OSC 52). atob/btoa are Latin-1 only and throw on
 // emoji/CJK — those payloads silently lost the clipboard sync entirely.
+// Sanitizes whitespace, line breaks (RFC 2045), and URL-safe chars.
 function b64ToUtf8(b64) {
-  const bin = atob(b64);
+  let clean = (b64 || '').replace(/[\s\r\n]+/g, '').replace(/-/g, '+').replace(/_/g, '/');
+  while (clean.length % 4) clean += '=';
+  const bin = atob(clean);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return new TextDecoder().decode(bytes);
@@ -979,26 +1254,60 @@ function utf8ToB64(str) {
 // carries the resolved [data-theme=…]; documentElement only had it after an
 // explicit applyTheme(), so the first terminal painted with the wrong palette.
 function getXtermTheme() {
-  const s = getComputedStyle(document.body || document.documentElement);
-  const g = v => s.getPropertyValue(v).trim();
+  const root = document.documentElement || document.body;
+  const body = document.body || document.documentElement;
+  const s = getComputedStyle(root);
+  const sBody = getComputedStyle(body);
+  const g = v => (s.getPropertyValue(v) || sBody.getPropertyValue(v) || '').trim();
+
+  const bg = g('--bg') || '#1a1b26';
+  const fg = g('--fg') || '#c0caf5';
+  const accent = g('--accent') || '#7aa2f7';
+  const accent2 = g('--accent2') || '#bb9af7';
+  const green = g('--green') || '#9ece6a';
+  const red = g('--red') || '#f7768e';
+  const yellow = g('--yellow') || '#e0af68';
+  const cyan = g('--cyan') || '#7dcfff';
+  const fg2 = g('--fg2') || '#9aa0c3';
+
+  const themeName = (root.dataset.theme || body.dataset.theme || '').toLowerCase();
+  const isLight = g('color-scheme') === 'light' || themeName === 'light' || themeName === 'catppuccin-latte' || themeName === 'nord-light';
+
   return {
-    background: g('--bg'), foreground: g('--fg'), cursor: g('--accent'),
-    cursorAccent: g('--bg'), selectionBackground: g('--accent') + '44',
-    black: '#000000', red: g('--red'), green: g('--green'), yellow: g('--yellow'),
-    blue: g('--accent'), magenta: g('--accent2'), cyan: g('--cyan'), white: g('--fg'),
-    brightBlack: g('--fg2'), brightRed: g('--red'), brightGreen: g('--green'),
-    brightYellow: g('--yellow'), brightBlue: g('--accent'), brightMagenta: g('--accent2'),
-    brightCyan: g('--cyan'), brightWhite: '#ffffff'
+    background: bg,
+    foreground: fg,
+    cursor: accent,
+    cursorAccent: bg,
+    selectionBackground: accent + '44',
+    black: isLight ? '#1f1f30' : '#000000',
+    red: red,
+    green: green,
+    yellow: yellow,
+    blue: accent,
+    magenta: accent2,
+    cyan: cyan,
+    white: fg,
+    brightBlack: fg2,
+    brightRed: red,
+    brightGreen: green,
+    brightYellow: yellow,
+    brightBlue: accent,
+    brightMagenta: accent2,
+    brightCyan: cyan,
+    brightWhite: isLight ? fg : '#ffffff'
   };
 }
 
 function getXtermSelectionTheme() {
-  const s = getComputedStyle(document.body || document.documentElement);
-  const g = v => s.getPropertyValue(v).trim();
+  const root = document.documentElement || document.body;
+  const body = document.body || document.documentElement;
+  const s = getComputedStyle(root);
+  const sBody = getComputedStyle(body);
+  const g = v => (s.getPropertyValue(v) || sBody.getPropertyValue(v) || '').trim();
   return {
     extension: true,
-    foreground: g('--bg'),
-    background: g('--accent') + '44'
+    foreground: g('--bg') || '#1a1b26',
+    background: (g('--accent') || '#7aa2f7') + '44'
   };
 }
 // ═══════════════════════════════════════════════════════
@@ -1200,21 +1509,139 @@ function cleanupScrollHandlers() {
   _scrollHandlers = [];
 }
 
+function getTermCellFromTouch(tab, clientX, clientY) {
+  const term = tab?.term;
+  if (!term || !term.element) return null;
+  const metrics = xtermCellMetrics(term);
+  const cellW = metrics?.actualCellWidth || (term.element.clientWidth / Math.max(1, term.cols || 80));
+  const cellH = metrics?.actualCellHeight || xtermCharHeight(term, tab.wrapper) || 16;
+  const rect = term.element.getBoundingClientRect();
+  const col = Math.max(0, Math.min((term.cols || 80) - 1, Math.floor((clientX - rect.left) / Math.max(1, cellW))));
+  const row = Math.max(0, Math.min((term.rows || 24) - 1, Math.floor((clientY - rect.top) / Math.max(1, cellH))));
+  const bufRow = term.buffer.active.viewportY + row;
+  return { col, row, bufRow, cellW, cellH, rect };
+}
+
+function selectWordAtCell(tab, cellInfo) {
+  if (!tab?.term || !cellInfo) return false;
+  const term = tab.term;
+  const line = term.buffer.active.getLine(cellInfo.bufRow);
+  if (!line) return false;
+  const str = line.translateToString(true);
+  if (!str) return false;
+
+  const col = cellInfo.col;
+  if (col >= str.length) {
+    if (str.trim().length > 0) {
+      term.select(0, cellInfo.bufRow, str.length);
+      return true;
+    }
+    return false;
+  }
+
+  const isWordChar = c => /[a-zA-Z0-9_\-\/\.:@~]/.test(c);
+  let start = col;
+  let end = col;
+
+  if (isWordChar(str[col])) {
+    while (start > 0 && isWordChar(str[start - 1])) start--;
+    while (end < str.length - 1 && isWordChar(str[end + 1])) end++;
+  } else {
+    while (start > 0 && !isWordChar(str[start - 1]) && str[start - 1] !== ' ') start--;
+    while (end < str.length - 1 && !isWordChar(str[end + 1]) && str[end + 1] !== ' ') end++;
+  }
+
+  const len = Math.max(1, (end - start) + 1);
+  term.select(start, cellInfo.bufRow, len);
+  return true;
+}
+
+function showTermSelectionBar(clientX, clientY) {
+  const bar = document.getElementById('term-selection-bar');
+  if (!bar) return;
+  const tab = getActiveTab();
+  if (!tab?.term?.hasSelection()) {
+    bar.style.display = 'none';
+    return;
+  }
+  bar.style.display = 'flex';
+  const vv = window.visualViewport;
+  const vpWidth = vv ? vv.width : window.innerWidth;
+  const vpHeight = vv ? vv.height : window.innerHeight;
+  const vpOffsetLeft = vv ? vv.offsetLeft : 0;
+  const vpOffsetTop = vv ? vv.offsetTop : 0;
+
+  const barW = bar.offsetWidth || 180;
+  const barH = bar.offsetHeight || 36;
+  let left = (clientX || (vpOffsetLeft + vpWidth / 2)) - (barW / 2);
+  let top = (clientY || (vpOffsetTop + vpHeight / 2)) - barH - 16;
+
+  left = Math.max(vpOffsetLeft + 8, Math.min(vpOffsetLeft + vpWidth - barW - 8, left));
+  top = Math.max(vpOffsetTop + 48, Math.min(vpOffsetTop + vpHeight - barH - 60, top));
+
+  bar.style.left = left + 'px';
+  bar.style.top = top + 'px';
+}
+
+function hideTermSelectionBar() {
+  const bar = document.getElementById('term-selection-bar');
+  if (bar) bar.style.display = 'none';
+}
+
+function clearTermSelection() {
+  const tab = getActiveTab();
+  if (tab?.term) tab.term.clearSelection();
+  hideTermSelectionBar();
+}
+
 function copyTermSelection() {
   const tab = getActiveTab();
   if (!tab?.term) return;
-  const sel = tab.term.getSelection();
+  let sel = tab.term.getSelection();
   if (sel) {
+    sel = sel.split('\n').map(l => l.replace(/[ \t]+$/, '')).join('\n');
     navigator.clipboard.writeText(sel).then(() => {
-      toast('Copied to clipboard', 'success');
+      toast('Copied to clipboard', 'success', { log: false });
     }).catch(() => {
-      toast('Copy failed', 'error');
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = sel;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        toast('Copied to clipboard', 'success', { log: false });
+      } catch {
+        toast('Copy failed', 'error', { log: false });
+      }
     });
     tab.term.clearSelection();
+    hideTermSelectionBar();
   } else {
-    toast('No text selected', 'info');
+    toast('No text selected', 'info', { log: false });
   }
 }
+
+// Clean trailing grid padding from terminal selections on standard copy
+document.addEventListener('copy', e => {
+  const tab = getActiveTab();
+  if (tab?.term?.hasSelection()) {
+    const isTerm = e.target?.closest?.('.xterm, #terminals, .term-wrapper') ||
+                   document.activeElement?.closest?.('.xterm, #terminals, .term-wrapper');
+    if (isTerm) {
+      let sel = tab.term.getSelection();
+      if (sel) {
+        sel = sel.split('\n').map(l => l.replace(/[ \t]+$/, '')).join('\n');
+        if (e.clipboardData) {
+          e.clipboardData.setData('text/plain', sel);
+          e.preventDefault();
+        }
+      }
+    }
+  }
+});
 
 let _pasteInput = null;
 
@@ -1287,7 +1714,8 @@ function selectAllTerm() {
     tab.term.focus();
     tab.term.selectAll();
     if (restore && ta) ta.disabled = true;
-    toast('All text selected', 'success');
+    showTermSelectionBar(window.innerWidth / 2, window.innerHeight / 2);
+    toast('All text selected', 'success', { log: false });
   }
 }
 
@@ -1297,7 +1725,8 @@ function selectTermLine() {
   const buf = tab.term.buffer.active;
   const cursorY = buf.baseY + buf.cursorY;
   tab.term.selectLines(cursorY, cursorY);
-  toast('Line selected', 'success');
+  showTermSelectionBar(window.innerWidth / 2, window.innerHeight / 2);
+  toast('Line selected', 'success', { log: false });
 }
 
 function termScrollUp() {
@@ -1334,6 +1763,17 @@ function setupVisualViewport() {
         // Samsung Internet: innerHeight resizes, not visualViewport. Use layout viewport height via window.innerHeight vs vvH
         // On iOS, keyboard shows as vvH < innerHeight. On Samsung, opposite. Take max diff and ignore when scaled (pinch zoom).
         if (vvScale !== 1) return; // ignore pinch-zoom (U61, U65)
+
+        // Verify if a text input or terminal textarea currently holds focus
+        const active = document.activeElement;
+        const isInputFocused = !!(active && (
+          active.tagName === 'INPUT' ||
+          active.tagName === 'TEXTAREA' ||
+          active.isContentEditable ||
+          active.classList.contains('xterm-helper-textarea') ||
+          (typeof active.closest === 'function' && active.closest('.xterm'))
+        ));
+
         const diff = vvH - window.innerHeight;
         const absDiff = Math.abs(diff);
         // Fallback: visualViewport offsetTop > 10 means the visual viewport panned
@@ -1342,46 +1782,77 @@ function setupVisualViewport() {
         // Height the keyboard actually covers.
         //  iOS keeps the layout viewport and shrinks the visual one → innerHeight - vvH.
         //  Android/Samsung shrink innerHeight too → ≈0, and nothing needs compensating.
-        // Using absDiff alone was wrong on the offsetTop path: it added a handful of
-        // pixels of margin where hundreds of pixels were covered.
         const covered = Math.max(0, window.innerHeight - vvH - offsetTop);
-        const isKeyboard = absDiff > 50 && diff < 0;
-        const keyboardOpen = isKeyboard || offsetTop > 10 || covered > 50;
+        const isKeyboard = absDiff > 80 && diff < 0;
+        // Keyboard is only considered open when an actual input element has focus
+        const keyboardOpen = isInputFocused && (covered > 100 || offsetTop > 10 || isKeyboard);
         // Never reserve more than 60% of the viewport — a bogus metric must not
         // collapse the terminal to nothing.
-        const keyboardMargin = Math.min(covered, Math.round(window.innerHeight * 0.6));
+        const keyboardMargin = keyboardOpen ? Math.min(covered, Math.round(window.innerHeight * 0.6)) : 0;
         const mobileKeys = document.getElementById('mobile-keys');
         const selRow = document.getElementById('mkey-sel-row');
         const terminals = document.getElementById('terminals');
+        const editorView = document.getElementById('editor-view');
+        const splitArea = document.getElementById('editor-split-area');
         if (!terminals) return;
         if (keyboardOpen) {
           terminals.style.marginBottom = keyboardMargin + 'px';
-          if (mobileKeys) mobileKeys.style.display = 'none';
-          const ctrlRow = document.getElementById('mkey-ctrl-row');
-          if (ctrlRow && ctrlRow.style.display === 'flex') ctrlRow.dataset.wasOpen = '1';
-          if (ctrlRow) ctrlRow.style.display = 'none';
-          if (selRow && selRow.style.display === 'flex') selRow.dataset.wasOpen = '1';
-          if (selRow) selRow.style.display = 'none';
-        } else {
-          terminals.style.marginBottom = '0';
+          if (editorView) editorView.style.marginBottom = keyboardMargin + 'px';
+          if (splitArea) splitArea.style.marginBottom = keyboardMargin + 'px';
+          // Dock mobile key bar above software keyboard so ESC/TAB/arrows remain accessible
           if (mobileKeys && window.innerWidth <= 768 && settings.mobilekeys !== false) {
             mobileKeys.style.display = 'flex';
+            mobileKeys.classList.add('keyboard-docked');
+            mobileKeys.style.bottom = keyboardMargin + 'px';
           }
-          if (window.innerWidth <= 768 && settings.mobilekeys !== false) {
-            const ctrlRow = document.getElementById('mkey-ctrl-row');
-            if (ctrlRow && ctrlRow.dataset.wasOpen === '1') {
-              ctrlRow.style.display = 'flex';
-              delete ctrlRow.dataset.wasOpen;
+          const ctrlRow = document.getElementById('mkey-ctrl-row');
+          if (ctrlRow && ctrlRow.style.display === 'flex') {
+            ctrlRow.classList.add('keyboard-docked');
+            ctrlRow.style.bottom = (keyboardMargin + (mobileKeys?.offsetHeight || 38)) + 'px';
+          }
+          const mnav = document.getElementById('mobile-nav-bar');
+          if (mnav) mnav.style.display = 'none';
+        } else {
+          terminals.style.marginBottom = '0';
+          if (editorView) editorView.style.marginBottom = '0';
+          if (splitArea) splitArea.style.marginBottom = '0';
+          if (mobileKeys) {
+            mobileKeys.classList.remove('keyboard-docked');
+            mobileKeys.style.bottom = '';
+            if (window.innerWidth <= 768 && settings.mobilekeys !== false) {
+              mobileKeys.style.display = 'flex';
             }
           }
+          const ctrlRow = document.getElementById('mkey-ctrl-row');
+          if (ctrlRow) {
+            ctrlRow.classList.remove('keyboard-docked');
+            ctrlRow.style.bottom = '';
+          }
+          const mnav = document.getElementById('mobile-nav-bar');
+          if (mnav && window.innerWidth <= 768) mnav.style.display = 'flex';
           if (selRow && window.innerWidth <= 768) {
-            if (selRow.dataset.wasOpen === '1') {
-              selRow.style.display = 'flex';
-              delete selRow.dataset.wasOpen;
-            } else {
-              selRow.style.display = termSelectMode ? 'flex' : 'none';
-            }
+            selRow.style.display = termSelectMode ? 'flex' : 'none';
           }
+        }
+        // Debounce terminal fit so we don't spam SIGWINCH during keyboard animation
+        const activeTab = typeof getActiveTab === 'function' ? getActiveTab() : null;
+        if (activeTab?.type === 'term') {
+          setTimeout(() => { try { fitTerm(activeTab); } catch {} }, 160);
+        } else if (activeTab?.type === 'file' && activeTab?.cm) {
+          setTimeout(() => {
+            try {
+              activeTab.cm.refresh();
+              activeTab.cm.scrollIntoView(activeTab.cm.getCursor());
+            } catch {}
+          }, 160);
+        }
+        if (typeof editorCM !== 'undefined' && editorCM) {
+          setTimeout(() => {
+            try {
+              editorCM.refresh();
+              editorCM.scrollIntoView(editorCM.getCursor());
+            } catch {}
+          }, 160);
         }
       }, 100);
     };
@@ -1397,8 +1868,6 @@ function setupVisualViewport() {
 function setupMobileKeys() {
   const mk = document.getElementById('mobile-keys');
   const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-  // core.js defaults mobilekeys to false, so `=== undefined` never fires.
-  // Auto-enable on touch devices only when the user never chose (no stored key).
   try {
     const raw = safeStorage.getItem('wt-settings');
     const stored = raw ? JSON.parse(raw) : null;
@@ -1416,4 +1885,66 @@ function setupMobileKeys() {
   const ctrlBtn = document.getElementById('ctrl-toggle-btn');
   if (ctrlBtn) ctrlBtn.style.background = '';
   shiftLatch = false; altLatch = false; updateModifierButtons();
+}
+
+// ═══════════════════════════════════════════════════════
+// MOBILE ACTIONS & BOTTOM NAVIGATION CONTROLS
+// ═══════════════════════════════════════════════════════
+function toggleMobileKeyboard() {
+  triggerHaptic('light');
+  const tab = typeof getActiveTab === 'function' ? getActiveTab() : null;
+  if (!tab || tab.type !== 'term' || !tab.term) {
+    toast('Select a terminal tab to type', 'info');
+    return;
+  }
+  const ta = tab.term.textarea;
+  if (!ta) return;
+  if (document.activeElement === ta) {
+    hideMobileKeyboard();
+  } else {
+    ta.focus({ preventScroll: true });
+    const mk = document.getElementById('mobile-keys');
+    if (mk) mk.style.display = 'flex';
+  }
+}
+
+function hideMobileKeyboard() {
+  triggerHaptic('light');
+  _keyboardDismissedAt = Date.now();
+  const active = document.activeElement;
+  if (active && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT')) {
+    try { active.blur(); } catch {}
+  }
+  const tab = typeof getActiveTab === 'function' ? getActiveTab() : null;
+  if (tab?.term?.textarea) {
+    try { tab.term.textarea.blur(); } catch {}
+  }
+  try {
+    document.querySelectorAll('.xterm-helper-textarea, .xterm textarea, textarea, input').forEach(el => {
+      try { el.blur(); } catch {}
+    });
+  } catch {}
+  const terminals = document.getElementById('terminals');
+  if (terminals) terminals.style.marginBottom = '0';
+  const editorView = document.getElementById('editor-view');
+  if (editorView) editorView.style.marginBottom = '0';
+  const splitArea = document.getElementById('editor-split-area');
+  if (splitArea) splitArea.style.marginBottom = '0';
+  const mk = document.getElementById('mobile-keys');
+  if (mk) {
+    mk.classList.remove('keyboard-docked');
+    mk.style.bottom = '';
+  }
+  const ctrlRow = document.getElementById('mkey-ctrl-row');
+  if (ctrlRow) {
+    ctrlRow.classList.remove('keyboard-docked');
+    ctrlRow.style.bottom = '';
+  }
+  const mnav = document.getElementById('mobile-nav-bar');
+  if (mnav && window.innerWidth <= 768) mnav.style.display = 'flex';
+}
+
+function handleMobileNewAction() {
+  triggerHaptic('medium');
+  if (typeof newTab === 'function') newTab();
 }
