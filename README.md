@@ -111,6 +111,7 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 - On-demand key-only credentials for Termius, VS Code Remote-SSH, plain `ssh`/`rsync`/`sftp` — nothing created until you ask (header SSH button → Generate, after enabling SSH once in Settings → Features)
 - ed25519 per device, private key shown once and never stored; per-key revoke; requires PIN protection
 - Same user as your web terminals, so files and permissions match; host fingerprints + LAN/Tailscale addresses shown for first-connect verification
+- SSH provisioning needs a Pro or Team license once billing is configured on the server (Settings → Security → License); the terminal itself is never gated
 
 ### System Stats
 - CPU, Memory, Disk, Uptime — real-time with progress bars
@@ -163,6 +164,11 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 | `ALLOWED_ORIGINS` | Extra WebSocket origins (comma-separated) when served from another hostname | same-origin only |
 | `PREVIEW_PORTS` | Allow-list of ports the app preview may proxy (comma-separated) | any port except WebTun's own |
 | `SSH_PORT` | Expected SSH port shown in Settings → SSH Access | `2222` |
+| `WEBTUN_LICENSE_PUBLIC_KEY` | PEM public key that activates license caps (Free 2 tunnels / 3 devices) and Pro/Team keys | unset (caps dormant) |
+| `LICENSE_PRIVATE_KEY` | PEM private key for minting keys via webhook or `scripts/mint-license.js` (signer only, never on the server) | none |
+| `STRIPE_SECRET_KEY` | Enables `POST /api/billing/checkout` (Checkout Sessions via Stripe API) | none |
+| `STRIPE_WEBHOOK_SECRET` | Verifies `POST /api/billing/webhook` signatures (HMAC, no Stripe SDK) | none |
+| `STRIPE_PRICE_PRO_MONTHLY` / `_YEARLY`, `STRIPE_PRICE_TEAM_MONTHLY` / `_YEARLY` | Price ids used by checkout per plan and term | none |
 
 ---
 
@@ -367,8 +373,8 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 ## License
 
 - Versions up to and including **v1.5.6**: MIT License.
-- **v1.5.7 and later**: [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) — free for noncommercial use (personal, research, education, charities, government). **Commercial use is not allowed** without permission.
-- For a commercial license, contact [ptelgm.yt@gmail.com](mailto:ptelgm.yt@gmail.com). See [LICENSE](LICENSE).
+- **v1.5.7 and later**: [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) — free for noncommercial use (personal, research, education, charities, government).
+- **Commercial use** needs a Pro or Team key: **Community** (free, noncommercial, 2 tunnels, 3 devices), **Pro** ($12/server/month, unlimited tunnels, SSH keys), **Team** ($19/admin/month, up to 10 admins, audit export). Keys work offline — paste one in Settings → Security → License. See `/docs` → Plans & license. For manual invoicing instead of self-serve checkout, contact [ptelgm.yt@gmail.com](mailto:ptelgm.yt@gmail.com). See [LICENSE](LICENSE).
 
 ---
 

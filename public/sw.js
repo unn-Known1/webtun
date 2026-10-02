@@ -1,4 +1,4 @@
-const CACHE = 'webtun-v32';
+const CACHE = 'webtun-v33';
 const PRECACHE = [
   '/',
   '/index.html',
@@ -27,6 +27,7 @@ const PRECACHE = [
   '/js/misc.js',
   '/js/theme-init.js',
   '/docs.html',
+  '/billing-success.html',
   '/manifest.json',
   '/commands.js',
   '/favicon.png',
