@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebTun Pro — your license key</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #0d1117; color: #e6edf3; display: flex; justify-content: center; padding: 40px 16px; margin: 0; }
+  .card { max-width: 560px; width: 100%; background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 24px; }
+  h1 { font-size: 20px; margin: 0 0 8px; }
+  p { color: #8b949e; font-size: 14px; }
+  #key { font-family: monospace; font-size: 12px; word-break: break-all; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 12px; margin: 12px 0; }
+  button { background: #238636; color: #fff; border: 0; border-radius: 6px; padding: 10px 16px; font-size: 14px; cursor: pointer; }
+  button:hover { background: #2ea043; }
+  ol { font-size: 14px; color: #c9d1d9; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Payment received</h1>
+  <p id="status">Fetching your license key…</p>
+  <div id="key" style="display:none"></div>
+  <div style="display:flex;gap:8px">
+    <button id="copy" style="display:none">Copy key</button>
+    <button id="retry" style="display:none;background:#1f6feb">Retry</button>
+  </div>
+  <ol>
+    <li>Copy the key above (save it with your receipts).</li>
+    <li>Open WebTun → Settings → Security → License.</li>
+    <li>Paste the key and press Activate.</li>
+  </ol>
+  <p>Keys work offline. Expiry gives a 7 day grace period — the terminal itself is never locked.</p>
+</div>
+<script>
+(function () {
+  var sid = new URLSearchParams(location.search).get('session') || '';
+  var status = document.getElementById('status');
+  var keyEl = document.getElementById('key');
+  var copyBtn = document.getElementById('copy');
+  var retryBtn = document.getElementById('retry');
+  var tries = 0;
+  function fetchKey() {
+    tries++;
+    fetch('/api/billing/claim?session=' + encodeURIComponent(sid))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.key) {
+          status.textContent = 'Your ' + (d.plan || 'pro') + ' key is ready.';
+          keyEl.textContent = d.key;
+          keyEl.style.display = 'block';
+          copyBtn.style.display = 'inline-block';
+        } else if (tries < 6) {
+          status.textContent = 'Waiting for payment confirmation… (' + tries + '/6)';
+          setTimeout(fetchKey, 5000);
+        } else {
+          status.textContent = 'Still processing — the key will also work when claimed later from this page.';
+          retryBtn.style.display = 'inline-block';
+        }
+      })
+      .catch(function () {
+        if (tries < 6) setTimeout(fetchKey, 5000);
+        else { status.textContent = 'Network error.'; retryBtn.style.display = 'inline-block'; }
+      });
+  }
+  if (!sid) { status.textContent = 'Missing checkout session.'; return; }
+  copyBtn.onclick = function () {
+    var t = keyEl.textContent || '';
+    if (navigator.clipboard) navigator.clipboard.writeText(t).then(function () { copyBtn.textContent = 'Copied'; });
+  };
+  retryBtn.onclick = function () { tries = 0; retryBtn.style.display = 'none'; fetchKey(); };
+  fetchKey();
+})();
+</script>
+</body>
+</html>

@@ -433,6 +433,7 @@ footer a{color:var(--mut)}
       <a href="#remote"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>Remote access</a>
       <a href="#ssh"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="7" width="20" height="10" rx="2"/><path d="M6 11h.01M10 11h.01M14 11h.01M18 11h.01M7 14h10"/></svg>SSH access</a>
       <a href="#security"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Sessions &amp; security</a>
+      <a href="#license"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Plans &amp; license</a>
       <div class="grp">Fine print</div>
       <a href="#personalize"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Make it yours</a>
       <a href="#apps"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg>Mobile &amp; desktop</a>
@@ -756,6 +757,22 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
           <li><b>Rate-limited auth</b> slows brute-force guessing, and destructive actions like remote shutdown require PIN protection to be on.</li>
         </ul>
         <div class="call info rv"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" style="stroke:var(--tl)" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><p><b>Trusted devices</b> remember you via a session token in the browser. Use them on personal machines; approve-and-forget on shared ones.</p></div>
+      </section>
+
+      <!-- ── LICENSE ── -->
+      <section id="license" data-title="Plans license Pro Team pricing key activate billing upgrade free limits">
+        <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--gn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+          <div><h2>Plans &amp; license <a class="hash" href="#license" aria-label="Link to this section">#</a></h2></div>
+        </div>
+        <p class="sec-sub rv">Free covers homelab life. <b>Pro and Team</b> pay for commercial use — and the keys work offline.</p>
+        <ul class="tight rv">
+          <li><b>Community (free):</b> noncommercial use, 2 concurrent tunnels, 3 trusted devices, 200 history entries. File tabs stay at 10 on every plan.</li>
+          <li><b>Pro ($12/server/month, $115/year):</b> commercial use, unlimited tunnels, 5 devices, SSH keys for Termius and VS Code, 1,000 history entries.</li>
+          <li><b>Team ($19/admin/month, $182/year, 3 minimum):</b> everything in Pro for up to 10 admins, shared libraries, audit export, policy UI.</li>
+          <li><b>Activate in Settings → Security → License.</b> Paste the key once — the server checks its signature locally and stores it at 0600. No account, no call home per request.</li>
+          <li><b>Expiry is gentle.</b> Paid keys get a 7 day grace period with a banner; afterwards SSH provisioning and extra tunnels pause. The local terminal never locks.</li>
+          <li><b>Current installs are grandfathered.</b> Caps only switch on once billing is configured on the server, and existing boxes keep current behavior for 6 months with 60 days notice before any cap.</li>
+        </ul>
       </section>
 
       <!-- ── PERSONALIZE ── -->

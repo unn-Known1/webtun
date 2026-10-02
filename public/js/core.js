@@ -650,7 +650,15 @@ async function api(url, opts = {}) {
       showPinScreen();
       return { error: 'Unauthorized' };
     }
-    if (!r.ok) { try { return await r.json(); } catch { return { error: 'Request failed (' + r.status + ')' }; } }
+    if (!r.ok) { try {
+      const body = await r.json();
+      // Paid gates answer 402 with { upgrade: true } — nudge once, the
+      // caller still gets the error object for its own handling.
+      if (r.status === 402 && body && body.upgrade) {
+        try { toast((body.error || 'Needs a Pro license') + ' (Settings → Security)', 'warning'); } catch {}
+      }
+      return body;
+    } catch { return { error: 'Request failed (' + r.status + ')' }; } }
     try { return await r.json(); } catch(e) { console.warn('api() JSON parse error:', e); return {}; }
   } catch(e) {
     clearTimeout(timeoutId);

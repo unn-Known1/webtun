@@ -4,6 +4,8 @@
   "ignore": [
     ".tunnels.json",
     ".cmdhist.json",
+    "license.json",
+    "pending-licenses.json",
     "tunnel-url.txt",
     "webtun.pid",
     "*.log",

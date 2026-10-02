@@ -828,7 +828,9 @@ async function confirmClearCmdHist() {
   if (ok) clearCmdHist();
 }
 async function updateHistMax(val) {
-  cmdHistMax = Math.max(10, Math.min(500, val || 50));
+  // Client allows up to 5000; the server clamps to the license plan
+  // (Free 200, Pro 1000, Team 5000, legacy 500) and tells the truth back.
+  cmdHistMax = Math.max(10, Math.min(5000, val || 50));
   // Max-only update: no cmd key at all, so a blind-append server can never
   // store a blank row (the old {cmd:''} polluted history).
   return _histEnqueue(async () => {

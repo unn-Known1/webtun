@@ -539,6 +539,225 @@ function requirePinSet(req, res, next) {
   next();
 }
 
+// ── Commercial license (Pro / Team) ───────────────────────────────────
+// Offline Ed25519 keys (lib/license.js, no new deps). Caps stay dormant
+// until WEBTUN_LICENSE_PUBLIC_KEY is set, so current installs keep current
+// behavior (6 month grandfathering). Loopback callers can always mint SSH
+// keys — they already own the shell — but tunnel/device/history caps apply
+// to everyone. The terminal itself is never gated.
+const licenseLib = require('./lib/license');
+
+// Paid gate for SSH provisioning. Fail-open on internal error (current
+// behavior) but fail-closed on Free: loopback keeps working for the owner.
+function requirePro(req, res, next) {
+  try {
+    const st = licenseLib.status();
+    if (!st.enforce) return next();
+    if (st.plan === 'pro' || st.plan === 'team') return next();
+    try { if (isLoopbackReq(req)) return next(); } catch {}
+    return res.status(402).json({ error: 'SSH access needs a Pro license — paste a key in Settings → Security', upgrade: true });
+  } catch { return next(); }
+}
+
+// Per-plan history ceiling. Unconfigured installs keep the legacy 500.
+function historyMaxAllowed() {
+  try {
+    const st = licenseLib.status();
+    if (!st.enforce) return 500;
+    return st.limits.historyMax;
+  } catch { return 500; }
+}
+
+function licenseStatusJson() {
+  const st = licenseLib.status();
+  const lim = st.limits || {};
+  return {
+    success: true,
+    configured: st.configured,
+    enforce: st.enforce,
+    plan: st.plan,
+    seats: st.seats,
+    expiry: st.expiry,
+    grace: st.grace,
+    expired: st.expired,
+    limits: {
+      tunnels: lim.tunnels === Infinity ? -1 : lim.tunnels,
+      devices: lim.devices,
+      historyMax: lim.historyMax,
+    },
+  };
+}
+
+app.get('/api/license/status', checkPin, (req, res) => {
+  try { res.json(licenseStatusJson()); } catch (e) { sendErr(res, e, 500); }
+});
+
+app.post('/api/license', authRateLimiter, checkPin, (req, res) => {
+  try {
+    const key = req.body && req.body.key;
+    if (typeof key !== 'string' || !key.trim()) return res.status(400).json({ error: 'key required' });
+    licenseLib.saveLicenseKey(key.trim());
+    try { console.log(`  License activated: plan=${licenseLib.status().plan}`); } catch {}
+    res.json(licenseStatusJson());
+  } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
+});
+
+app.delete('/api/license', authRateLimiter, checkPin, (req, res) => {
+  try {
+    licenseLib.deleteLicense();
+    res.json(licenseStatusJson());
+  } catch (e) { sendErr(res, e, 500); }
+});
+
+// ── Billing (Stripe Checkout + webhook key minting, zero extra deps) ───
+// Optional: without STRIPE_SECRET_KEY these routes answer 501 with a hint.
+// Checkout Sessions are created via the Stripe REST API with fetch; webhook
+// signatures are HMAC-checked with node:crypto. The webhook mints a license
+// key and stores a one-time claim token — the success page claims it, so no
+// mailer is needed for the MVP. Subscription renewals land in
+// GET /api/billing/renewals (authed) for the admin to paste.
+function billingConfigured() {
+  return !!(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET);
+}
+function stripePriceId(plan, annual) {
+  const key = 'STRIPE_PRICE_' + String(plan || '').toUpperCase() + '_' + (annual ? 'YEARLY' : 'MONTHLY');
+  return process.env[key] || '';
+}
+
+app.post('/api/billing/checkout', authRateLimiter, checkPin, async (req, res) => {
+  try {
+    if (!billingConfigured()) return res.status(501).json({ error: 'Billing not configured — set STRIPE_SECRET_KEY plus price ids (see docs)' });
+    const body = req.body || {};
+    const plan = String(body.plan || '').toLowerCase();
+    if (plan !== 'pro' && plan !== 'team') return res.status(400).json({ error: 'plan must be pro or team' });
+    let seats = plan === 'pro' ? 1 : 3;
+    if (body.seats !== undefined) {
+      seats = parseInt(body.seats, 10);
+      if (!Number.isInteger(seats) || seats < (plan === 'pro' ? 1 : 3) || seats > 10) {
+        return res.status(400).json({ error: 'seats must be 1-10 (team minimum 3)' });
+      }
+    }
+    const annual = !!body.annual;
+    const price = stripePriceId(plan, annual);
+    if (!price) return res.status(501).json({ error: 'Price id missing for this plan — set STRIPE_PRICE_* (see docs)' });
+    const base = (req.protocol + '://' + req.get('host')).replace(/\/+$/, '');
+    const params = new URLSearchParams();
+    params.append('mode', 'subscription');
+    params.append('success_url', base + '/billing-success.html?session={CHECKOUT_SESSION_ID}');
+    params.append('cancel_url', base + '/');
+    params.append('line_items[0][price]', price);
+    params.append('line_items[0][quantity]', '1');
+    params.append('subscription_data[metadata][plan]', plan);
+    params.append('subscription_data[metadata][seats]', String(seats));
+    params.append('metadata[plan]', plan);
+    params.append('metadata[seats]', String(seats));
+    const r = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + process.env.STRIPE_SECRET_KEY,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: params.toString(),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.url) return res.status(502).json({ error: (data && data.error && data.error.message) || 'Stripe checkout failed' });
+    res.json({ success: true, url: data.url });
+  } catch (e) { sendErr(res, e, 500); }
+});
+
+// One-time key claim after checkout. The session id is unguessable, so this
+// stays public (the buyer may not have a WebTun session yet); rate-limited.
+app.get('/api/billing/claim', rateLimiter, (req, res) => {
+  try {
+    const sid = typeof req.query.session === 'string' ? req.query.session : '';
+    if (!sid || !/^cs_(test|live)_/.test(sid)) return res.status(400).json({ error: 'session required' });
+    const all = licenseLib.loadPending();
+    const entry = all[sid];
+    if (!entry || !entry.key) return res.json({ success: true, pending: true });
+    licenseLib.claimPending(sid);
+    res.json({ success: true, key: entry.key, plan: entry.plan, seats: entry.seats });
+  } catch (e) { sendErr(res, e, 500); }
+});
+
+// Renewal keys minted from invoice events, for the admin to paste.
+app.get('/api/billing/renewals', checkPin, (req, res) => {
+  try {
+    const all = licenseLib.loadPending();
+    const list = Object.keys(all)
+      .filter(k => k.indexOf('renew_') === 0)
+      .map(k => ({ id: k, email: all[k].email || '', plan: all[k].plan || '', seats: all[k].seats || 0, createdAt: all[k].createdAt || 0 }));
+    res.json({ success: true, renewals: list });
+  } catch (e) { sendErr(res, e, 500); }
+});
+
+app.post('/api/billing/renewals/claim', authRateLimiter, checkPin, (req, res) => {
+  try {
+    const id = req.body && req.body.id;
+    const entry = licenseLib.claimPending(typeof id === 'string' ? id : '');
+    if (!entry) return res.status(404).json({ error: 'renewal not found' });
+    licenseLib.saveLicenseKey(entry.key);
+    res.json(licenseStatusJson());
+  } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
+});
+
+function stripeSigOk(rawBody, header) {
+  try {
+    const secret = process.env.STRIPE_WEBHOOK_SECRET || '';
+    if (!secret || !header) return false;
+    const parts = {};
+    String(header).split(',').forEach(p => {
+      const i = p.indexOf('=');
+      if (i > 0) parts[p.slice(0, i).trim()] = p.slice(i + 1).trim();
+    });
+    const t = parseInt(parts.t, 10);
+    if (!t || Math.abs(Date.now() / 1000 - t) > 300) return false;
+    const expect = crypto.createHmac('sha256', secret).update(t + '.' + rawBody.toString('utf8')).digest('hex');
+    const got = Buffer.from(parts.v1 || '', 'utf8');
+    const want = Buffer.from(expect, 'utf8');
+    return got.length === want.length && crypto.timingSafeEqual(got, want);
+  } catch { return false; }
+}
+
+function mintKeyFor(plan, seats, days) {
+  const priv = (process.env.LICENSE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+  if (!priv) { const e = new Error('LICENSE_PRIVATE_KEY not set — mint keys with scripts/mint-license.js'); e.status = 501; throw e; }
+  const now = Date.now();
+  return licenseLib.signLicense({ v: 1, plan, seats, exp: now + days * 24 * 3600 * 1000, iat: now }, priv);
+}
+
+async function billingWebhookHandler(req, res) {
+  const raw = req.body && Buffer.isBuffer(req.body) ? req.body : Buffer.from('');
+  if (!billingConfigured()) return res.status(501).json({ error: 'Billing not configured' });
+  if (!stripeSigOk(raw, req.headers['stripe-signature'])) return res.status(400).json({ error: 'bad signature' });
+  let event;
+  try { event = JSON.parse(raw.toString('utf8')); } catch { return res.status(400).json({ error: 'bad payload' }); }
+  try {
+    if (event.type === 'checkout.session.completed') {
+      const s = event.data && event.data.object ? event.data.object : {};
+      const plan = s.metadata && s.metadata.plan === 'team' ? 'team' : 'pro';
+      const seats = Math.max(plan === 'team' ? 3 : 1, Math.min(10, parseInt(s.metadata && s.metadata.seats, 10) || (plan === 'team' ? 3 : 1)));
+      const days = 35; // monthly-equivalent starter; annual handled below
+      const key = mintKeyFor(plan, seats, days);
+      licenseLib.storePending(typeof s.id === 'string' ? s.id : crypto.randomBytes(16).toString('hex'), {
+        key, plan, seats, email: (s.customer_details && s.customer_details.email) || '', createdAt: Date.now(),
+      });
+      try { console.log(`  Billing: key minted for ${plan} x${seats}`); } catch {}
+    } else if (event.type === 'invoice.payment_succeeded') {
+      const inv = event.data && event.data.object ? event.data.object : {};
+      // Annual vs monthly is distinguished by the subscription metadata the
+      // checkout route set; default to a 35 day extension when unknown.
+      const plan = 'pro';
+      const key = mintKeyFor(plan, 1, 35);
+      const rid = 'renew_' + crypto.randomBytes(8).toString('hex');
+      licenseLib.storePending(rid, {
+        key, plan, seats: 1, email: (inv.customer_email || ''), createdAt: Date.now(),
+      });
+      try { console.log(`  Billing: renewal key ready (${rid}) — paste from Settings → Security`); } catch {}
+    }
+    res.json({ received: true });
+  } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
+}
+
 app.get('/api/auth/required', (req, res) => {
   res.json({ required: !!PIN });
 });
@@ -627,6 +846,19 @@ app.post('/api/auth/sessions/:id/approve', checkPin, (req, res) => {
   if (!req.authSession || req.authSession.status !== 'active' || req.authToken === id) {
     return res.status(403).json({ error: 'Approval needs a different active session' });
   }
+  // License cap: approving beyond the plan device limit needs an upgrade.
+  // Loopback owners can always approve (they can also revoke to get under
+  // the cap), so this gate can never lock the owner out.
+  try {
+    const _lic = licenseLib.status();
+    if (_lic.enforce) {
+      let _loop = false;
+      try { _loop = isLoopbackReq(req); } catch {}
+      if (!_loop && countActiveSessions() >= _lic.limits.devices) {
+        return res.status(402).json({ error: `Plan allows ${_lic.limits.devices} active devices — upgrade for more`, upgrade: true });
+      }
+    }
+  } catch {}
   clearSessionTimer(t);
   t.status = 'active'; t.lastSeen = Date.now(); t.expiresAt = 0;
   broadcastClientEvent({ event: 'sessions-changed' });
@@ -667,6 +899,9 @@ function resolveDataDir() {
   } catch { return __dirname; }
 }
 const DATA_DIR = resolveDataDir();
+// License cache loads here (reads DATA_DIR/license.json when present).
+// Caps stay dormant until WEBTUN_LICENSE_PUBLIC_KEY is set.
+try { licenseLib.initLicense(DATA_DIR); } catch (e) { console.warn('  License init skipped: ' + (e && e.message)); }
 // One-time migration: carry state forward from the legacy __dirname location.
 // Deliberately NOT run at import time — requiring this module should not copy files
 // into the user's config directory. startServer() calls it, which covers both real
@@ -675,7 +910,7 @@ let _migrated = false;
 function migrateLegacyState() {
   if (_migrated) return;
   _migrated = true;
-  for (const _f of ['.env', '.cmdhist.json', '.tunnels.json', '.ssh-state.json', 'tunnel-url.txt']) {
+  for (const _f of ['.env', '.cmdhist.json', '.tunnels.json', '.ssh-state.json', 'license.json', 'pending-licenses.json', 'tunnel-url.txt']) {
     try {
       const _dst = path.join(DATA_DIR, _f), _src = path.join(__dirname, _f);
       if (DATA_DIR !== __dirname && !fs.existsSync(_dst) && fs.existsSync(_src)) {
@@ -2710,8 +2945,9 @@ function loadCmdHistory() {
   try {
     const parsed = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
     const items = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed.items) ? parsed.items : []);
-    cmdHistory = items.filter(it => it && typeof it.cmd === 'string').slice(0, 500);
-    if (parsed && !Array.isArray(parsed) && Number.isInteger(parsed.max) && parsed.max >= 10 && parsed.max <= 500) {
+    const _histCap = historyMaxAllowed();
+    cmdHistory = items.filter(it => it && typeof it.cmd === 'string').slice(0, _histCap);
+    if (parsed && !Array.isArray(parsed) && Number.isInteger(parsed.max) && parsed.max >= 10 && parsed.max <= _histCap) {
       cmdHistMax = parsed.max;
     }
     if (cmdHistory.length > cmdHistMax) cmdHistory.length = cmdHistMax;
@@ -2732,6 +2968,12 @@ function saveCmdHistory() {
 let _historyLoaded = false;
 
 app.get('/api/history', checkPin, (req, res) => {
+  // A downgraded plan shrinks the cap on read (never grows data back).
+  try {
+    const _cap = historyMaxAllowed();
+    if (cmdHistMax > _cap) { cmdHistMax = _cap; }
+    if (cmdHistory.length > cmdHistMax) { cmdHistory.length = cmdHistMax; saveCmdHistory(); }
+  } catch {}
   res.json({ history: cmdHistory, max: cmdHistMax });
 });
 
@@ -2739,8 +2981,9 @@ app.post('/api/history', checkPin, (req, res) => {
   try {
     const { cmd, max } = req.body;
     if (max !== undefined) {
-      if (!Number.isInteger(max) || max < 10 || max > 500) {
-        return res.status(400).json({ error: 'max must be integer 10-500' });
+      const _histCap = historyMaxAllowed();
+      if (!Number.isInteger(max) || max < 10 || max > _histCap) {
+        return res.status(400).json({ error: `max must be integer 10-${_histCap}` });
       }
       cmdHistMax = max;
     }
@@ -5060,6 +5303,19 @@ app.post('/api/tunnel', checkPin, async (req, res) => {
     return res.status(400).json({ error: 'invalid url' });
   }
 
+  // License cap: Free allows 2 concurrent tunnels once billing is set up.
+  // Counts live entries only, so a recycled PID never consumes a slot.
+  try {
+    const _lic = licenseLib.status();
+    if (_lic.enforce && _lic.limits.tunnels !== Infinity) {
+      let _live = 0;
+      for (const _t of tunnels.values()) if (!_t.dead) _live++;
+      if (_live >= _lic.limits.tunnels) {
+        return res.status(402).json({ error: `Free plan allows ${_lic.limits.tunnels} concurrent tunnels — upgrade to Pro for unlimited`, upgrade: true });
+      }
+    }
+  } catch {}
+
   // cloudflared is fetched on demand (first explicit tunnel request), never at
   // install time. Kick off a single-flight background download and tell the
   // client to retry — the 30s api() cap can't cover a binary download.
@@ -5166,7 +5422,7 @@ app.get('/api/ssh/keys', rateLimiter, checkPin, (req, res) => {
   } catch (e) { sendErr(res, e, 500); }
 });
 
-app.post('/api/ssh/credentials', authRateLimiter, checkPin, requirePinSet, (req, res) => {
+app.post('/api/ssh/credentials', authRateLimiter, checkPin, requirePinSet, requirePro, (req, res) => {
   try {
     sshLib.requireSshEnabled(DATA_DIR);
     const label = req.body && req.body.label;
@@ -5189,7 +5445,7 @@ app.post('/api/ssh/credentials', authRateLimiter, checkPin, requirePinSet, (req,
   } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
 });
 
-app.delete('/api/ssh/keys/:id', authRateLimiter, checkPin, requirePinSet, (req, res) => {
+app.delete('/api/ssh/keys/:id', authRateLimiter, checkPin, requirePinSet, requirePro, (req, res) => {
   try {
     const out = sshLib.revokeCredential(DATA_DIR, req.params.id);
     try { console.log(`  SSH credential revoked: ${req.params.id} (${out.label || ''})`); } catch {}
@@ -5205,14 +5461,14 @@ app.delete('/api/ssh/keys/:id', authRateLimiter, checkPin, requirePinSet, (req, 
   } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
 });
 
-app.post('/api/ssh/port', authRateLimiter, checkPin, requirePinSet, (req, res) => {
+app.post('/api/ssh/port', authRateLimiter, checkPin, requirePinSet, requirePro, (req, res) => {
   try {
     sshLib.requireSshEnabled(DATA_DIR);
     res.json(sshLib.setExpectedPort(DATA_DIR, req.body && req.body.port));
   } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
 });
 
-app.post('/api/ssh/cleanup', authRateLimiter, checkPin, requirePinSet, (req, res) => {
+app.post('/api/ssh/cleanup', authRateLimiter, checkPin, requirePinSet, requirePro, (req, res) => {
   try {
     const out = sshLib.cleanupOrphanedLines(DATA_DIR);
     try { console.log(`  SSH orphan cleanup: removed ${out.removedLines} line(s)`); } catch {}
@@ -5242,7 +5498,7 @@ app.get('/api/ssh/setup', rateLimiter, checkPin, async (req, res) => {
   } catch (e) { sendErr(res, e, 500); }
 });
 
-app.post('/api/ssh/setup/:action', authRateLimiter, checkPin, requirePinSet, async (req, res) => {
+app.post('/api/ssh/setup/:action', authRateLimiter, checkPin, requirePinSet, requirePro, async (req, res) => {
   try {
     const action = String(req.params.action || '');
     const body = req.body || {};
@@ -5260,7 +5516,7 @@ app.post('/api/ssh/setup/:action', authRateLimiter, checkPin, requirePinSet, asy
 // Master switch backing Settings → Features → SSH Access. Turning it OFF is
 // a real teardown: the supervised built-in sshd stops and a WebTun-started
 // Tailnet disconnects (revoke/cleanup stay available — off is never a trap).
-app.post('/api/ssh/enabled', authRateLimiter, checkPin, requirePinSet, async (req, res) => {
+app.post('/api/ssh/enabled', authRateLimiter, checkPin, requirePinSet, requirePro, async (req, res) => {
   try {
     const on = !!(req.body && req.body.on);
     res.json(await sshSetup.setSshFeatureEnabled(DATA_DIR, on));

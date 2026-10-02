@@ -601,6 +601,22 @@
           </div>
           <div style="font-size:11px;color:var(--fg3);margin-top:6px">Applies instantly. Saved to <span style="font-family:var(--font)">.env</span> so it survives restarts.</div>
           <div class="setting-row" style="margin-top:10px">
+            <label>License <span id="lic-plan" style="color:var(--fg3)"></span></label>
+            <button class="btn btn-ghost" onclick="refreshLicense()" title="Refresh license status" aria-label="Refresh license status" style="height:26px;padding:0 10px;font-size:11px">Refresh</button>
+          </div>
+          <div id="lic-status" style="font-size:12px;color:var(--fg2);margin:2px 0 6px">Free plan — community use.</div>
+          <div class="setting-row">
+            <label for="lic-key">Key</label>
+            <input type="text" id="lic-key" autocomplete="off" spellcheck="false" placeholder="wt1.… (Pro or Team)" oninput="clearFieldError('lic-field-error')" style="font-family:var(--font)">
+          </div>
+          <div class="field-error" id="lic-field-error" role="alert"></div>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <button class="btn btn-primary" id="lic-save-btn" onclick="saveLicenseKey()" style="flex:1">Activate</button>
+            <button class="btn btn-ghost" onclick="removeLicenseKey()" style="flex:1">Remove</button>
+            <button class="btn btn-ghost" onclick="startCheckout('pro')" style="flex:1" title="Buy Pro">Upgrade</button>
+          </div>
+          <div style="font-size:11px;color:var(--fg3);margin-top:6px">Keys work offline. Expiry gives a 7 day grace — the terminal itself is never locked.</div>
+          <div class="setting-row" style="margin-top:10px">
             <label>Active sessions <span id="sess-count" style="color:var(--fg3)"></span></label>
             <button class="btn btn-ghost" onclick="refreshSessions()" title="Refresh session list" aria-label="Refresh session list" style="height:26px;padding:0 10px;font-size:11px">Refresh</button>
           </div>

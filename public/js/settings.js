@@ -213,6 +213,7 @@ function openSettings() {
     setupSettingsSections();
     updateSecurityUI();
     try { refreshSessions(); } catch {}
+    try { refreshLicense(); } catch {}
     // Tunnel ids change on auto-restart and dead rows otherwise linger until
     // reload — resync every time the panel opens, like sessions above.
     try { restoreTunnels(); } catch {}

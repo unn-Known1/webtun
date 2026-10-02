@@ -522,3 +522,64 @@ function copyText(text) {
     toast('Copy failed', 'error');
   });
 }
+// ── License (Pro / Team commercial keys) ──
+async function refreshLicense() {
+  const planEl = document.getElementById('lic-plan');
+  const statusEl = document.getElementById('lic-status');
+  if (!planEl || !statusEl) return;
+  let r;
+  try { r = await api('/api/license/status'); } catch { return; }
+  if (!r || r.error) { statusEl.textContent = 'License status unavailable.'; return; }
+  const plan = r.plan || 'free';
+  const exp = r.expiry ? new Date(r.expiry).toLocaleDateString() : '';
+  planEl.textContent = plan === 'free' ? '— Free' : '— ' + plan.charAt(0).toUpperCase() + plan.slice(1);
+  if (!r.enforce) {
+    statusEl.textContent = plan === 'free'
+      ? 'Free plan — community use.'
+      : 'Active (' + plan + (exp ? ', renews ' + exp : '') + ').';
+  } else if (plan === 'free') {
+    statusEl.textContent = r.expired
+      ? 'Expired — Free limits apply (2 tunnels, 3 devices). Renew to lift them.'
+      : 'Free plan — 2 tunnels, 3 devices, 200 history. Pro lifts all three.';
+  } else if (r.grace) {
+    statusEl.textContent = 'Active (' + plan + ') — grace until ' + exp + '. Renew soon.';
+    try { statusEl.style.color = 'var(--amber, #e5a50a)'; } catch {}
+  } else {
+    try { statusEl.style.color = ''; } catch {}
+    statusEl.textContent = 'Active (' + plan + (exp ? ', renews ' + exp : '') + ').';
+  }
+}
+async function saveLicenseKey() {
+  const input = document.getElementById('lic-key');
+  const btn = document.getElementById('lic-save-btn');
+  const key = input ? input.value.trim() : '';
+  if (!key) { showFieldError('lic-field-error', 'Paste a license key first'); return; }
+  try { if (typeof setBtnBusy === 'function') setBtnBusy(btn, true); } catch {}
+  const r = await api('/api/license', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key }) });
+  try { if (typeof setBtnBusy === 'function') setBtnBusy(btn, false); } catch {}
+  if (r && !r.error) {
+    clearFieldError('lic-field-error');
+    if (input) input.value = '';
+    toast('License activated (' + (r.plan || 'paid') + ')', 'success');
+    refreshLicense();
+  } else {
+    showFieldError('lic-field-error', (r && r.error) || 'Invalid key');
+  }
+}
+async function removeLicenseKey() {
+  let ok = true;
+  try {
+    if (typeof confirmDialog === 'function') {
+      ok = await confirmDialog({ title: 'Remove license?', message: 'This server returns to Free limits (2 tunnels, 3 devices). Continue?', okText: 'Remove license', danger: true });
+    }
+  } catch { ok = true; }
+  if (!ok) return;
+  const r = await api('/api/license', { method: 'DELETE' });
+  if (r && !r.error) { toast('License removed — Free plan', 'info'); refreshLicense(); }
+  else toast((r && r.error) || 'Failed to remove license', 'error');
+}
+async function startCheckout(plan) {
+  const r = await api('/api/billing/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plan: plan || 'pro' }) });
+  if (r && r.url) { window.open(r.url, '_blank', 'noopener'); }
+  else toast((r && r.error) || 'Checkout unavailable', 'error');
+}
