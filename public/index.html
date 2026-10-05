@@ -100,6 +100,12 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path class="steam s1" d="M7.5 8.5c-1.2-1.4 1.2-2.2 0-3.6"/><path class="steam s2" d="M11.5 8.5c-1.2-1.4 1.2-2.2 0-3.6"/><path class="steam s3" d="M15.5 8.5c-1.2-1.4 1.2-2.2 0-3.6"/><path d="M4 10.5h13V16a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4v-5.5z"/><path d="M17 11.5h1.5a2.5 2.5 0 0 1 0 5H17"/><text id="sess-cup-num" x="10" y="17" text-anchor="middle" font-size="7.5" font-weight="700" fill="var(--accent)" stroke="none" style="display:none"></text></svg>
       </span>
     </label>
+    <button class="icon-btn mobile-only-btn" id="mobile-search-btn" aria-label="Find in terminal" title="Find in terminal" onclick="toggleTermSearch()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </button>
+    <button class="icon-btn mobile-only-btn" id="mobile-cmd-btn" aria-label="Snippets & Commands" title="Snippets & Commands" onclick="toggleCmdLib()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+    </button>
     <button class="icon-btn" id="transfers-btn" aria-label="Transfers" title="Transfers — uploads, downloads, copy/move" aria-haspopup="dialog" aria-expanded="false" onclick="toggleTransfersPanel(event)" style="display:none">
       <svg class="tx-arrows" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="tx-up" d="M7 3v9"/><path class="tx-up" d="m4 6 3-3 3 3"/><path class="tx-down" d="M17 21v-9"/><path class="tx-down" d="m14 18 3 3 3-3"/><circle class="tx-pkt tx-p1" cx="7" cy="13" r="1.7" fill="currentColor" stroke="none"/><circle class="tx-pkt tx-p2" cx="17" cy="11" r="1.7" fill="currentColor" stroke="none"/></svg>
       <span id="transfers-count" aria-hidden="true">0</span>
@@ -321,6 +327,16 @@
           <div id="tab-list-items" role="group"></div>
         </div>
       </div>
+      <!-- In-Terminal Quick Search & Zoom HUD (Termius-grade) -->
+      <div id="term-search-bar" class="term-search-bar" style="display:none" role="search" aria-label="Terminal search">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="term-search-input" type="text" placeholder="Find in buffer…" autocomplete="off" spellcheck="false" aria-label="Search terminal buffer">
+        <span id="term-search-count" class="term-search-count"></span>
+        <button class="icon-btn" id="term-search-prev" onclick="findTermPrev()" title="Previous match" aria-label="Previous match"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="18 15 12 9 6 15"/></svg></button>
+        <button class="icon-btn" id="term-search-next" onclick="findTermNext()" title="Next match" aria-label="Next match"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 9 12 15 18 9"/></svg></button>
+        <button class="icon-btn" id="term-search-close" onclick="closeTermSearch()" title="Close search" aria-label="Close search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <div id="term-zoom-hud" class="term-zoom-hud" aria-hidden="true" style="display:none">14px</div>
       <div id="editor-split-area">
         <div id="terminals">
           <div id="launchpad" aria-hidden="true">
@@ -480,45 +496,56 @@
 
       <!-- Mobile key bar -->
       <div id="mobile-keys">
-        <button class="mkey sel-toggle" onclick="toggleTermSelect()" title="Toggle selection mode" id="sel-toggle-btn" aria-label="Toggle selection mode"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="5" width="14" height="14" rx="2"/><line x1="5" y1="12" x2="19" y2="12"/><line x1="12" y1="5" x2="12" y2="19"/></svg></button>
-        <span class="mkey-sep"></span>
-        <button class="mkey" onclick="sendKey('\x1b')" title="Escape">ESC</button>
-        <span class="mkey-sep"></span>
-        <button class="mkey" onclick="sendKey('\t')" title="Tab">TAB</button>
-        <span class="mkey-sep"></span>
-        <button class="mkey" onclick="sendKey('\x1b[A')" title="Arrow Up"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg></button>
-        <button class="mkey" onclick="sendKey('\x1b[B')" title="Arrow Down"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></button>
-        <button class="mkey" onclick="sendKey('\x1b[D')" title="Arrow Left"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>
-        <button class="mkey" onclick="sendKey('\x1b[C')" title="Arrow Right"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>
-        <span class="mkey-sep"></span>
-        <button class="mkey" onclick="sendKey('\x01')" title="Ctrl+A (Home)">^A</button>
-        <button class="mkey" onclick="sendKey('\x03')" title="Ctrl+C (Interrupt)">^C</button>
-        <button class="mkey" onclick="sendKey('\x04')" title="Ctrl+D (EOF)">^D</button>
-        <button class="mkey" onclick="sendKey('\x1a')" title="Ctrl+Z (Suspend)">^Z</button>
-        <button class="mkey" onclick="sendKey('\x0c')" title="Ctrl+L (Clear)">^L</button>
-        <span class="mkey-sep"></span>
-        <button class="mkey wide" onclick="sendKey('\x1b[3~')" title="Delete">DEL</button>
-        <button class="mkey" onclick="sendKey('\x7f')" title="Backspace"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 5H9l-7 7 7 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1Z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg></button>
-        <span class="mkey-sep"></span>
-        <button class="mkey" onclick="sendKey('|')" title="Pipe">|</button>
-        <button class="mkey" onclick="sendKey('/')" title="Slash">/</button>
-        <button class="mkey" onclick="sendKey('-')" title="Dash">-</button>
-        <button class="mkey" onclick="sendKey('~')" title="Tilde">~</button>
-        <span class="mkey-sep"></span>
-        <button class="mkey" onclick="sendKey('\x1b[H')" title="Home">Home</button>
-        <button class="mkey" onclick="sendKey('\x1b[F')" title="End">End</button>
-        <button class="mkey" onclick="sendKey('\x1b[5~')" title="Page Up">PgUp</button>
-        <button class="mkey" onclick="sendKey('\x1b[6~')" title="Page Down">PgDn</button>
-        <span class="mkey-sep"></span>
-        <button class="mkey" onclick="sendKey('\x1bOQ')" title="F2">F2</button>
-        <button class="mkey" onclick="sendKey('\x1b[15~')" title="F5">F5</button>
-        <span class="mkey-sep"></span>
-        <button class="mkey" onclick="toggleShift()" title="Toggle Shift (latches for next key)" id="shift-toggle-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6h6"/><path d="M12 18V9"/><path d="m6 12 6-6 6 6"/></svg></button>
-        <button class="mkey" onclick="toggleAlt()" title="Toggle Alt (latches for next key)" id="alt-toggle-btn">Alt</button>
-        <span class="mkey-sep"></span>
-        <button class="mkey" onclick="toggleCtrlRow()" title="Toggle Ctrl keys" id="ctrl-toggle-btn">Ctrl</button>
-        <span class="mkey-sep"></span>
-        <button class="mkey mkey-hide-kb" onclick="hideMobileKeyboard()" title="Hide Keyboard" aria-label="Hide Keyboard"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg> <span>Hide</span></button>
+        <div id="mkey-scroll">
+          <button class="mkey mkey-esc" onclick="sendKey('\x1b')" title="Escape" aria-label="Escape">ESC</button>
+          <button class="mkey mkey-tab" onclick="sendKey('\t')" title="Tab" aria-label="Tab">TAB</button>
+          <span class="mkey-sep"></span>
+          <button class="mkey mkey-mod" onclick="toggleCtrl()" title="Ctrl modifier (latches, double-tap for row)" id="ctrl-toggle-btn" aria-label="Control modifier">CTRL</button>
+          <button class="mkey mkey-mod" onclick="toggleAlt()" title="Alt modifier (latches)" id="alt-toggle-btn" aria-label="Alt modifier">ALT</button>
+          <button class="mkey mkey-mod" onclick="toggleShift()" title="Shift modifier (latches)" id="shift-toggle-btn" aria-label="Shift modifier"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 6h6"/><path d="M12 18V9"/><path d="m6 12 6-6 6 6"/></svg></button>
+          <span class="mkey-sep"></span>
+          <div class="mkey-group mkey-arrows">
+            <button class="mkey mkey-arrow" onclick="sendKey('\x1b[A')" title="Arrow Up" aria-label="Arrow Up"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg></button>
+            <button class="mkey mkey-arrow" onclick="sendKey('\x1b[B')" title="Arrow Down" aria-label="Arrow Down"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></button>
+            <button class="mkey mkey-arrow" onclick="sendKey('\x1b[D')" title="Arrow Left" aria-label="Arrow Left"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg></button>
+            <button class="mkey mkey-arrow" onclick="sendKey('\x1b[C')" title="Arrow Right" aria-label="Arrow Right"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></button>
+          </div>
+          <span class="mkey-sep"></span>
+          <button class="mkey mkey-snippets" onclick="toggleCmdLib()" title="Snippets & Commands" aria-label="Snippets & Commands">⚡ Snippets</button>
+          <span class="mkey-sep"></span>
+          <button class="mkey mkey-sigint" onclick="sendKey('\x03')" title="Ctrl+C (Interrupt)" aria-label="Interrupt">^C</button>
+          <button class="mkey" onclick="sendKey('\x04')" title="Ctrl+D (EOF)" aria-label="EOF">^D</button>
+          <button class="mkey" onclick="sendKey('\x1a')" title="Ctrl+Z (Suspend)" aria-label="Suspend">^Z</button>
+          <button class="mkey" onclick="sendKey('\x0c')" title="Ctrl+L (Clear screen)" aria-label="Clear screen">^L</button>
+          <button class="mkey" onclick="sendKey('\x12')" title="Ctrl+R (Reverse search)" aria-label="Reverse search">^R</button>
+          <span class="mkey-sep"></span>
+          <button class="mkey mkey-sym" onclick="sendKey('/')" title="Slash">/</button>
+          <button class="mkey mkey-sym" onclick="sendKey('-')" title="Dash">-</button>
+          <button class="mkey mkey-sym" onclick="sendKey('~')" title="Tilde">~</button>
+          <button class="mkey mkey-sym" onclick="sendKey('|')" title="Pipe">|</button>
+          <button class="mkey mkey-sym" onclick="sendKey('_')" title="Underscore">_</button>
+          <button class="mkey mkey-sym" onclick="sendKey('$')" title="Dollar">$</button>
+          <button class="mkey mkey-sym" onclick="sendKey(':')" title="Colon">:</button>
+          <button class="mkey mkey-sym" onclick="sendKey(';')" title="Semicolon">;</button>
+          <button class="mkey mkey-sym" onclick="sendKey('\\')" title="Backslash">\</button>
+          <button class="mkey mkey-sym" onclick="sendKey('.')" title="Dot">.</button>
+          <button class="mkey mkey-sym" onclick="sendKey('&quot;')" title="Quote">"</button>
+          <button class="mkey mkey-sym" onclick="sendKey('\'')" title="Single quote">'</button>
+          <button class="mkey mkey-sym" onclick="sendKey('`')" title="Backtick">`</button>
+          <button class="mkey mkey-sym" onclick="sendKey('=')" title="Equals">=</button>
+          <span class="mkey-sep"></span>
+          <button class="mkey" onclick="sendKey('\x1b[H')" title="Home">Home</button>
+          <button class="mkey" onclick="sendKey('\x1b[F')" title="End">End</button>
+          <button class="mkey" onclick="sendKey('\x1b[5~')" title="Page Up">PgUp</button>
+          <button class="mkey" onclick="sendKey('\x1b[6~')" title="Page Down">PgDn</button>
+          <span class="mkey-sep"></span>
+          <button class="mkey" onclick="sendKey('\x1b[3~')" title="Delete">DEL</button>
+          <button class="mkey" onclick="sendKey('\x7f')" title="Backspace"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 5H9l-7 7 7 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1Z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg></button>
+          <span class="mkey-sep"></span>
+          <button class="mkey sel-toggle" onclick="toggleTermSelect()" title="Toggle selection mode" id="sel-toggle-btn" aria-label="Toggle selection mode"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="5" width="14" height="14" rx="2"/><line x1="5" y1="12" x2="19" y2="12"/><line x1="12" y1="5" x2="12" y2="19"/></svg> Sel</button>
+          <button class="mkey" onclick="toggleCtrlRow()" title="All Ctrl shortcuts" aria-label="All Ctrl shortcuts">^Row</button>
+        </div>
+        <button class="mkey mkey-hide-kb" onclick="hideMobileKeyboard()" title="Hide Keyboard" aria-label="Hide Keyboard" id="mkey-hide-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="6 9 12 15 18 9"/></svg><span>Hide</span></button>
       </div>
       <div id="mkey-ctrl-row">
         <button class="mkey" onclick="sendKey('\x01')" title="Ctrl+A (Start of line)">^A</button>
@@ -793,11 +820,11 @@
 
   <!-- Mobile Bottom Navigation Bar -->
   <nav id="mobile-nav-bar" role="navigation" aria-label="Mobile Navigation">
-    <button id="mnav-explorer" class="mnav-btn" onclick="toggleSidebar()" aria-label="Files">
+    <button id="mnav-explorer" class="mnav-btn" onclick="triggerHaptic('light');toggleSidebar()" aria-label="Files">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
       <span>Files</span>
     </button>
-    <button id="mnav-tabs" class="mnav-btn" onclick="toggleTabListMenu(event)" aria-label="Tabs">
+    <button id="mnav-tabs" class="mnav-btn" onclick="triggerHaptic('light');toggleTabListMenu(event)" aria-label="Tabs">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
       <span>Tabs</span>
       <span id="mnav-tab-badge">1</span>
@@ -809,7 +836,7 @@
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="10" y2="8"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="14" y1="8" x2="18" y2="8"/><line x1="14" y1="12" x2="18" y2="12"/><line x1="8" y1="16" x2="16" y2="16"/></svg>
       <span>Input</span>
     </button>
-    <button id="mnav-more" class="mnav-btn" onclick="toggleMoreMenu(event)" aria-label="More Options">
+    <button id="mnav-more" class="mnav-btn" onclick="triggerHaptic('light');toggleMoreMenu(event)" aria-label="More Options">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="12" r="1.5"/></svg>
       <span>More</span>
     </button>
@@ -928,6 +955,7 @@
   <div class="ctx-item" id="tab-ctx-close" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Close Tab <span class="ctx-hint">Ctrl+W</span></div>
   <div class="ctx-item" id="tab-ctx-close-others" role="menuitem"> Close Other Tabs</div>
   <div class="ctx-item" id="tab-ctx-close-right" role="menuitem"> Close Tabs to the Right</div>
+  <div class="ctx-item sheet-cancel-item" onclick="hideAllCtxMenus()" role="menuitem" style="display:none">Cancel</div>
 </div>
 
 <!-- New-tab menu (right-click the + button or empty tab bar) -->

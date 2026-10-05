@@ -67,6 +67,28 @@ function connectWebSocket(tab, isReconnect = false) {
       trackTermKeystrokes(tab, data);
       return;
     }
+    // Modifier latches for mobile keyboard (Termius-grade touch interaction)
+    if (typeof ctrlLatch !== 'undefined' && ctrlLatch && typeof data === 'string' && data.length === 1) {
+      const code = data.toLowerCase().charCodeAt(0);
+      if (code >= 97 && code <= 122) { // a-z -> 0x01..0x1a
+        data = String.fromCharCode(code - 96);
+      } else if (data === '[') {
+        data = '\x1b';
+      } else if (data === '\\') {
+        data = '\x1c';
+      }
+      ctrlLatch = false;
+      if (typeof updateModifierButtons === 'function') updateModifierButtons();
+    } else if (typeof altLatch !== 'undefined' && altLatch && typeof data === 'string' && data.length === 1 && data.charCodeAt(0) >= 0x20) {
+      data = '\x1b' + data;
+      altLatch = false;
+      if (typeof updateModifierButtons === 'function') updateModifierButtons();
+    } else if (typeof shiftLatch !== 'undefined' && shiftLatch && typeof data === 'string' && data.length === 1 && data >= 'a' && data <= 'z') {
+      data = data.toUpperCase();
+      shiftLatch = false;
+      if (typeof updateModifierButtons === 'function') updateModifierButtons();
+    }
+
     // On Enter, capture the command for history
     for (let i = 0; i < data.length; i++) {
       const ch = data.charCodeAt(i);
@@ -838,8 +860,32 @@ function initTerminal(tab) {
   let _touchAccumY = 0;
   let _lastTouchY = 0;
   let _lastTouchX = 0;
+  let _pinchStartDist = 0;
+  let _pinchStartFontSize = 14;
+  let _pinchHudTimer = null;
+
+  function showZoomHud(size) {
+    const hud = document.getElementById('term-zoom-hud');
+    if (!hud) return;
+    hud.textContent = size + 'px';
+    hud.style.display = 'block';
+    hud.classList.add('visible');
+    clearTimeout(_pinchHudTimer);
+    _pinchHudTimer = setTimeout(() => {
+      hud.classList.remove('visible');
+      setTimeout(() => { hud.style.display = 'none'; }, 250);
+    }, 1200);
+  }
 
   term.element.addEventListener('touchstart', e => {
+    if (e.touches.length === 2) {
+      clearTimeout(_longPressTimer);
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      _pinchStartDist = Math.hypot(dx, dy);
+      _pinchStartFontSize = term.options.fontSize || settings.fontSize || 14;
+      return;
+    }
     if (e.touches.length !== 1) {
       clearTimeout(_longPressTimer);
       return;
@@ -887,6 +933,20 @@ function initTerminal(tab) {
   }, { passive: true });
 
   term.element.addEventListener('touchmove', e => {
+    if (e.touches.length === 2 && _pinchStartDist > 10) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      const scale = dist / _pinchStartDist;
+      const newSize = Math.max(9, Math.min(24, Math.round(_pinchStartFontSize * scale)));
+      if (newSize !== term.options.fontSize) {
+        term.options.fontSize = newSize;
+        showZoomHud(newSize);
+        fitTerm(tab);
+      }
+      return;
+    }
     if (e.touches.length !== 1) return;
     const touch = e.touches[0];
     const totalDx = Math.abs(touch.clientX - (_tapPos ? _tapPos.x : touch.clientX));
@@ -975,6 +1035,14 @@ function initTerminal(tab) {
 
   term.element.addEventListener('touchend', e => {
     clearTimeout(_longPressTimer);
+    if (_pinchStartDist > 0 && e.touches.length < 2) {
+      _pinchStartDist = 0;
+      if (term.options.fontSize) {
+        settings.fontSize = term.options.fontSize;
+        try { saveSettings(); } catch {}
+      }
+      return;
+    }
     if (_isSelectingDrag) {
       _isSelectingDrag = false;
       _selAnchor = null;
@@ -1153,24 +1221,36 @@ function fitTerm(tab) {
 
 let shiftLatch = false;
 let altLatch = false;
+let ctrlLatch = false;
 
 function updateModifierButtons() {
   const sb = document.getElementById('shift-toggle-btn');
   if (sb) sb.classList.toggle('latch-active', shiftLatch);
   const ab = document.getElementById('alt-toggle-btn');
   if (ab) ab.classList.toggle('latch-active', altLatch);
+  const cb = document.getElementById('ctrl-toggle-btn');
+  if (cb) cb.classList.toggle('latch-active', ctrlLatch);
 }
 
 function toggleShift() {
+  triggerHaptic('light');
   shiftLatch = !shiftLatch;
   updateModifierButtons();
-  if (shiftLatch) toast('Shift ON (next key)', 'info');
+  if (shiftLatch) toast('Shift ON (next key)', 'info', { log: false });
 }
 
 function toggleAlt() {
+  triggerHaptic('light');
   altLatch = !altLatch;
   updateModifierButtons();
-  if (altLatch) toast('Alt ON (next key)', 'info');
+  if (altLatch) toast('Alt ON (next key)', 'info', { log: false });
+}
+
+function toggleCtrl() {
+  triggerHaptic('light');
+  ctrlLatch = !ctrlLatch;
+  updateModifierButtons();
+  if (ctrlLatch) toast('Ctrl ON (next key)', 'info', { log: false });
 }
 
 let _keyboardDismissedAt = 0;
@@ -1188,6 +1268,17 @@ function sendKey(key) {
   triggerHaptic('light');
   let modified = key;
   if (key.length === 1) {
+    if (ctrlLatch) {
+      const code = key.toLowerCase().charCodeAt(0);
+      if (code >= 97 && code <= 122) { // a-z -> 0x01..0x1a
+        modified = String.fromCharCode(code - 96);
+      } else if (key === '[') {
+        modified = '\x1b';
+      } else if (key === '\\') {
+        modified = '\x1c';
+      }
+      ctrlLatch = false;
+    }
     if (shiftLatch && modified >= 'a' && modified <= 'z') {
       modified = modified.toUpperCase();
     }
@@ -1200,6 +1291,7 @@ function sendKey(key) {
   } else {
     shiftLatch = false;
     altLatch = false;
+    ctrlLatch = false;
     updateModifierButtons();
   }
   const tab = (typeof getTermCtxTarget === 'function' ? getTermCtxTarget() : null) || getActiveTab();
@@ -1796,9 +1888,10 @@ function setupVisualViewport() {
         const splitArea = document.getElementById('editor-split-area');
         if (!terminals) return;
         if (keyboardOpen) {
-          terminals.style.marginBottom = keyboardMargin + 'px';
-          if (editorView) editorView.style.marginBottom = keyboardMargin + 'px';
-          if (splitArea) splitArea.style.marginBottom = keyboardMargin + 'px';
+          const keysOffset = (mobileKeys && window.innerWidth <= 768 && settings.mobilekeys !== false) ? (mobileKeys.offsetHeight || 44) : 0;
+          terminals.style.marginBottom = (keyboardMargin + keysOffset) + 'px';
+          if (editorView) editorView.style.marginBottom = (keyboardMargin + keysOffset) + 'px';
+          if (splitArea) splitArea.style.marginBottom = (keyboardMargin + keysOffset) + 'px';
           // Dock mobile key bar above software keyboard so ESC/TAB/arrows remain accessible
           if (mobileKeys && window.innerWidth <= 768 && settings.mobilekeys !== false) {
             mobileKeys.style.display = 'flex';
@@ -1808,7 +1901,7 @@ function setupVisualViewport() {
           const ctrlRow = document.getElementById('mkey-ctrl-row');
           if (ctrlRow && ctrlRow.style.display === 'flex') {
             ctrlRow.classList.add('keyboard-docked');
-            ctrlRow.style.bottom = (keyboardMargin + (mobileKeys?.offsetHeight || 38)) + 'px';
+            ctrlRow.style.bottom = (keyboardMargin + (mobileKeys?.offsetHeight || 44)) + 'px';
           }
           const mnav = document.getElementById('mobile-nav-bar');
           if (mnav) mnav.style.display = 'none';
@@ -1911,6 +2004,10 @@ function toggleMobileKeyboard() {
 function hideMobileKeyboard() {
   triggerHaptic('light');
   _keyboardDismissedAt = Date.now();
+  shiftLatch = false;
+  altLatch = false;
+  ctrlLatch = false;
+  if (typeof updateModifierButtons === 'function') updateModifierButtons();
   const active = document.activeElement;
   if (active && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT')) {
     try { active.blur(); } catch {}
@@ -1947,4 +2044,116 @@ function hideMobileKeyboard() {
 function handleMobileNewAction() {
   triggerHaptic('medium');
   if (typeof newTab === 'function') newTab();
+}
+
+// ═══════════════════════════════════════════════════════
+// IN-TERMINAL BUFFER SEARCH (Termius-grade)
+// ═══════════════════════════════════════════════════════
+let _termSearchMatches = [];
+let _termSearchIdx = -1;
+
+function toggleTermSearch() {
+  const bar = document.getElementById('term-search-bar');
+  if (!bar) return;
+  const isOpen = bar.style.display !== 'none';
+  if (isOpen) {
+    closeTermSearch();
+  } else {
+    triggerHaptic('light');
+    bar.style.display = 'flex';
+    const input = document.getElementById('term-search-input');
+    if (input) {
+      input.value = '';
+      setTimeout(() => input.focus(), 60);
+      input.oninput = () => runTermSearch(input.value);
+      input.onkeydown = e => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          if (e.shiftKey) findTermPrev();
+          else findTermNext();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          closeTermSearch();
+        }
+      };
+    }
+  }
+}
+
+function closeTermSearch() {
+  const bar = document.getElementById('term-search-bar');
+  if (bar) bar.style.display = 'none';
+  _termSearchMatches = [];
+  _termSearchIdx = -1;
+  const count = document.getElementById('term-search-count');
+  if (count) count.textContent = '';
+  const tab = typeof getActiveTab === 'function' ? getActiveTab() : null;
+  if (tab?.term) tab.term.clearSelection();
+}
+
+function runTermSearch(query) {
+  const tab = typeof getActiveTab === 'function' ? getActiveTab() : null;
+  const countEl = document.getElementById('term-search-count');
+  if (!tab?.term || !query || query.length === 0) {
+    _termSearchMatches = [];
+    _termSearchIdx = -1;
+    if (countEl) countEl.textContent = '';
+    if (tab?.term) tab.term.clearSelection();
+    return;
+  }
+  const term = tab.term;
+  const buf = term.buffer.active;
+  const totalLines = buf.length;
+  _termSearchMatches = [];
+  const q = query.toLowerCase();
+
+  for (let i = 0; i < totalLines; i++) {
+    const line = buf.getLine(i);
+    if (!line) continue;
+    const str = line.translateToString(true).toLowerCase();
+    let pos = 0;
+    while ((pos = str.indexOf(q, pos)) !== -1) {
+      _termSearchMatches.push({ line: i, col: pos, len: query.length });
+      pos += q.length;
+    }
+  }
+
+  if (_termSearchMatches.length > 0) {
+    _termSearchIdx = 0;
+    highlightTermMatch(_termSearchMatches[0], tab);
+    if (countEl) countEl.textContent = `1/${_termSearchMatches.length}`;
+  } else {
+    _termSearchIdx = -1;
+    if (countEl) countEl.textContent = '0/0';
+    term.clearSelection();
+  }
+}
+
+function highlightTermMatch(match, tab) {
+  if (!match || !tab?.term) return;
+  const term = tab.term;
+  try {
+    term.select(match.col, match.line, match.len);
+    term.scrollToLine(Math.max(0, match.line - Math.floor(term.rows / 2)));
+  } catch {}
+}
+
+function findTermNext() {
+  if (_termSearchMatches.length === 0) return;
+  triggerHaptic('light');
+  _termSearchIdx = (_termSearchIdx + 1) % _termSearchMatches.length;
+  const tab = typeof getActiveTab === 'function' ? getActiveTab() : null;
+  highlightTermMatch(_termSearchMatches[_termSearchIdx], tab);
+  const countEl = document.getElementById('term-search-count');
+  if (countEl) countEl.textContent = `${_termSearchIdx + 1}/${_termSearchMatches.length}`;
+}
+
+function findTermPrev() {
+  if (_termSearchMatches.length === 0) return;
+  triggerHaptic('light');
+  _termSearchIdx = (_termSearchIdx - 1 + _termSearchMatches.length) % _termSearchMatches.length;
+  const tab = typeof getActiveTab === 'function' ? getActiveTab() : null;
+  highlightTermMatch(_termSearchMatches[_termSearchIdx], tab);
+  const countEl = document.getElementById('term-search-count');
+  if (countEl) countEl.textContent = `${_termSearchIdx + 1}/${_termSearchMatches.length}`;
 }
