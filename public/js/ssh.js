@@ -706,6 +706,30 @@ function downloadSshOnceKey() {
   }
 }
 
+function copySshConfigRecipe() {
+  const hosts = _sshStatus ? sshHostChoices(_sshStatus) : [{ value: 'server-ip' }];
+  const user = (_sshStatus && _sshStatus.user) || 'user';
+  const port = sshEffectivePort(_sshStatus);
+  const host = hosts[0] ? hosts[0].value : 'server-ip';
+  const snippet = `Host webtun\n  HostName ${host}\n  Port ${port}\n  User ${user}\n  IdentityFile ~/.ssh/webtun-key\n  IdentitiesOnly yes\n`;
+  copyText(snippet);
+  toast('Copied ~/.ssh/config recipe to clipboard', 'success');
+}
+
+function openSshUri() {
+  const hosts = _sshStatus ? sshHostChoices(_sshStatus) : [{ value: 'server-ip' }];
+  const user = (_sshStatus && _sshStatus.user) || 'user';
+  const port = sshEffectivePort(_sshStatus);
+  const host = hosts[0] ? hosts[0].value : 'server-ip';
+  const uri = `ssh://${encodeURIComponent(user)}@${host}:${port}`;
+  try {
+    window.location.href = uri;
+  } catch {
+    copyText(uri);
+    toast('Copied ' + uri, 'info');
+  }
+}
+
 async function saveSshPort() {
   if (!requireSshEnabled()) return;
   const btn = document.getElementById('ssh-port-btn');

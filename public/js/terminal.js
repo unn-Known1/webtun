@@ -478,6 +478,13 @@ function handleClientEvent(payload) {
       const sp = document.getElementById('settings-panel');
       if (sp && sp.classList.contains('open') && typeof refreshSessions === 'function') refreshSessions();
     } catch {}
+    try {
+      const modal = document.getElementById('term-sessions-overlay');
+      if (modal && modal.classList.contains('open') && typeof refreshTerminalSessionsModal === 'function') refreshTerminalSessionsModal(true);
+    } catch {}
+    try {
+      if (typeof updateLaunchpad === 'function') updateLaunchpad();
+    } catch {}
   }
 }
 
@@ -661,16 +668,22 @@ function initTerminal(tab) {
           return false;
         }
       }
-      if (isCmd && !e.shiftKey && !e.altKey) {
-        if (key === 'b') {
-          if (typeof toggleSidebar === 'function') toggleSidebar();
-          return false;
-        }
-        if (key === 'p') {
-          if (typeof openFinder === 'function') openFinder();
-          return false;
-        }
+      // Quick search via Cmd+K or Ctrl+Shift+P (does not conflict with readline/vim)
+      if ((isCmd && key === 'k') || (isCmd && e.shiftKey && key === 'p')) {
+        if (typeof openFinder === 'function') openFinder();
+        return false;
       }
+      // Ctrl+Shift+W closes the tab while inside terminal (protects plain Ctrl+W for vim/bash)
+      if (isCmd && e.shiftKey && key === 'w') {
+        if (activeTabId && typeof closeTab === 'function') closeTab(e, activeTabId);
+        return false;
+      }
+      // Alt+1..9 for fast tab switching
+      if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && /^[1-9]$/.test(e.key || '')) {
+        return false;
+      }
+      // Note: plain Ctrl+B (tmux prefix), plain Ctrl+P (fzf/history), and plain Ctrl+W
+      // return true to pass directly through to the terminal and running TUI process!
     }
     return true;
   });
@@ -1408,6 +1421,26 @@ function getXtermSelectionTheme() {
 function setupKeyboardShortcuts() {
   document.addEventListener('keydown', e => {
     const ctrl = e.ctrlKey || e.metaKey;
+    const activeEl = document.activeElement;
+
+    // Detect focus contexts:
+    const isTerminalFocused = activeEl && (
+      activeEl.classList?.contains('xterm-helper-textarea') ||
+      activeEl.closest?.('.xterm') ||
+      (activeEl.id && activeEl.id.startsWith('xterm-helper'))
+    );
+    const isExplorerFocused = activeEl && (
+      activeEl.closest?.('#sidebar') ||
+      activeEl.closest?.('#file-list') ||
+      activeEl.id === 'path-input'
+    );
+    const isEditorFocused = activeEl && (
+      activeEl.closest?.('.CodeMirror') ||
+      activeEl.closest?.('#editor-view') ||
+      activeEl.id === 'editor-textarea'
+    );
+
+    // 1. Universal window navigation chords (Active in all contexts):
     // Alt+1..8 jump to tab N, Alt+9 jumps to the last tab (VS Code / Win Terminal).
     if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && /^[1-9]$/.test(e.key || '')) {
       const n = parseInt(e.key, 10);
@@ -1418,27 +1451,88 @@ function setupKeyboardShortcuts() {
       }
       return;
     }
-    // F2 renames the active tab (standard terminal emulator convention).
-    if (e.key === 'F2' && !ctrl && !e.altKey) {
+
+    // Ctrl+Shift+W closes the active tab in ANY context (including terminal):
+    if (ctrl && e.shiftKey && (e.key === 'W' || e.key === 'w')) {
       e.preventDefault();
-      if (typeof triggerTabRename === 'function' && activeTabId) triggerTabRename(activeTabId);
+      if (activeTabId) closeTab(e, activeTabId);
       return;
     }
-    if (ctrl && e.key === 'p') { e.preventDefault(); openFinder(); }
-    if (ctrl && e.shiftKey && (e.key === 'T' || e.key === 't')) { e.preventDefault(); if (typeof reopenLastClosedTab === 'function') reopenLastClosedTab(); return; }
-    if (ctrl && e.shiftKey && (e.key === 'D' || e.key === 'd')) { e.preventDefault(); if (typeof duplicateTab === 'function' && activeTabId) duplicateTab(activeTabId); return; }
-    if (ctrl && e.shiftKey && (e.key === 'P' || e.key === 'p')) { e.preventDefault(); if (typeof togglePinTab === 'function' && activeTabId) togglePinTab(activeTabId); return; }
-    if (ctrl && e.key === 't') { e.preventDefault(); newTab(); }
-    if (ctrl && e.key === 'b') { e.preventDefault(); toggleSidebar(); }
-    if (ctrl && e.key === 'w') { e.preventDefault(); if (activeTabId) closeTab(e, activeTabId); }
-    if (ctrl && e.shiftKey && e.key === 'ArrowRight') { e.preventDefault(); cycleTab(1); }
-    if (ctrl && e.shiftKey && e.key === 'ArrowLeft') { e.preventDefault(); cycleTab(-1); }
-    if (ctrl && e.shiftKey && e.key === 'r') { e.preventDefault(); refreshPreview(); }
-    if (e.key === 'F11' && document.getElementById('editor-view').classList.contains('open')) { e.preventDefault(); toggleEditorFullscreen(); }
+
+    // Ctrl+Shift+T reopens the last closed tab:
+    if (ctrl && e.shiftKey && (e.key === 'T' || e.key === 't')) {
+      e.preventDefault();
+      if (typeof reopenLastClosedTab === 'function') reopenLastClosedTab();
+      return;
+    }
+
+    // Ctrl+Shift+D duplicates the active tab:
+    if (ctrl && e.shiftKey && (e.key === 'D' || e.key === 'd')) {
+      e.preventDefault();
+      if (typeof duplicateTab === 'function' && activeTabId) duplicateTab(activeTabId);
+      return;
+    }
+
+    // Ctrl+Shift+P pins the active tab:
+    if (ctrl && e.shiftKey && (e.key === 'P' || e.key === 'p')) {
+      e.preventDefault();
+      if (typeof togglePinTab === 'function' && activeTabId) togglePinTab(activeTabId);
+      return;
+    }
+
+    // Alt+S or Ctrl+Shift+S lists terminal sessions:
+    if ((e.altKey && !ctrl && (e.key === 's' || e.key === 'S')) || (ctrl && e.shiftKey && (e.key === 'S' || e.key === 's'))) {
+      e.preventDefault();
+      if (typeof openTerminalSessionsModal === 'function') openTerminalSessionsModal();
+      return;
+    }
+
+    // Tab cycling:
+    if (ctrl && e.shiftKey && e.key === 'ArrowRight') { e.preventDefault(); cycleTab(1); return; }
+    if (ctrl && e.shiftKey && e.key === 'ArrowLeft') { e.preventDefault(); cycleTab(-1); return; }
+    if (ctrl && e.shiftKey && (e.key === 'r' || e.key === 'R')) { e.preventDefault(); refreshPreview(); return; }
+
+    // Editor fullscreen:
+    if (e.key === 'F11' && document.getElementById('editor-view')?.classList.contains('open')) {
+      e.preventDefault();
+      toggleEditorFullscreen();
+      return;
+    }
+
+    // Quick search / Command Palette:
+    // Ctrl+K / Cmd+K is universal across all contexts.
+    if (ctrl && !e.shiftKey && (e.key === 'k' || e.key === 'K')) {
+      e.preventDefault();
+      openFinder();
+      return;
+    }
+    // Ctrl+P / Cmd+P is enabled ONLY when NOT in a terminal (in terminal, Ctrl+P is readline / fzf)
+    if (ctrl && !e.shiftKey && (e.key === 'p' || e.key === 'P')) {
+      if (!isTerminalFocused) {
+        e.preventDefault();
+        openFinder();
+        return;
+      }
+      // Inside terminal, let Ctrl+P pass through to bash/fzf
+      return;
+    }
+
+    // F2 Key:
+    if (e.key === 'F2' && !ctrl && !e.altKey) {
+      if (isExplorerFocused) {
+        // Let the file list handler rename the focused file
+        return;
+      }
+      if (typeof triggerTabRename === 'function' && activeTabId) {
+        e.preventDefault();
+        triggerTabRename(activeTabId);
+        return;
+      }
+    }
+
+    // Escape handling for overlays/menus:
     if (e.key === 'Escape') {
-      // Skip if a menu-level handler already consumed the key (TR-09: the
-      // term-ctx keydown closes just the submenu and stops propagation, so
-      // this global handler must not then close the whole menu as well).
+      // Skip if a menu-level handler already consumed the key
       if (e.defaultPrevented) return;
       try {
         const tabMenu = document.getElementById('tab-ctx-menu');
@@ -1451,9 +1545,6 @@ function setupKeyboardShortcuts() {
       } catch {}
       const termMenu = document.getElementById('term-ctx-menu');
       if (termMenu && termMenu.style.display !== 'none') {
-        // TR-09: hierarchical dismissal — an open "More Options" flyout
-        // closes first (covers mouse-opened menus where focus never entered
-        // the menu, so the menu-level keydown never fires).
         try {
           const openSub = termMenu.querySelector('.ctx-submenu-wrap.open');
           if (openSub) {
@@ -1462,17 +1553,19 @@ function setupKeyboardShortcuts() {
             return;
           }
         } catch {}
-        hideTermCtxMenu();
+        if (typeof hideAllCtxMenus === 'function') hideAllCtxMenus();
         return;
       }
-      if (document.getElementById('ctx-menu').classList.contains('open')) {
+      if (document.getElementById('ctx-menu')?.classList.contains('open')) {
         document.getElementById('ctx-menu').classList.remove('open');
         return;
       }
-      if (document.getElementById('cmd-lib-panel').classList.contains('open')) toggleCmdLib();
-      if (document.getElementById('settings-panel').classList.contains('open')) closeSettings();
-      try { const np = document.getElementById('notif-panel'); if (np && np.classList.contains('open')) closeNotifPanel(); } catch {}
+      if (document.getElementById('cmd-lib-panel')?.classList.contains('open')) { toggleCmdLib(); return; }
+      if (document.getElementById('settings-panel')?.classList.contains('open')) { closeSettings(); return; }
+      try { const np = document.getElementById('notif-panel'); if (np && np.classList.contains('open')) { closeNotifPanel(); return; } } catch {}
+      let closedOverlay = false;
       document.querySelectorAll('.overlay.open').forEach(el => {
+        closedOverlay = true;
         const id = el.id;
         if (id === 'sys-overlay') closeSystemStats();
         else if (id === 'finder-overlay') { clearTimeout(finderTimer); closeOverlay(id); }
@@ -1481,7 +1574,24 @@ function setupKeyboardShortcuts() {
         else if (id === 'conflict-overlay') closeOverlay(id);
         else closeOverlay(id);
       });
+      if (closedOverlay) return;
+
+      // If no menus or overlays are open and terminal is focused, Escape passes to PTY/Vim!
+      return;
     }
+
+    // 2. Context-scoped shortcuts:
+    // If TERMINAL IS FOCUSED:
+    // Plain Ctrl+B, Ctrl+W, Ctrl+T, Ctrl+A, Ctrl+E, Ctrl+R, etc. are NOT intercepted.
+    // They pass cleanly to the terminal/TUI app!
+    if (isTerminalFocused) {
+      return;
+    }
+
+    // If OUTSIDE TERMINAL (Explorer, Editor, Launchpad, Window Chrome):
+    if (ctrl && !e.shiftKey && (e.key === 't' || e.key === 'T')) { e.preventDefault(); newTab(); return; }
+    if (ctrl && !e.shiftKey && (e.key === 'b' || e.key === 'B')) { e.preventDefault(); toggleSidebar(); return; }
+    if (ctrl && !e.shiftKey && (e.key === 'w' || e.key === 'W')) { e.preventDefault(); if (activeTabId) closeTab(e, activeTabId); return; }
   });
 }
 

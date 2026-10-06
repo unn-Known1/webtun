@@ -574,7 +574,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
           <li><b>Notification center</b> — every toast is also kept in the bell panel (header, left of Settings) until you clear it: per-item dismiss, swipe-to-dismiss on touch, plus <b>Clear all</b>, newest first, with the badge counting what arrived while it was closed. The log <b>survives reloads</b>, so history from before a refresh is still there. Toasts carry their own <b>× close button</b>, errors stick around longer (and are never pushed out by info bursts), and hovering a toast pauses its auto-dismiss.</li>
           <li><b>Right-click any tab</b> for the full menu: Rename, Duplicate, a 7-color tag (green for the API server, red for prod-ssh…), Pin, Clear Buffer, Restart Session, Close, Close Others, Close Tabs to the Right. Colors and pins survive reloads; pinned tabs keep their titles (with a pin marker and amber underline), group left, are skipped by bulk-close, and ask first before any single close (×, middle-click, <kbd>Ctrl</kbd>+<kbd>W</kbd> included) — pin with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>, and a reopened pinned tab comes back pinned. Right-click the <b>+</b> button (or empty tab-bar space) for New Terminal / Duplicate / New Preview / Tile View.</li>
           <li><b>Background tabs speak up.</b> Output in a tab you're not looking at raises a green activity dot, a terminal bell raises an amber badge, and an exited process dims the tab with a red marker — all cleared the moment you visit. When the strip overflows, arrow buttons scroll it and the <b>⌄ switcher</b> lists every tab with a live filter.</li>
-          <li><b>Sessions survive accidents.</b> Refresh the page, close the laptop, drop Wi-Fi — your shells keep running server-side (via tmux when available) and reattach exactly where you left them.</li>
+          <li><b>Sessions survive accidents.</b> Refresh the page, close the laptop, drop Wi-Fi — your shells keep running server-side (via tmux when available) and reattach exactly where you left them. <b>List &amp; connect to terminal sessions</b> directly from the Launchpad, the <b>Sessions</b> button (<kbd>Alt</kbd>+<kbd>S</kbd>), Quick Search (<kbd>⌘K</kbd>), or the header menu — click any active background session to launch directly into a terminal tab, or terminate unwanted sessions in one click.</li>
           <li><b>Tile view</b> lays every terminal out in a grid at once — and every open code file with it, so you can watch two logs and edit three files in one screen. Find it in the overflow menu when you're juggling.</li>
           <li><b>Search inside output</b> with <kbd>Ctrl</kbd>+<kbd>F</kbd> (match highlighting, optional case-sensitivity), and <b>click file paths &amp; URLs</b> printed by your tools to jump straight there.</li>
           <li><b>Confirm on Close</b> guards tab closes (on by default) — and warns about unsaved editor changes before a tab disappears.</li>
@@ -813,21 +813,25 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
         </div>
         <p class="sec-sub rv">The complete set — also available any time inside the app from the <b>overflow menu → Keyboard Shortcuts</b>.</p>
         <div class="keys rv">
-          <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>P</kbd></span><span class="does">File finder</span></div>
-          <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>T</kbd></span><span class="does">New terminal tab</span></div>
-          <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>W</kbd></span><span class="does">Close tab</span></div>
-          <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>B</kbd></span><span class="does">Toggle file explorer</span></div>
+          <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>K</kbd> / <kbd>⌘K</kbd></span><span class="does">Quick search & command palette (universal)</span></div>
+          <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>P</kbd></span><span class="does">File finder (when outside terminal; in terminal passes to fzf/readline)</span></div>
+          <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>T</kbd></span><span class="does">New terminal tab (when outside terminal)</span></div>
+          <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>W</kbd></span><span class="does">Close tab (universal; protects Ctrl+W for vim/bash)</span></div>
+          <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>W</kbd></span><span class="does">Close tab (when outside terminal)</span></div>
+          <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>B</kbd></span><span class="does">Toggle file explorer (when outside terminal; in terminal passes to tmux)</span></div>
+          <div class="keyrow"><span class="combo"><kbd>Alt</kbd><kbd>1</kbd>…<kbd>9</kbd></span><span class="does">Jump to tab 1–8 / last tab (universal)</span></div>
           <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>→/←</kbd></span><span class="does">Cycle tabs</span></div>
-          <div class="keyrow"><span class="combo"><kbd>Alt</kbd><kbd>1</kbd>…<kbd>9</kbd></span><span class="does">Jump to tab 1–8 / last tab</span></div>
           <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>T</kbd></span><span class="does">Reopen last closed tab</span></div>
           <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>D</kbd></span><span class="does">Duplicate current tab</span></div>
           <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>P</kbd></span><span class="does">Pin / unpin active tab</span></div>
-          <div class="keyrow"><span class="combo"><kbd>F2</kbd></span><span class="does">Rename active tab</span></div>
+          <div class="keyrow"><span class="combo"><kbd>F2</kbd></span><span class="does">Rename active tab (in terminal) / Rename file (in explorer)</span></div>
+          <div class="keyrow"><span class="combo"><kbd>Del</kbd></span><span class="does">Delete focused item (in file explorer)</span></div>
+          <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>N</kbd></span><span class="does">New file (in file explorer)</span></div>
           <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>S</kbd></span><span class="does">Save editor file</span></div>
           <div class="keyrow"><span class="combo">Middle-click</span><span class="does">Close tab</span></div>
           <div class="keyrow"><span class="combo">Right-click tab</span><span class="does">Tab menu (pin, color, close…)</span></div>
           <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>R</kbd></span><span class="does">Refresh preview</span></div>
-          <div class="keyrow"><span class="combo"><kbd>Esc</kbd></span><span class="does">Close menus / dialogs</span></div>
+          <div class="keyrow"><span class="combo"><kbd>Esc</kbd></span><span class="does">Close menus / dialogs (in terminal passes to vim/TUI)</span></div>
         </div>
         <div class="code rv"><span class="lang">tip</span><button class="copy" data-copy="curl -s http://localhost:3000/api/version">Copy</button><pre>curl -s http://localhost:3000/api/version
 # → {"version":"…"} — quick check the server is alive</pre></div>

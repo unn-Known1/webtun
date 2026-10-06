@@ -3997,6 +3997,26 @@ function cleanupOrphanTmuxSessions() {
   } catch {}
 }
 
+let sessionLabels = new Map();
+function loadSessionLabels() {
+  try {
+    const f = path.join(DATA_DIR, '.session-labels.json');
+    if (fs.existsSync(f)) {
+      const data = JSON.parse(fs.readFileSync(f, 'utf8'));
+      if (data && typeof data === 'object') sessionLabels = new Map(Object.entries(data));
+    }
+  } catch {}
+}
+function saveSessionLabels() {
+  try {
+    const f = path.join(DATA_DIR, '.session-labels.json');
+    const obj = {};
+    for (const [k, v] of sessionLabels) obj[k] = v;
+    fs.writeFileSync(f, JSON.stringify(obj, null, 2), { mode: 0o600 });
+  } catch {}
+}
+loadSessionLabels();
+
 function tmuxSessionExists(name) {
   try { execFileSync(TMUX, ['has-session', '-t', name], { stdio: 'ignore' , timeout: 5000}); return true; } catch { return false; }
 }
@@ -4005,23 +4025,31 @@ app.get('/api/sessions', checkPin, (req, res) => {
   const tmuxBin = getTMUX();
   if (tmuxBin) {
     try {
-      const out = execFileSync(tmuxBin, ['list-sessions', '-F', '#{session_name}'], { encoding: 'utf8' , timeout: 5000}).trim();
-      const sessions = out.split('\n').filter(Boolean)
-        .filter(s => { const k = tmuxKind(s); return k === 'ours' || k === 'legacy'; })
-        .map(s => {
-          // Strip our port segment so ids stay stable reconnect tokens;
-          // legacy names slice the family prefix as before.
-          const id = tmuxKind(s) === 'ours'
-            ? s.slice((TMUX_PREFIX + Number(PORT) + '-').length)
-            : s.slice(TMUX_PREFIX.length);
-          return { id, name: s };
-        });
+      const out = execFileSync(tmuxBin, ['list-sessions', '-F', '#{session_name}\t#{pane_current_path}\t#{pane_current_command}\t#{session_attached}'], { encoding: 'utf8' , timeout: 5000}).trim();
+      const rawLines = out.split('\n').filter(Boolean);
+      const sessions = [];
+      for (const line of rawLines) {
+        const parts = line.split('\t');
+        const s = parts[0] || '';
+        const cwd = parts[1] || '';
+        const command = parts[2] || '';
+        const attached = parseInt(parts[3] || '0', 10);
+        const k = tmuxKind(s);
+        if (k !== 'ours' && k !== 'legacy') continue;
+        const id = k === 'ours'
+          ? s.slice((TMUX_PREFIX + Number(PORT) + '-').length)
+          : s.slice(TMUX_PREFIX.length);
+        sessions.push({ id, name: s, cwd, command, attached, label: sessionLabels.get(id) || '', type: 'tmux' });
+      }
       // Merged listing: getTMUX() flips null→found mid-run, which used to
       // hide pre-existing in-memory sessions (and re-route the same
       // sessionId to another backend). Include both, tmux first.
       const seen = new Set(sessions.map(s => s.id));
-      for (const [id] of ptySessions) {
-        if (!seen.has(id)) sessions.push({ id, name: tmuxOwnName(id) });
+      for (const [id, entry] of ptySessions) {
+        if (!seen.has(id) && entry && !entry.exited) {
+          const cwd = entry.proc ? resolvePtyCwd(entry.proc.pid) || '' : '';
+          sessions.push({ id, name: tmuxOwnName(id), cwd, attached: entry.attached || 0, createdAt: entry.createdAt, label: sessionLabels.get(id) || '', type: 'pty' });
+        }
       }
       return res.json({ tmux: true, sessions });
     } catch {
@@ -4030,10 +4058,25 @@ app.get('/api/sessions', checkPin, (req, res) => {
   }
   // In-memory sessions (no tmux)
   const sessions = [];
-  for (const [id] of ptySessions) {
-    sessions.push({ id, name: tmuxOwnName(id) });
+  for (const [id, entry] of ptySessions) {
+    if (entry && !entry.exited) {
+      const cwd = entry.proc ? resolvePtyCwd(entry.proc.pid) || '' : '';
+      sessions.push({ id, name: tmuxOwnName(id), cwd, attached: entry.attached || 0, createdAt: entry.createdAt, label: sessionLabels.get(id) || '', type: 'pty' });
+    }
   }
   res.json({ tmux: false, sessions });
+});
+
+app.post('/api/sessions/:id/label', checkPin, (req, res) => {
+  const raw = req.params.id || '';
+  const id = raw.replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!id) return res.status(400).json({ error: 'invalid session id' });
+  const label = typeof req.body?.label === 'string' ? req.body.label.trim().slice(0, 60) : '';
+  if (label) sessionLabels.set(id, label);
+  else sessionLabels.delete(id);
+  saveSessionLabels();
+  broadcastClientEvent({ event: 'sessions-changed' });
+  res.json({ success: true, id, label });
 });
 
 app.delete('/api/sessions/:id', checkPin, (req, res) => {
@@ -4053,6 +4096,11 @@ app.delete('/api/sessions/:id', checkPin, (req, res) => {
         found = true;
         try { execFileSync(TMUX, ['kill-session', '-t', n], { stdio: 'ignore' , timeout: 5000}); } catch {}
       }
+    }
+    const entry = ptySessions.get(id);
+    if (entry) {
+      try { if (entry.proc) entry.proc.kill(); } catch {}
+      ptySessions.delete(id);
     }
     return res.json({ success: true, alreadyGone: !found });
   }

@@ -167,7 +167,43 @@ function doFinderSearch() {
     if (finderAbort?.signal.aborted) return;
     finderAbort = null;
     results.innerHTML = '';
-    if (!data.results || data.results.length === 0) { empty.textContent = 'No results found'; return; }
+    const qLower = q.toLowerCase();
+    const isSessionMatch = 'terminal sessions'.includes(qLower) || 'sessions'.includes(qLower) || 'terminals'.includes(qLower) || 'background'.includes(qLower);
+    const isPortMatch = 'listening ports'.includes(qLower) || 'ports'.includes(qLower) || 'servers'.includes(qLower) || 'preview'.includes(qLower);
+    
+    if (isSessionMatch) {
+      const sessItem = document.createElement('div');
+      sessItem.className = 'finder-item';
+      sessItem.style.background = 'var(--bg3)';
+      sessItem.innerHTML = `
+        <span class="fi-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></span>
+        <span class="fi-name" style="font-weight:600;color:var(--accent)">Terminal Sessions</span>
+        <span class="fi-dir">List and connect to running terminal sessions (Alt+S)</span>
+      `;
+      sessItem.addEventListener('click', () => {
+        closeOverlay('finder-overlay');
+        openTerminalSessionsModal();
+      });
+      results.appendChild(sessItem);
+    }
+
+    if (isPortMatch) {
+      const portItem = document.createElement('div');
+      portItem.className = 'finder-item';
+      portItem.style.background = 'var(--bg3)';
+      portItem.innerHTML = `
+        <span class="fi-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10z"/></svg></span>
+        <span class="fi-name" style="font-weight:600;color:var(--cyan)">Listening Ports &amp; Servers</span>
+        <span class="fi-dir">Inspect local listening web servers &amp; open preview tabs</span>
+      `;
+      portItem.addEventListener('click', () => {
+        closeOverlay('finder-overlay');
+        openPortsModal();
+      });
+      results.appendChild(portItem);
+    }
+
+    if ((!data.results || data.results.length === 0) && !isSessionMatch && !isPortMatch) { empty.textContent = 'No results found'; return; }
     empty.textContent = '';
     finderIdx = -1;
     data.results.forEach((r, i) => {
@@ -1214,28 +1250,148 @@ async function refreshSystemStats(showLoading) {
     });
   }
 
-  const tbody = document.getElementById('sys-proc-body');
-  tbody.innerHTML = '';
-  if (data.processes) {
-    data.processes.forEach(p => {
-      const tr = document.createElement('tr');
-      const addTd = (txt, extra) => { const td = document.createElement('td'); if (extra) td.style.cssText = extra; td.textContent = txt; tr.appendChild(td); };
-      addTd(p.pid); addTd(p.user); addTd(p.cpu); addTd(p.mem);
-      addTd(p.cmd, 'max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap');
-      const killTd = document.createElement('td');
-      killTd.style.textAlign = 'center';
-      const killBtn = document.createElement('button');
-      killBtn.className = 'btn btn-danger';
-      killBtn.style.cssText = 'height:22px;padding:0 8px;font-size:11px;min-width:36px';
-      killBtn.textContent = 'Kill';
-      killBtn.setAttribute('aria-label', 'Kill process ' + p.pid);
-      killBtn.title = 'Kill PID ' + p.pid;
-      killBtn.onclick = () => killProcess(p.pid, p.cmd);
-      killTd.appendChild(killBtn);
-      tr.appendChild(killTd);
-      tbody.appendChild(tr);
-    });
+let _sysProcList = [];
+let _sysProcSortCol = 'cpu';
+let _sysProcSortAsc = false;
+let _sysKillConfirmTimers = {};
+
+function sortSysProcesses(col) {
+  if (_sysProcSortCol === col) {
+    _sysProcSortAsc = !_sysProcSortAsc;
+  } else {
+    _sysProcSortCol = col;
+    _sysProcSortAsc = (col === 'cmd' || col === 'user');
   }
+  updateSortCarets();
+  renderSysProcessTable();
+}
+
+function updateSortCarets() {
+  ['pid', 'user', 'cpu', 'mem', 'cmd'].forEach(c => {
+    const el = document.getElementById('sort-' + c);
+    if (!el) return;
+    if (_sysProcSortCol === c) {
+      el.textContent = _sysProcSortAsc ? '▲' : '▼';
+    } else {
+      el.textContent = '';
+    }
+  });
+}
+
+function filterSysProcesses() {
+  renderSysProcessTable();
+}
+
+function renderSysProcessTable() {
+  const tbody = document.getElementById('sys-proc-body');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  const filterInput = document.getElementById('sys-proc-filter');
+  const q = (filterInput?.value || '').trim().toLowerCase();
+
+  let list = [..._sysProcList];
+  if (q) {
+    list = list.filter(p => 
+      String(p.pid).includes(q) ||
+      String(p.user || '').toLowerCase().includes(q) ||
+      String(p.cmd || '').toLowerCase().includes(q)
+    );
+  }
+
+  list.sort((a, b) => {
+    let va = a[_sysProcSortCol];
+    let vb = b[_sysProcSortCol];
+    if (_sysProcSortCol === 'cpu' || _sysProcSortCol === 'mem') {
+      va = parseFloat(va) || 0;
+      vb = parseFloat(vb) || 0;
+    } else if (_sysProcSortCol === 'pid') {
+      va = parseInt(va, 10) || 0;
+      vb = parseInt(vb, 10) || 0;
+    } else {
+      va = String(va || '').toLowerCase();
+      vb = String(vb || '').toLowerCase();
+    }
+    if (va < vb) return _sysProcSortAsc ? -1 : 1;
+    if (va > vb) return _sysProcSortAsc ? 1 : -1;
+    return 0;
+  });
+
+  if (list.length === 0) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 6;
+    td.style.textAlign = 'center';
+    td.style.padding = '14px';
+    td.style.color = 'var(--fg3)';
+    td.textContent = q ? 'No matching processes' : 'No processes reported';
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    return;
+  }
+
+  list.forEach(p => {
+    const tr = document.createElement('tr');
+    const addTd = (txt, cls, style) => {
+      const td = document.createElement('td');
+      if (cls) td.className = cls;
+      if (style) td.style.cssText = style;
+      td.textContent = txt;
+      tr.appendChild(td);
+    };
+    addTd(p.pid, 'sys-cell-mono');
+    addTd(p.user, 'sys-cell-user');
+    addTd(p.cpu, 'sys-cell-mono sys-cell-num');
+    addTd(p.mem, 'sys-cell-mono sys-cell-num');
+    addTd(p.cmd, 'sys-cell-cmd', 'max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap');
+
+    const killTd = document.createElement('td');
+    killTd.style.textAlign = 'center';
+    const killBtn = document.createElement('button');
+    killBtn.className = 'btn btn-danger btn-kill-proc';
+    killBtn.style.cssText = 'height:22px;padding:0 8px;font-size:11px;min-width:52px;border-radius:4px';
+    killBtn.textContent = 'Kill';
+    killBtn.setAttribute('aria-label', 'Kill process ' + p.pid);
+    killBtn.title = 'Kill PID ' + p.pid;
+
+    killBtn.onclick = async (e) => {
+      e.stopPropagation();
+      if (killBtn.dataset.confirming === 'true') {
+        clearTimeout(_sysKillConfirmTimers[p.pid]);
+        delete _sysKillConfirmTimers[p.pid];
+        killBtn.textContent = '…';
+        killBtn.disabled = true;
+        const r = await api('/api/system/kill', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pid: Number(p.pid) }) });
+        if (r && r.success) {
+          toast('Killed PID ' + p.pid, 'success');
+          refreshSystemStats(false);
+        } else {
+          toast((r && r.error) || 'Kill failed', 'error');
+          killBtn.disabled = false;
+          killBtn.textContent = 'Kill';
+          killBtn.dataset.confirming = 'false';
+        }
+      } else {
+        killBtn.dataset.confirming = 'true';
+        killBtn.textContent = 'Confirm?';
+        killBtn.style.background = 'var(--red)';
+        killBtn.style.color = '#fff';
+        _sysKillConfirmTimers[p.pid] = setTimeout(() => {
+          killBtn.dataset.confirming = 'false';
+          killBtn.textContent = 'Kill';
+          killBtn.style.background = '';
+          killBtn.style.color = '';
+        }, 3000);
+      }
+    };
+    killTd.appendChild(killBtn);
+    tr.appendChild(killTd);
+    tbody.appendChild(tr);
+  });
+}
+
+  _sysProcList = data.processes || [];
+  updateSortCarets();
+  renderSysProcessTable();
 }
 
 async function killProcess(pid, cmd) {

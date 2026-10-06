@@ -127,13 +127,16 @@ async function tickLpPulse() {
     const load = s.cpu && s.cpu.loadAvg ? Number(s.cpu.loadAvg[0]).toFixed(2) : '–';
     const cpu = s.cpu && s.cpu.usage !== undefined ? s.cpu.usage + '%' : '–';
     const mem = s.memory && s.memory.percent !== undefined ? s.memory.percent + '%' : '–';
-    el.innerHTML = '';
-    const dot = document.createElement('span');
-    dot.className = 'lp-dot';
-    el.appendChild(dot);
-    const t = document.createElement('span');
-    t.textContent = `load ${load} · cpu ${cpu} · mem ${mem} · up ${fmtUptime(s.uptime)}`;
-    el.appendChild(t);
+    const uptime = fmtUptime(s.uptime);
+    el.innerHTML = `
+      <span class="lp-vitals-item"><span class="lp-dot"></span><strong>CPU</strong>&nbsp;${cpu}</span>
+      <span class="lp-vitals-sep">·</span>
+      <span class="lp-vitals-item"><strong>Load</strong>&nbsp;${load}</span>
+      <span class="lp-vitals-sep">·</span>
+      <span class="lp-vitals-item"><strong>Memory</strong>&nbsp;${mem}</span>
+      <span class="lp-vitals-sep">·</span>
+      <span class="lp-vitals-item"><strong>Uptime</strong>&nbsp;${uptime}</span>
+    `;
     if (s.cpu && typeof s.cpu.usage === 'number') {
       lpCpuSamples.push(Math.max(0, s.cpu.usage));
       if (lpCpuSamples.length > 28) lpCpuSamples.shift();
@@ -162,12 +165,17 @@ function renderLaunchpad() {
     d.textContent = 'Run a command to pin it here';
     cmds.appendChild(d);
   }
+  let cmdIdx = 1;
   for (const h of recent) {
     if (!h.cmd) continue;
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'lp-row';
     b.title = 'Run: ' + h.cmd;
+    const kbd = document.createElement('kbd');
+    kbd.className = 'lp-row-kbd';
+    kbd.textContent = String(cmdIdx++);
+    b.appendChild(kbd);
     const ico = document.createElement('span');
     ico.style.display = 'inline-flex';
     ico.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6 3 20 12 6 21 6 3"/></svg>';
@@ -211,8 +219,71 @@ function renderLaunchpad() {
     b.addEventListener('click', () => newTab(undefined, undefined, p));
     places.appendChild(b);
   }
+  renderLpSessions();
   renderLpToday();
   wireLpKeys();
+}
+
+async function renderLpSessions() {
+  const sessEl = document.getElementById('lp-sessions');
+  if (!sessEl) return;
+  sessEl.innerHTML = '<div class="lp-empty">Checking active sessions…</div>';
+  try {
+    const res = await api('/api/sessions');
+    const sessions = (res && Array.isArray(res.sessions)) ? res.sessions : [];
+    sessEl.innerHTML = '';
+    if (!sessions.length) {
+      const d = document.createElement('div');
+      d.className = 'lp-empty';
+      d.textContent = 'No background sessions running';
+      sessEl.appendChild(d);
+      return;
+    }
+    for (const sess of sessions.slice(0, 6)) {
+      const openTab = tabs.find(t => (t.type === 'term' || !t.type) && t.sessionId === sess.id);
+      const folderName = sess.cwd ? sess.cwd.split(/[\\/]/).filter(Boolean).pop() || sess.cwd : '';
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'lp-row';
+      b.title = `Connect to session ${sess.id}` + (sess.cwd ? ` (${sess.cwd})` : '');
+      
+      const ico = document.createElement('span');
+      ico.style.display = 'inline-flex';
+      ico.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>';
+      b.appendChild(ico);
+
+      const t = document.createElement('span');
+      t.style.flex = '1';
+      t.style.overflow = 'hidden';
+      t.style.textOverflow = 'ellipsis';
+      const labelText = sess.label ? `${sess.label}` : `${folderName || 'Terminal'} (${sess.id.slice(0, 6)})`;
+      t.textContent = labelText;
+      b.appendChild(t);
+
+      const badge = document.createElement('span');
+      badge.style.fontSize = '9px';
+      badge.style.padding = '1px 5px';
+      badge.style.borderRadius = '3px';
+      badge.style.marginLeft = '4px';
+      if (openTab) {
+        badge.style.background = 'var(--accent-bg, rgba(0,200,83,0.15))';
+        badge.style.color = 'var(--accent)';
+        badge.textContent = `Tab #${openTab.id}`;
+      } else {
+        badge.style.background = 'var(--bg3)';
+        badge.style.color = 'var(--fg3)';
+        badge.textContent = 'bg';
+      }
+      b.appendChild(badge);
+
+      b.addEventListener('click', () => {
+        connectToTerminalSession(sess.id, sess.cwd, openTab ? openTab.title : `Term (${folderName || sess.id.slice(0,6)})`);
+      });
+      sessEl.appendChild(b);
+    }
+  } catch (e) {
+    if (sessEl) sessEl.innerHTML = '<div class="lp-empty">No active sessions</div>';
+  }
 }
 function renderLpToday() {
   const el = document.getElementById('lp-today');

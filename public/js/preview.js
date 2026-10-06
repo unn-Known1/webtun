@@ -377,3 +377,78 @@ function previewSuggestToast(port, pth) {
     setTimeout(() => { try { el.remove(); } catch {} }, 8000);
   } catch { toast(`App detected on :${port}`, 'info'); }
 }
+
+async function openPortsModal() {
+  openOverlay('ports-overlay');
+  await refreshPortsModal();
+}
+
+async function refreshPortsModal() {
+  const listEl = document.getElementById('ports-list');
+  const countEl = document.getElementById('ports-count');
+  if (!listEl) return;
+  listEl.innerHTML = '<div style="padding:16px;text-align:center;color:var(--fg3);font-size:12px">Scanning active TCP listening ports…</div>';
+  try {
+    const res = await api('/api/ports');
+    const ports = (res && Array.isArray(res.ports)) ? res.ports : [];
+    if (countEl) countEl.textContent = String(ports.length);
+    if (!ports.length) {
+      listEl.innerHTML = `
+        <div style="padding:24px 12px;text-align:center;color:var(--fg3);font-size:13px">
+          No local listening ports detected. Start a web server (e.g. <code>npm run dev</code> or <code>python -m http.server</code>) in a terminal tab.
+        </div>`;
+      return;
+    }
+    listEl.innerHTML = '';
+    for (const item of ports) {
+      const pNum = item.port;
+      const procInfo = item.proc || 'Unknown process';
+      
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;gap:12px;';
+
+      const left = document.createElement('div');
+      left.style.cssText = 'display:flex;flex-direction:column;gap:3px;overflow:hidden;flex:1;';
+
+      const topRow = document.createElement('div');
+      topRow.style.cssText = 'display:flex;align-items:center;gap:8px;font-family:var(--font);font-size:13px;font-weight:600;color:var(--fg1);';
+
+      const portBadge = document.createElement('span');
+      portBadge.style.cssText = 'font-size:12px;font-weight:700;color:var(--cyan);font-family:var(--font);';
+      portBadge.textContent = `:${pNum}`;
+      topRow.appendChild(portBadge);
+
+      const procSpan = document.createElement('span');
+      procSpan.style.cssText = 'font-size:11px;padding:1px 6px;border-radius:4px;background:var(--bg3);color:var(--fg2);font-weight:500;';
+      procSpan.textContent = procInfo;
+      topRow.appendChild(procSpan);
+
+      left.appendChild(topRow);
+
+      const subRow = document.createElement('div');
+      subRow.style.cssText = 'font-size:11px;color:var(--fg3);font-family:var(--font);';
+      subRow.textContent = `http://127.0.0.1:${pNum}`;
+      left.appendChild(subRow);
+
+      row.appendChild(left);
+
+      const right = document.createElement('div');
+      right.style.cssText = 'display:flex;align-items:center;gap:6px;flex-shrink:0;';
+
+      const prevBtn = document.createElement('button');
+      prevBtn.className = 'btn btn-primary';
+      prevBtn.style.cssText = 'height:28px;padding:0 12px;font-size:11px;';
+      prevBtn.textContent = 'Preview Tab';
+      prevBtn.onclick = () => {
+        closeOverlay('ports-overlay');
+        newPreviewTab(pNum, '/');
+      };
+      right.appendChild(prevBtn);
+
+      row.appendChild(right);
+      listEl.appendChild(row);
+    }
+  } catch (err) {
+    if (listEl) listEl.innerHTML = '<div style="padding:16px;color:var(--red);font-size:12px;text-align:center">Failed to scan listening ports</div>';
+  }
+}

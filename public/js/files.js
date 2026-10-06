@@ -592,10 +592,40 @@ function setupFileListKeyboard() {
     };
     if (e.key === 'ArrowDown') { e.preventDefault(); focusIdx(idx < 0 ? 0 : Math.min(idx + 1, items.length - 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); focusIdx(idx < 0 ? items.length - 1 : Math.max(0, idx - 1)); }
+    else if (e.key === 'ArrowRight') {
+      if (idx >= 0 && items[idx].dataset.isDir === 'true') {
+        e.preventDefault();
+        items[idx].click();
+      }
+    }
     else if (e.key === 'Home') { e.preventDefault(); focusIdx(0); }
     else if (e.key === 'End') { e.preventDefault(); focusIdx(items.length - 1); }
     else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (idx >= 0) items[idx].click(); }
     else if (e.key === 'Backspace' || e.key === 'ArrowLeft') { e.preventDefault(); navigateUp(); }
+    else if (e.key === 'F2') {
+      if (idx >= 0) {
+        e.preventDefault();
+        const curPath = items[idx].dataset.path;
+        const curName = fileRowName(items[idx], '');
+        if (curPath && curName && typeof startRename === 'function') startRename(curPath, curName);
+      }
+    }
+    else if (e.key === 'Delete') {
+      if (idx >= 0) {
+        e.preventDefault();
+        const curPath = items[idx].dataset.path;
+        if (curPath && typeof deleteFile === 'function') deleteFile(curPath);
+      }
+    }
+    else if ((e.ctrlKey || e.metaKey) && (e.key === 'n' || e.key === 'N')) {
+      e.preventDefault();
+      if (e.shiftKey) {
+        openOverlay('newfolder-overlay');
+        setTimeout(() => document.getElementById('newfolder-input')?.focus(), 100);
+      } else {
+        if (typeof newFile === 'function') newFile();
+      }
+    }
     else if ((e.key === 'a' || e.key === 'A') && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (selectMode) selectAllFiles(); }
     else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
       const prefix = (list._typeAhead || '') + e.key.toLowerCase();

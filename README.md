@@ -212,6 +212,14 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 
 ## Changelog
 
+### v2.3.1
+- **Background Terminal Session Management** — Dedicated Terminal Sessions manager (`#term-sessions-overlay`, `Alt+S`/`Ctrl+Shift+S`), 1-click attach/connect directly into terminal tabs, persistent custom session labeling (`POST /api/sessions/:id/label`), and real-time WebSocket session state synchronization across windows.
+- **Listening Ports Dashboard** — Interactive Listening Ports Modal (`#ports-overlay`) scanning local TCP servers (`/api/ports`), listing process names/PIDs, and offering 1-click in-app preview tab launching.
+
+### v2.3.0
+- **Context-Scoped Keyboard Routing Engine** — Focus-bound keyboard shortcut routing distinguishing Terminal, File Explorer, Editor, and Launchpad/Idle scopes; 100% pass-through for TUI applications (`tmux` `Ctrl+B`, `vim` window navigation `Ctrl+W`, `fzf`/history `Ctrl+P`, `bash` `Ctrl+T`, `Escape` to Normal Mode); dedicated non-conflicting chords (`Ctrl+Shift+W` to close tab from within terminal, `Ctrl+K`/`Cmd+K` universal command palette, `Alt+1..9` tab switching); explorer-specific keyboard controls (`↑`/`↓` navigation, `→` expand/enter, `←`/`Backspace` ascend, `F2` rename, `Del` delete, `Ctrl+N` new file).
+- **Executive Identity & UI/UX Elevation** — Precision vector mark, interactive hostname badge with network state dot, ambient connection jewel, unboxed Warp-grade Launchpad dashboard with real-time system metrics, sortable & filterable Process Inspector table with two-step kill confirmation, Termius 1-click SSH config generator, and OLED Midnight theme.
+
 ### v2.2.8
 - **New Light UI Themes** — introduced two modern, clean light themes: **Catppuccin Latte** (`catppuccin-latte`) with soft pastel surfaces and crisp indigo text, and **Nord Light** (`nord-light`) with an arctic slate background and sky blue highlights; full WCAG-AA contrast compliance
 - **Theme Engine Reliability & Alignment** — fixed dataset theme initialization and synchronous boot synchronization across `document.documentElement` and `document.body`; added `tokyo-night` alias support; updated xterm.js theme options and WebGL texture atlas refresh to immediately re-render terminals on palette change

@@ -513,6 +513,7 @@ function setupTabCtxMenuItems() {
     });
   } catch {}
   on('newtab-term', () => { hideTabMenus(); newTab(); });
+  on('newtab-sessions', () => { hideTabMenus(); openTerminalSessionsModal(); });
   on('newtab-duplicate', () => { hideTabMenus(); duplicateTab(activeTabId); });
   on('newtab-preview', () => { hideTabMenus(); newPreviewPrompt(); });
   on('newtab-tiles', () => { hideTabMenus(); toggleTiles(); });
@@ -882,6 +883,193 @@ function newTab(title, sessionId, dir, opts = {}) {
   return tab;
 }
 
+async function editSessionLabel(id, currentLabel) {
+  const newLabel = prompt('Enter custom label for terminal session:', currentLabel || '');
+  if (newLabel === null) return;
+  try {
+    await api(`/api/sessions/${encodeURIComponent(id)}/label`, {
+      method: 'POST',
+      body: JSON.stringify({ label: newLabel.trim() })
+    });
+    toast(newLabel.trim() ? `Session labeled "${newLabel.trim()}"` : 'Session label cleared', 'success');
+    refreshTerminalSessionsModal(true);
+    updateLaunchpad();
+  } catch {
+    toast('Failed to update session label', 'error');
+  }
+}
+
+function connectToTerminalSession(sessionId, dir, title) {
+  if (!sessionId) return newTab(title, undefined, dir);
+  const existing = tabs.find(t => (t.type === 'term' || !t.type) && t.sessionId === sessionId);
+  if (existing) {
+    activateTab(existing.id);
+    unpinLaunchpad();
+    toast(`Switched to active terminal tab (${existing.title})`, 'info');
+    return existing;
+  }
+  const folderName = dir ? dir.split(/[\\/]/).filter(Boolean).pop() : '';
+  const displayTitle = title || (folderName ? `Term (${folderName})` : `Term (${sessionId.slice(0, 6)})`);
+  const tab = newTab(displayTitle, sessionId, dir);
+  toast(`Connected to terminal session ${sessionId.slice(0, 8)}`, 'success');
+  return tab;
+}
+
+let _termSessionsPollTimer = null;
+
+async function openTerminalSessionsModal() {
+  openOverlay('term-sessions-overlay');
+  await refreshTerminalSessionsModal();
+  if (_termSessionsPollTimer) clearInterval(_termSessionsPollTimer);
+  _termSessionsPollTimer = setInterval(() => {
+    const modal = document.getElementById('term-sessions-overlay');
+    if (modal && modal.classList.contains('open')) {
+      refreshTerminalSessionsModal(true);
+    } else {
+      clearInterval(_termSessionsPollTimer);
+      _termSessionsPollTimer = null;
+    }
+  }, 4000);
+}
+
+async function refreshTerminalSessionsModal(silent = false) {
+  const listEl = document.getElementById('term-sessions-list');
+  const countEl = document.getElementById('term-sessions-count');
+  if (!listEl) return;
+  if (!silent) {
+    listEl.innerHTML = '<div style="padding:16px;text-align:center;color:var(--fg3);font-size:12px">Loading active terminal sessions…</div>';
+  }
+  try {
+    const res = await api('/api/sessions');
+    const sessions = (res && Array.isArray(res.sessions)) ? res.sessions : [];
+    if (countEl) countEl.textContent = String(sessions.length);
+    if (!sessions.length) {
+      listEl.innerHTML = `
+        <div style="padding:24px 12px;text-align:center;color:var(--fg3);font-size:13px">
+          No background terminal sessions running.<br>
+          <button class="btn btn-primary" onclick="closeOverlay('term-sessions-overlay');newTab();" style="margin-top:12px;height:30px;padding:0 14px;font-size:12px">
+            + Start New Terminal
+          </button>
+        </div>`;
+      return;
+    }
+    listEl.innerHTML = '';
+    for (const sess of sessions) {
+      const openTab = tabs.find(t => (t.type === 'term' || !t.type) && t.sessionId === sess.id);
+      const folderName = sess.cwd ? sess.cwd.split(/[\\/]/).filter(Boolean).pop() || sess.cwd : '';
+      const item = document.createElement('div');
+      item.className = 'term-sess-item';
+      item.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;gap:12px;';
+      
+      const left = document.createElement('div');
+      left.style.cssText = 'display:flex;flex-direction:column;gap:3px;overflow:hidden;flex:1;';
+      
+      const topRow = document.createElement('div');
+      topRow.style.cssText = 'display:flex;align-items:center;gap:8px;font-family:var(--font);font-size:13px;font-weight:600;color:var(--fg1);';
+      
+      const ico = document.createElement('span');
+      ico.style.display = 'inline-flex';
+      ico.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>';
+      topRow.appendChild(ico);
+
+      const displayName = sess.label || (sess.id.length > 12 ? sess.id.slice(0, 12) + '…' : sess.id);
+      const titleSpan = document.createElement('span');
+      titleSpan.textContent = displayName;
+      titleSpan.title = sess.label ? `${sess.label} (${sess.id})` : sess.id;
+      topRow.appendChild(titleSpan);
+
+      if (sess.label) {
+        const lblBadge = document.createElement('span');
+        lblBadge.style.cssText = 'font-size:10px;padding:1px 6px;border-radius:4px;background:var(--accent-bg, rgba(0,200,83,0.15));color:var(--accent);font-weight:600;';
+        lblBadge.textContent = 'Labeled';
+        topRow.appendChild(lblBadge);
+      }
+
+      const badge = document.createElement('span');
+      badge.style.cssText = 'font-size:10px;padding:1px 6px;border-radius:4px;background:var(--bg3);color:var(--fg2);font-weight:500;text-transform:uppercase;';
+      badge.textContent = sess.type || (res.tmux ? 'tmux' : 'pty');
+      topRow.appendChild(badge);
+
+      if (openTab) {
+        const tabBadge = document.createElement('span');
+        tabBadge.style.cssText = 'font-size:10px;padding:1px 6px;border-radius:4px;background:var(--accent-bg, rgba(0,200,83,0.15));color:var(--accent);font-weight:600;';
+        tabBadge.textContent = `Tab #${openTab.id}` + (openTab.title ? `: ${openTab.title}` : '');
+        topRow.appendChild(tabBadge);
+      } else {
+        const bgBadge = document.createElement('span');
+        bgBadge.style.cssText = 'font-size:10px;padding:1px 6px;border-radius:4px;background:var(--bg3);color:var(--fg3);';
+        bgBadge.textContent = 'Background';
+        topRow.appendChild(bgBadge);
+      }
+      left.appendChild(topRow);
+
+      const subRow = document.createElement('div');
+      subRow.style.cssText = 'font-size:11px;color:var(--fg3);font-family:var(--font);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+      subRow.textContent = (sess.cwd ? `${sess.cwd}` : 'Default CWD') + (sess.command ? ` · ${sess.command}` : '');
+      left.appendChild(subRow);
+
+      item.appendChild(left);
+
+      const right = document.createElement('div');
+      right.style.cssText = 'display:flex;align-items:center;gap:6px;flex-shrink:0;';
+
+      const labelBtn = document.createElement('button');
+      labelBtn.className = 'btn btn-ghost';
+      labelBtn.style.cssText = 'height:28px;padding:0 8px;font-size:11px;';
+      labelBtn.title = 'Set custom label for this session';
+      labelBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>';
+      labelBtn.onclick = (e) => {
+        e.stopPropagation();
+        editSessionLabel(sess.id, sess.label || '');
+      };
+      right.appendChild(labelBtn);
+
+      const connBtn = document.createElement('button');
+      connBtn.className = 'btn btn-primary';
+      connBtn.style.cssText = 'height:28px;padding:0 12px;font-size:11px;';
+      connBtn.textContent = openTab ? 'Switch to Tab' : 'Connect';
+      connBtn.onclick = () => {
+        closeOverlay('term-sessions-overlay');
+        connectToTerminalSession(sess.id, sess.cwd, openTab ? openTab.title : `Term (${folderName || sess.id.slice(0,6)})`);
+      };
+      right.appendChild(connBtn);
+
+      const killBtn = document.createElement('button');
+      killBtn.className = 'btn btn-ghost';
+      killBtn.style.cssText = 'height:28px;padding:0 8px;font-size:11px;color:var(--red);';
+      killBtn.title = 'Terminate session';
+      killBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+      killBtn.onclick = async (e) => {
+        e.stopPropagation();
+        const ok = await confirmDialog({
+          title: 'Terminate Session?',
+          message: `Are you sure you want to kill session ${sess.id.slice(0,8)}? Any unsaved work in that terminal will be lost.`,
+          okText: 'Kill Session',
+          cancelText: 'Cancel',
+          danger: true
+        });
+        if (ok) {
+          try {
+            await api(`/api/sessions/${encodeURIComponent(sess.id)}`, { method: 'DELETE' });
+            toast(`Terminated session ${sess.id.slice(0,8)}`, 'info');
+            if (openTab) closeTab(null, openTab.id, { force: true });
+            refreshTerminalSessionsModal();
+            updateLaunchpad();
+          } catch (err) {
+            toast('Failed to kill session', 'error');
+          }
+        }
+      };
+      right.appendChild(killBtn);
+
+      item.appendChild(right);
+      listEl.appendChild(item);
+    }
+  } catch (err) {
+    if (listEl && !silent) listEl.innerHTML = '<div style="padding:16px;color:var(--red);font-size:12px;text-align:center">Failed to load terminal sessions</div>';
+  }
+}
+
 async function activateTab(id) {
   activeTabId = id;
   try { if (navigator.vibrate && window.innerWidth <= 768) navigator.vibrate(12); } catch {}
@@ -928,7 +1116,7 @@ async function activateTab(id) {
   try { if (typeof refreshConnStatus === 'function') refreshConnStatus(); } catch {}
 }
 async function closeTab(e, id, opts = {}) {
-  e.stopPropagation();
+  if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
   const closing = tabs.find(t => t.id === id);
   // Pinned tabs resist every single-close path (× button, middle-click,
   // Ctrl+W, swipe, context menu, quick-switcher, tiles, panel ×): one
