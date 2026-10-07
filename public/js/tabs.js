@@ -995,6 +995,12 @@ function renderFilteredSessions(sessions) {
   }
 
   listEl.innerHTML = '';
+  // A "WebTun"/"External" source badge on every row repeats information the list
+  // has already established (and the filter chips repeat it again). Only show
+  // it when the visible list actually mixes both sources.
+  const listHasExternal = sessions.some(s => !!s.external);
+  const listHasWebtun = sessions.some(s => !s.external);
+  const listIsMixed = listHasExternal && listHasWebtun;
   for (const sess of sessions) {
     const openTab = tabs.find(t => (t.type === 'term' || !t.type) && t.sessionId === sess.id);
     const folderName = sess.cwd ? sess.cwd.split(/[\\/]/).filter(Boolean).pop() || sess.cwd : '';
@@ -1048,16 +1054,18 @@ function renderFilteredSessions(sessions) {
     const badges = document.createElement('div');
     badges.className = 'term-sess-badges';
 
-    // External vs WebTun badge
-    const srcBadge = document.createElement('span');
-    if (isExt) {
-      srcBadge.className = 'badge-ext';
-      srcBadge.textContent = isProc ? 'External Process' : 'External Tmux';
-    } else {
-      srcBadge.className = 'badge-webtun';
-      srcBadge.textContent = 'WebTun';
+    // External vs WebTun badge — only when the list mixes both sources.
+    if (listIsMixed) {
+      const srcBadge = document.createElement('span');
+      if (isExt) {
+        srcBadge.className = 'badge-ext';
+        srcBadge.textContent = isProc ? 'External Process' : 'External Tmux';
+      } else {
+        srcBadge.className = 'badge-webtun';
+        srcBadge.textContent = 'WebTun';
+      }
+      badges.appendChild(srcBadge);
     }
-    badges.appendChild(srcBadge);
 
     // Tab vs Background badge
     const statusBadge = document.createElement('span');
@@ -1221,6 +1229,23 @@ async function refreshTerminalSessionsModal(silent = false) {
     if (allCountEl) allCountEl.textContent = String(sessions.length);
     if (webtunCountEl) webtunCountEl.textContent = String(webtunCount);
     if (extCountEl) extCountEl.textContent = String(extCount);
+
+    // (5) A zero-count filter is not actionable. Disable it rather than
+    // leaving a live-looking chip that silently does nothing, and drop it out
+    // of the tab order so keyboard users don't land on it.
+    const extChip = extCountEl && extCountEl.closest('.term-sess-filter-btn');
+    if (extChip) {
+      const dead = extCount === 0;
+      extChip.disabled = dead;
+      extChip.setAttribute('aria-disabled', String(dead));
+      if (dead && _termSessionFilter === 'external') _termSessionFilter = 'all';
+    }
+    const webtunChip = webtunCountEl && webtunCountEl.closest('.term-sess-filter-btn');
+    if (webtunChip) {
+      const dead = webtunCount === 0;
+      webtunChip.disabled = dead;
+      webtunChip.setAttribute('aria-disabled', String(dead));
+    }
 
     filterTerminalSessionsList();
   } catch (err) {

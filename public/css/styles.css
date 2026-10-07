@@ -3431,6 +3431,13 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
   background: var(--bg3);
   color: var(--fg);
 }
+/* A zero-count filter is disabled by JS (it does nothing when clicked). */
+.term-sess-filter-btn:disabled,
+.term-sess-filter-btn[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
 .term-sess-filter-btn.active {
   background: var(--accent);
   color: #000;
@@ -3463,9 +3470,32 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
   transition: border-color 0.15s ease, background 0.15s ease;
   box-sizing: border-box;
   overflow: hidden;
+  /* The list is a height-capped COLUMN flex container, so items shrink by
+     default once the content exceeds it — and `overflow: hidden` above zeroes
+     their automatic minimum size. Each card was therefore squeezed below its
+     content and clipped its own action row (Connect/Terminate) rather than
+     the list scrolling. Pin the item height and let the list scroll. */
+  flex-shrink: 0;
 }
 .term-sess-item:hover {
   border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+/* (2) Every row repeated a solid --accent button, so a list of N sessions became
+   N saturated bars competing with the session names — the thing you actually
+   scan for. The action stays tinted and clearly primary, but fills only on
+   hover/focus. The focus ring is unchanged, so keyboard users get the same
+   strong cue they had before. */
+.term-sess-actions .btn-primary {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 34%, transparent);
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+.term-sess-actions .btn-primary:hover,
+.term-sess-actions .btn-primary:focus-visible {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
 }
 .term-sess-item-top {
   display: flex;
@@ -3494,7 +3524,10 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
   color: var(--fg3);
   font-family: var(--font);
   flex-wrap: wrap;
-  word-break: break-all;
+  /* `break-all` split paths like /teamspace/studios mid-token; the row already
+     ellipsises, so break only when a token genuinely cannot fit. */
+  overflow-wrap: anywhere;
+  word-break: normal;
   min-width: 0;
   overflow: hidden;
 }
@@ -3517,10 +3550,12 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
   font-size: var(--fs-micro);
   padding: 1.5px 6px;
   border-radius: 4px;
-  background: rgba(16, 185, 129, 0.15);
-  color: var(--accent);
+  /* Was a hard-coded emerald fill with --accent text, so the fill and the label
+     disagreed in any theme whose accent isn't green. Now one token (S-13). */
+  background: color-mix(in srgb, var(--green) 15%, transparent);
+  color: var(--green);
   font-weight: 600;
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  border: 1px solid color-mix(in srgb, var(--green) 32%, transparent);
 }
 .badge-tab {
   font-size: var(--fs-micro);
@@ -3643,6 +3678,12 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
     max-width: 100% !important;
     box-sizing: border-box !important;
     overflow: hidden !important;
+    /* The list is a height-capped COLUMN flex container, so items shrink by
+       default once the content exceeds it — and `overflow: hidden` above
+       zeroes their automatic minimum size, so each card was squeezed below
+       its content and clipped its own action row (Connect/Terminate) instead
+       of the list scrolling. Pin the item height; the list scrolls. */
+    flex-shrink: 0 !important;
     padding: 10px !important;
     gap: 6px !important;
   }
