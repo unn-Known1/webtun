@@ -105,6 +105,41 @@ async function ensureCodeMirrorLoaded() {
   return typeof CodeMirror !== 'undefined';
 }
 
+// Preview libs (marked, DOMPurify) ship in /vendor and are in the precache, so a
+// blocked CDN shouldn't kill previews. These retries only cover a first-load miss
+// (service worker not installed yet, stale cache): local vendor first, CDN second.
+const PREVIEW_LIB_SOURCES = {
+  marked: ['/vendor/marked.min.js', 'https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js'],
+  DOMPurify: ['/vendor/purify.min.js', 'https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js'],
+};
+const _previewLibPromises = {};
+async function ensurePreviewLib(name) {
+  if (typeof window[name] !== 'undefined') return true;
+  if (_previewLibPromises[name]) return _previewLibPromises[name];
+  const sources = PREVIEW_LIB_SOURCES[name];
+  if (!sources) return false;
+  _previewLibPromises[name] = (async () => {
+    for (const src of sources) {
+      if (typeof window[name] !== 'undefined') return true;
+      try {
+        await loadScript(src);
+      } catch (e) {
+        console.warn(`${name} failed to load from ${src}:`, e);
+        continue;
+      }
+      if (typeof window[name] !== 'undefined') return true;
+    }
+    return typeof window[name] !== 'undefined';
+  })();
+  return _previewLibPromises[name];
+}
+// need: array of lib names. Returns true when every requested lib is present.
+async function ensurePreviewLibs(need) {
+  const names = Array.isArray(need) ? need : [need];
+  const results = await Promise.all(names.map(ensurePreviewLib));
+  return results.every(Boolean);
+}
+
 function uuid() {
   try {
     if (crypto.randomUUID) return crypto.randomUUID();

@@ -1,4 +1,4 @@
-const CACHE = 'webtun-v37';
+const CACHE = 'webtun-v38';
 const PRECACHE = [
   '/',
   '/index.html',
@@ -9,6 +9,10 @@ const PRECACHE = [
   '/vendor/addon-web-links.js',
   '/vendor/addon-unicode11.js',
   '/vendor/addon-webgl.js',
+  // Preview libs are vendored, not CDN: markdown/HTML/DOCX previews must work
+  // offline and behind a CDN-blocked tunnel.
+  '/vendor/marked.min.js',
+  '/vendor/purify.min.js',
   '/js/core.js',
   '/js/ui.js',
   '/js/tabs.js',

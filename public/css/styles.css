@@ -1798,10 +1798,23 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 /* Save stays first in the overflow order so it is the last thing to be
    pushed out of view. */
 #editor-header #editor-save-btn { order: -1; margin-right: 4px; }
-/* Progressive disclosure as the panel narrows, instead of clipping. */
+/* Progressive disclosure as the panel narrows, instead of clipping.
+   The Preview toggle is deliberately NOT dropped: hiding it made the split
+   panel's preview unreachable at the default 300px (the preview only worked
+   once the file was moved into a tab, which carries its own toolbar). It
+   collapses to an icon instead, costing the same 26px as the other icon
+   buttons — measured headroom at 300px is ~104px for the file name. */
 #editor-view.compact #editor-tab-toggle,
-#editor-view.compact #html-full-toggle,
-#editor-view.compact #md-preview-toggle { display: none !important; }
+#editor-view.compact #html-full-toggle { display: none !important; }
+#editor-view.compact #md-preview-toggle { width: 26px; min-width: 26px; padding: 0 !important; justify-content: center; }
+#editor-view.compact #md-preview-toggle .pm-label { display: none; }
+/* Icon + label needs a flex box: `.btn` is not one, so gap/alignment would be
+   ignored and the svg would sit on the text baseline. */
+#md-preview-toggle { display: inline-flex; align-items: center; gap: 5px; }
+#md-preview-toggle .pm-ico { flex-shrink: 0; }
+#md-preview-toggle .pm-ico-edit { display: none; }
+#md-preview-toggle[aria-pressed="true"] .pm-ico-preview { display: none; }
+#md-preview-toggle[aria-pressed="true"] .pm-ico-edit { display: inline; }
 #editor-filename-wrap { flex: 1; display: flex; align-items: center; gap: 7px; min-width: 0; }
 #editor-filename { color: var(--fg); font-size: var(--fs-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .editor-dirty-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dirty); flex-shrink: 0; display: none; }

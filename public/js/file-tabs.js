@@ -755,8 +755,9 @@ async function renderTabPreview(tab) {
   if (kind === 'md') {
     const md = tab.fteMd;
     if (!md) return;
+    if (typeof ensurePreviewLibs === 'function') await ensurePreviewLibs(['marked', 'DOMPurify']);
     if (typeof DOMPurify === 'undefined' || typeof marked === 'undefined') {
-      md.innerHTML = '<p style="padding:16px">Preview unavailable — preview libraries failed to load (CDN blocked?).</p>';
+      md.innerHTML = '<p style="padding:16px">Preview unavailable — preview libraries failed to load (offline, and no cached copy).</p>';
       return;
     }
     try {
@@ -796,8 +797,9 @@ async function renderTabPreview(tab) {
       setTabPreviewDoc(tab, frame, doc);
       return;
     }
+    if (typeof ensurePreviewLibs === 'function') await ensurePreviewLibs('DOMPurify');
     if (typeof DOMPurify === 'undefined') {
-      setTabPreviewDoc(tab, frame, '<p style="font-family:sans-serif;padding:16px">Preview unavailable — sanitizer failed to load (CDN blocked?).</p>');
+      setTabPreviewDoc(tab, frame, '<p style="font-family:sans-serif;padding:16px">Preview unavailable — sanitizer failed to load (offline, and no cached copy).</p>');
       toast('Preview unavailable: sanitizer failed to load', 'warning');
       return;
     }

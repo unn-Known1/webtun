@@ -28,8 +28,8 @@
 <script defer src="/vendor/addon-web-links.js"></script>
 <script defer src="/vendor/addon-unicode11.js"></script>
 <script defer src="/vendor/addon-webgl.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js" integrity="sha384-H+hy9ULve6xfxRkWIh/YOtvDdpXgV2fmAGQkIDTxIgZwNoaoBal14Di2YTMR6MzR" crossorigin="anonymous"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js" integrity="sha384-eEu5CTj3qGvu9PdJuS+YlkNi7d2XxQROAFYOr59zgObtlcux1ae1Il3u7jvdCSWu" crossorigin="anonymous"></script>
+<script defer src="/vendor/marked.min.js" integrity="sha384-H+hy9ULve6xfxRkWIh/YOtvDdpXgV2fmAGQkIDTxIgZwNoaoBal14Di2YTMR6MzR"></script>
+<script defer src="/vendor/purify.min.js" integrity="sha384-eEu5CTj3qGvu9PdJuS+YlkNi7d2XxQROAFYOr59zgObtlcux1ae1Il3u7jvdCSWu"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/lib/codemirror.min.css" integrity="sha384-EAMaqTIrSR3wOlf2EQj7Kkx5ZCHPjHmlYJsFof5IB8dzXMASyR8eIwXgp+IGz/rs" crossorigin="anonymous">
 <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/lib/codemirror.min.js" integrity="sha384-t/C99Ss9npjVCqOGZhNjaRnafXAhKyPyhSP+cSSP0CWoFTfMXG4+impqZ6WfgO0a" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/addon/edit/matchbrackets.min.js" integrity="sha384-c2/cRkbFRtiSARCZBcAuEPadlD3ZqkEFyGrzjOjKiYF0uoEI9uSbLrqAAse2i+Ln" crossorigin="anonymous"></script>
@@ -432,7 +432,7 @@
             </button>
             <span id="editor-filename-wrap" aria-live="polite"><span class="editor-dirty-dot" id="editor-dirty-dot" aria-label="Unsaved changes" role="status"></span><span class="editor-ext-dot" id="editor-ext-dot" aria-label="No external changes" role="status"></span><span id="editor-filename">—</span></span>
             <span id="editor-status"></span>
-            <button class="btn" id="md-preview-toggle" style="height:26px;padding:0 12px;font-size:12px;display:none" onclick="toggleMdPreview()">Preview</button>
+            <button class="btn" id="md-preview-toggle" style="height:26px;padding:0 12px;font-size:12px;display:none" aria-pressed="false" onclick="toggleMdPreview()"><svg class="pm-ico pm-ico-preview" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="pm-ico pm-ico-edit" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg><span class="pm-label">Preview</span></button>
             <button class="icon-btn" id="preview-refresh-btn" aria-label="Refresh preview" title="Refresh preview (Ctrl+Shift+R)" onclick="refreshPreview()" style="display:none">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
             </button>

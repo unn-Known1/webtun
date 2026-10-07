@@ -335,9 +335,14 @@ async function showTextInPanel(path, content, original, history, mtime, size) {
   if (mdContent) { mdContent.style.display = 'none'; mdContent.innerHTML = ''; }
   mdPreviewActive = false;
   clearPreviewLiveReload();
-  if ((isMd && typeof marked !== 'undefined') || isHtml) {
+  // Markdown preview needs `marked`; resolve it before deciding whether to offer
+  // the toggle, so a slow/failed script load can't silently hide the button.
+  if (isMd && typeof marked === 'undefined' && typeof ensurePreviewLibs === 'function') {
+    try { await ensurePreviewLibs('marked'); } catch {}
+  }
+  if (isMd || isHtml) {
     toggleBtn.style.display = '';
-    toggleBtn.textContent = 'Preview';
+    setPreviewToggleState(false);
     if (refreshBtn) refreshBtn.style.display = 'none';
     setFullBtnVisible(false);
   } else {

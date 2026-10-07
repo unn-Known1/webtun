@@ -748,7 +748,8 @@ async function openOfficeViewer(path) {
   const needLib = (isDocx && !window.mammoth) || (!isDocx && !window.XLSX);
   let libToast = null;
   try {
-    if (isDocx && typeof DOMPurify === 'undefined') throw new Error('sanitizer failed to load (CDN blocked?)');
+    if (isDocx && typeof ensurePreviewLibs === 'function') await ensurePreviewLibs('DOMPurify');
+    if (isDocx && typeof DOMPurify === 'undefined') throw new Error('sanitizer failed to load (offline, and no cached copy)');
     if (needLib) libToast = toast('Loading office viewer…', 'info');
     if (isDocx) await loadMammoth();
     else await loadSheetJs();
@@ -966,18 +967,33 @@ function closeImageViewer() {
   closeOverlay('image-viewer');
 }
 
+// The Preview toggle carries two icons and a label span (it collapses to an icon
+// in the narrow split panel), so state changes must go through here — assigning
+// `textContent` would wipe the icons out.
+function setPreviewToggleState(active) {
+  const btn = document.getElementById('md-preview-toggle');
+  if (!btn) return;
+  const label = btn.querySelector('.pm-label');
+  if (label) label.textContent = active ? 'Edit' : 'Preview';
+  btn.setAttribute('aria-pressed', String(!!active));
+  const verb = active ? 'Back to editing' : 'Preview this file';
+  // The label span is display:none in the narrow panel, so the icon-only button
+  // needs an explicit name or it reads as an unlabelled control.
+  btn.setAttribute('aria-label', verb);
+  btn.title = verb;
+}
+
 function toggleHtmlPreview() {
   const cmWrapper = document.querySelector('.CodeMirror');
   const preview = document.getElementById('editor-preview');
   const iframe = document.getElementById('editor-preview-iframe');
-  const btn = document.getElementById('md-preview-toggle');
   const refreshBtn = document.getElementById('preview-refresh-btn');
   const isActive = preview.classList.contains('active');
   if (isActive) {
     if (cmWrapper) cmWrapper.style.display = '';
     preview.classList.remove('active');
     if (iframe) iframe.style.display = 'none';
-    btn.textContent = 'Preview';
+    setPreviewToggleState(false);
     if (refreshBtn) refreshBtn.style.display = 'none';
     setFullBtnVisible(false);
     mdPreviewActive = false;
@@ -990,7 +1006,7 @@ function toggleHtmlPreview() {
     renderHtmlPreview();
     if (cmWrapper) cmWrapper.style.display = 'none';
     preview.classList.add('active');
-    btn.textContent = 'Edit';
+    setPreviewToggleState(true);
     if (refreshBtn) refreshBtn.style.display = '';
     setFullBtnVisible(true);
     mdPreviewActive = true;
@@ -1225,10 +1241,11 @@ async function renderHtmlPreviewInner() {
     setPreviewDoc(iframe, doc);
     return;
   }
-  // Never render unsanitized HTML: without the DOMPurify CDN the preview
-  // stays off (scripts in the file could otherwise reach the app).
+  // Never render unsanitized HTML: without DOMPurify the preview stays off
+  // (scripts in the file could otherwise reach the app).
+  if (typeof ensurePreviewLibs === 'function') await ensurePreviewLibs('DOMPurify');
   if (typeof DOMPurify === 'undefined') {
-    setPreviewDoc(iframe, '<p style="font-family:sans-serif;padding:16px">Preview unavailable — sanitizer failed to load (CDN blocked?).</p>');
+    setPreviewDoc(iframe, '<p style="font-family:sans-serif;padding:16px">Preview unavailable — sanitizer failed to load (offline, and no cached copy).</p>');
     toast('Preview unavailable: sanitizer failed to load', 'warning');
     return;
   }
@@ -1312,8 +1329,9 @@ async function renderMdPreview() {
   if (iframe) iframe.style.display = 'none';
   mdContent.style.display = 'block';
   try {
-    if (typeof DOMPurify === 'undefined') {
-      mdContent.innerHTML = '<p style="padding:16px">Preview unavailable — sanitizer failed to load (CDN blocked?).</p>';
+    if (typeof ensurePreviewLibs === 'function') await ensurePreviewLibs(['marked', 'DOMPurify']);
+    if (typeof DOMPurify === 'undefined' || typeof marked === 'undefined') {
+      mdContent.innerHTML = '<p style="padding:16px">Preview unavailable — preview libraries failed to load (offline, and no cached copy).</p>';
       return;
     }
     const html = marked.parse(raw, { breaks: true, gfm: true, langPrefix: 'language-' });
@@ -1409,7 +1427,6 @@ function toggleMdPreview() {
   }
   const cmWrapper = document.querySelector('.CodeMirror');
   const preview = document.getElementById('editor-preview');
-  const btn = document.getElementById('md-preview-toggle');
   const refreshBtn = document.getElementById('preview-refresh-btn');
   mdPreviewActive = !mdPreviewActive;
   if (mdPreviewActive) {
@@ -1418,13 +1435,13 @@ function toggleMdPreview() {
     renderMdPreview();
     if (cmWrapper) cmWrapper.style.display = 'none';
     preview.classList.add('active');
-    btn.textContent = 'Edit';
+    setPreviewToggleState(true);
     if (refreshBtn) refreshBtn.style.display = '';
     startPreviewLiveReload();
   } else {
     if (cmWrapper) cmWrapper.style.display = '';
     preview.classList.remove('active');
-    btn.textContent = 'Preview';
+    setPreviewToggleState(false);
     if (refreshBtn) refreshBtn.style.display = 'none';
     editor.focus();
     clearPreviewLiveReload();
