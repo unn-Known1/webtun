@@ -310,6 +310,7 @@ async function showTextInPanel(path, content, original, history, mtime, size) {
     const ta = document.getElementById('editor-textarea');
     if (ta) {
       ta.value = openContent;
+      ta.readOnly = false;
       ta.style.display = 'block';
       ta.style.width = '100%';
       ta.style.height = '100%';

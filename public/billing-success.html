@@ -3,26 +3,31 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>WebTun Pro — your license key</title>
 <style>
-  body { font-family: system-ui, sans-serif; background: #0d1117; color: #e6edf3; display: flex; justify-content: center; padding: 40px 16px; margin: 0; }
-  .card { max-width: 560px; width: 100%; background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 24px; }
+  :root { color-scheme: light; --bg: #f9f9fb; --bg2: #eeeef2; --border: #c8c8d4; --fg: #1f1f30; --fg2: #2b2b45; --accent: #304cae; --on-accent: #fff; }
+  [data-theme="dark"] { color-scheme: dark; --bg: #1a1b26; --bg2: #16161e; --border: #3b3f52; --fg: #c0caf5; --fg2: #9aa0c3; --accent: #7aa2f7; --on-accent: #16161e; }
+  body { font-family: 'IBM Plex Sans', system-ui, sans-serif; background: var(--bg); color: var(--fg); display: flex; justify-content: center; padding: 40px 16px; margin: 0; }
+  .card { max-width: 560px; width: 100%; background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; padding: 24px; }
   h1 { font-size: 20px; margin: 0 0 8px; }
-  p { color: #8b949e; font-size: 14px; }
-  #key { font-family: monospace; font-size: 12px; word-break: break-all; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 12px; margin: 12px 0; }
-  button { background: #238636; color: #fff; border: 0; border-radius: 6px; padding: 10px 16px; font-size: 14px; cursor: pointer; }
-  button:hover { background: #2ea043; }
-  ol { font-size: 14px; color: #c9d1d9; }
+  p { color: var(--fg2); font-size: 14px; }
+  #key { font-family: 'JetBrains Mono', monospace; font-size: 12px; word-break: break-all; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin: 12px 0; }
+  button { background: var(--accent); color: var(--on-accent); border: 0; border-radius: 6px; padding: 10px 16px; font-size: 14px; cursor: pointer; }
+  button:hover { filter: brightness(0.88); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  ol { font-size: 14px; color: var(--fg2); }
 </style>
+<script>try{var t=JSON.parse(localStorage.getItem('wt-settings')||'{}').theme;if(t==='system')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=(t&&t!=='light'&&t!=='catppuccin-latte'&&t!=='nord-light')?'dark':'light';}catch(e){}</script>
 </head>
 <body>
 <div class="card">
   <h1>Payment received</h1>
-  <p id="status">Fetching your license key…</p>
+  <p id="status" role="status" aria-live="polite">Fetching your license key…</p>
   <div id="key" style="display:none"></div>
   <div style="display:flex;gap:8px">
     <button id="copy" style="display:none">Copy key</button>
-    <button id="retry" style="display:none;background:#1f6feb">Retry</button>
+    <button id="retry" style="display:none">Retry</button>
   </div>
   <ol>
     <li>Copy the key above (save it with your receipts).</li>
@@ -65,7 +70,8 @@
   if (!sid) { status.textContent = 'Missing checkout session.'; return; }
   copyBtn.onclick = function () {
     var t = keyEl.textContent || '';
-    if (navigator.clipboard) navigator.clipboard.writeText(t).then(function () { copyBtn.textContent = 'Copied'; });
+    if (navigator.clipboard) navigator.clipboard.writeText(t).then(function () { copyBtn.textContent = 'Copied'; status.textContent = 'License key copied.'; }, function () { status.textContent = 'Copy failed. Select the key above and copy it manually.'; });
+    else status.textContent = 'Select the key above and copy it manually.';
   };
   retryBtn.onclick = function () { tries = 0; retryBtn.style.display = 'none'; fetchKey(); };
   fetchKey();

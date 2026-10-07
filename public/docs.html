@@ -102,20 +102,7 @@ a{color:var(--am)}
 .skip{position:fixed;top:-60px;left:16px;z-index:200;background:var(--grad);color:var(--on-accent);
   font-weight:700;padding:10px 18px;border-radius:10px;transition:top .2s;text-decoration:none}
 .skip:focus{top:12px}
-/* mesh background, mouse-parallax on the hero only */
-.aurora{position:fixed;inset:0;z-index:-1;overflow:hidden;background:
-  radial-gradient(1100px 520px at 82% -8%,color-mix(in srgb,var(--am) 13%,transparent),transparent 60%),
-  radial-gradient(900px 480px at 6% 8%,color-mix(in srgb,var(--tl) 11%,transparent),transparent 60%),
-  radial-gradient(800px 620px at 46% 112%,color-mix(in srgb,var(--vi) 9%,transparent),transparent 60%),
-  var(--bg0)}
-.orb{position:absolute;border-radius:50%;filter:blur(95px);opacity:.36;will-change:transform;
-  transition:transform 1.1s var(--ease)}
-.orb.o1{width:440px;height:440px;left:-150px;top:-130px;background:color-mix(in srgb,var(--am) 16%,transparent)}
-.orb.o2{width:500px;height:500px;right:-170px;top:4%;background:color-mix(in srgb,var(--tl) 16%,transparent)}
-.orb.o3{width:400px;height:400px;left:30%;bottom:-190px;background:color-mix(in srgb,var(--vi) 12%,transparent)}
-[data-theme="dark"] .orb{opacity:.55}
-.grain{position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.035;mix-blend-mode:overlay;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+.aurora{position:fixed;inset:0;z-index:-1;background:var(--bg0)}
 /* progress */
 #progress{position:fixed;top:0;left:0;height:3px;width:0;background:var(--grad);z-index:120;
   border-radius:0 3px 3px 0;box-shadow:0 0 12px color-mix(in srgb,var(--am) 45%,transparent)}
@@ -194,8 +181,7 @@ body.nav-open .burger span::after{transform:translateY(-5px) rotate(-45deg)}
 .eyebrow{display:inline-flex;align-items:center;gap:8px;font:600 12px var(--mono);letter-spacing:.02em;
   color:var(--am);background:color-mix(in srgb,var(--am) 9%,transparent);border:1px solid color-mix(in srgb,var(--am) 28%,transparent);
   padding:7px 14px;border-radius:100px;margin-bottom:22px}
-.pulse{width:7px;height:7px;border-radius:50%;background:var(--gn);box-shadow:0 0 0 0 color-mix(in srgb,var(--gn) 60%,transparent);animation:pulse 2s infinite}
-@keyframes pulse{70%{box-shadow:0 0 0 9px transparent}100%{box-shadow:0 0 0 0 transparent}}
+.pulse{width:7px;height:7px;border-radius:50%;background:var(--gn)}
 h1{font-size:clamp(36px,5.6vw,60px);line-height:1.04;letter-spacing:-.03em;font-weight:800;max-width:17ch}
 h1 .grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
 .lede{color:var(--mut);font-size:17.5px;max-width:58ch;margin:20px 0 28px}
@@ -216,7 +202,7 @@ h1 .grad{background:var(--grad);-webkit-background-clip:text;background-clip:tex
 .term-title{margin-left:6px;font:12px var(--mono);color:var(--dim);display:flex;align-items:center;gap:7px}
 .term-live{margin-left:auto;font:700 10px var(--sans);letter-spacing:.1em;color:var(--gn);
   border:1px solid color-mix(in srgb,var(--gn) 40%,transparent);padding:3px 9px;border-radius:100px;display:flex;align-items:center;gap:6px}
-.term-live i{width:6px;height:6px;border-radius:50%;background:var(--gn);animation:blink 1.4s infinite}
+.term-live i{width:6px;height:6px;border-radius:50%;background:var(--gn)}
 @keyframes blink{50%{opacity:.25}}
 .term-body{padding:18px 20px 22px;font:13.5px/1.75 var(--mono);min-height:236px;color:var(--code-fg)}
 .t-dim{color:var(--code-dim)}.t-p{color:var(--tl)}.t-g{color:var(--gn)}.t-v{color:var(--vi)}.t-a{color:var(--ye)}
@@ -227,10 +213,8 @@ h1 .grad{background:var(--grad);-webkit-background-clip:text;background-clip:tex
 .card{display:block;background:var(--bg0);padding:22px 20px;text-decoration:none;color:var(--ink);
   transition:background .2s;position:relative}
 .card:hover{background:var(--panel2)}
-.card .ic{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;margin-bottom:14px;
-  background:var(--panel2);border:1px solid var(--line2);transition:transform .3s var(--ease)}
-.card:hover .ic{transform:translateY(-2px) rotate(-4deg)}
-.card h3{font-size:14.5px;margin-bottom:5px;letter-spacing:-.01em}
+.card .ic{width:24px;height:24px;display:inline-grid;place-items:center;vertical-align:middle;margin-right:8px}
+.card h3{display:inline;font-size:14.5px;letter-spacing:-.01em}
 .card p{font-size:12.8px;color:var(--mut);line-height:1.5}
 .card .go{font-size:12px;font-weight:700;color:var(--am);margin-top:10px;display:inline-flex;align-items:center;gap:4px;
   transform:translateX(0);transition:transform .2s}
@@ -299,7 +283,8 @@ td:first-child{color:var(--ink)}
 /* ── feature grid ── */
 .feat{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px;margin:20px 0 26px}
 .feat > div{padding:16px 17px;border:1px solid var(--line);border-radius:var(--rad-s);background:var(--panel)}
-.feat h4{font-size:14px;margin-bottom:5px}
+.feat h3{font-size:14px;margin-bottom:5px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .feat p{font-size:13.2px;color:var(--mut)}
 /* ── figures (mini device mockups) ── */
 .fig{border:1px solid var(--line2);border-radius:var(--rad-s);overflow:hidden;margin-bottom:22px;background:var(--code-bg)}
@@ -386,7 +371,8 @@ footer a{color:var(--mut)}
   .cards{grid-template-columns:1fr}
 }
 @media (prefers-reduced-motion: reduce){
-  *{animation-duration:.001s !important;animation-iteration-count:1 !important;transition-duration:.001s !important}
+  *,*::before,*::after{animation:none !important;transition-duration:.12s !important}
+  .side,.faq .panel,.rv,.palette-scrim{transition-duration:0ms !important}
   /* scroll-behavior is not an animation, so the two properties above never
      applied to it — long animated jumps continued under reduced motion (S-26). */
   html{scroll-behavior:auto !important}
@@ -396,8 +382,7 @@ footer a{color:var(--mut)}
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-<div class="aurora"><div class="orb o1" id="orb1"></div><div class="orb o2" id="orb2"></div><div class="orb o3" id="orb3"></div></div>
-<div class="grain"></div>
+<div class="aurora"></div>
 <div id="progress"></div>
 
 <div class="topbar">
@@ -491,7 +476,8 @@ footer a{color:var(--mut)}
         </div>
       </header>
 
-      <nav class="cards" aria-label="Popular topics">
+       <h2 class="sr-only">Popular topics</h2>
+       <nav class="cards" aria-label="Popular topics">
         <a class="card" href="#terminal"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="stroke:var(--tl)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg></span><h3>Terminal tabs</h3><p>Many shells at once. Sessions survive refreshes and reconnects.</p><span class="go">Read →</span></a>
         <a class="card" href="#remote"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="stroke:var(--vi)" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span><h3>Reach it remotely</h3><p>One click spins up a secure Cloudflare tunnel URL.</p><span class="go">Read →</span></a>
         <a class="card" href="#git"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="stroke:var(--gn)" stroke-width="2" stroke-linecap="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg></span><h3>Git without CLI</h3><p>Stage single hunks, commit, pull and push from a panel.</p><span class="go">Read →</span></a>
@@ -641,10 +627,10 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
         </div>
         <p class="sec-sub rv">Browse the whole host filesystem, or stay inside your workspace. <b>Right-click anything</b> for the full action menu.</p>
         <div class="feat rv">
-          <div><h4>Move &amp; organize</h4><p>Rename, copy, cut, paste, delete, new file/folder. Clashes offer replace, merge, skip, or keep-both.</p></div>
-          <div><h4>Upload &amp; download</h4><p>Drag-and-drop upload (up to 500&nbsp;MB × 100 files), download single files or whole folders as a zip.</p></div>
-          <div><h4>Zip in place</h4><p>Zip (stored, uncompressed) and extract archives without touching the terminal.</p></div>
-          <div><h4>Instant search</h4><p>Find files by name from the search box — capped for speed on giant trees.</p></div>
+           <div><h3>Move &amp; organize</h3><p>Rename, copy, cut, paste, delete, new file/folder. Clashes offer replace, merge, skip, or keep-both.</p></div>
+           <div><h3>Upload &amp; download</h3><p>Drag-and-drop upload (up to 500&nbsp;MB × 100 files), download single files or whole folders as a zip.</p></div>
+           <div><h3>Zip in place</h3><p>Zip (stored, uncompressed) and extract archives without touching the terminal.</p></div>
+           <div><h3>Instant search</h3><p>Find files by name from the search box — capped for speed on giant trees.</p></div>
         </div>
         <ul class="tight rv">
           <li><b>Click the breadcrumb</b> trail to hop up through parent folders — faster than hammering "back". Deep paths auto-scroll to the current folder. Type-ahead, arrow keys and select-all all work in the list.</li>
@@ -816,6 +802,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
           <div><h2>Shortcuts <a class="hash" href="#shortcuts" aria-label="Link to this section">#</a></h2></div>
         </div>
         <p class="sec-sub rv">The complete set — also available any time inside the app from the <b>overflow menu → Keyboard Shortcuts</b>.</p>
+        <p class="sec-sub rv">The connection dot in the header opens System Stats with <kbd>Enter</kbd> or <kbd>Space</kbd>. Dialogs keep keyboard focus inside until closed; the guide’s section search uses arrow keys and <kbd>Enter</kbd>, and each troubleshooting answer announces whether it is expanded.</p>
         <div class="keys rv">
           <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>K</kbd> / <kbd>⌘K</kbd></span><span class="does">Quick search & command palette (universal)</span></div>
           <div class="keyrow"><span class="combo"><kbd>Ctrl</kbd><kbd>P</kbd></span><span class="does">File finder (when outside terminal; in terminal passes to fzf/readline)</span></div>
@@ -872,13 +859,13 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
 
 <!-- ══════════ COMMAND PALETTE ══════════ -->
 <div class="palette-scrim" id="paletteScrim">
-  <div class="palette" role="dialog" aria-label="Jump to a section">
+   <div class="palette" role="dialog" aria-modal="true" aria-label="Jump to a section">
     <div class="palette-in">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-      <input id="paletteInput" type="text" placeholder="Search the guide…" autocomplete="off" spellcheck="false">
+       <input id="paletteInput" type="text" role="combobox" aria-label="Search guide sections" aria-autocomplete="list" aria-expanded="false" aria-controls="paletteList" placeholder="Search the guide…" autocomplete="off" spellcheck="false">
       <kbd>Esc</kbd>
     </div>
-    <div class="palette-list" id="paletteList"></div>
+     <div class="palette-list" id="paletteList" role="listbox" aria-label="Guide sections"></div>
   </div>
 </div>
 
@@ -994,12 +981,19 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
   });
 
   /* ── animated accordion (FAQ) ── */
-  document.querySelectorAll('.faq').forEach(function(item){
-    var btn = item.querySelector('.q');
-    btn.addEventListener('click', function(){
-      var open = item.getAttribute('aria-expanded') === 'true';
-      item.setAttribute('aria-expanded', String(!open));
-    });
+   document.querySelectorAll('.faq').forEach(function(item, index){
+     var btn = item.querySelector('.q');
+     var panel = item.querySelector('.panel');
+     panel.id = 'faq-answer-' + index;
+     btn.setAttribute('aria-controls', panel.id);
+     btn.setAttribute('aria-expanded', 'false');
+     panel.inert = true;
+     btn.addEventListener('click', function(){
+       var open = item.getAttribute('aria-expanded') === 'true';
+       item.setAttribute('aria-expanded', String(!open));
+       btn.setAttribute('aria-expanded', String(!open));
+       panel.inert = open;
+     });
   });
 
   /* ── reveal on scroll ── */
@@ -1013,18 +1007,6 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
       });
     }, { threshold: 0.08 });
     rvEls.forEach(function(el){ ro.observe(el); });
-  }
-
-  /* ── orb parallax on the hero, mouse-driven, contained ── */
-  if (!reduced){
-    var orbs = [document.getElementById('orb1'), document.getElementById('orb2'), document.getElementById('orb3')];
-    var depths = [18, 26, 12];
-    window.addEventListener('pointermove', function(e){
-      var nx = (e.clientX / window.innerWidth - .5), ny = (e.clientY / window.innerHeight - .5);
-      orbs.forEach(function(o, i){
-        if (o) o.style.transform = 'translate(' + (nx * depths[i]) + 'px,' + (ny * depths[i]) + 'px)';
-      });
-    }, { passive: true });
   }
 
   /* ── hero terminal typing ── */
@@ -1089,23 +1071,42 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
     return { id: id, label: a.textContent.trim(), grp: (a.previousElementSibling && a.previousElementSibling.classList.contains('grp')) ? '' : '', text: s ? s.textContent.toLowerCase() : '' };
   });
   var sel = 0, filtered = items.slice();
-  function renderList(){
-    if (!filtered.length){
-      list.innerHTML = '<div class="palette-empty">No matching sections.</div>';
-      return;
-    }
-    list.innerHTML = filtered.map(function(it, i){
-      return '<div class="palette-item' + (i === sel ? ' sel' : '') + '" data-id="' + it.id + '">' +
-        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>' +
-        '<span>' + it.label + '</span><span class="grp">#' + it.id + '</span></div>';
-    }).join('');
-  }
-  function openPalette(){
-    scrimEl.classList.add('open');
-    input.value = ''; filtered = items.slice(); sel = 0; renderList();
-    setTimeout(function(){ input.focus(); }, 30);
-  }
-  function closePalette(){ scrimEl.classList.remove('open'); }
+   function renderList(){
+     if (!filtered.length){
+       list.innerHTML = '<div class="palette-empty">No matching sections.</div>';
+       input.removeAttribute('aria-activedescendant');
+       return;
+     }
+     list.innerHTML = filtered.map(function(it, i){
+       return '<div class="palette-item' + (i === sel ? ' sel' : '') + '" id="palette-option-' + i + '" role="option" aria-selected="' + (i === sel) + '" data-id="' + it.id + '">' +
+         '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>' +
+         '<span>' + it.label + '</span><span class="grp">#' + it.id + '</span></div>';
+     }).join('');
+     input.setAttribute('aria-activedescendant', 'palette-option-' + sel);
+   }
+   var paletteReturnFocus = null;
+   function openPalette(){
+     if (scrimEl.classList.contains('open')) return;
+     paletteReturnFocus = document.activeElement;
+     scrimEl.classList.add('open');
+     input.setAttribute('aria-expanded', 'true');
+     document.querySelector('.layout').inert = true;
+     document.querySelector('.topbar').inert = true;
+     document.getElementById('top').inert = true;
+     input.value = ''; filtered = items.slice(); sel = 0; renderList();
+     input.focus();
+   }
+   function closePalette(){
+     if (!scrimEl.classList.contains('open')) return;
+     scrimEl.classList.remove('open');
+     input.setAttribute('aria-expanded', 'false');
+     input.removeAttribute('aria-activedescendant');
+     document.querySelector('.layout').inert = false;
+     document.querySelector('.topbar').inert = false;
+     document.getElementById('top').inert = false;
+     if (paletteReturnFocus && paletteReturnFocus.isConnected) paletteReturnFocus.focus();
+     paletteReturnFocus = null;
+   }
   function jump(id){
     closePalette();
     var el = document.getElementById(id);
@@ -1130,9 +1131,10 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
       e.preventDefault(); openPalette();
     }
     if (e.key === 'Escape'){ closePalette(); closeNav(); }
-    if (scrimEl.classList.contains('open')){
-      if (e.key === 'ArrowDown'){ e.preventDefault(); sel = Math.min(sel + 1, filtered.length - 1); renderList(); }
-      if (e.key === 'ArrowUp'){ e.preventDefault(); sel = Math.max(sel - 1, 0); renderList(); }
+     if (scrimEl.classList.contains('open')){
+       if (e.key === 'Tab'){ e.preventDefault(); input.focus(); }
+       if (e.key === 'ArrowDown'){ e.preventDefault(); sel = Math.min(sel + 1, filtered.length - 1); renderList(); }
+       if (e.key === 'ArrowUp'){ e.preventDefault(); sel = Math.max(sel - 1, 0); renderList(); }
       if (e.key === 'Enter' && filtered[sel]){ jump(filtered[sel].id); }
     }
   });

@@ -28,8 +28,9 @@
 <script defer src="/vendor/addon-web-links.js"></script>
 <script defer src="/vendor/addon-unicode11.js"></script>
 <script defer src="/vendor/addon-webgl.js"></script>
-<script defer src="/vendor/marked.min.js" integrity="sha384-H+hy9ULve6xfxRkWIh/YOtvDdpXgV2fmAGQkIDTxIgZwNoaoBal14Di2YTMR6MzR"></script>
-<script defer src="/vendor/purify.min.js" integrity="sha384-eEu5CTj3qGvu9PdJuS+YlkNi7d2XxQROAFYOr59zgObtlcux1ae1Il3u7jvdCSWu"></script>
+<!-- CodeMirror is loaded when a text editor is first opened. Keep the pinned
+     URLs and integrity attributes here so the lazy loader cannot drift. -->
+<template id="codemirror-assets">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/lib/codemirror.min.css" integrity="sha384-EAMaqTIrSR3wOlf2EQj7Kkx5ZCHPjHmlYJsFof5IB8dzXMASyR8eIwXgp+IGz/rs" crossorigin="anonymous">
 <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/lib/codemirror.min.js" integrity="sha384-t/C99Ss9npjVCqOGZhNjaRnafXAhKyPyhSP+cSSP0CWoFTfMXG4+impqZ6WfgO0a" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/addon/edit/matchbrackets.min.js" integrity="sha384-c2/cRkbFRtiSARCZBcAuEPadlD3ZqkEFyGrzjOjKiYF0uoEI9uSbLrqAAse2i+Ln" crossorigin="anonymous"></script>
@@ -47,6 +48,7 @@
 <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/addon/mode/simple.min.js" integrity="sha384-MesPXXu70Ii6cdGMtvSIrbXpJJ4CQblh4D3wz8urB99oe//IL2WkP7ddH8LqDUm7" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/rust/rust.min.js" integrity="sha384-lNTWBy5RwsghnmTZiBIhu62eWEx+Wp8gCFuMxX0CDud8118E5X5PoPHhZn6EQ6ri" crossorigin="anonymous"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/codemirror@5.65.18/mode/properties/properties.min.js" integrity="sha384-nMlVwwMJm4U2Kd2KgxU3uI3Y30qul7/8auh6MbzqQyGNMSLV8BNsTRd5MehfrRCW" crossorigin="anonymous"></script>
+</template>
 <link rel="stylesheet" href="css/styles.css">
 </head>
 <body data-theme="light">
@@ -86,7 +88,8 @@
 <div id="app" style="display:none">
   <!-- Header -->
   <div id="header" role="banner">
-    <span id="conn-status" role="status" aria-label="Connected" title="Connected · Local PTY running — click for System Stats" onclick="openSystemStats()"></span>
+    <button id="conn-status" type="button" aria-label="Open System Stats" title="Connected — open System Stats" onclick="openSystemStats()"></button>
+    <span id="conn-status-text" class="sr-only" role="status" aria-live="polite">Connected</span>
     <span id="logo" style="display:flex;align-items:center;gap:6px" title="WebTun v2.3.2">
       <svg class="logo-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="4 17 10 11 4 5"/>
@@ -340,15 +343,15 @@
                 <button class="btn btn-ghost" onclick="toggleCmdLib()" title="Snippets & Command Library"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>Snippets</button>
               </div>
               <div class="lp-cols">
-                <div class="lp-card"><h4>Recent commands</h4><div id="lp-cmds"></div></div>
+                <div class="lp-card"><h3>Recent commands</h3><div id="lp-cmds"></div></div>
                 <div class="lp-card">
                   <div style="display:flex;align-items:center;justify-content:space-between;padding:0 6px 6px">
-                    <h4 style="padding:0;margin:0">Active Sessions</h4>
+                    <h3 style="padding:0;margin:0">Active Sessions</h3>
                     <button class="btn btn-ghost" style="padding:0 4px;font-size:10px;height:18px" onclick="openTerminalSessionsModal()">All</button>
                   </div>
                   <div id="lp-sessions"></div>
                 </div>
-                <div class="lp-card"><h4>Places</h4><div id="lp-places"></div></div>
+                <div class="lp-card"><h3>Places</h3><div id="lp-places"></div></div>
               </div>
               <div class="lp-hint">Enter for a new terminal · press 1–6 to run a recent · tabs and sessions survive reloads</div>
             </div>
@@ -387,7 +390,7 @@
           </div>
           <div class="cmd-lib-search-wrap">
             <svg class="cmd-search-ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input id="cmd-lib-search" type="text" placeholder="Search commands by name, syntax, or category…" oninput="onCmdSearchInput()">
+            <input id="cmd-lib-search" type="text" aria-label="Search commands" placeholder="Search commands by name, syntax, or category…" oninput="onCmdSearchInput()">
             <button class="cmd-search-clear" id="cmd-search-clear-btn" onclick="clearCmdSearch()" aria-label="Clear filter" style="display:none" title="Clear">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
@@ -409,12 +412,12 @@
           </div>
           <div id="cmd-lib-footer">
             <div class="cmd-lib-form-row">
-              <input id="cmd-lib-name-input" type="text" placeholder="Command Label" onkeydown="if(event.key==='Enter')document.getElementById('cmd-lib-cat-input').focus()">
-              <input id="cmd-lib-cat-input" type="text" placeholder="Category (e.g. Docker, Dev)" list="cmd-cat-datalist" onkeydown="if(event.key==='Enter')document.getElementById('cmd-lib-cmd-input').focus()">
+              <input id="cmd-lib-name-input" type="text" aria-label="Command label" placeholder="Command Label" onkeydown="if(event.key==='Enter')document.getElementById('cmd-lib-cat-input').focus()">
+              <input id="cmd-lib-cat-input" type="text" aria-label="Command category" placeholder="Category (e.g. Docker, Dev)" list="cmd-cat-datalist" onkeydown="if(event.key==='Enter')document.getElementById('cmd-lib-cmd-input').focus()">
               <datalist id="cmd-cat-datalist"></datalist>
             </div>
             <div class="cmd-lib-form-row">
-              <input id="cmd-lib-cmd-input" type="text" placeholder="Command syntax (e.g. docker ps -a)" onkeydown="if(event.key==='Enter')saveCustomCmdFromForm()">
+              <input id="cmd-lib-cmd-input" type="text" aria-label="Command syntax" placeholder="Command syntax (e.g. docker ps -a)" onkeydown="if(event.key==='Enter')saveCustomCmdFromForm()">
               <button class="btn btn-primary" id="cmd-lib-save-btn" onclick="saveCustomCmdFromForm()">Add</button>
               <button class="btn" id="cmd-lib-cancel-edit-btn" onclick="cancelEditCustomCmd()" style="display:none">Cancel</button>
             </div>
@@ -1038,7 +1041,7 @@
         <button class="term-sess-filter-btn" data-filter="external" onclick="setTerminalSessionsFilter('external')">External (<span id="sess-filter-ext-count">0</span>)</button>
       </div>
       <div class="term-sess-search-wrap">
-        <input type="text" id="term-sessions-search" class="input" placeholder="Search sessions, cwd, commands…" oninput="filterTerminalSessionsList()" style="width:100%;height:28px;font-size:11.5px;padding:0 10px;border-radius:var(--radius-sm)">
+        <input type="text" id="term-sessions-search" class="input" aria-label="Search terminal sessions" placeholder="Search sessions, cwd, commands…" oninput="filterTerminalSessionsList()" style="width:100%;height:28px;font-size:11.5px;padding:0 10px;border-radius:var(--radius-sm)">
       </div>
     </div>
     <div class="term-sess-list" id="term-sessions-list">
@@ -1078,7 +1081,7 @@
 <!-- Fuzzy Finder Modal -->
 <div class="overlay" id="finder-overlay" role="dialog" aria-modal="true" aria-label="Search files">
   <div class="modal modal-md" style="padding:12px">
-    <input id="finder-input" type="text" placeholder="Search files and folders…" autocomplete="off" oninput="doFinderSearch()" onkeydown="finderKeydown(event)">
+    <input id="finder-input" type="text" aria-label="Search files and folders" placeholder="Search files and folders…" autocomplete="off" oninput="doFinderSearch()" onkeydown="finderKeydown(event)">
     <div id="finder-results"></div>
     <div id="finder-empty">Start typing to search files</div>
   </div>
@@ -1157,7 +1160,7 @@
           <h3 style="margin:0">Processes</h3>
           <div class="sys-proc-search-wrap" style="position:relative;display:flex;align-items:center">
             <svg style="position:absolute;left:8px;color:var(--fg3);pointer-events:none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input id="sys-proc-filter" type="text" placeholder="Filter processes (e.g. node, ssh)..." autocomplete="off" oninput="filterSysProcesses()" style="padding-left:26px;height:26px;font-size:11.5px;width:220px;border-radius:6px">
+            <input id="sys-proc-filter" type="text" aria-label="Filter processes" placeholder="Filter processes (e.g. node, ssh)..." autocomplete="off" oninput="filterSysProcesses()" style="padding-left:26px;height:26px;font-size:11.5px;width:220px;border-radius:6px">
           </div>
         </div>
         <div class="sys-table-wrap">
@@ -1203,19 +1206,19 @@
       <div id="ssh-setup-list"></div>
       <div id="ssh-setup-result" class="ssh-note-box" style="display:none"></div>
       <div id="ssh-tskey-row" class="ssh-inline-row" style="display:none">
-        <input type="password" id="ssh-tskey" placeholder="tskey-auth-… (optional, headless login)" autocomplete="off">
+        <input type="password" id="ssh-tskey" aria-label="Optional Tailscale authentication key" placeholder="tskey-auth-… (optional, headless login)" autocomplete="off">
         <button class="btn btn-primary" id="ssh-tskey-btn" onclick="tailscaleUpWithKey()">Connect</button>
       </div>
       <div class="ssh-sec-t">Credentials</div>
       <div class="ssh-inline-row">
-        <input type="text" id="ssh-label" value="" maxlength="64" placeholder="New key label, e.g. Termius on iPhone" oninput="clearFieldError('ssh-field-error')" onkeydown="if(event.key==='Enter'){event.preventDefault();generateSshCredential()}">
+        <input type="text" id="ssh-label" aria-label="New SSH key label" value="" maxlength="64" placeholder="New key label, e.g. Termius on iPhone" oninput="clearFieldError('ssh-field-error')" onkeydown="if(event.key==='Enter'){event.preventDefault();generateSshCredential()}">
         <button class="btn btn-primary" id="ssh-generate-btn" onclick="generateSshCredential()">Generate</button>
       </div>
       <div class="field-error" id="ssh-field-error" role="alert"></div>
       <div id="ssh-once" class="ssh-once" style="display:none">
         <div class="ssh-once-title">Copy this private key now — it will never be shown again</div>
         <div id="ssh-once-warn" class="ssh-once-warn" style="display:none"></div>
-        <textarea id="ssh-once-key" readonly rows="6" spellcheck="false" onclick="this.select()"></textarea>
+        <textarea id="ssh-once-key" aria-label="Generated private key" readonly rows="6" spellcheck="false" onclick="this.select()"></textarea>
         <div class="ssh-cmd" id="ssh-once-cmd" title="Click to copy" role="button" tabindex="0" onclick="copyText(document.getElementById('ssh-once-cmd').textContent)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();copyText(document.getElementById('ssh-once-cmd').textContent)}"></div>
         <div class="ssh-once-actions">
           <button class="btn btn-primary" onclick="copySshOnceKey()">Copy private key</button>
@@ -1232,7 +1235,7 @@
         <button class="btn btn-ghost" id="ssh-cleanup-btn" onclick="cleanupSshOrphans()" style="height:28px;padding:0 12px;font-size:12px"></button>
       </div>
       <div class="ssh-inline-row">
-        <input type="number" id="ssh-port" min="1" max="65535" value="2222" oninput="clearFieldError('ssh-field-error')" onkeydown="if(event.key==='Enter'){event.preventDefault();saveSshPort()}" title="Expected SSH port">
+        <input type="number" id="ssh-port" aria-label="SSH port" min="1" max="65535" value="2222" oninput="clearFieldError('ssh-field-error')" onkeydown="if(event.key==='Enter'){event.preventDefault();saveSshPort()}" title="Expected SSH port">
         <button class="btn btn-ghost" id="ssh-port-btn" onclick="saveSshPort()">Save port</button>
       </div>
       <div class="ssh-hint">Tells the recipes which port to show. Set <span style="font-family:var(--font)">SSH_PORT</span> in <span style="font-family:var(--font)">.env</span> to make it permanent.</div>

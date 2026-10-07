@@ -1,5 +1,7 @@
 # WebTun Impeccable Technical Audit
 
+> **Baseline snapshot.** The 12/20 score below belongs to the original audit, not the current working tree. A remediation pass has addressed dialog focus, field names, connection-status keyboard access, docs palette and FAQ semantics, billing status announcements and theme, light-theme contrast tokens, reduced-motion behavior, mobile control sizing, eager editor/preview asset loading, and some persistent rendering effects. `npm test`, JavaScript syntax checks, and a server startup smoke check passed after these edits. Browser-based accessibility, touch, contrast-by-state, and performance measurements are still needed before a new score can be assigned; this report does not claim 20/20.
+
 **Audit date:** 2026-10-07  
 **Command:** `/impeccable audit`  
 **Scope:** All shipped web surfaces under `public/`: the main application, documentation, billing success flow, shared CSS and JavaScript, manifest, service worker, and first-party vendored assets. Generated launch-video code under `brag-output/` and third-party minified vendor internals were excluded from implementation findings.

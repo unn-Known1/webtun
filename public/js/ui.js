@@ -92,6 +92,10 @@ function setupMoreMenuKeyboard() {
 // ═══════════════════════════════════════════════════════
 let lastFocusedElement = null;
 let _focusTrapHandler = null;
+function syncOverlayBackground() {
+  const app = document.getElementById('app');
+  if (app) app.inert = !!document.querySelector('.overlay.open');
+}
 function openShortcuts() {
   openOverlay('shortcuts-overlay');
   document.getElementById('shortcuts-overlay').querySelector('.btn').focus();
@@ -101,6 +105,7 @@ function openOverlay(id) {
   const overlay = document.getElementById(id);
   if (!overlay) return;
   overlay.classList.add('open');
+  syncOverlayBackground();
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
   const titleEl = overlay.querySelector('h2');
@@ -110,8 +115,12 @@ function openOverlay(id) {
   } else if (overlay.getAttribute('aria-label')) {
     overlay.removeAttribute('aria-labelledby');
   }
-  const modal = overlay.querySelector('.modal, input, button');
-  if (modal) setTimeout(() => modal.focus(), 50);
+  const modal = overlay.querySelector('.modal');
+  const first = visibleDialogControls(overlay)[0];
+  if (modal && !first) modal.tabIndex = -1;
+  setTimeout(() => {
+    if (overlay.classList.contains('open')) (first || modal || overlay).focus();
+  }, 50);
   installFocusTrap(overlay);
   // Confirm + shortcuts dialogs stack over the Settings panel (e.g. PIN
   // removal) — closing it underneath loses the updated PIN status/fields.
@@ -124,36 +133,52 @@ function closeOverlay(id) {
   const overlay = document.getElementById(id);
   if (!overlay) return;
   overlay.classList.remove('open');
+  syncOverlayBackground();
   if (id === 'ssh-overlay' && typeof dismissSshOnce === 'function') {
     try { dismissSshOnce(); } catch {}
   }
   removeFocusTrap();
+  const remaining = [...document.querySelectorAll('.overlay.open')].pop();
+  if (remaining) installFocusTrap(remaining);
   // Capture before nulling: the timeout fires after this function returns.
   const lf = lastFocusedElement;
   lastFocusedElement = null;
   if (lf) setTimeout(() => { try { lf.focus(); } catch {} }, 50);
 }
 let _focusTrapContainer = null;
+function visibleDialogControls(container) {
+  return [...container.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+    .filter(el => !el.disabled && !el.closest('[inert]') && el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden');
+}
 function installFocusTrap(container) {
   removeFocusTrap();
   _focusTrapContainer = container;
   _focusTrapHandler = e => {
     if (e.key !== 'Tab') return;
-    const focusable = container.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
-    if (!focusable.length) return;
+    const focusable = visibleDialogControls(container);
+    if (!focusable.length) {
+      e.preventDefault();
+      container.querySelector('.modal')?.focus();
+      return;
+    }
     const first = focusable[0];
     const last = focusable[focusable.length - 1];
+    if (!container.contains(document.activeElement) || !focusable.includes(document.activeElement)) {
+      e.preventDefault();
+      (e.shiftKey ? last : first).focus();
+      return;
+    }
     if (e.shiftKey) {
       if (document.activeElement === first) { e.preventDefault(); last.focus(); }
     } else {
       if (document.activeElement === last) { e.preventDefault(); first.focus(); }
     }
   };
-  container.addEventListener('keydown', _focusTrapHandler);
+  document.addEventListener('keydown', _focusTrapHandler);
 }
 function removeFocusTrap() {
   if (_focusTrapHandler && _focusTrapContainer) {
-    _focusTrapContainer.removeEventListener('keydown', _focusTrapHandler);
+    document.removeEventListener('keydown', _focusTrapHandler);
     _focusTrapHandler = null;
     _focusTrapContainer = null;
   } else if (_focusTrapHandler) {
@@ -191,8 +216,11 @@ function confirmDialog({ title = 'Confirm', message = '', okText = 'OK', cancelT
       settled = true;
       _confirmState = null;
       ov.classList.remove('open');
+      syncOverlayBackground();
       ov.removeEventListener('keydown', onKey);
       removeFocusTrap();
+      const remaining = [...document.querySelectorAll('.overlay.open')].pop();
+      if (remaining) installFocusTrap(remaining);
       const lf = lastFocusedElement;
       lastFocusedElement = null;
       if (lf) setTimeout(() => { try { lf.focus(); } catch {} }, 50);
@@ -213,6 +241,7 @@ function confirmDialog({ title = 'Confirm', message = '', okText = 'OK', cancelT
     cancelBtn.onclick = () => finish(false);
     ov.addEventListener('keydown', onKey);
     ov.classList.add('open');
+    syncOverlayBackground();
     installFocusTrap(ov);
     setTimeout(() => okBtn.focus(), 50);
   });
@@ -839,8 +868,11 @@ function updateConnStatus(connected) {
   const dot = document.getElementById('conn-status');
   if (dot) {
     dot.style.background = connected ? 'var(--green)' : 'var(--red)';
-    dot.title = connected ? 'Connected' : 'Disconnected';
-    dot.setAttribute('aria-label', connected ? 'Connected' : 'Disconnected');
+    dot.title = connected ? 'Connected — open System Stats' : 'Disconnected — open System Stats';
+    const status = document.getElementById('conn-status-text');
+    if (status && status.textContent !== (connected ? 'Connected' : 'Disconnected')) {
+      status.textContent = connected ? 'Connected' : 'Disconnected';
+    }
   }
 }
 

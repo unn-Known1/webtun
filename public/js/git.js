@@ -688,7 +688,7 @@ async function openGitShow(hash) {
   if (!r || r.error) { toast((r && r.error) || 'Show failed', 'error'); return; }
   const name = String(hash).slice(0, 7);
   const content = r.diff ? (r.truncated ? r.diff + '\n…(truncated at 200KB)' : r.diff) : '(empty commit)';
-  openGitReadonly(name + ' (commit)  /  ' + gitRoot, content, r.binary ? 'binary commit' : 'read-only • git show');
+  await openGitReadonly(name + ' (commit)  /  ' + gitRoot, content, r.binary ? 'binary commit' : 'read-only • git show');
 }
 async function openGitDiff(file, cached, head) {
   if (!gitRoot) return;
@@ -697,24 +697,31 @@ async function openGitDiff(file, cached, head) {
   const name = (String(file).split(/[\\/]/).pop() || file);
   const content = r.diff ? (r.truncated ? r.diff + '\n…(truncated at 200KB)' : r.diff) : '(no changes)';
   // Read-only diff in the editor tab (editorPath stays empty so Save is a no-op)
-  openGitReadonly(name + (cached ? ' (staged diff)' : head ? ' (conflict diff)' : ' (diff)') + '  /  ' + gitRoot, content, r.binary ? 'binary file' : 'read-only • git diff');
+  await openGitReadonly(name + (cached ? ' (staged diff)' : head ? ' (conflict diff)' : ' (diff)') + '  /  ' + gitRoot, content, r.binary ? 'binary file' : 'read-only • git diff');
 }
-function openGitReadonly(title, content, status) {
+async function openGitReadonly(title, content, status) {
   cleanupDocViewers();
   editorPath = '';
   editorOriginalContent = content;
   document.getElementById('editor-save-btn').style.display = 'none';
   document.getElementById('md-preview-toggle').style.display = 'none';
   document.getElementById('preview-refresh-btn').style.display = 'none';
-  const cm = initCodeMirror();
-  cm.setValue(content);
-  cm.setOption('mode', 'text/plain');
-  cm.setOption('readOnly', true);
-  document.querySelector('.CodeMirror').style.display = '';
-  cm.refresh();
+  const cm = await initCodeMirror();
+  const textarea = document.getElementById('editor-textarea');
+  if (cm) {
+    cm.setValue(content);
+    cm.setOption('mode', 'text/plain');
+    cm.setOption('readOnly', true);
+    cm.getWrapperElement().style.display = '';
+    cm.refresh();
+  } else {
+    textarea.value = content;
+    textarea.readOnly = true;
+    textarea.style.display = '';
+  }
   // Colorize diff lines (additions green, deletions red, hunks accent)
   try {
-    const n = Math.min(cm.lineCount(), 10000);
+    const n = Math.min(cm ? cm.lineCount() : 0, 10000);
     for (let i = 0; i < n; i++) {
       const t = cm.getLine(i) || '';
       if (t.startsWith('+++') || t.startsWith('---')) cm.addLineClass(i, 'background', 'diff-hunk');

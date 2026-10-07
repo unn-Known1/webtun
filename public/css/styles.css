@@ -124,8 +124,8 @@
   color-scheme: light;
   --bg: #f9f9fb; --bg2: #eeeef2; --bg3: #e2e2e8; --bg4: #d5d5de;
   --border: #c8c8d4; --fg: #1f1f30;   --fg2: #2b2b45; --fg3: #5d5d78;
-  --accent: #4060d0; --accent2: #8050c0; --green: #2f7d1f;
-  --red: #c03050; --yellow: #9a6a00; --cyan: #1e7590;
+  --accent: #304caa; --accent2: #69409e; --green: #28691d;
+  --red: #9a1938; --yellow: #805600; --cyan: #155c73;
   --amber: #8a5200; /* 4.95:1 on --bg3, clears AA for the 11px "changed on disk" text */
   --shadow-color: rgba(0,0,0,0.12);
 }
@@ -348,7 +348,7 @@ svg { display: block; }
 #upload-cancel-btn { position: absolute; right: 8px; top: -28px; height: 22px; padding: 0 8px; font-size: var(--fs-meta); background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--fg2); cursor: pointer; display: none; z-index: 2; }
 #upload-progress.active #upload-cancel-btn { display: block; pointer-events: auto; }
 #main { display: flex; flex: 1; overflow: hidden; min-height: 0; position: relative; }
-#sidebar { position: relative; width: var(--sidebar-w); background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; transition: width var(--transition-normal) ease, transform var(--transition-normal) ease; will-change: width, transform; backface-visibility: hidden; }
+#sidebar { position: relative; width: var(--sidebar-w); background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; transition: width var(--transition-normal) ease, transform var(--transition-normal) ease; backface-visibility: hidden; }
 #sidebar.dragging { transition: none; will-change: width; }
 #sidebar.hidden { width: 0 !important; overflow: hidden; }
 #content { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; min-height: 0; position: relative; }
@@ -464,7 +464,7 @@ svg { display: block; }
 .lp-quick .btn { display: flex; align-items: center; justify-content: center; gap: 6px; height: 36px; font-size: var(--fs-meta); padding: 0 8px; }
 .lp-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; width: 100%; margin-top: 10px; }
 .lp-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 8px 8px; text-align: left; min-width: 0; box-shadow: var(--shadow-sm); }
-.lp-card h4 { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: 0.6px; color: var(--fg3); font-family: var(--font-ui); font-weight: 600; padding: 0 6px 6px; }
+.lp-card h3 { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: 0.6px; color: var(--fg3); font-family: var(--font-ui); font-weight: 600; padding: 0 6px 6px; }
 .lp-row { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none; cursor: pointer; padding: 6px; border-radius: var(--radius-sm); color: var(--fg); font-size: var(--fs-ui); font-family: var(--font); text-align: left; min-width: 0; }
 .lp-row-kbd { font-family: var(--font); font-size: var(--fs-micro); color: var(--fg3); background: color-mix(in srgb, var(--bg3) 80%, transparent); padding: 1px 5px; border-radius: 4px; border: 1px solid var(--border); flex-shrink: 0; }
 .lp-row:hover { background: var(--bg3); }
@@ -1151,7 +1151,12 @@ body.datasaver #transfers-btn.has-active .tx-up, body.datasaver #transfers-btn.h
 @keyframes secAlertPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 @keyframes steamRise { 0% { opacity: 0; transform: translateY(2px); } 35% { opacity: 1; } 100% { opacity: 0; transform: translateY(-2.5px); } }
 
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 #conn-status {
+  position: relative;
+  appearance: none;
+  border: 0;
+  padding: 0;
   margin-left: 6px;
   width: 8px;
   height: 8px;
@@ -1162,6 +1167,8 @@ body.datasaver #transfers-btn.has-active .tx-up, body.datasaver #transfers-btn.h
   transition: all var(--transition-normal), background var(--transition-slow);
   cursor: pointer;
 }
+#conn-status::after { content: ''; position: absolute; width: 44px; height: 44px; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+#conn-status:focus-visible { outline: 2px solid var(--accent); outline-offset: 5px; }
 #conn-status:hover {
   transform: scale(1.2);
 }
@@ -1700,7 +1707,7 @@ body.datasaver #transfers-btn.has-active .tx-up, body.datasaver #transfers-btn.h
 /* ═══════════════════════════════════════════════════════
    OVERLAY
    ═══════════════════════════════════════════════════════ */
-.overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: var(--z-overlay); justify-content: center; align-items: center; backdrop-filter: blur(4px); will-change: backdrop-filter; }
+.overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: var(--z-overlay); justify-content: center; align-items: center; backdrop-filter: blur(4px); }
 @media (prefers-reduced-transparency: reduce) {
   /* Only .overlay was covered, leaving 16 blur surfaces live — three of them
      blur(28px) saturate(190%) across the whole mobile chrome (S-14). */
@@ -1739,11 +1746,11 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 #conflict-actions { flex-wrap: wrap; gap: 6px; }
 #conflict-replace, #conflict-merge, #conflict-keep-both, #conflict-skip, #conflict-cancel { font-size: var(--fs-ui); height: var(--btn-md); }
 .btn-primary { background: var(--accent); color: var(--bg); }
-.btn-primary:hover { filter: brightness(1.06); }
+.btn-primary:hover { filter: brightness(0.92); }
 .btn-ghost { background: var(--bg3); color: var(--fg); border-color: var(--border); }
 .btn-ghost:hover { background: var(--bg4); }
 .btn-danger { background: var(--red); color: white; }
-.btn-danger:hover { filter: brightness(1.06); }
+.btn-danger:hover { filter: brightness(0.9); }
 .btn:not(.btn-primary):not(.btn-ghost):not(.btn-danger):hover { background: var(--bg4); }
 .btn:active { filter: brightness(0.95); }
 .btn.loading { opacity: 0.85; pointer-events: none; position: relative; }
@@ -2710,7 +2717,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
   /* Only Find-in-terminal stays in the mobile header; Snippets and Sessions
      moved to the More sheet to make room for host identity (M-05). */
   #mobile-search-btn, .mobile-only-btn { display: inline-flex !important; }
-  #header .icon-btn, #header .keep-awake { width: 32px; height: 32px; min-width: 32px; min-height: 32px; border-radius: 8px; }
+  #header .icon-btn, #header .keep-awake { width: 40px; height: 40px; min-width: 40px; min-height: 40px; border-radius: 8px; }
   #conn-status {
     box-shadow: 0 0 8px var(--green);
     animation: statusPulse 2.5s ease-in-out infinite;
@@ -2724,7 +2731,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
     font-size: var(--fs-meta);
     font-weight: 600;
     font-family: var(--font);
-    max-width: 140px;
+    max-width: 100px;
     padding: 2px 8px;
     border-radius: 12px;
     background: color-mix(in srgb, var(--bg3) 80%, transparent);
@@ -2753,7 +2760,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 
   /* Mobile Desktop-Aligned Tab Chrome (Executive Pro Alignment) */
   #tab-bar {
-    height: 36px;
+    height: 49px;
     padding: 4px 6px 0 6px;
     gap: 4px;
     background: color-mix(in srgb, var(--bg2) 90%, transparent);
@@ -2763,8 +2770,8 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
   }
   #new-tab-btn, .tab-nav-btn { display: flex !important; }
   .tab {
-    height: 31px;
-    min-height: 31px;
+    height: 44px;
+    min-height: 44px;
     padding: 0 8px 0 10px;
     border-radius: 7px 7px 0 0;
     font-size: var(--fs-ui);
@@ -2812,8 +2819,8 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
     background: var(--bg4);
   }
   #new-tab-btn {
-    height: 31px;
-    min-height: 31px;
+    height: 44px;
+    min-height: 44px;
     border-radius: 7px 7px 0 0;
     background: color-mix(in srgb, var(--bg3) 50%, transparent);
     border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
@@ -3370,19 +3377,16 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 }
 #install-banner { display: none; }
 @media (prefers-reduced-motion: reduce) {
-  /* animation-iteration-count was never reset, so the `infinite` animations
-     became 0.01ms *long* and restarted constantly instead of stopping —
-     the opposite of the intent, and a battery cost on the devices the query
-     exists for (S-07). Ambient loops stop outright; transitions keep their
-     duration so nothing jumps. */
-  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; animation-delay: 0ms !important; }
+  /* Keep color/opacity feedback, but stop looping effects and spatial movement. */
+  *, *::before, *::after { animation: none !important; transition-duration: 0.12s !important; }
   .pinAura, .lpBlink, .tabPulse, .secAlertPulse, .steamRise, .statusPulse,
   .txUp, .txDown, .txPktUp, .txPktDown, .txSlide, .txStripes, .sysHotBlink,
   .skShimmer, .fileListProgress, .hdrSpin, .reconnectSpin { animation: none !important; }
   .scroll-behavior { scroll-behavior: auto !important; }
   html, #tab-scroll { scroll-behavior: auto !important; } /* S-26 */
   .overlay { backdrop-filter: none !important; }
-  #sidebar, #settings-panel, .modal { transition-duration: 0.01ms !important; }
+  #sidebar, #settings-panel, .modal, .settings-section-body, #bookmarks-list,
+  #git-panel, .tab, #tab-list-menu, #more-menu { transition-duration: 0ms !important; }
 }
 
 /* ── Terminal Sessions Modal & Mobile Responsive UI ── */
@@ -3855,4 +3859,19 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
     border: 1px solid CanvasText;
   }
   .skip-link { border: 1px solid CanvasText; }
+}
+@media (pointer: coarse) and (orientation: portrait) {
+  .mkey { height: 44px; min-width: 44px; }
+}
+@media (pointer: coarse) {
+  #new-tab-btn, .tab-nav-btn { min-width: 44px; }
+  #sidebar .sidebar-action-btn { min-width: 40px; min-height: 40px; }
+}
+@media (max-width: 768px) {
+  /* Solid chrome avoids multiple live backdrop blurs above the terminal. */
+  #header, #tab-bar, #mobile-nav-bar, #mobile-keys {
+    background: var(--bg2);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }

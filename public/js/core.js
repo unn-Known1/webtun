@@ -95,14 +95,37 @@ function loadScript(src) {
   });
 }
 
+let _codeMirrorPromise;
 async function ensureCodeMirrorLoaded() {
-  if (typeof CodeMirror !== 'undefined') return true;
-  try {
-    await loadScript('https://cdn.jsdelivr.net/npm/codemirror@5.65.18/lib/codemirror.min.js');
-  } catch (e) {
-    console.warn('CodeMirror core script failed to load:', e);
-  }
-  return typeof CodeMirror !== 'undefined';
+  if (_codeMirrorPromise) return _codeMirrorPromise;
+  _codeMirrorPromise = (async () => {
+    const assets = document.getElementById('codemirror-assets')?.content;
+    if (!assets) return typeof CodeMirror !== 'undefined';
+    const css = assets.querySelector('link');
+    if (css && !document.querySelector('link[data-codemirror]')) {
+      const link = css.cloneNode(true);
+      link.dataset.codemirror = 'true';
+      await new Promise((resolve, reject) => {
+        link.onload = resolve;
+        link.onerror = () => reject(new Error('Failed to load CodeMirror styles'));
+        document.head.appendChild(link);
+      });
+    }
+    for (const asset of assets.querySelectorAll('script')) {
+      if (document.querySelector(`script[src="${asset.src}"]`)) continue;
+      await new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = asset.src;
+        script.integrity = asset.integrity;
+        script.crossOrigin = asset.crossOrigin;
+        script.onload = resolve;
+        script.onerror = () => reject(new Error('Failed to load ' + asset.src));
+        document.head.appendChild(script);
+      });
+    }
+    return typeof CodeMirror !== 'undefined';
+  })().catch(e => { console.warn('CodeMirror failed to load:', e); return false; });
+  return _codeMirrorPromise;
 }
 
 // Preview libs (marked, DOMPurify) ship in /vendor and are in the precache, so a
