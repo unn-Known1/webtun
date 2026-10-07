@@ -1026,6 +1026,17 @@ document.getElementById('term-ctx-interrupt').addEventListener('click', () => {
     }
   } catch { try { sendKey('\x03'); } catch {} }
 });
+document.getElementById('term-ctx-send-ctrl-k')?.addEventListener('click', () => {
+  const t = (typeof getTermCtxTarget === 'function' ? getTermCtxTarget() : null) || getActiveTab();
+  hideTermCtxMenu();
+  try {
+    if (t?.ws && t.ws.readyState === WebSocket.OPEN) {
+      try { sendWsInput(t.ws, '\x0b'); } catch { sendKey('\x0b'); }
+    } else {
+      sendKey('\x0b');
+    }
+  } catch { try { sendKey('\x0b'); } catch {} }
+});
 document.getElementById('term-ctx-rename').addEventListener('click', () => {
   // TR-07: dedicated rename entry point — no synthetic dblclick bubbling.
   const t = (typeof getTermCtxTarget === 'function' ? getTermCtxTarget() : null) || getActiveTab();

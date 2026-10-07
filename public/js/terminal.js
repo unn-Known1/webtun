@@ -668,8 +668,25 @@ function initTerminal(tab) {
           return false;
         }
       }
-      // Quick search via Cmd+K or Ctrl+Shift+P (does not conflict with readline/vim)
-      if ((isCmd && key === 'k') || (isCmd && e.shiftKey && key === 'p')) {
+      // Quick search via Cmd+K / Ctrl+K vs Terminal TUI Ctrl+K passthrough:
+      if (isCmd && key === 'k') {
+        if (settings.passCtrlK) {
+          if (e.shiftKey) {
+            if (typeof openFinder === 'function') openFinder();
+            return false;
+          }
+          // Plain Ctrl+K: return true so xterm passes it directly to TUI app!
+          return true;
+        }
+        if (e.shiftKey) {
+          // Ctrl+Shift+K sends literal Ctrl+K (\x0b) directly to the TUI app!
+          sendKey('\x0b');
+          return false;
+        }
+        if (typeof openFinder === 'function') openFinder();
+        return false;
+      }
+      if (isCmd && e.shiftKey && key === 'p') {
         if (typeof openFinder === 'function') openFinder();
         return false;
       }
@@ -1499,9 +1516,29 @@ function setupKeyboardShortcuts() {
       return;
     }
 
-    // Quick search / Command Palette:
-    // Ctrl+K / Cmd+K is universal across all contexts.
-    if (ctrl && !e.shiftKey && (e.key === 'k' || e.key === 'K')) {
+    // Quick search / Command Palette vs Terminal Ctrl+K:
+    if (ctrl && (e.key === 'k' || e.key === 'K')) {
+      if (isTerminalFocused) {
+        if (settings.passCtrlK) {
+          if (e.shiftKey) {
+            e.preventDefault();
+            openFinder();
+            return;
+          }
+          // Plain Ctrl+K passes through to terminal / TUI application
+          return;
+        }
+        // When passCtrlK is false:
+        if (e.shiftKey) {
+          // Ctrl+Shift+K sends Ctrl+K directly to terminal / TUI app!
+          e.preventDefault();
+          sendKey('\x0b');
+          return;
+        }
+        e.preventDefault();
+        openFinder();
+        return;
+      }
       e.preventDefault();
       openFinder();
       return;

@@ -239,16 +239,18 @@ async function renderLpSessions() {
       sessEl.appendChild(d);
       return;
     }
-    for (const sess of sessions.slice(0, 6)) {
+    for (const sess of sessions.slice(0, 5)) {
       const openTab = tabs.find(t => (t.type === 'term' || !t.type) && t.sessionId === sess.id);
       const folderName = sess.cwd ? sess.cwd.split(/[\\/]/).filter(Boolean).pop() || sess.cwd : '';
+      const isExt = !!sess.external;
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'lp-row';
-      b.title = `Connect to session ${sess.id}` + (sess.cwd ? ` (${sess.cwd})` : '');
+      b.title = `Connect to ${isExt ? 'external ' : ''}session ${sess.name || sess.id}` + (sess.cwd ? ` (${sess.cwd})` : '');
       
       const ico = document.createElement('span');
       ico.style.display = 'inline-flex';
+      ico.style.color = isExt ? '#60a5fa' : 'var(--accent)';
       ico.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>';
       b.appendChild(ico);
 
@@ -256,9 +258,21 @@ async function renderLpSessions() {
       t.style.flex = '1';
       t.style.overflow = 'hidden';
       t.style.textOverflow = 'ellipsis';
-      const labelText = sess.label ? `${sess.label}` : `${folderName || 'Terminal'} (${sess.id.slice(0, 6)})`;
+      const labelText = sess.label ? `${sess.label}` : (sess.name ? sess.name : `${folderName || 'Terminal'} (${sess.id.slice(0, 6)})`);
       t.textContent = labelText;
       b.appendChild(t);
+
+      if (isExt) {
+        const extBadge = document.createElement('span');
+        extBadge.style.fontSize = '9px';
+        extBadge.style.padding = '1px 5px';
+        extBadge.style.borderRadius = '3px';
+        extBadge.style.marginLeft = '4px';
+        extBadge.style.background = 'rgba(59, 130, 246, 0.15)';
+        extBadge.style.color = '#60a5fa';
+        extBadge.textContent = 'ext';
+        b.appendChild(extBadge);
+      }
 
       const badge = document.createElement('span');
       badge.style.fontSize = '9px';
@@ -277,9 +291,21 @@ async function renderLpSessions() {
       b.appendChild(badge);
 
       b.addEventListener('click', () => {
-        connectToTerminalSession(sess.id, sess.cwd, openTab ? openTab.title : `Term (${folderName || sess.id.slice(0,6)})`);
+        const termTitle = sess.label || (sess.name ? `Term (${sess.name})` : `Term (${folderName || sess.id.slice(0, 6)})`);
+        connectToTerminalSession(sess.id, sess.cwd, openTab ? openTab.title : termTitle);
       });
       sessEl.appendChild(b);
+    }
+    if (sessions.length > 5) {
+      const moreBtn = document.createElement('button');
+      moreBtn.type = 'button';
+      moreBtn.className = 'lp-row';
+      moreBtn.style.color = 'var(--accent)';
+      moreBtn.style.fontSize = '11px';
+      moreBtn.style.justifyContent = 'center';
+      moreBtn.textContent = `View all ${sessions.length} sessions →`;
+      moreBtn.onclick = () => openTerminalSessionsModal();
+      sessEl.appendChild(moreBtn);
     }
   } catch (e) {
     if (sessEl) sessEl.innerHTML = '<div class="lp-empty">No active sessions</div>';

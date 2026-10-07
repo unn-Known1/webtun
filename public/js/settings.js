@@ -24,6 +24,7 @@ function loadSettings() {
       if (typeof s.gitSimple === 'boolean') settings.gitSimple = s.gitSimple;
       if (typeof s.sshEnabled === 'boolean') settings.sshEnabled = s.sshEnabled;
       if (typeof s.clipboardRead === 'boolean') settings.clipboardRead = s.clipboardRead;
+      if (typeof s.passCtrlK === 'boolean') settings.passCtrlK = s.passCtrlK;
       if (typeof s.termRightClick === 'boolean') settings.termRightClick = s.termRightClick;
       if (typeof s.autostart === 'boolean') settings.autostart = s.autostart;
     }
@@ -34,7 +35,7 @@ function loadSettings() {
   document.getElementById('s-scrollback').value = settings.scrollback;
   document.getElementById('s-font').value = settings.font;
   document.getElementById('s-cursor').value = settings.cursor;
-  syncToggle('blink'); syncToggle('bell'); syncToggle('clipboardRead'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver'); syncToggle('termRightClick'); syncToggle('screensaver'); syncToggle('gitEnabled'); syncToggle('gitSimple'); syncToggle('sshEnabled');
+  syncToggle('blink'); syncToggle('bell'); syncToggle('clipboardRead'); syncToggle('passCtrlK'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver'); syncToggle('termRightClick'); syncToggle('screensaver'); syncToggle('gitEnabled'); syncToggle('gitSimple'); syncToggle('sshEnabled');
   try { if (typeof applyGitEnabled === 'function') applyGitEnabled(); } catch {}
   try { if (typeof applyGitSimple === 'function') applyGitSimple(); } catch {}
   try { if (typeof applySshEnabled === 'function') applySshEnabled(); } catch {}
@@ -56,7 +57,8 @@ const DEFAULT_SETTINGS = {
   cursor: 'block', blink: true, scrollback: 5000, bell: false,
   mobilekeys: false, confirmclose: true, datasaver: false, autostart: false, keepAwake: false, termRightClick: true,
   screensaver: false, screensaverMin: 5, gitEnabled: true, gitSimple: true, sshEnabled: false,
-  clipboardRead: false // off: OSC 52 GET (program reads your clipboard) needs consent
+  clipboardRead: false, // off: OSC 52 GET (program reads your clipboard) needs consent
+  passCtrlK: false // when true: Ctrl+K passes to terminal/TUI apps; Ctrl+Shift+K opens Finder
 };
 
 

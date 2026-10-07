@@ -901,6 +901,13 @@ async function editSessionLabel(id, currentLabel) {
 
 function connectToTerminalSession(sessionId, dir, title) {
   if (!sessionId) return newTab(title, undefined, dir);
+  if (sessionId.startsWith('proc-')) {
+    const folderName = dir ? dir.split(/[\\/]/).filter(Boolean).pop() : '';
+    const displayTitle = title || (folderName ? `Term (${folderName})` : 'Term (proc)');
+    const tab = newTab(displayTitle, undefined, dir);
+    toast(`Started shell at process working directory (${dir || 'default'})`, 'success');
+    return tab;
+  }
   const existing = tabs.find(t => (t.type === 'term' || !t.type) && t.sessionId === sessionId);
   if (existing) {
     activateTab(existing.id);
@@ -909,13 +916,218 @@ function connectToTerminalSession(sessionId, dir, title) {
     return existing;
   }
   const folderName = dir ? dir.split(/[\\/]/).filter(Boolean).pop() : '';
-  const displayTitle = title || (folderName ? `Term (${folderName})` : `Term (${sessionId.slice(0, 6)})`);
+  const displayTitle = title || (folderName ? `Term (${folderName})` : `Term (${sessionId.length > 12 ? sessionId.slice(0, 10) + '…' : sessionId})`);
   const tab = newTab(displayTitle, sessionId, dir);
-  toast(`Connected to terminal session ${sessionId.slice(0, 8)}`, 'success');
+  toast(`Connected to terminal session "${displayTitle}"`, 'success');
   return tab;
 }
 
 let _termSessionsPollTimer = null;
+let _cachedSessions = [];
+let _termSessionFilter = 'all';
+
+function setTerminalSessionsFilter(filter) {
+  _termSessionFilter = filter || 'all';
+  const filterBtns = document.querySelectorAll('.term-sess-filter-btn');
+  filterBtns.forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-filter') === _termSessionFilter);
+  });
+  filterTerminalSessionsList();
+}
+
+function filterTerminalSessionsList() {
+  const listEl = document.getElementById('term-sessions-list');
+  const searchInput = document.getElementById('term-sessions-search');
+  if (!listEl) return;
+  const q = (searchInput?.value || '').trim().toLowerCase();
+  
+  let filtered = _cachedSessions.slice();
+  if (_termSessionFilter === 'webtun') {
+    filtered = filtered.filter(s => !s.external);
+  } else if (_termSessionFilter === 'external') {
+    filtered = filtered.filter(s => !!s.external);
+  }
+
+  if (q) {
+    filtered = filtered.filter(s => {
+      const name = (s.name || '').toLowerCase();
+      const id = (s.id || '').toLowerCase();
+      const label = (s.label || '').toLowerCase();
+      const cwd = (s.cwd || '').toLowerCase();
+      const cmd = (s.command || '').toLowerCase();
+      return name.includes(q) || id.includes(q) || label.includes(q) || cwd.includes(q) || cmd.includes(q);
+    });
+  }
+
+  renderFilteredSessions(filtered);
+}
+
+function renderFilteredSessions(sessions) {
+  const listEl = document.getElementById('term-sessions-list');
+  if (!listEl) return;
+  if (!sessions.length) {
+    listEl.innerHTML = `
+      <div style="padding:28px 12px;text-align:center;color:var(--fg3);font-size:13px">
+        No matching terminal sessions found.<br>
+        <button class="btn btn-primary" onclick="closeOverlay('term-sessions-overlay');newTab();" style="margin-top:12px;height:32px;padding:0 14px;font-size:12px">
+          + Start New Terminal
+        </button>
+      </div>`;
+    return;
+  }
+
+  listEl.innerHTML = '';
+  for (const sess of sessions) {
+    const openTab = tabs.find(t => (t.type === 'term' || !t.type) && t.sessionId === sess.id);
+    const folderName = sess.cwd ? sess.cwd.split(/[\\/]/).filter(Boolean).pop() || sess.cwd : '';
+    const isExt = !!sess.external;
+    const isProc = sess.type === 'process';
+
+    const item = document.createElement('div');
+    item.className = 'term-sess-item';
+
+    // Top row: info and badges
+    const topRow = document.createElement('div');
+    topRow.className = 'term-sess-item-top';
+
+    const nameGroup = document.createElement('div');
+    nameGroup.className = 'term-sess-name-group';
+
+    const ico = document.createElement('span');
+    ico.style.display = 'inline-flex';
+    ico.style.color = isExt ? '#60a5fa' : 'var(--accent)';
+    ico.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>';
+    nameGroup.appendChild(ico);
+
+    const titleSpan = document.createElement('span');
+    titleSpan.style.fontFamily = 'var(--font)';
+    titleSpan.style.fontSize = '13px';
+    titleSpan.style.fontWeight = '600';
+    titleSpan.style.color = 'var(--fg1)';
+    const displayId = sess.id.length > 20 ? sess.id.slice(0, 18) + '…' : sess.id;
+    titleSpan.textContent = sess.label ? sess.label : (sess.name || displayId);
+    titleSpan.title = sess.label ? `${sess.label} (${sess.name || sess.id})` : (sess.name || sess.id);
+    nameGroup.appendChild(titleSpan);
+
+    topRow.appendChild(nameGroup);
+
+    const badges = document.createElement('div');
+    badges.className = 'term-sess-badges';
+
+    // External vs WebTun badge
+    const srcBadge = document.createElement('span');
+    if (isExt) {
+      srcBadge.className = 'badge-ext';
+      srcBadge.textContent = isProc ? 'External Process' : 'External Tmux';
+    } else {
+      srcBadge.className = 'badge-webtun';
+      srcBadge.textContent = 'WebTun';
+    }
+    badges.appendChild(srcBadge);
+
+    // Tab vs Background badge
+    const statusBadge = document.createElement('span');
+    if (openTab) {
+      statusBadge.className = 'badge-tab';
+      statusBadge.textContent = `Tab #${openTab.id}`;
+    } else {
+      statusBadge.className = 'badge-bg';
+      statusBadge.textContent = 'Background';
+    }
+    badges.appendChild(statusBadge);
+
+    // Attached count badge
+    if (typeof sess.attached === 'number' && sess.attached > 0) {
+      const attBadge = document.createElement('span');
+      attBadge.className = 'badge-bg';
+      attBadge.textContent = `${sess.attached} client${sess.attached > 1 ? 's' : ''}`;
+      badges.appendChild(attBadge);
+    }
+
+    topRow.appendChild(badges);
+    item.appendChild(topRow);
+
+    // Meta row: CWD and running command
+    const metaRow = document.createElement('div');
+    metaRow.className = 'term-sess-meta';
+
+    const dirSpan = document.createElement('span');
+    dirSpan.style.display = 'inline-flex';
+    dirSpan.style.alignItems = 'center';
+    dirSpan.style.gap = '4px';
+    dirSpan.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> ' + (sess.cwd ? escapeHtml(sess.cwd) : 'Default Directory');
+    metaRow.appendChild(dirSpan);
+
+    if (sess.command) {
+      const cmdSpan = document.createElement('span');
+      cmdSpan.style.display = 'inline-flex';
+      cmdSpan.style.alignItems = 'center';
+      cmdSpan.style.gap = '4px';
+      cmdSpan.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> <code>' + escapeHtml(sess.command) + '</code>';
+      metaRow.appendChild(cmdSpan);
+    }
+    item.appendChild(metaRow);
+
+    // Action buttons row
+    const actionsRow = document.createElement('div');
+    actionsRow.className = 'term-sess-actions';
+
+    // Label button (for naming or organizing sessions)
+    const labelBtn = document.createElement('button');
+    labelBtn.className = 'btn btn-ghost';
+    labelBtn.title = 'Set custom label for this session';
+    labelBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>';
+    labelBtn.onclick = (e) => {
+      e.stopPropagation();
+      editSessionLabel(sess.id, sess.label || '');
+    };
+    actionsRow.appendChild(labelBtn);
+
+    // Connect button
+    const connBtn = document.createElement('button');
+    connBtn.className = 'btn btn-primary';
+    connBtn.textContent = openTab ? 'Switch to Tab' : (isProc ? 'Open Shell in CWD' : 'Connect / Attach');
+    connBtn.onclick = () => {
+      closeOverlay('term-sessions-overlay');
+      const termTitle = sess.label || (sess.name ? `Term (${sess.name})` : `Term (${folderName || sess.id.slice(0, 8)})`);
+      connectToTerminalSession(sess.id, sess.cwd, openTab ? openTab.title : termTitle);
+    };
+    actionsRow.appendChild(connBtn);
+
+    // Terminate button
+    const killBtn = document.createElement('button');
+    killBtn.className = 'btn btn-ghost';
+    killBtn.style.color = 'var(--red)';
+    killBtn.title = 'Terminate session';
+    killBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    killBtn.onclick = async (e) => {
+      e.stopPropagation();
+      const displayName = sess.label || sess.name || sess.id;
+      const ok = await confirmDialog({
+        title: 'Terminate Session?',
+        message: `Are you sure you want to terminate session "${displayName}"? Any running processes will be terminated.`,
+        okText: 'Kill Session',
+        cancelText: 'Cancel',
+        danger: true
+      });
+      if (ok) {
+        try {
+          await api(`/api/sessions/${encodeURIComponent(sess.id)}`, { method: 'DELETE' });
+          toast(`Terminated session "${displayName}"`, 'info');
+          if (openTab) closeTab(null, openTab.id, { force: true });
+          refreshTerminalSessionsModal();
+          updateLaunchpad();
+        } catch (err) {
+          toast('Failed to kill session', 'error');
+        }
+      }
+    };
+    actionsRow.appendChild(killBtn);
+
+    item.appendChild(actionsRow);
+    listEl.appendChild(item);
+  }
+}
 
 async function openTerminalSessionsModal() {
   openOverlay('term-sessions-overlay');
@@ -935,6 +1147,9 @@ async function openTerminalSessionsModal() {
 async function refreshTerminalSessionsModal(silent = false) {
   const listEl = document.getElementById('term-sessions-list');
   const countEl = document.getElementById('term-sessions-count');
+  const allCountEl = document.getElementById('sess-filter-all-count');
+  const webtunCountEl = document.getElementById('sess-filter-webtun-count');
+  const extCountEl = document.getElementById('sess-filter-ext-count');
   if (!listEl) return;
   if (!silent) {
     listEl.innerHTML = '<div style="padding:16px;text-align:center;color:var(--fg3);font-size:12px">Loading active terminal sessions…</div>';
@@ -942,132 +1157,21 @@ async function refreshTerminalSessionsModal(silent = false) {
   try {
     const res = await api('/api/sessions');
     const sessions = (res && Array.isArray(res.sessions)) ? res.sessions : [];
+    _cachedSessions = sessions;
+    
+    const webtunCount = sessions.filter(s => !s.external).length;
+    const extCount = sessions.filter(s => !!s.external).length;
+
     if (countEl) countEl.textContent = String(sessions.length);
-    if (!sessions.length) {
-      listEl.innerHTML = `
-        <div style="padding:24px 12px;text-align:center;color:var(--fg3);font-size:13px">
-          No background terminal sessions running.<br>
-          <button class="btn btn-primary" onclick="closeOverlay('term-sessions-overlay');newTab();" style="margin-top:12px;height:30px;padding:0 14px;font-size:12px">
-            + Start New Terminal
-          </button>
-        </div>`;
-      return;
-    }
-    listEl.innerHTML = '';
-    for (const sess of sessions) {
-      const openTab = tabs.find(t => (t.type === 'term' || !t.type) && t.sessionId === sess.id);
-      const folderName = sess.cwd ? sess.cwd.split(/[\\/]/).filter(Boolean).pop() || sess.cwd : '';
-      const item = document.createElement('div');
-      item.className = 'term-sess-item';
-      item.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;gap:12px;';
-      
-      const left = document.createElement('div');
-      left.style.cssText = 'display:flex;flex-direction:column;gap:3px;overflow:hidden;flex:1;';
-      
-      const topRow = document.createElement('div');
-      topRow.style.cssText = 'display:flex;align-items:center;gap:8px;font-family:var(--font);font-size:13px;font-weight:600;color:var(--fg1);';
-      
-      const ico = document.createElement('span');
-      ico.style.display = 'inline-flex';
-      ico.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>';
-      topRow.appendChild(ico);
+    if (allCountEl) allCountEl.textContent = String(sessions.length);
+    if (webtunCountEl) webtunCountEl.textContent = String(webtunCount);
+    if (extCountEl) extCountEl.textContent = String(extCount);
 
-      const displayName = sess.label || (sess.id.length > 12 ? sess.id.slice(0, 12) + '…' : sess.id);
-      const titleSpan = document.createElement('span');
-      titleSpan.textContent = displayName;
-      titleSpan.title = sess.label ? `${sess.label} (${sess.id})` : sess.id;
-      topRow.appendChild(titleSpan);
-
-      if (sess.label) {
-        const lblBadge = document.createElement('span');
-        lblBadge.style.cssText = 'font-size:10px;padding:1px 6px;border-radius:4px;background:var(--accent-bg, rgba(0,200,83,0.15));color:var(--accent);font-weight:600;';
-        lblBadge.textContent = 'Labeled';
-        topRow.appendChild(lblBadge);
-      }
-
-      const badge = document.createElement('span');
-      badge.style.cssText = 'font-size:10px;padding:1px 6px;border-radius:4px;background:var(--bg3);color:var(--fg2);font-weight:500;text-transform:uppercase;';
-      badge.textContent = sess.type || (res.tmux ? 'tmux' : 'pty');
-      topRow.appendChild(badge);
-
-      if (openTab) {
-        const tabBadge = document.createElement('span');
-        tabBadge.style.cssText = 'font-size:10px;padding:1px 6px;border-radius:4px;background:var(--accent-bg, rgba(0,200,83,0.15));color:var(--accent);font-weight:600;';
-        tabBadge.textContent = `Tab #${openTab.id}` + (openTab.title ? `: ${openTab.title}` : '');
-        topRow.appendChild(tabBadge);
-      } else {
-        const bgBadge = document.createElement('span');
-        bgBadge.style.cssText = 'font-size:10px;padding:1px 6px;border-radius:4px;background:var(--bg3);color:var(--fg3);';
-        bgBadge.textContent = 'Background';
-        topRow.appendChild(bgBadge);
-      }
-      left.appendChild(topRow);
-
-      const subRow = document.createElement('div');
-      subRow.style.cssText = 'font-size:11px;color:var(--fg3);font-family:var(--font);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-      subRow.textContent = (sess.cwd ? `${sess.cwd}` : 'Default CWD') + (sess.command ? ` · ${sess.command}` : '');
-      left.appendChild(subRow);
-
-      item.appendChild(left);
-
-      const right = document.createElement('div');
-      right.style.cssText = 'display:flex;align-items:center;gap:6px;flex-shrink:0;';
-
-      const labelBtn = document.createElement('button');
-      labelBtn.className = 'btn btn-ghost';
-      labelBtn.style.cssText = 'height:28px;padding:0 8px;font-size:11px;';
-      labelBtn.title = 'Set custom label for this session';
-      labelBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>';
-      labelBtn.onclick = (e) => {
-        e.stopPropagation();
-        editSessionLabel(sess.id, sess.label || '');
-      };
-      right.appendChild(labelBtn);
-
-      const connBtn = document.createElement('button');
-      connBtn.className = 'btn btn-primary';
-      connBtn.style.cssText = 'height:28px;padding:0 12px;font-size:11px;';
-      connBtn.textContent = openTab ? 'Switch to Tab' : 'Connect';
-      connBtn.onclick = () => {
-        closeOverlay('term-sessions-overlay');
-        connectToTerminalSession(sess.id, sess.cwd, openTab ? openTab.title : `Term (${folderName || sess.id.slice(0,6)})`);
-      };
-      right.appendChild(connBtn);
-
-      const killBtn = document.createElement('button');
-      killBtn.className = 'btn btn-ghost';
-      killBtn.style.cssText = 'height:28px;padding:0 8px;font-size:11px;color:var(--red);';
-      killBtn.title = 'Terminate session';
-      killBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-      killBtn.onclick = async (e) => {
-        e.stopPropagation();
-        const ok = await confirmDialog({
-          title: 'Terminate Session?',
-          message: `Are you sure you want to kill session ${sess.id.slice(0,8)}? Any unsaved work in that terminal will be lost.`,
-          okText: 'Kill Session',
-          cancelText: 'Cancel',
-          danger: true
-        });
-        if (ok) {
-          try {
-            await api(`/api/sessions/${encodeURIComponent(sess.id)}`, { method: 'DELETE' });
-            toast(`Terminated session ${sess.id.slice(0,8)}`, 'info');
-            if (openTab) closeTab(null, openTab.id, { force: true });
-            refreshTerminalSessionsModal();
-            updateLaunchpad();
-          } catch (err) {
-            toast('Failed to kill session', 'error');
-          }
-        }
-      };
-      right.appendChild(killBtn);
-
-      item.appendChild(right);
-      listEl.appendChild(item);
-    }
+    filterTerminalSessionsList();
   } catch (err) {
     if (listEl && !silent) listEl.innerHTML = '<div style="padding:16px;color:var(--red);font-size:12px;text-align:center">Failed to load terminal sessions</div>';
   }
+}
 }
 
 async function activateTab(id) {

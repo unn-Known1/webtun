@@ -38,7 +38,7 @@ async function resetSettings() {
   document.getElementById('s-font').value = settings.font;
   document.getElementById('s-cursor').value = settings.cursor;
   document.getElementById('s-screensaver-min').value = settings.screensaverMin;
-  syncToggle('blink'); syncToggle('bell'); syncToggle('clipboardRead'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver'); syncToggle('termRightClick'); syncToggle('screensaver'); syncToggle('gitEnabled'); syncToggle('gitSimple'); syncToggle('sshEnabled'); syncToggle('autostart');
+  syncToggle('blink'); syncToggle('bell'); syncToggle('clipboardRead'); syncToggle('passCtrlK'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver'); syncToggle('termRightClick'); syncToggle('screensaver'); syncToggle('gitEnabled'); syncToggle('gitSimple'); syncToggle('sshEnabled'); syncToggle('autostart');
   try { if (typeof applySshEnabled === 'function') applySshEnabled(); } catch {}
   try { if (typeof syncSshEnabledToServer === 'function') syncSshEnabledToServer(); } catch {}
   // keepAwake is a header checkbox, not a settings toggle — resync it

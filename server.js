@@ -4017,6 +4017,46 @@ function saveSessionLabels() {
 }
 loadSessionLabels();
 
+function findExternalShellProcesses() {
+  if (os.platform() === 'win32') return [];
+  try {
+    const ourPids = new Set();
+    ourPids.add(process.pid);
+    for (const [, entry] of ptySessions) {
+      if (entry && entry.proc && entry.proc.pid) ourPids.add(entry.proc.pid);
+    }
+    const out = execFileSync('ps', ['-eo', 'pid,ppid,tty,stat,comm'], { encoding: 'utf8', timeout: 3000 });
+    const lines = out.split('\n').slice(1);
+    const shells = [];
+    for (const line of lines) {
+      const parts = line.trim().split(/\s+/);
+      if (parts.length < 5) continue;
+      const pid = parseInt(parts[0], 10);
+      const ppid = parseInt(parts[1], 10);
+      const tty = parts[2];
+      const comm = (parts[4] || '').toLowerCase();
+      if (!pid || pid === 1 || ourPids.has(pid) || ourPids.has(ppid)) continue;
+      if (['bash', 'zsh', 'fish', 'sh'].includes(comm) && tty !== '?' && tty !== '-') {
+        const cwd = resolvePtyCwd(pid) || '';
+        shells.push({
+          id: `proc-${pid}`,
+          name: `${comm} (PID ${pid}, ${tty})`,
+          cwd,
+          command: comm,
+          attached: 1,
+          label: sessionLabels.get(`proc-${pid}`) || '',
+          type: 'process',
+          external: true,
+          source: 'system'
+        });
+      }
+    }
+    return shells;
+  } catch {
+    return [];
+  }
+}
+
 function tmuxSessionExists(name) {
   try { execFileSync(TMUX, ['has-session', '-t', name], { stdio: 'ignore' , timeout: 5000}); return true; } catch { return false; }
 }
@@ -4025,21 +4065,44 @@ app.get('/api/sessions', checkPin, (req, res) => {
   const tmuxBin = getTMUX();
   if (tmuxBin) {
     try {
-      const out = execFileSync(tmuxBin, ['list-sessions', '-F', '#{session_name}\t#{pane_current_path}\t#{pane_current_command}\t#{session_attached}'], { encoding: 'utf8' , timeout: 5000}).trim();
+      const out = execFileSync(tmuxBin, ['list-sessions', '-F', '#{session_name}\t#{pane_current_path}\t#{pane_current_command}\t#{session_attached}\t#{pane_pid}'], { encoding: 'utf8' , timeout: 5000}).trim();
       const rawLines = out.split('\n').filter(Boolean);
       const sessions = [];
       for (const line of rawLines) {
         const parts = line.split('\t');
         const s = parts[0] || '';
-        const cwd = parts[1] || '';
+        let cwd = parts[1] || '';
         const command = parts[2] || '';
         const attached = parseInt(parts[3] || '0', 10);
+        const panePid = parseInt(parts[4] || '0', 10);
+        if (!cwd && panePid > 0) {
+          cwd = resolvePtyCwd(panePid) || '';
+        }
         const k = tmuxKind(s);
-        if (k !== 'ours' && k !== 'legacy') continue;
-        const id = k === 'ours'
-          ? s.slice((TMUX_PREFIX + Number(PORT) + '-').length)
-          : s.slice(TMUX_PREFIX.length);
-        sessions.push({ id, name: s, cwd, command, attached, label: sessionLabels.get(id) || '', type: 'tmux' });
+        let id;
+        let isExt = false;
+        let source = 'webtun';
+        if (k === 'ours') {
+          id = s.slice((TMUX_PREFIX + Number(PORT) + '-').length);
+        } else if (k === 'legacy') {
+          id = s.startsWith(TMUX_PREFIX) ? s.slice(TMUX_PREFIX.length) : s.slice(3);
+        } else {
+          // External tmux session (user-created, SSH, scripts, or another port)
+          id = s;
+          isExt = true;
+          source = k === 'foreign' ? 'webtun-peer' : 'external';
+        }
+        sessions.push({
+          id,
+          name: s,
+          cwd,
+          command,
+          attached,
+          label: sessionLabels.get(id) || sessionLabels.get(s) || '',
+          type: 'tmux',
+          external: isExt,
+          source
+        });
       }
       // Merged listing: getTMUX() flips null→found mid-run, which used to
       // hide pre-existing in-memory sessions (and re-route the same
@@ -4048,7 +4111,7 @@ app.get('/api/sessions', checkPin, (req, res) => {
       for (const [id, entry] of ptySessions) {
         if (!seen.has(id) && entry && !entry.exited) {
           const cwd = entry.proc ? resolvePtyCwd(entry.proc.pid) || '' : '';
-          sessions.push({ id, name: tmuxOwnName(id), cwd, attached: entry.attached || 0, createdAt: entry.createdAt, label: sessionLabels.get(id) || '', type: 'pty' });
+          sessions.push({ id, name: tmuxOwnName(id), cwd, attached: entry.attached || 0, createdAt: entry.createdAt, label: sessionLabels.get(id) || '', type: 'pty', external: false, source: 'webtun' });
         }
       }
       return res.json({ tmux: true, sessions });
@@ -4061,15 +4124,17 @@ app.get('/api/sessions', checkPin, (req, res) => {
   for (const [id, entry] of ptySessions) {
     if (entry && !entry.exited) {
       const cwd = entry.proc ? resolvePtyCwd(entry.proc.pid) || '' : '';
-      sessions.push({ id, name: tmuxOwnName(id), cwd, attached: entry.attached || 0, createdAt: entry.createdAt, label: sessionLabels.get(id) || '', type: 'pty' });
+      sessions.push({ id, name: tmuxOwnName(id), cwd, attached: entry.attached || 0, createdAt: entry.createdAt, label: sessionLabels.get(id) || '', type: 'pty', external: false, source: 'webtun' });
     }
   }
+  const extProcs = findExternalShellProcesses();
+  sessions.push(...extProcs);
   res.json({ tmux: false, sessions });
 });
 
 app.post('/api/sessions/:id/label', checkPin, (req, res) => {
   const raw = req.params.id || '';
-  const id = raw.replace(/[^a-zA-Z0-9_-]/g, '');
+  const id = raw.replace(/[^a-zA-Z0-9_.-]/g, '');
   if (!id) return res.status(400).json({ error: 'invalid session id' });
   const label = typeof req.body?.label === 'string' ? req.body.label.trim().slice(0, 60) : '';
   if (label) sessionLabels.set(id, label);
@@ -4081,15 +4146,16 @@ app.post('/api/sessions/:id/label', checkPin, (req, res) => {
 
 app.delete('/api/sessions/:id', checkPin, (req, res) => {
   const raw = req.params.id || '';
-  const id = raw.replace(/[^a-zA-Z0-9_-]/g, '');
+  const id = raw.replace(/[^a-zA-Z0-9_.-]/g, '');
   if (!id || id.length > 64) {
     return res.status(400).json({ error: 'invalid session id' });
   }
   if (TMUX) {
-    // Own namespace first, then legacy names for migration. An explicit
-    // user-requested kill; foreign namespaces are excluded even for crafted
-    // ids (see tmuxAdoptableNames).
-    const tryNames = tmuxAdoptableNames(id);
+    // Own namespace first, then legacy names for migration, and exact name for external sessions.
+    const tryNames = [...tmuxAdoptableNames(id)];
+    if (tmuxSessionExists(id) && !tryNames.includes(id)) {
+      tryNames.push(id);
+    }
     let found = false;
     for (const n of tryNames) {
       if (tmuxSessionExists(n)) {
@@ -4246,19 +4312,27 @@ function resolvePtyCwd(pid) {
 
 app.get('/api/sessions/:id/cwd', checkPin, (req, res) => {
   const raw = req.params.id || '';
-  const id = raw.replace(/[^a-zA-Z0-9_-]/g, '');
+  const id = raw.replace(/[^a-zA-Z0-9_.-]/g, '');
   if (!id || id.length > 64) {
     return res.status(400).json({ error: 'invalid session id' });
   }
   // tmux sessions report the active pane's directory directly, whatever the
-  // shell is (no OSC 7 cooperation needed). Names stay in the adoptable set
-  // so a crafted id can never query a foreign port-namespace.
+  // shell is (no OSC 7 cooperation needed).
   const tmuxBin = getTMUX();
   if (tmuxBin) {
-    for (const n of tmuxAdoptableNames(id)) {
+    const checkNames = [...tmuxAdoptableNames(id)];
+    if (tmuxSessionExists(id) && !checkNames.includes(id)) {
+      checkNames.push(id);
+    }
+    for (const n of checkNames) {
       try {
-        const out = execFileSync(tmuxBin, ['display-message', '-p', '-t', n, '-F', '#{pane_current_path}'],
+        let out = execFileSync(tmuxBin, ['display-message', '-p', '-t', n, '-F', '#{pane_current_path}'],
           { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).trim();
+        if (!out) {
+          const pid = parseInt(execFileSync(tmuxBin, ['display-message', '-p', '-t', n, '-F', '#{pane_pid}'],
+            { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).trim(), 10);
+          if (pid > 0) out = resolvePtyCwd(pid) || '';
+        }
         if (out && fs.statSync(out).isDirectory()) return res.json({ cwd: out });
       } catch {}
     }
@@ -4484,7 +4558,7 @@ wss.on('connection', (ws, req) => {
   const rawSession = url.searchParams.get('session');
   let sessionId = '';
   if (rawSession !== null) {
-    const sanitized = rawSession.replace(/[^a-zA-Z0-9_-]/g, '');
+    const sanitized = rawSession.replace(/[^a-zA-Z0-9_.-]/g, '');
     if (!sanitized || sanitized.length > 64) {
       ws.close(1008, 'Invalid session id');
       return;
@@ -4541,14 +4615,17 @@ wss.on('connection', (ws, req) => {
     } else if (TMUX && sessionId) {
       const tmuxName = tmuxOwnName(sessionId);
       const candidates = tmuxAdoptableNames(sessionId);
-      const exists = candidates.some(tmuxSessionExists);
-      // Adopt a legacy session (pre-namespacing) when ours doesn't exist yet.
-      // Migration window only: foreign namespaces are excluded above, and ids
-      // are per-tab tokens, so a cross-instance collision is negligible.
+      const isExactTmux = tmuxSessionExists(sessionId);
+      const exists = candidates.some(tmuxSessionExists) || isExactTmux;
+      // Adopt an existing session: own namespace first, then exact external session if specified, then legacy
       let effectiveName = tmuxName;
       if (!tmuxSessionExists(tmuxName)) {
-        const found = candidates.slice(1).find(tmuxSessionExists);
-        if (found) effectiveName = found;
+        if (isExactTmux) {
+          effectiveName = sessionId;
+        } else {
+          const found = candidates.slice(1).find(tmuxSessionExists);
+          if (found) effectiveName = found;
+        }
       }
 
       if (exists) {
