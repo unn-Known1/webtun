@@ -4,11 +4,10 @@
 //
 // Background: v2.2.2 shipped with three byte-truncated JS files inside
 // app.asar (plus a silently re-hoisted node_modules tree) because
-// electron-builder@26.16.1's pack step corrupts file contents
-// deterministically (see BUILD_AUDIT_REPORT.md §1–§2). This hook makes that
-// class of defect impossible to ship: after every pack it compares every
-// file inside app.asar (and every file under app.asar.unpacked) against the
-// intact source tree, repairs mismatches, re-verifies, and FAILS the build
+// electron-builder@26.16.1's pack step deterministically corrupted file
+// contents. This hook makes that class of defect impossible to ship: after
+// every pack it compares files inside app.asar and app.asar.unpacked against
+// the intact source tree, repairs mismatches, re-verifies, and FAILS the build
 // on anything it cannot reconcile.
 //
 // Repair policy per packed file:

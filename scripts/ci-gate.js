@@ -9,8 +9,8 @@
 //   - missing unpacked native binding (node-pty pty.node)
 // Warns (does not fail) on:
 //   - top-level packed versions differing from package-lock.json (pack-step
-//     hoisting; proven runtime-benign — see BUILD_AUDIT_REPORT.md §2 — but
-//     still worth noticing, hence the manifest artifact).
+//     hoisting; runtime-proven benign, but still worth noticing in the
+//     manifest artifact).
 // Always writes the packed-tree manifest when --manifest-out is given.
 
 const fs = require('fs');
@@ -186,7 +186,7 @@ function main() {
       const short = dir.replace('node_modules/', '');
       const packedVer = manifest[short];
       if (lockVer && packedVer && lockVer !== packedVer) {
-        console.log(`::warning::packed ${short}@${packedVer} differs from lockfile ${lockVer} (hoisting; runtime-proven benign, see BUILD_AUDIT_REPORT.md §2)`);
+        console.log(`::warning::packed ${short}@${packedVer} differs from lockfile ${lockVer} (hoisting; check bundle smoke results)`);
       }
     }
   } catch (e) { console.log(`::warning::lockfile comparison skipped: ${e.message}`); }
