@@ -3276,6 +3276,9 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
   /* Tab switcher bottom sheet — only its own differences from the shared rule. */
   #tab-list-menu {
     max-width: calc(100vw - 16px) !important;
+    /* The shared rule right-aligns via `margin-left:auto` (that is how the More
+       sheet floats). This sheet is a full-width panel, so pin the margin. */
+    margin: 0 !important;
     border-radius: 20px !important;
     max-height: calc(65vh - var(--kb-inset)) !important;
     padding: 8px 12px calc(14px + env(safe-area-inset-bottom, 0px)) !important;
