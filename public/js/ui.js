@@ -54,8 +54,7 @@ async function resetSettings() {
   applyScrollback(settings.scrollback);
   if (settings.font) applyFont(settings.font);
   applyCursor(settings.cursor);
-  const mk = document.getElementById('mobile-keys');
-  if (mk) mk.style.display = settings.mobilekeys && window.innerWidth <= 768 ? 'flex' : 'none';
+  if (typeof applyMobileKeyBarState === 'function') applyMobileKeyBarState();
   try { if (typeof applyGitEnabled === 'function') applyGitEnabled(); } catch {}
   try { if (typeof applyGitSimple === 'function') applyGitSimple(); } catch {}
   toast('Settings reset', 'success');
@@ -441,11 +440,9 @@ function toast(msg, type = 'info', opts = {}) {
   progress.style.animationDuration = `${duration}ms`;
   el.appendChild(progress);
 
-  const mk = document.getElementById('mobile-keys');
-  if (mk && mk.style.display !== 'none' && window.getComputedStyle(mk).display !== 'none') {
-    el.style.marginBottom = 'var(--mobilekey-h)';
-  }
-
+  // No per-toast key-bar margin: #toast-container already lifts clear of the
+  // bar, so this stacked a second --mobilekey-h on top and pushed toasts over
+  // both the bar and the bottom nav (M-08).
   const container = document.getElementById('toast-container');
   if (!container) return el;
   container.appendChild(el);
@@ -458,21 +455,32 @@ function toast(msg, type = 'info', opts = {}) {
     victim.remove();
   }
 
-  // Hover pauses the countdown
+  // Hover *or keyboard focus* pauses the countdown. Mouse-only pausing failed
+  // WCAG 2.2.1: a keyboard user tabbing to Copy/Dismiss could not extend the
+  // message they were reading, and .toast-progress was the only time cue (S-17).
   let startTime = Date.now();
   let remaining = duration;
+  let paused = false;
   let ttl = setTimeout(() => el.remove(), remaining);
 
-  el.addEventListener('mouseenter', () => {
+  const pause = () => {
+    if (paused) return;
+    paused = true;
     clearTimeout(ttl);
     remaining -= (Date.now() - startTime);
     progress.style.animationPlayState = 'paused';
-  });
-  el.addEventListener('mouseleave', () => {
+  };
+  const resume = () => {
+    if (!paused) return;
+    paused = false;
     startTime = Date.now();
     progress.style.animationPlayState = 'running';
     ttl = setTimeout(() => el.remove(), Math.max(remaining, 1000));
-  });
+  };
+  el.addEventListener('mouseenter', pause);
+  el.addEventListener('mouseleave', resume);
+  el.addEventListener('focusin', pause);
+  el.addEventListener('focusout', resume);
 
   return el;
 }
@@ -721,7 +729,12 @@ function toggleNotifPanel() {
   if (!panel) return;
   if (panel.classList.contains('open')) { closeNotifPanel(); return; }
   try { closeSettings(); } catch {}
+  // Closed drawers are inert so their controls stay out of the tab order (S-10).
+  if (typeof setPanelInert === 'function') setPanelInert('notif-panel', false);
   panel.classList.add('open');
+  // Same modal treatment as Settings: scrim at every width (D-15).
+  const scrim = document.getElementById('drawer-backdrop');
+  if (scrim) { scrim.classList.add('active'); scrim.classList.toggle('desktop-modal', window.innerWidth > 768); }
   notifUnread = 0;
   persistNotifs();
   renderNotifPanel();
@@ -731,6 +744,7 @@ function toggleNotifPanel() {
 function closeNotifPanel() {
   const panel = document.getElementById('notif-panel');
   if (panel) panel.classList.remove('open');
+  if (panel && typeof setPanelInert === 'function') setPanelInert('notif-panel', true);
   document.getElementById('notif-btn')?.setAttribute('aria-expanded', 'false');
   document.removeEventListener('click', closeNotifOnClickOutside, true);
 }
@@ -772,7 +786,7 @@ function hideAllCtxMenus() {
     const sb = document.getElementById('sidebar');
     const sp = document.getElementById('settings-panel');
     if (!sb?.classList.contains('mobile-open') && !sp?.classList.contains('open') && !document.getElementById('tab-list-menu')?.offsetParent && !document.getElementById('more-menu')?.classList.contains('open')) {
-      document.getElementById('drawer-backdrop')?.classList.remove('active');
+      document.getElementById('drawer-backdrop')?.classList.remove('active', 'desktop-modal');
     }
   }
 }
@@ -793,7 +807,7 @@ function closeAllDrawers() {
   hideAllCtxMenus();
   try { if (typeof closeMoreMenu === 'function') closeMoreMenu(); } catch {}
   const backdrop = document.getElementById('drawer-backdrop');
-  if (backdrop) backdrop.classList.remove('active');
+  if (backdrop) backdrop.classList.remove('active', 'desktop-modal');
   document.getElementById('mnav-explorer')?.classList.remove('active');
   document.getElementById('mnav-tabs')?.classList.remove('active');
   document.getElementById('mnav-more')?.classList.remove('active');

@@ -489,6 +489,10 @@ async function unlockApp() {
   try { if (typeof hydrateClipboard === 'function') hydrateClipboard(); } catch {}
   renderBookmarks();  restoreTunnels();
   setupMobileKeys();
+  // Keyboard/viewport handling is armed here rather than from a WebSocket
+  // onopen: it must work before the first socket opens and must survive a
+  // bfcache round-trip, neither of which a reconnect re-arms (M-17).
+  try { setupVisualViewport(); } catch(e) { console.warn('setupVisualViewport failed:', e); }
 
   // ── One-time wiring ────────────────────────────────────────────────────
   // Everything below binds global document/window listeners. unlockApp() runs
@@ -518,10 +522,16 @@ async function unlockApp() {
     setupCtxMenuKeyboard();
     setupMoreMenuKeyboard();
     restoreSidebarWidth();
+    setupSidebarNarrowObserver();
     setupSidebarResize();
     setupEditorResize();
+    setupEditorToolbarDensity();
     window.addEventListener('resize', updateSidebarNarrowClass);
+    window.addEventListener('resize', applySidebarWidthToViewport);
     window._cleanups.push(() => window.removeEventListener('resize', updateSidebarNarrowClass));
+    window._cleanups.push(() => window.removeEventListener('resize', applySidebarWidthToViewport));
+    // Hand an inline/dragged width back to CSS when the tablet range is left (D-10).
+    try { applySidebarWidthToViewport(); } catch(e) { console.warn(e); }
     document.getElementById('tab-scroll').setAttribute('role', 'tablist');
     document.getElementById('file-list-wrap').setAttribute('role', 'listbox');
 

@@ -48,10 +48,10 @@ function groupPinnedTab(tab) {
   while (at < tabs.length && tabs[at].pinned) at++;
   tabs.splice(at, 0, moved);
   const bar = document.getElementById('tab-scroll');
-  const anchor = document.getElementById('new-tab-btn');
   try {
     if (moved.el && moved.el.parentNode === bar) {
-      const ref = tabs[at + 1] && tabs[at + 1].el && tabs[at + 1].el.parentNode === bar ? tabs[at + 1].el : (anchor && anchor.parentElement === bar ? anchor : null);
+      const next = tabs[at + 1];
+      const ref = next && next.el && next.el.parentNode === bar ? next.el : null;
       if (ref) bar.insertBefore(moved.el, ref);
       else bar.appendChild(moved.el);
     }
@@ -298,17 +298,16 @@ function updateTabOverflow() {
     const scroll = document.getElementById('tab-scroll');
     const left = document.getElementById('tab-scroll-left');
     const right = document.getElementById('tab-scroll-right');
-    const count = document.getElementById('tab-list-count');
     const titleCount = document.getElementById('tab-list-title-count');
     const mnavBadge = document.getElementById('mnav-tab-badge');
-    if (mnavBadge) mnavBadge.textContent = String(tabs.length);
+    // The badge hides itself when empty, so no display juggling is needed.
+    if (mnavBadge) mnavBadge.textContent = tabs.length > 0 ? String(tabs.length) : '';
     if (titleCount) titleCount.textContent = String(tabs.length);
     if (!scroll) return;
     const overflow = scroll.scrollWidth > scroll.clientWidth + 2;
     const maxScroll = scroll.scrollWidth - scroll.clientWidth;
     if (left) left.style.display = (overflow && scroll.scrollLeft > 2) ? 'flex' : 'none';
     if (right) right.style.display = (overflow && scroll.scrollLeft < maxScroll - 2) ? 'flex' : 'none';
-    if (count) count.textContent = tabs.length > 1 ? String(tabs.length) : '';
   } catch {}
 }
 
@@ -859,10 +858,11 @@ function createTabButton(tab) {
   setupTabInlineRename(titleSpan, tab);
   setupTabSwipeGesture(tabEl, id);
 
+  // Tabs append straight in. The create buttons moved out of #tab-scroll so
+  // they no longer serve as an insertion anchor and can hold a stable position
+  // regardless of scroll overflow (D-14).
   const scroll = document.getElementById('tab-scroll');
-  const anchor = document.getElementById('new-tab-btn');
-  if (anchor && anchor.parentElement === scroll) scroll.insertBefore(tabEl, anchor);
-  else scroll.appendChild(tabEl);
+  scroll.appendChild(tabEl);
   tab.el = tabEl;
   applyTabMeta(tab);
   scrollActiveTabIntoView();
@@ -874,6 +874,10 @@ function createTerminalWrapper(tab) {
   wrapper.dataset.id = tab.id;
   const loading = document.createElement('div');
   loading.className = 'term-loading';
+  // Announced: a screen-reader user otherwise gets silence through the connect
+  // window and every reconnect (S-16).
+  loading.setAttribute('role', 'status');
+  loading.setAttribute('aria-live', 'polite');
   loading.innerHTML = '<span class="tl-spinner"></span><span>Connecting…</span>';
   wrapper.appendChild(loading);
   tab.loadingEl = loading;
@@ -1029,7 +1033,7 @@ function renderFilteredSessions(sessions) {
     titleSpan.style.fontFamily = 'var(--font)';
     titleSpan.style.fontSize = '13px';
     titleSpan.style.fontWeight = '600';
-    titleSpan.style.color = 'var(--fg1)';
+    titleSpan.style.color = 'var(--fg)';
     titleSpan.style.overflow = 'hidden';
     titleSpan.style.textOverflow = 'ellipsis';
     titleSpan.style.whiteSpace = 'nowrap';
@@ -1250,16 +1254,10 @@ async function activateTab(id) {
   // Visiting a tab clears its unread/activity + bell badges.
   if (tab) clearTabBadges(tab);
   try { hideTabMenus(); } catch {}
-  // Mobile key bar is terminal-only — hide it for preview and file tabs.
-  try {
-    const mk = document.getElementById('mobile-keys');
-    const selRow = document.getElementById('mkey-sel-row');
-    if (mk) {
-      const isPlain = !tab || (tab.type !== 'preview' && tab.type !== 'file');
-      mk.style.display = (isPlain && settings.mobilekeys && window.innerWidth <= 768) ? 'flex' : 'none';
-      if (!isPlain && selRow) selRow.style.display = 'none';
-    }
-  } catch {}
+  // Mobile key bar is terminal-only — the reconciler already hides it for
+  // preview/file tabs, and re-showing it here could restore it without the
+  // docked class (M-21).
+  try { if (typeof applyMobileKeyBarState === 'function') applyMobileKeyBarState(); } catch {}
   // File tabs share one editor panel: mount it into the tab that just became
   // active, and hand it back to its own split when any other tab takes over.
   // Awaited: a refused open abandons the tab and re-activates elsewhere, so
@@ -1374,7 +1372,12 @@ async function closeTab(e, id, opts = {}) {
 // ═══════════════════════════════════════════════════════
 function toggleTiles() {
   tilesMode = !tilesMode;
-  document.getElementById('tilesBtn').classList.toggle('active', tilesMode);
+  // The header's tiles button is gone (D-01): the More menu is the home for
+  // Tiles Mode, so reflect the active state there instead of on a removed node.
+  document.querySelectorAll('[data-more-item="tiles"]').forEach(el => {
+    el.classList.toggle('active', tilesMode);
+    el.setAttribute('aria-pressed', String(tilesMode));
+  });
   document.getElementById('terminals').classList.toggle('tiles-mode', tilesMode);
   if (tilesMode) {
     layoutTiles();
@@ -1456,11 +1459,7 @@ function moveTabToEnd(fromId) {
   const [moved] = tabs.splice(fromIdx, 1);
   tabs.push(moved);
   const bar = document.getElementById('tab-scroll');
-  const anchor = document.getElementById('new-tab-btn');
-  if (moved.el && moved.el.parentNode === bar) {
-    if (anchor && anchor.parentElement === bar) bar.insertBefore(moved.el, anchor);
-    else bar.appendChild(moved.el);
-  }
+  if (moved.el && moved.el.parentNode === bar) bar.appendChild(moved.el);
   saveTabState();
   updateTabOverflow();
 }

@@ -824,7 +824,7 @@ function renderBreadcrumb(fullPath) {
       html = segments.map((seg, i) => {
         const isLast = i === segments.length - 1;
         if (isLast) return `<button type="button" class="path-current" data-edit="1" title="${escHtml(seg.label)} — click to edit" aria-current="page">${escHtml(seg.label)}</button>`;
-        return `<a href="#" data-path="${escHtml(seg.path)}" style="color:var(--accent);text-decoration:none;display:inline-flex;align-items:center;height:24px;padding:2px 6px;border-radius:var(--radius-sm)">${escHtml(seg.label)}</a>` +
+        return `<a href="#" data-path="${escHtml(seg.path)}" >${escHtml(seg.label)}</a>` +
           `<span style="color:var(--fg2);margin:0 2px;display:inline-flex;align-items:center">\\</span>`;
       }).join('');
     }
@@ -837,7 +837,7 @@ function renderBreadcrumb(fullPath) {
       if (isLast) {
         html += `<button type="button" class="path-current" data-edit="1" title="${escHtml(part)} — click to edit" aria-current="page">${escHtml(part)}</button>`;
       } else {
-        html += `<a href="#" data-path="${escHtml(accumulated)}" style="color:var(--accent);text-decoration:none;display:inline-flex;align-items:center;height:24px;padding:2px 6px;border-radius:var(--radius-sm)">${escHtml(part)}</a>`;
+        html += `<a href="#" data-path="${escHtml(accumulated)}" >${escHtml(part)}</a>`;
         html += `<span style="color:var(--fg2);margin:0 2px;display:inline-flex;align-items:center">/</span>`;
       }
     }

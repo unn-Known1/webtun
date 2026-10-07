@@ -280,11 +280,12 @@ function toggleCmdLib() {
   // drawer for audits.
   if (!isOpen) panel.setAttribute('aria-modal', 'true');
   else panel.removeAttribute('aria-modal');
-  const toggleBtn = document.getElementById('cmd-lib-toggle');
-  if (toggleBtn) {
-    toggleBtn.classList.toggle('active', !isOpen);
-    toggleBtn.setAttribute('aria-expanded', String(!isOpen));
-  }
+  // The header's Command Library button is gone (D-01); reflect the open state
+  // on the More-menu item, which is now the entry point.
+  document.querySelectorAll('[data-more-item="cmdlib"]').forEach(el => {
+    el.classList.toggle('active', !isOpen);
+    el.setAttribute('aria-expanded', String(!isOpen));
+  });
   if (!isOpen) {
     loadHistMax();
     switchCmdTab('library');
@@ -304,12 +305,11 @@ function toggleCmdLib() {
 
 function closeCmdLibOnClickOutside(e) {
   const panel = document.getElementById('cmd-lib-panel');
-  const btn = document.getElementById('cmd-lib-toggle');
   if (!panel || !panel.classList.contains('open')) {
     document.removeEventListener('click', closeCmdLibOnClickOutside, true);
     return;
   }
-  if (panel.contains(e.target) || (btn && btn.contains(e.target))) return;
+  if (panel.contains(e.target)) return;
   toggleCmdLib();
   setCmdLibInert(false);
   removeFocusTrap();
@@ -453,7 +453,7 @@ function renderCmdLib(filter) {
       <div id="cmd-lib-empty">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.4;margin-bottom:8px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <div>No matching commands found</div>
-        ${q ? `<button class="btn btn-sm" style="margin-top:8px" onclick="clearCmdSearch()">Clear Search</button>` : ''}
+        ${q ? `<button class="btn btn-sm" style="margin-top:12px" onclick="clearCmdSearch()">Clear Search</button>` : ''}
       </div>
     `;
     return;
@@ -964,7 +964,7 @@ async function renderCmdHist() {
       <div id="cmd-hist-empty">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.4;margin-bottom:8px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         <div>${q ? 'No matching commands in history' : 'No commands run yet'}</div>
-        ${q ? `<button class="btn btn-sm" style="margin-top:8px" onclick="clearCmdSearch()">Clear Search</button>` : ''}
+        ${q ? `<button class="btn btn-sm" style="margin-top:12px" onclick="clearCmdSearch()">Clear Search</button>` : ''}
       </div>
     `;
     return;
@@ -1454,9 +1454,9 @@ function showInstallBanner(isIOS) {
   }
   const mk = document.getElementById('mobile-keys');
   if (mk && window.getComputedStyle(mk).display !== 'none') {
-    el.style.bottom = 'calc(var(--mobilekey-h) + env(safe-area-inset-bottom, 0px))';
+    el.style.bottom = 'calc(var(--mobilekey-h) + env(safe-area-inset-bottom, 0px) + var(--kb-inset))';
   } else {
-    el.style.bottom = 'env(safe-area-inset-bottom, 0px)';
+    el.style.bottom = 'calc(env(safe-area-inset-bottom, 0px) + var(--kb-inset))';
   }
   el.style.display = 'flex';
   document.getElementById('toast-container').classList.add('banner-visible');

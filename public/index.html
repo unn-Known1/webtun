@@ -87,8 +87,8 @@
   <!-- Header -->
   <div id="header" role="banner">
     <span id="conn-status" role="status" aria-label="Connected" title="Connected · Local PTY running — click for System Stats" onclick="openSystemStats()"></span>
-    <span id="logo" style="display:flex;align-items:center;gap:6px" title="WebTun v2.3.1">
-      <svg class="logo-mark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <span id="logo" style="display:flex;align-items:center;gap:6px" title="WebTun v2.3.2">
+      <svg class="logo-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="4 17 10 11 4 5"/>
         <line x1="12" y1="19" x2="20" y2="19"/>
         <circle cx="17" cy="8" r="4" stroke="currentColor" stroke-width="1.8" stroke-dasharray="2 2" opacity="0.6"/>
@@ -103,45 +103,33 @@
     <div class="header-spacer"></div>
     <button class="icon-btn" id="security-alert-btn" aria-label="Security alert: unreviewed login" title="Unreviewed login — click to review sessions" onclick="openSecurityReview()" style="display:none;color:var(--amber, #e5a50a)">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-      <span id="security-alert-count" style="position:absolute;margin:-14px 0 0 10px;font-size:9px;font-weight:700;background:var(--red);color:#fff;border-radius:8px;padding:0 4px;line-height:14px"></span>
+      <span id="security-alert-count" class="count-badge" aria-hidden="true"></span>
     </button>
     <label id="keep-awake-toggle" class="keep-awake" title="Keep Screen Awake">
       <input type="checkbox" id="keep-awake-cb" aria-label="Keep screen awake" onchange="toggleKeepAwake(this.checked)">
       <span class="awake-cup" aria-hidden="true">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path class="steam s1" d="M7.5 8.5c-1.2-1.4 1.2-2.2 0-3.6"/><path class="steam s2" d="M11.5 8.5c-1.2-1.4 1.2-2.2 0-3.6"/><path class="steam s3" d="M15.5 8.5c-1.2-1.4 1.2-2.2 0-3.6"/><path d="M4 10.5h13V16a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4v-5.5z"/><path d="M17 11.5h1.5a2.5 2.5 0 0 1 0 5H17"/><text id="sess-cup-num" x="10" y="17" text-anchor="middle" font-size="7.5" font-weight="700" fill="var(--accent)" stroke="none" style="display:none"></text></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path class="steam s1" d="M7.5 8.5c-1.2-1.4 1.2-2.2 0-3.6"/><path class="steam s2" d="M11.5 8.5c-1.2-1.4 1.2-2.2 0-3.6"/><path class="steam s3" d="M15.5 8.5c-1.2-1.4 1.2-2.2 0-3.6"/><path d="M4 10.5h13V16a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4v-5.5z"/><path d="M17 11.5h1.5a2.5 2.5 0 0 1 0 5H17"/><text id="sess-cup-num" x="10" y="17" text-anchor="middle" font-size="7.5" font-weight="700" fill="var(--accent)" stroke="none" style="display:none"></text></svg>
       </span>
     </label>
     <button class="icon-btn mobile-only-btn" id="mobile-search-btn" aria-label="Find in terminal" title="Find in terminal" onclick="toggleTermSearch()">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-    </button>
-    <button class="icon-btn mobile-only-btn" id="mobile-cmd-btn" aria-label="Snippets & Commands" title="Snippets & Commands" onclick="toggleCmdLib()">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-    </button>
-    <button class="icon-btn mobile-only-btn" id="mobile-sessions-btn" aria-label="Terminal Sessions" title="Terminal Sessions" onclick="openTerminalSessionsModal()">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
     </button>
     <button class="icon-btn" id="transfers-btn" aria-label="Transfers" title="Transfers — uploads, downloads, copy/move" aria-haspopup="dialog" aria-expanded="false" onclick="toggleTransfersPanel(event)" style="display:none">
-      <svg class="tx-arrows" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="tx-up" d="M7 3v9"/><path class="tx-up" d="m4 6 3-3 3 3"/><path class="tx-down" d="M17 21v-9"/><path class="tx-down" d="m14 18 3 3 3-3"/><circle class="tx-pkt tx-p1" cx="7" cy="13" r="1.7" fill="currentColor" stroke="none"/><circle class="tx-pkt tx-p2" cx="17" cy="11" r="1.7" fill="currentColor" stroke="none"/></svg>
-      <span id="transfers-count" aria-hidden="true">0</span>
+      <svg class="tx-arrows" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="tx-up" d="M7 3v9"/><path class="tx-up" d="m4 6 3-3 3 3"/><path class="tx-down" d="M17 21v-9"/><path class="tx-down" d="m14 18 3 3 3-3"/><circle class="tx-pkt tx-p1" cx="7" cy="13" r="1.7" fill="currentColor" stroke="none"/><circle class="tx-pkt tx-p2" cx="17" cy="11" r="1.7" fill="currentColor" stroke="none"/></svg>
+      <span id="transfers-count" class="count-badge" aria-hidden="true">0</span>
     </button>
     <button class="icon-btn" id="sidebar-toggle" aria-label="Toggle sidebar" title="Toggle Explorer (Ctrl+B)" onclick="toggleSidebar()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
     </button>
-    <button class="icon-btn" id="cmd-lib-toggle" aria-label="Command Library" title="Command Library" onclick="toggleCmdLib()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-    </button>
     <button class="icon-btn" id="system-stats-btn" aria-label="System Stats" title="System Stats" onclick="openSystemStats()">
       <svg id="sys-live-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="2.5" opacity="0.4"/><rect id="sys-ico-cpu" x="4.6" y="5.6" width="0" height="2.8" rx="1.4" stroke="none" style="fill:var(--accent)"/><rect x="3" y="14" width="18" height="6" rx="2.5" opacity="0.4"/><rect id="sys-ico-mem" x="4.6" y="15.6" width="0" height="2.8" rx="1.4" stroke="none" style="fill:var(--cyan)"/></svg>
-    </button>
-    <button class="icon-btn" id="tilesBtn" aria-label="Tiles Mode" title="Tiles Mode" onclick="toggleTiles()">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
     </button>
     <button class="icon-btn" id="more-btn" aria-label="More options" title="More options" onclick="toggleMoreMenu(event)">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
     </button>
     <button id="notif-btn" class="icon-btn" aria-label="Notifications" title="Notifications" aria-haspopup="dialog" aria-expanded="false" onclick="toggleNotifPanel()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-      <span id="notif-count" aria-hidden="true">0</span>
+      <span id="notif-count" class="count-badge" aria-hidden="true">0</span>
     </button>
     <button id="settings-btn" class="icon-btn" aria-label="Settings" title="Settings" onclick="openSettings()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -153,7 +141,7 @@
       <div id="transfers-list"></div>
     </div>
   </div>
-  <div id="reconnect-banner" style="display:none;padding:4px 12px;font-size:11px;background:var(--accent);color:#fff;text-align:center;flex-shrink:0"><span class="reconnect-spinner"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></span> Reconnecting…</div>
+  <div id="reconnect-banner" role="status" aria-live="polite" style="display:none;padding:4px 12px;font-size:11px;background:var(--accent);color:#fff;text-align:center;flex-shrink:0"><span class="reconnect-spinner"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></span> Reconnecting…</div>
 
   <!-- Main -->
   <div id="main">
@@ -161,29 +149,29 @@
     <div id="sidebar" role="navigation" aria-label="File explorer">
       <div id="sidebar-header">
         <div class="hdr-seg" role="group" aria-label="History navigation">
-          <button class="icon-btn" style="width:32px;height:32px;min-width:32px;min-height:32px" aria-label="Back" title="Back" onclick="navigateBack()" id="back-btn">
+          <button class="icon-btn" aria-label="Back" title="Back" onclick="navigateBack()" id="back-btn">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
           </button>
-          <button class="icon-btn" style="width:32px;height:32px;min-width:32px;min-height:32px" aria-label="Forward" title="Forward" onclick="navigateForward()" id="fwd-btn">
+          <button class="icon-btn" aria-label="Forward" title="Forward" onclick="navigateForward()" id="fwd-btn">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </button>
         </div>
-        <button class="icon-btn" style="width:32px;height:32px;min-width:32px;min-height:32px" aria-label="Go to terminal directory" title="Go to terminal directory" onclick="goToTerminalDir()" id="term-dir-btn">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        <button class="icon-btn" aria-label="Go to terminal directory" title="Go to terminal directory" onclick="goToTerminalDir()" id="term-dir-btn">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
         </button>
         <span class="hdr-sep" aria-hidden="true"></span>
-        <button class="icon-btn" style="width:32px;height:32px;min-width:32px;min-height:32px" aria-label="Go up" title="Go up" onclick="navigateUp()">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+        <button class="icon-btn" aria-label="Go up" title="Go up" onclick="navigateUp()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
         </button>
-        <button class="icon-btn" style="width:32px;height:32px;min-width:32px;min-height:32px" aria-label="Refresh" title="Refresh" onclick="refreshFiles()" id="refresh-btn">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        <button class="icon-btn" aria-label="Refresh" title="Refresh" onclick="refreshFiles()" id="refresh-btn">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
         </button>
-        <button class="icon-btn" style="width:32px;height:32px;min-width:32px;min-height:32px" aria-label="Search file contents" title="Search file contents" onclick="openContentSearch()">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M8 11h6M11 8v6"/></svg>
+        <button class="icon-btn" aria-label="Search file contents" title="Search file contents" onclick="openContentSearch()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M8 11h6M11 8v6"/></svg>
         </button>
         <span class="hdr-sep" aria-hidden="true"></span>
-        <button class="icon-btn" style="width:32px;height:32px;min-width:32px;min-height:32px" aria-label="Toggle select mode" title="Toggle select mode" onclick="toggleSelectMode()">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="9 12 11 14 15 10"/></svg>
+        <button class="icon-btn" aria-label="Toggle select mode" title="Toggle select mode" onclick="toggleSelectMode()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="9 12 11 14 15 10"/></svg>
         </button>
       </div>
       <div id="path-bar">
@@ -302,26 +290,29 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         </button>
         <button id="tab-scroll-left" class="tab-nav-btn" onclick="scrollTabBar(-1)" title="Scroll tabs left" aria-label="Scroll tabs left" style="display:none">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
-        <div id="tab-scroll">
-          <button id="new-tab-btn" onclick="newTab()" title="New terminal (right-click for more)" aria-label="New terminal" aria-haspopup="menu">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          </button>
-          <button id="new-preview-btn" onclick="newPreviewPrompt()" title="New app preview" aria-label="New app preview" style="width:28px;height:28px;min-width:28px;min-height:28px;display:flex;align-items:center;justify-content:center;border-radius:var(--radius);color:var(--fg2);flex-shrink:0;background:var(--bg2);border:1px solid var(--border);margin-left:4px">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-          </button>
-          <button id="ssh-toggle" onclick="openSshPanel()" title="SSH Access — on-demand keys for Termius & ssh" aria-label="SSH Access" aria-haspopup="dialog" style="width:28px;height:28px;min-width:28px;min-height:28px;display:flex;align-items:center;justify-content:center;border-radius:var(--radius);color:var(--fg2);flex-shrink:0;background:var(--bg2);border:1px solid var(--border);margin-left:4px">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-          </button>
-        </div>
+        <div id="tab-scroll"></div>
+        <!-- Create actions live outside #tab-scroll: inside it, `position:sticky`
+             made the leading `+` jump from the left edge to a pinned right slot
+             the moment the strip overflowed, while preview/SSH scrolled away
+             and the fade mask dimmed the pinned button (D-14). -->
+        <button id="new-tab-btn" onclick="newTab()" title="New terminal (right-click for more)" aria-label="New terminal" aria-haspopup="menu">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+        <button id="new-preview-btn" onclick="newPreviewPrompt()" title="New app preview" aria-label="New app preview">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        </button>
+        <button id="ssh-toggle" onclick="openSshPanel()" title="SSH Access — on-demand keys for Termius & ssh" aria-label="SSH Access" aria-haspopup="dialog">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        </button>
         <button id="tab-scroll-right" class="tab-nav-btn" onclick="scrollTabBar(1)" title="Scroll tabs right" aria-label="Scroll tabs right" style="display:none">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
         </button>
         <div id="tab-list-menu" role="menu" aria-label="Open tabs" style="display:none">
           <div class="tab-list-head" style="display:flex;align-items:center;justify-content:space-between;padding:4px 4px 8px;border-bottom:1px solid var(--border);margin-bottom:6px">
             <span style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
               <span>Open Tabs</span>
               <span id="tab-list-title-count" style="font-size:11px;padding:1px 6px;border-radius:10px;background:var(--bg4);color:var(--fg2)">1</span>
             </span>
@@ -344,7 +335,7 @@
           <div id="tab-list-items" role="group"></div>
           <div class="tab-list-foot" style="padding:6px 4px 2px;border-top:1px solid var(--border);margin-top:6px;display:flex;gap:6px">
             <button class="btn btn-ghost" onclick="hideTabMenus();openTerminalSessionsModal()" style="flex:1;height:30px;font-size:11.5px;color:var(--accent);justify-content:center;gap:6px">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
               All Terminal Sessions…
             </button>
           </div>
@@ -355,8 +346,8 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <input id="term-search-input" type="text" placeholder="Find in buffer…" autocomplete="off" spellcheck="false" aria-label="Search terminal buffer">
         <span id="term-search-count" class="term-search-count"></span>
-        <button class="icon-btn" id="term-search-prev" onclick="findTermPrev()" title="Previous match" aria-label="Previous match"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="18 15 12 9 6 15"/></svg></button>
-        <button class="icon-btn" id="term-search-next" onclick="findTermNext()" title="Next match" aria-label="Next match"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 9 12 15 18 9"/></svg></button>
+        <button class="icon-btn" id="term-search-prev" onclick="findTermPrev()" title="Previous match" aria-label="Previous match"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="18 15 12 9 6 15"/></svg></button>
+        <button class="icon-btn" id="term-search-next" onclick="findTermNext()" title="Next match" aria-label="Next match"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 9 12 15 18 9"/></svg></button>
         <button class="icon-btn" id="term-search-close" onclick="closeTermSearch()" title="Close search" aria-label="Close search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
       <div id="term-zoom-hud" class="term-zoom-hud" aria-hidden="true" style="display:none">14px</div>
@@ -373,11 +364,11 @@
               <div class="lp-today" id="lp-today"></div>
               <button class="btn btn-primary lp-new" onclick="newTab()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New terminal</button>
               <div class="lp-quick">
-                <button class="btn btn-ghost" onclick="newTab()" title="New local shell (Ctrl+T)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Terminal</button>
-                <button class="btn btn-ghost" onclick="openTerminalSessionsModal()" title="List & connect terminal sessions (Alt+S)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>Sessions</button>
-                <button class="btn btn-ghost" onclick="openSshPanel()" title="Connect external SSH clients (Termius)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>SSH Host</button>
-                <button class="btn btn-ghost" onclick="lpOpenExplorer()" title="Toggle File Explorer (Ctrl+B)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Explorer</button>
-                <button class="btn btn-ghost" onclick="toggleCmdLib()" title="Snippets & Command Library"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>Snippets</button>
+                <button class="btn btn-ghost" onclick="newTab()" title="New local shell (Ctrl+T)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Terminal</button>
+                <button class="btn btn-ghost" onclick="openTerminalSessionsModal()" title="List & connect terminal sessions (Alt+S)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>Sessions</button>
+                <button class="btn btn-ghost" onclick="openSshPanel()" title="Connect external SSH clients (Termius)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>SSH Host</button>
+                <button class="btn btn-ghost" onclick="lpOpenExplorer()" title="Toggle File Explorer (Ctrl+B)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Explorer</button>
+                <button class="btn btn-ghost" onclick="toggleCmdLib()" title="Snippets & Command Library"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>Snippets</button>
               </div>
               <div class="lp-cols">
                 <div class="lp-card"><h4>Recent commands</h4><div id="lp-cmds"></div></div>
@@ -404,10 +395,10 @@
             </h3>
             <div class="cmd-lib-header-actions">
               <button class="icon-btn" id="cmd-lib-export-btn" onclick="exportCmdLibrary()" title="Export custom commands (JSON)" aria-label="Export custom commands">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               </button>
               <button class="icon-btn" id="cmd-lib-import-btn" onclick="triggerImportCmdLib()" title="Import commands (JSON)" aria-label="Import commands">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
               </button>
               <input type="file" id="cmd-lib-file-input" accept=".json,application/json" style="display:none" onchange="importCmdLibFile(event)">
               <button class="icon-btn" style="width:24px;height:24px" onclick="toggleCmdLib()" title="Close">
@@ -426,7 +417,7 @@
             </button>
           </div>
           <div class="cmd-lib-search-wrap">
-            <svg class="cmd-search-ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <svg class="cmd-search-ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input id="cmd-lib-search" type="text" placeholder="Search commands by name, syntax, or category…" oninput="onCmdSearchInput()">
             <button class="cmd-search-clear" id="cmd-search-clear-btn" onclick="clearCmdSearch()" aria-label="Clear filter" style="display:none" title="Clear">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -498,7 +489,7 @@
                 <button class="icon-btn" title="Zoom out" onclick="pdfZoom(-0.2)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>
                 <button class="icon-btn" title="Zoom in" onclick="pdfZoom(0.2)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>
                 <button class="icon-btn" title="Previous page" onclick="pdfNav(-1)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>
-                <button class="icon-btn" title="Next page" onclick="pdfNav(1)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>
+                <button class="icon-btn" title="Next page" onclick="pdfNav(1)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>
                 <button class="icon-btn" title="Download" onclick="downloadFile(editorPath)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
               </div>
               <div id="pdf-canvas-wrap"></div>
@@ -508,7 +499,7 @@
                 <span class="doc-title" id="epub-title"></span>
                 <span class="doc-page-info" id="epub-loc"></span>
                 <button class="icon-btn" title="Previous" onclick="epubNav(-1)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>
-                <button class="icon-btn" title="Next" onclick="epubNav(1)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>
+                <button class="icon-btn" title="Next" onclick="epubNav(1)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>
                 <button class="icon-btn" title="Download" onclick="downloadFile(editorPath)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
               </div>
               <div id="epub-wrap"><div id="epub-view"></div></div>
@@ -518,7 +509,7 @@
                 <span class="doc-title" id="office-title"></span>
                 <span class="doc-page-info" id="office-info"></span>
                 <select id="office-sheet-sel" title="Sheet" aria-label="Sheet" style="display:none;height:26px;font-size:11px;background:var(--bg3);color:var(--fg2);border:1px solid var(--border);border-radius:var(--radius-sm);max-width:160px" onchange="officeSheetChanged(this.value)"></select>
-                <button class="icon-btn" title="Download" onclick="downloadFile(editorPath)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+                <button class="icon-btn" title="Download" onclick="downloadFile(editorPath)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
               </div>
               <div id="office-wrap"><div id="office-content"></div></div>
             </div>
@@ -534,13 +525,13 @@
           <span class="mkey-sep"></span>
           <button class="mkey mkey-mod" onclick="toggleCtrl()" title="Ctrl modifier (latches, double-tap for row)" id="ctrl-toggle-btn" aria-label="Control modifier">CTRL</button>
           <button class="mkey mkey-mod" onclick="toggleAlt()" title="Alt modifier (latches)" id="alt-toggle-btn" aria-label="Alt modifier">ALT</button>
-          <button class="mkey mkey-mod" onclick="toggleShift()" title="Shift modifier (latches)" id="shift-toggle-btn" aria-label="Shift modifier"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 6h6"/><path d="M12 18V9"/><path d="m6 12 6-6 6 6"/></svg></button>
+          <button class="mkey mkey-mod" onclick="toggleShift()" title="Shift modifier (latches)" id="shift-toggle-btn" aria-label="Shift modifier"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 6h6"/><path d="M12 18V9"/><path d="m6 12 6-6 6 6"/></svg></button>
           <span class="mkey-sep"></span>
           <div class="mkey-group mkey-arrows">
-            <button class="mkey mkey-arrow" onclick="sendKey('\x1b[A')" title="Arrow Up" aria-label="Arrow Up"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg></button>
-            <button class="mkey mkey-arrow" onclick="sendKey('\x1b[B')" title="Arrow Down" aria-label="Arrow Down"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></button>
-            <button class="mkey mkey-arrow" onclick="sendKey('\x1b[D')" title="Arrow Left" aria-label="Arrow Left"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg></button>
-            <button class="mkey mkey-arrow" onclick="sendKey('\x1b[C')" title="Arrow Right" aria-label="Arrow Right"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></button>
+            <button class="mkey mkey-arrow" onclick="sendKey('\x1b[A')" title="Arrow Up" aria-label="Arrow Up"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg></button>
+            <button class="mkey mkey-arrow" onclick="sendKey('\x1b[B')" title="Arrow Down" aria-label="Arrow Down"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></button>
+            <button class="mkey mkey-arrow" onclick="sendKey('\x1b[D')" title="Arrow Left" aria-label="Arrow Left"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg></button>
+            <button class="mkey mkey-arrow" onclick="sendKey('\x1b[C')" title="Arrow Right" aria-label="Arrow Right"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></button>
           </div>
           <span class="mkey-sep"></span>
           <button class="mkey mkey-snippets" onclick="toggleCmdLib()" title="Snippets & Commands" aria-label="Snippets & Commands">⚡ Snippets</button>
@@ -572,9 +563,9 @@
           <button class="mkey" onclick="sendKey('\x1b[6~')" title="Page Down">PgDn</button>
           <span class="mkey-sep"></span>
           <button class="mkey" onclick="sendKey('\x1b[3~')" title="Delete">DEL</button>
-          <button class="mkey" onclick="sendKey('\x7f')" title="Backspace"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 5H9l-7 7 7 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1Z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg></button>
+          <button class="mkey" onclick="sendKey('\x7f')" title="Backspace"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 5H9l-7 7 7 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1Z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg></button>
           <span class="mkey-sep"></span>
-          <button class="mkey sel-toggle" onclick="toggleTermSelect()" title="Toggle selection mode" id="sel-toggle-btn" aria-label="Toggle selection mode"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="5" width="14" height="14" rx="2"/><line x1="5" y1="12" x2="19" y2="12"/><line x1="12" y1="5" x2="12" y2="19"/></svg> Sel</button>
+          <button class="mkey sel-toggle" onclick="toggleTermSelect()" title="Toggle selection mode" id="sel-toggle-btn" aria-label="Toggle selection mode"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="5" width="14" height="14" rx="2"/><line x1="5" y1="12" x2="19" y2="12"/><line x1="12" y1="5" x2="12" y2="19"/></svg> Sel</button>
           <button class="mkey" onclick="toggleCtrlRow()" title="All Ctrl shortcuts" aria-label="All Ctrl shortcuts">^Row</button>
         </div>
         <button class="mkey mkey-hide-kb" onclick="hideMobileKeyboard()" title="Hide Keyboard" aria-label="Hide Keyboard" id="mkey-hide-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="6 9 12 15 18 9"/></svg><span>Hide</span></button>
@@ -610,7 +601,7 @@
     </div>
 
     <!-- Notification Center -->
-    <div id="notif-panel" role="dialog" aria-label="Notifications">
+    <div id="notif-panel" role="dialog" aria-label="Notifications" aria-hidden="true" inert>
       <div class="notif-panel-header">
         <span style="font-size:14px;font-weight:700;display:flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>Notifications <span id="notif-head-count"></span></span>
         <span style="display:flex;align-items:center;gap:4px">
@@ -627,7 +618,7 @@
     </div>
 
     <!-- Settings Panel -->
-    <div id="settings-panel" role="dialog" aria-label="Settings">
+    <div id="settings-panel" role="dialog" aria-label="Settings" aria-hidden="true" inert>
       <div class="settings-panel-header">
          <span style="font-size:14px;font-weight:700;display:flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Settings</span>
         <button class="icon-btn" onclick="closeSettings()" title="Close settings">
@@ -636,7 +627,7 @@
       </div>
       <div class="settings-panel-body">
         <div id="settings-search-wrap">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
           <input id="settings-search" type="text" placeholder="Search settings…" aria-label="Search settings" autocomplete="off">
         </div>
         <div id="settings-no-match">No settings match your search</div>
@@ -700,6 +691,7 @@
               <option value="gruvbox">Gruvbox</option>
               <option value="dracula">Dracula</option>
               <option value="monokai">Monokai</option>
+              <option value="oled">Midnight OLED</option>
             </select>
           </div>
           <div class="setting-row">
@@ -866,7 +858,7 @@
     <button id="mnav-tabs" class="mnav-btn" onclick="triggerHaptic('light');toggleTabListMenu(event)" aria-label="Tabs">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
       <span>Tabs</span>
-      <span id="mnav-tab-badge">1</span>
+      <span id="mnav-tab-badge" class="count-badge" aria-hidden="true">1</span>
     </button>
     <button id="mnav-new" class="mnav-btn mnav-fab" onclick="handleMobileNewAction()" aria-label="New Session">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -887,9 +879,9 @@
   <button class="mm-item" role="menuitem" onclick="closeMoreMenu();openTerminalSessionsModal()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> Terminal Sessions</button>
   <button class="mm-item" role="menuitem" onclick="closeMoreMenu();openPortsModal()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> Listening Ports</button>
   <button class="mm-item" role="menuitem" onclick="closeMoreMenu();openSystemStats()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="4" rx="1"/><rect x="2" y="10" width="20" height="4" rx="1"/><rect x="2" y="18" width="20" height="4" rx="1"/><circle cx="6" cy="4" r="1" fill="currentColor"/><circle cx="6" cy="12" r="1" fill="currentColor"/><circle cx="6" cy="20" r="1" fill="currentColor"/></svg> System Stats</button>
-  <button class="mm-item" role="menuitem" onclick="closeMoreMenu();toggleTiles()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> Tiles Mode</button>
+  <button class="mm-item" role="menuitem" onclick="closeMoreMenu();toggleTiles()" data-more-item="tiles" aria-pressed="false"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> Tiles Mode</button>
   <button class="mm-item" role="menuitem" onclick="closeMoreMenu();newPreviewPrompt()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> New Preview</button>
-  <button class="mm-item" role="menuitem" onclick="closeMoreMenu();toggleCmdLib()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> Command Library</button>
+  <button class="mm-item" role="menuitem" onclick="closeMoreMenu();toggleCmdLib()" data-more-item="cmdlib" aria-expanded="false"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> Command Library</button>
   <button class="mm-item" role="menuitem" onclick="closeMoreMenu();openSshPanel()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> SSH Access</button>
   <button class="mm-item" role="menuitem" onclick="closeMoreMenu();openShortcuts()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 8h6M12 8v8"/><path d="m7 12 10-4"/><path d="m7 12 10 4"/></svg> Keyboard Shortcuts</button>
 </div>
@@ -959,7 +951,7 @@
 <!-- Floating touch selection action bar -->
 <div id="term-selection-bar" role="toolbar" aria-label="Selection actions" style="display:none">
   <button class="tsel-btn" id="tsel-copy" onclick="copyTermSelection()" title="Copy selected text">
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
     <span>Copy</span>
   </button>
   <button class="tsel-btn" id="tsel-line" onclick="selectTermLine()" title="Select line">
@@ -1014,7 +1006,7 @@
 <div class="overlay" id="term-sessions-overlay" role="dialog" aria-modal="true" aria-label="Terminal Sessions">
   <div class="modal term-sessions-modal">
     <div class="term-sess-header">
-      <h2 style="font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px;margin:0;color:var(--fg1)">
+      <h2 style="font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px;margin:0;color:var(--fg)">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
         Terminal Sessions
         <span id="term-sessions-count" style="font-size:11px;font-weight:600;background:var(--bg3);color:var(--accent);padding:2px 8px;border-radius:10px">0</span>
@@ -1055,7 +1047,7 @@
 <div class="overlay" id="ports-overlay" role="dialog" aria-modal="true" aria-label="Listening Ports">
   <div class="modal" style="max-width:580px;padding:16px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-      <h2 style="font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px;margin:0;color:var(--fg1)">
+      <h2 style="font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px;margin:0;color:var(--fg)">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
         Listening Ports &amp; Servers
         <span id="ports-count" style="font-size:11px;font-weight:600;background:var(--bg3);color:var(--cyan);padding:2px 8px;border-radius:10px">0</span>
@@ -1410,7 +1402,10 @@
 </div>
 
 <!-- Toast container -->
-<div id="toast-container" aria-live="polite" aria-atomic="true"></div>
+<!-- No aria-atomic: it made every insertion re-announce the whole stack, so a
+     burst of 4 toasts produced 10 utterances. Each toast carries its own
+     role="status", which announces per message (S-17). -->
+<div id="toast-container" aria-live="polite"></div>
 
 <!-- Hidden file input for upload -->
 <input type="file" id="upload-input" multiple style="display:none" onchange="handleUploadInput()">

@@ -78,6 +78,8 @@ function createPreviewWrapper(tab) {
     + '<select class="preview-width" aria-label="Preview width" title="Preview width"><option value="full">Full</option><option value="768">768</option><option value="375">375</option></select>';
   const loading = document.createElement('div');
   loading.className = 'preview-loading';
+  loading.setAttribute('role', 'status');
+  loading.setAttribute('aria-live', 'polite');
   loading.innerHTML = '<span class="tl-spinner"></span><span>Loading preview…</span>';
   const frame = document.createElement('iframe');
   frame.className = 'preview-frame';
@@ -130,8 +132,12 @@ function applyPreviewWidth(tab) {
   if (!tab || !tab.iframe) return;
   const w = tab.previewWidth || 'full';
   try {
-    tab.iframe.style.maxWidth = (w === 'full') ? '' : w + 'px';
-    tab.iframe.style.margin = (w === 'full') ? '' : '0 auto';
+    // Class-driven so the framed-device styling doesn't depend on matching an
+    // inline style attribute from CSS (the S-21 idiom).
+    const isFull = w === 'full';
+    tab.iframe.classList.toggle('device-width', !isFull);
+    tab.iframe.style.maxWidth = isFull ? '' : w + 'px';
+    tab.iframe.style.margin = isFull ? '' : '0 auto';
   } catch {}
 }
 // In-iframe nav reporter (injected by the proxy next to <base>): the frame is
@@ -411,7 +417,7 @@ async function refreshPortsModal() {
       left.style.cssText = 'display:flex;flex-direction:column;gap:3px;overflow:hidden;flex:1;';
 
       const topRow = document.createElement('div');
-      topRow.style.cssText = 'display:flex;align-items:center;gap:8px;font-family:var(--font);font-size:13px;font-weight:600;color:var(--fg1);';
+      topRow.style.cssText = 'display:flex;align-items:center;gap:8px;font-family:var(--font);font-size:13px;font-weight:600;color:var(--fg);';
 
       const portBadge = document.createElement('span');
       portBadge.style.cssText = 'font-size:12px;font-weight:700;color:var(--cyan);font-family:var(--font);';

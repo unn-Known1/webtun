@@ -78,14 +78,14 @@ dark must not see a flash of light. Fallback is light, and storage can throw. --
   --bg0:#1a1b26; --bg1:#16161e;
   --panel:rgba(122,162,247,.06); --panel2:rgba(122,162,247,.1);
   --line:#2a2d3e; --line2:#3b3f52;
-  /* Grey text is the two thirds of this page that is prose, so it is the one place the
-     guide deliberately departs from the app's exact tokens: the app's --fg2/--fg3 are
-     chrome colours, and body copy in them lands at 4.18:1 / 2.76:1 here. These two
-     clear WCAG-AA (5.2:1 / 4.7:1) while staying in the same tokyonight blue-grey family. */
+  /* Body/UI copy deliberately stays in the same tokyonight blue-grey family.
+     Measured on --bg (#1a1b26): --mut 5.16:1, --dim 4.66:1 — both clear AA.
+     --code-dim sits on --code-bg (#16161e), where AA needs a lighter value:
+     4.64:1, versus 2.91:1 for the app's own --fg3 at that surface. */
   --ink:#c0caf5; --mut:#828bb8; --dim:#7a84ad;
   --am:#7aa2f7; --tl:#7dcfff; --vi:#bb9af7; --gn:#9ece6a; --rd:#f7768e; --ye:#e0af68;
   --on-accent:#1a1b26;
-  --code-bg:#16161e; --code-fg:#c0caf5; --code-dim:#565f89;
+  --code-bg:#16161e; --code-fg:#c0caf5; --code-dim:#767fae;
   --shadow:0 24px 70px -24px rgba(0,0,0,.7);
 }
 /* ═══════════════ BASE ═══════════════ */
@@ -278,8 +278,8 @@ td:first-child{color:var(--ink)}
 /* ── code blocks ── */
 .code{background:var(--code-bg);border:1px solid var(--line2);border-radius:var(--rad-s);margin-bottom:22px;
   position:relative;overflow:hidden}
-/* Chrome labels use --dim (readable); --code-dim stays reserved for dim terminal output,
-   where matching the app's own terminal palette exactly is the point of the figure. */
+/* Chrome labels use --dim (readable). --code-dim is reserved for dim terminal
+   output inside .code blocks, where it measures 4.64:1 on --code-bg (AA). */
 .code .lang{position:absolute;top:10px;left:14px;font:600 10.5px var(--mono);color:var(--dim);
   text-transform:uppercase;letter-spacing:.08em}
 .code pre{padding:34px 46px 16px 14px;overflow-x:auto;font:13px/1.65 var(--mono);color:var(--code-fg);white-space:pre}
@@ -386,7 +386,10 @@ footer a{color:var(--mut)}
   .cards{grid-template-columns:1fr}
 }
 @media (prefers-reduced-motion: reduce){
-  *{animation-duration:.001s !important;transition-duration:.001s !important}
+  *{animation-duration:.001s !important;animation-iteration-count:1 !important;transition-duration:.001s !important}
+  /* scroll-behavior is not an animation, so the two properties above never
+     applied to it — long animated jumps continued under reduced motion (S-26). */
+  html{scroll-behavior:auto !important}
   .rv{opacity:1;transform:none}
 }
 </style>
@@ -783,7 +786,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
         </div>
         <p class="sec-sub rv">Settings is one panel, seven collapsible sections — <b>Security, Appearance, Terminal, Interface, Features, Tunnel, System</b> — plus a static <b>About</b> card with the version.</p>
         <ul class="tight rv">
-          <li><b>Six palettes plus System</b> — every theme is contrast-checked, the terminal follows your choice, and System tracks your OS light/dark setting automatically.</li>
+          <li><b>Nine palettes plus System</b> — Midnight OLED through Monokai, each tuned for legibility. The terminal follows your choice, and System tracks your OS light/dark setting automatically.</li>
           <li><b>Tune the terminal</b> (font, size, cursor style, blink, bell, scrollback, right-click paste), the interface density — and toggle the Git panel off entirely if you never use it.</li>
           <li><b>Idle screensaver.</b> Leave the app alone for N minutes and it drifts into a dashboard view — set the timeout, or hit Start now to preview it.</li>
           <li><b>Search your settings.</b> The panel has its own live filter — type "wake" or "pin" instead of hunting through seven sections.</li>

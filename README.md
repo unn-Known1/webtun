@@ -212,6 +212,15 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 
 ## Changelog
 
+### v2.3.2
+- **Mobile keyboard correctness** — the software-keyboard inset is now applied to a single layout owner instead of both the terminal and its parent, which was collapsing the visible terminal to a few pixels while keystrokes still reached the shell. Detection now measures the app's own rendered bottom against the visible viewport, so nothing is re-reserved on browsers that already resize above the keyboard.
+- **Desktop toolbar & stacking** — the editor toolbar no longer clips its **Save** button at the default panel width (progressive disclosure below 420px); the fullscreen editor no longer paints over the Settings/Notification drawers (which had focus-locked you into an invisible panel); Keyboard Shortcuts and Listening Ports are reachable again on desktop (the overflow menu that opens them was permanently hidden).
+- **Sidebar & tab-strip integrity** — the file explorer can no longer collapse to zero height under the git panel, the toolbar fits the default sidebar width, the git header no longer clips at tablet width, an inline sidebar width no longer overrides the tablet layout, and the tab-strip create buttons no longer jump position on overflow.
+- **Touch targets** — the tab close button keeps its compact appearance but gains a full-size hit area, and eleven inline row actions plus the sidebar resize handle get 44px/30px hit areas without changing how they look.
+- **Theming & accessibility** — per-theme `--amber` (was a Tokyo-Night-only literal that measured 1.63–2.07:1 in all three light themes), a real `prefers-reduced-motion` that stops perpetual animations instead of restarting them, focus rings on 19 previously ringless controls including every settings switch, closed drawers removed from the tab order, live regions for connection state, and a `forced-colors` block for Windows High Contrast.
+- **Design-system consolidation** — a single type scale (23 font sizes → 10 tokens), an icon scale (13 SVG widths → 6), a unified count-badge component, one key-bar state reconciler, and a consolidated bottom-sheet rule.
+- Full findings, evidence, and remaining work: [`docs/UI_DESIGN_AUDIT_REPORT.md`](docs/UI_DESIGN_AUDIT_REPORT.md).
+
 ### v2.3.1
 - **Background Terminal Session Management** — Dedicated Terminal Sessions manager (`#term-sessions-overlay`, `Alt+S`/`Ctrl+Shift+S`), 1-click attach/connect directly into terminal tabs, persistent custom session labeling (`POST /api/sessions/:id/label`), and real-time WebSocket session state synchronization across windows.
 - **Listening Ports Dashboard** — Interactive Listening Ports Modal (`#ports-overlay`) scanning local TCP servers (`/api/ports`), listing process names/PIDs, and offering 1-click in-app preview tab launching.

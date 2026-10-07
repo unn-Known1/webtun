@@ -22,20 +22,16 @@
         });
       }
 
-      const themeColors = {
-        light: '#f9f9fb',
-        'catppuccin-latte': '#eff1f5',
-        'nord-light': '#f8fafc',
-        tokyonight: '#1a1b26',
-        'tokyo-night': '#1a1b26',
-        dracula: '#282a36',
-        nord: '#2e3440',
-        gruvbox: '#282828',
-        catppuccin: '#1e1e2e'
-      };
+      // Read --bg2 from the stylesheet instead of keeping a duplicate map here.
+      // The old map had two dead keys (nord, catppuccin — not real theme names)
+      // and omitted solarized, monokai and oled, so those three showed light
+      // browser chrome until the user re-picked the theme (S-12).
       const meta = document.querySelector('meta[name="theme-color"]');
-      if (meta && themeColors[theme]) {
-        meta.content = themeColors[theme];
+      if (meta) {
+        try {
+          const bg2 = getComputedStyle(document.documentElement).getPropertyValue('--bg2').trim();
+          if (bg2) meta.content = bg2;
+        } catch (e) {}
       }
     } catch(e){ console.warn('Settings init error:', e); }
   })();

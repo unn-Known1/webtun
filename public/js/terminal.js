@@ -218,7 +218,6 @@ function connectWebSocket(tab, isReconnect = false) {
     tab.pingTimer = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) ws.send(new Uint8Array([0x02]).buffer);
     }, 20000);
-    setupVisualViewport();
   };
 
   // OSC sequence handler: intercepts OSC 7, 133, 52 for app state, and
@@ -1650,16 +1649,8 @@ function toggleTermSelect() {
   termSelectMode = !termSelectMode;
   const btn = document.getElementById('sel-toggle-btn');
   if (btn) btn.classList.toggle('sel-mode', termSelectMode);
-  document.getElementById('mkey-sel-row').style.display = termSelectMode ? 'flex' : 'none';
-  const mk = document.getElementById('mobile-keys');
-  if (mk) {
-    if (termSelectMode) {
-      mk.dataset.prevDisplay = mk.style.display;
-      mk.style.display = 'none';
-    } else {
-      mk.style.display = mk.dataset.prevDisplay || '';
-    }
-  }
+  // The reconciler swaps the main bar for the selection row in one place (M-21).
+  try { applyMobileKeyBarState(); } catch {}
 
   // Selection mode is global: every tab (active or background) becomes
   // read-only, and tabs created while it is on inherit it in initTerminal.
@@ -1979,130 +1970,211 @@ function termScrollDn() {
 }
 
 function toggleCtrlRow() {
-  const row = document.getElementById('mkey-ctrl-row');
-  if (!row) return;
-  const isOpen = row.style.display !== 'none';
-  row.style.display = isOpen ? 'none' : 'flex';
-  const btn = document.getElementById('ctrl-toggle-btn');
-  if (btn) btn.style.background = isOpen ? '' : 'var(--accent)';
-  shiftLatch = false; altLatch = false; updateModifierButtons();
+  if (!document.getElementById('mkey-ctrl-row')) return;
+  _ctrlRowOpen = !_ctrlRowOpen;
+  shiftLatch = false; altLatch = false;
+  applyMobileKeyBarState();
 }
 
 let _viewportHandlerInstalled = false;
 let _viewportDebounce = null;
+let _kbFitTimer = null;
+let _ctrlRowOpen = false;
+const MIN_TERM_H = 96; // ~4-5 terminal rows we refuse to give up
+
+// How far #app's own box extends below the bottom of the *visible* viewport.
+// Returns 0 when the browser already resized the app above the keyboard, so we
+// never re-reserve height the layout handed back. Both rects are in
+// layout-viewport coordinates and are directly comparable — no UA sniffing.
+function keyboardOverlap() {
+  const app = document.getElementById('app');
+  const vv = window.visualViewport;
+  const appBottom = app ? app.getBoundingClientRect().bottom : window.innerHeight;
+  const visBottom = vv ? (vv.offsetTop + vv.height) : document.documentElement.clientHeight;
+  return Math.max(0, Math.round(appBottom - visBottom));
+}
+
+// xterm's helper element is a real TEXTAREA, so terminal focus is covered by
+// the tag check. `closest('.xterm')` is deliberately absent: a plain click in
+// the terminal raised the keyboard state on desktop (M-25).
+function keyboardInputFocused() {
+  const active = document.activeElement;
+  if (!active) return false;
+  return active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' ||
+    active.isContentEditable === true;
+}
+
+// The terminal keyboard needs the docked key bar and a hidden bottom nav.
+// Any OTHER focused field (Command Library search, the fuzzy finder, the
+// in-terminal search bar) only needs the inset — treating them as terminal
+// focus popped the key bar over those drawers and shrank a terminal the user
+// was not looking at (M-18).
+function terminalKeyboardFocused() {
+  const active = document.activeElement;
+  if (!active) return false;
+  if (active.classList && active.classList.contains('xterm-helper-textarea')) return true;
+  return typeof active.closest === 'function' && !!active.closest('.xterm-helper-textarea');
+}
+
+// Height the split area would occupy with no keyboard inset. Measured from
+// #content (which never carries a margin) so repeated viewport events cannot
+// ratchet the split area down a little further on every event.
+function terminalAvailableHeight() {
+  const content = document.getElementById('content');
+  const tabBar = document.getElementById('tab-bar');
+  if (!content) return window.innerHeight;
+  return Math.max(0, content.clientHeight - (tabBar ? tabBar.offsetHeight : 0));
+}
+
+function refitActiveSurface() {
+  const tab = typeof getActiveTab === 'function' ? getActiveTab() : null;
+  try {
+    if (tilesMode) tabs.forEach(t => fitTerm(t));
+    else if (tab?.type === 'term') fitTerm(tab);
+    else if (tab?.type === 'file' && tab?.cm) {
+      tab.cm.refresh();
+      tab.cm.scrollIntoView(tab.cm.getCursor());
+    }
+    if (typeof editorCM !== 'undefined' && editorCM) {
+      editorCM.refresh();
+      editorCM.scrollIntoView(editorCM.getCursor());
+    }
+  } catch {}
+}
+
+function scheduleKeyboardRefit() {
+  clearTimeout(_kbFitTimer);
+  _kbFitTimer = setTimeout(refitActiveSurface, 160);
+}
+
+// Single source of truth for the three mobile key rows (M-21). Seven call sites
+// used to write `style.display` blindly, so state could desync: the terminal
+// kept reserving clearance for a hidden bar, and the bar could reappear in
+// flow (i.e. under the keyboard) without its docked class.
+function applyMobileKeyBarState(opts) {
+  opts = opts || {};
+  const isMobile = window.innerWidth <= 768;
+  const tab = typeof getActiveTab === 'function' ? getActiveTab() : null;
+  const isTerm = !!tab && tab.type !== 'preview' && tab.type !== 'file';
+  const allowed = isMobile && settings.mobilekeys !== false && isTerm && !opts.dismissed;
+  const mk = document.getElementById('mobile-keys');
+  const ctrlRow = document.getElementById('mkey-ctrl-row');
+  const selRow = document.getElementById('mkey-sel-row');
+
+  // Selection mode replaces the main bar with its own action row.
+  const showSel = allowed && termSelectMode;
+  if (mk) {
+    if (showSel) {
+      if (mk.style.display !== 'none') mk.dataset.prevDisplay = mk.style.display;
+      mk.style.display = 'none';
+    } else {
+      mk.classList.remove('keyboard-docked');
+      mk.style.bottom = '';
+      mk.style.display = allowed ? 'flex' : 'none';
+    }
+  }
+  if (ctrlRow) {
+    if (!_ctrlRowOpen || showSel) ctrlRow.style.display = 'none';
+    else ctrlRow.style.display = allowed ? 'flex' : 'none';
+  }
+  if (selRow) selRow.style.display = showSel ? 'flex' : 'none';
+  const ctrlBtn = document.getElementById('ctrl-toggle-btn');
+  if (ctrlBtn) ctrlBtn.style.background = _ctrlRowOpen && allowed ? 'var(--accent)' : '';
+  const tc = document.getElementById('toast-container');
+  if (tc) tc.classList.toggle('keys-hidden', !(mk && mk.style.display !== 'none'));
+  updateModifierButtons();
+}
+
+function applyViewportState() {
+  // Mobile/tablet only. A desktop visual viewport smaller than the layout
+  // viewport (OSK, occluded window) must not resize the workspace (M-25).
+  if (window.innerWidth > 768) return;
+  const vv = window.visualViewport;
+  if (vv && (vv.scale || 1) !== 1) return; // pinch-zoom is not a keyboard
+
+  const splitArea = document.getElementById('editor-split-area');
+  const terminals = document.getElementById('terminals');
+  const mobileKeys = document.getElementById('mobile-keys');
+  const ctrlRow = document.getElementById('mkey-ctrl-row');
+  const selRow = document.getElementById('mkey-sel-row');
+  const mnav = document.getElementById('mobile-nav-bar');
+  if (!splitArea || !terminals) return;
+
+  const isMobile = window.innerWidth <= 768;
+  const keysAllowed = isMobile && settings.mobilekeys !== false;
+  const overlap = keyboardOverlap();
+  const anyKeyboard = keyboardInputFocused() && overlap > 60;
+  const termKeyboard = anyKeyboard && terminalKeyboardFocused();
+  const keysVisible = mobileKeys && getComputedStyle(mobileKeys).display !== 'none';
+  const keysOffset = (termKeyboard && keysAllowed && keysVisible) ? (mobileKeys.offsetHeight || 44) : 0;
+
+  if (anyKeyboard) {
+    // ONE owner for the inset. #editor-split-area is position:relative and is
+    // the containing block of the mobile #editor-view overlay, so a single
+    // margin both resizes #terminals (flex child) and lifts that overlay.
+    // Applying it to the child as well is what collapsed the terminal to a few
+    // pixels (M-00) and the editor panel with it (M-15).
+    const cap = Math.max(0, terminalAvailableHeight() - MIN_TERM_H);
+    const dockAt = Math.min(overlap, cap);
+    splitArea.style.marginBottom = Math.min(overlap + keysOffset, cap) + 'px';
+    // Publish the raw overlap so fixed surfaces (toasts, sheets, context menus)
+    // can clear the keyboard. They are position:fixed and were rendering behind
+    // it because nothing told them how tall it is (M-22).
+    document.documentElement.style.setProperty('--kb-inset', overlap + 'px');
+    terminals.style.marginBottom = '';
+    if (termKeyboard) {
+      if (mnav) mnav.style.display = 'none';
+      if (keysAllowed && mobileKeys) {
+        mobileKeys.classList.add('keyboard-docked');
+        mobileKeys.style.bottom = dockAt + 'px';
+      }
+      if (ctrlRow && ctrlRow.classList.contains('keyboard-docked')) {
+        ctrlRow.style.bottom = (dockAt + keysOffset) + 'px';
+      }
+      // Optional rows sit in normal flow, so they end up under the keyboard.
+      if (selRow) selRow.style.display = 'none';
+    }
+  } else {
+    splitArea.style.marginBottom = '0px';
+    terminals.style.marginBottom = '';
+    document.documentElement.style.setProperty('--kb-inset', '0px');
+    if (ctrlRow) { ctrlRow.classList.remove('keyboard-docked'); ctrlRow.style.bottom = ''; }
+    if (mnav && isMobile) mnav.style.display = 'flex';
+    // Keyboard closed: re-derive all three rows from state rather than clearing
+    // the flags by hand (M-21).
+    try { applyMobileKeyBarState(); } catch {}
+  }
+  scheduleKeyboardRefit();
+}
+
 function setupVisualViewport() {
   if (_viewportHandlerInstalled) return;
   _viewportHandlerInstalled = true;
+  const handler = () => {
+    clearTimeout(_viewportDebounce);
+    _viewportDebounce = setTimeout(applyViewportState, 100);
+  };
   if (window.visualViewport) {
-    const handler = () => {
-      clearTimeout(_viewportDebounce);
-      _viewportDebounce = setTimeout(() => {
-        const vvH = window.visualViewport.height;
-        const vvScale = window.visualViewport.scale || 1;
-        // Samsung Internet: innerHeight resizes, not visualViewport. Use layout viewport height via window.innerHeight vs vvH
-        // On iOS, keyboard shows as vvH < innerHeight. On Samsung, opposite. Take max diff and ignore when scaled (pinch zoom).
-        if (vvScale !== 1) return; // ignore pinch-zoom (U61, U65)
-
-        // Verify if a text input or terminal textarea currently holds focus
-        const active = document.activeElement;
-        const isInputFocused = !!(active && (
-          active.tagName === 'INPUT' ||
-          active.tagName === 'TEXTAREA' ||
-          active.isContentEditable ||
-          active.classList.contains('xterm-helper-textarea') ||
-          (typeof active.closest === 'function' && active.closest('.xterm'))
-        ));
-
-        const diff = vvH - window.innerHeight;
-        const absDiff = Math.abs(diff);
-        // Fallback: visualViewport offsetTop > 10 means the visual viewport panned
-        // up, which is how some Android builds report the keyboard.
-        const offsetTop = window.visualViewport.offsetTop || 0;
-        // Height the keyboard actually covers.
-        //  iOS keeps the layout viewport and shrinks the visual one → innerHeight - vvH.
-        //  Android/Samsung shrink innerHeight too → ≈0, and nothing needs compensating.
-        const covered = Math.max(0, window.innerHeight - vvH - offsetTop);
-        const isKeyboard = absDiff > 80 && diff < 0;
-        // Keyboard is only considered open when an actual input element has focus
-        const keyboardOpen = isInputFocused && (covered > 100 || offsetTop > 10 || isKeyboard);
-        // Never reserve more than 60% of the viewport — a bogus metric must not
-        // collapse the terminal to nothing.
-        const keyboardMargin = keyboardOpen ? Math.min(covered, Math.round(window.innerHeight * 0.6)) : 0;
-        const mobileKeys = document.getElementById('mobile-keys');
-        const selRow = document.getElementById('mkey-sel-row');
-        const terminals = document.getElementById('terminals');
-        const editorView = document.getElementById('editor-view');
-        const splitArea = document.getElementById('editor-split-area');
-        if (!terminals) return;
-        if (keyboardOpen) {
-          const keysOffset = (mobileKeys && window.innerWidth <= 768 && settings.mobilekeys !== false) ? (mobileKeys.offsetHeight || 44) : 0;
-          terminals.style.marginBottom = (keyboardMargin + keysOffset) + 'px';
-          if (editorView) editorView.style.marginBottom = (keyboardMargin + keysOffset) + 'px';
-          if (splitArea) splitArea.style.marginBottom = (keyboardMargin + keysOffset) + 'px';
-          // Dock mobile key bar above software keyboard so ESC/TAB/arrows remain accessible
-          if (mobileKeys && window.innerWidth <= 768 && settings.mobilekeys !== false) {
-            mobileKeys.style.display = 'flex';
-            mobileKeys.classList.add('keyboard-docked');
-            mobileKeys.style.bottom = keyboardMargin + 'px';
-          }
-          const ctrlRow = document.getElementById('mkey-ctrl-row');
-          if (ctrlRow && ctrlRow.style.display === 'flex') {
-            ctrlRow.classList.add('keyboard-docked');
-            ctrlRow.style.bottom = (keyboardMargin + (mobileKeys?.offsetHeight || 44)) + 'px';
-          }
-          const mnav = document.getElementById('mobile-nav-bar');
-          if (mnav) mnav.style.display = 'none';
-        } else {
-          terminals.style.marginBottom = '0';
-          if (editorView) editorView.style.marginBottom = '0';
-          if (splitArea) splitArea.style.marginBottom = '0';
-          if (mobileKeys) {
-            mobileKeys.classList.remove('keyboard-docked');
-            mobileKeys.style.bottom = '';
-            if (window.innerWidth <= 768 && settings.mobilekeys !== false) {
-              mobileKeys.style.display = 'flex';
-            }
-          }
-          const ctrlRow = document.getElementById('mkey-ctrl-row');
-          if (ctrlRow) {
-            ctrlRow.classList.remove('keyboard-docked');
-            ctrlRow.style.bottom = '';
-          }
-          const mnav = document.getElementById('mobile-nav-bar');
-          if (mnav && window.innerWidth <= 768) mnav.style.display = 'flex';
-          if (selRow && window.innerWidth <= 768) {
-            selRow.style.display = termSelectMode ? 'flex' : 'none';
-          }
-        }
-        // Debounce terminal fit so we don't spam SIGWINCH during keyboard animation
-        const activeTab = typeof getActiveTab === 'function' ? getActiveTab() : null;
-        if (activeTab?.type === 'term') {
-          setTimeout(() => { try { fitTerm(activeTab); } catch {} }, 160);
-        } else if (activeTab?.type === 'file' && activeTab?.cm) {
-          setTimeout(() => {
-            try {
-              activeTab.cm.refresh();
-              activeTab.cm.scrollIntoView(activeTab.cm.getCursor());
-            } catch {}
-          }, 160);
-        }
-        if (typeof editorCM !== 'undefined' && editorCM) {
-          setTimeout(() => {
-            try {
-              editorCM.refresh();
-              editorCM.scrollIntoView(editorCM.getCursor());
-            } catch {}
-          }, 160);
-        }
-      }, 100);
-    };
     window.visualViewport.addEventListener('resize', handler);
     window.visualViewport.addEventListener('scroll', handler);
-    window._cleanups?.push(() => {
+  }
+  // Fallback for browsers without visualViewport, plus rotation (M-28).
+  window.addEventListener('resize', handler);
+  window.addEventListener('orientationchange', handler);
+  window._cleanups?.push(() => {
+    if (window.visualViewport) {
       window.visualViewport.removeEventListener('resize', handler);
       window.visualViewport.removeEventListener('scroll', handler);
-    });
-  }
+    }
+    window.removeEventListener('resize', handler);
+    window.removeEventListener('orientationchange', handler);
+    // Re-armable: a bfcache restore used to leave this latched, killing
+    // keyboard handling for the rest of the page's life (M-17).
+    _viewportHandlerInstalled = false;
+    clearTimeout(_viewportDebounce);
+    clearTimeout(_kbFitTimer);
+  });
+  applyViewportState();
 }
 
 function setupMobileKeys() {
@@ -2116,15 +2188,24 @@ function setupMobileKeys() {
       try { saveSettings(); } catch {}
     }
   } catch {}
-  const show = window.innerWidth <= 768 && settings.mobilekeys;
-  if (mk) mk.style.display = show ? 'flex' : 'none';
-  const tc = document.getElementById('toast-container');
-  if (tc) tc.classList.toggle('keys-hidden', !show);
-  const ctrlRow = document.getElementById('mkey-ctrl-row');
-  if (ctrlRow) ctrlRow.style.display = 'none';
-  const ctrlBtn = document.getElementById('ctrl-toggle-btn');
-  if (ctrlBtn) ctrlBtn.style.background = '';
-  shiftLatch = false; altLatch = false; updateModifierButtons();
+  // Every resize (including each step of the keyboard animation) routes through
+  // the reconciler, which respects _ctrlRowOpen instead of slamming the row
+  // shut (M-19) and clears stranded mobile chrome past the breakpoint (M-23).
+  shiftLatch = false; altLatch = false;
+  applyMobileKeyBarState();
+  if (window.innerWidth > 768) {
+    const mnav = document.getElementById('mobile-nav-bar');
+    if (mnav) mnav.style.display = '';
+    if (mk) { mk.classList.remove('keyboard-docked'); mk.style.bottom = ''; }
+    const ctrlRow = document.getElementById('mkey-ctrl-row');
+    if (ctrlRow) { ctrlRow.classList.remove('keyboard-docked'); ctrlRow.style.bottom = ''; }
+    const selRow = document.getElementById('mkey-sel-row');
+    if (selRow) selRow.style.display = 'none';
+    const splitArea = document.getElementById('editor-split-area');
+    if (splitArea) splitArea.style.marginBottom = '';
+    const terminalsEl = document.getElementById('terminals');
+    if (terminalsEl) terminalsEl.style.marginBottom = '';
+  }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -2143,8 +2224,10 @@ function toggleMobileKeyboard() {
     hideMobileKeyboard();
   } else {
     ta.focus({ preventScroll: true });
-    const mk = document.getElementById('mobile-keys');
-    if (mk) mk.style.display = 'flex';
+    // Honour the setting and the viewport via the reconciler (M-20/M-21):
+    // forcing the bar on unconditionally left it in flow beneath an overlay
+    // keyboard, taking 44px the terminal needed with no clearance reserved.
+    applyMobileKeyBarState();
   }
 }
 
@@ -2168,24 +2251,11 @@ function hideMobileKeyboard() {
       try { el.blur(); } catch {}
     });
   } catch {}
-  const terminals = document.getElementById('terminals');
-  if (terminals) terminals.style.marginBottom = '0';
-  const editorView = document.getElementById('editor-view');
-  if (editorView) editorView.style.marginBottom = '0';
-  const splitArea = document.getElementById('editor-split-area');
-  if (splitArea) splitArea.style.marginBottom = '0';
-  const mk = document.getElementById('mobile-keys');
-  if (mk) {
-    mk.classList.remove('keyboard-docked');
-    mk.style.bottom = '';
-  }
-  const ctrlRow = document.getElementById('mkey-ctrl-row');
-  if (ctrlRow) {
-    ctrlRow.classList.remove('keyboard-docked');
-    ctrlRow.style.bottom = '';
-  }
-  const mnav = document.getElementById('mobile-nav-bar');
-  if (mnav && window.innerWidth <= 768) mnav.style.display = 'flex';
+  // The keyboard is still animating closed and sendKey() re-focuses the
+  // terminal, so zeroing the inset here left the workspace hidden until the
+  // next viewport event — which some engines never send (M-24). Let the
+  // handler own the reset once the blur has settled.
+  setTimeout(() => { try { applyViewportState(); } catch {} }, 350);
 }
 
 function handleMobileNewAction() {

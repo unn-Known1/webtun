@@ -7,7 +7,7 @@ function loadSettings() {
   try {
     const s = JSON.parse(safeStorage.getItem('wt-settings'));
     if (s && typeof s === 'object' && !Array.isArray(s)) {
-      if (typeof s.theme === 'string' && ['system','tokyonight','tokyo-night','light','catppuccin-latte','nord-light','solarized','gruvbox','dracula','monokai'].includes(s.theme)) settings.theme = s.theme;
+      if (typeof s.theme === 'string' && ['system','tokyonight','tokyo-night','light','catppuccin-latte','nord-light','solarized','gruvbox','dracula','monokai','oled','midnight-oled'].includes(s.theme)) settings.theme = s.theme;
       if (typeof s.fontSize === 'number' && s.fontSize >= 8 && s.fontSize <= 32) settings.fontSize = s.fontSize;
       if (typeof s.scrollback === 'number' && s.scrollback >= 100 && s.scrollback <= 50000) settings.scrollback = s.scrollback;
       if (typeof s.font === 'string') settings.font = s.font;
@@ -97,12 +97,9 @@ function toggleSetting(k) {
   }
   saveSettings();
   if (k === 'mobilekeys') {
-    const mk = document.getElementById('mobile-keys');
-    mk.style.display = settings.mobilekeys && window.innerWidth <= 768 ? 'flex' : 'none';
-    const ctrlRow = document.getElementById('mkey-ctrl-row');
-    if (ctrlRow) ctrlRow.style.display = 'none';
-    const ctrlBtn = document.getElementById('ctrl-toggle-btn');
-    if (ctrlBtn) ctrlBtn.style.background = '';
+    // Turning the bar off must also clear any row the user had opened (M-21).
+    if (!settings.mobilekeys) _ctrlRowOpen = false;
+    if (typeof applyMobileKeyBarState === 'function') applyMobileKeyBarState();
   }
   if (k === 'bell' && settings.bell && 'Notification' in window && Notification.permission === 'default') {
     Notification.requestPermission();
@@ -198,6 +195,24 @@ function setBackdropInert(on) {
   }
 }
 
+// The drawers hide themselves with translateX(100%) alone, so while closed
+// their ~200 Settings controls and the whole Notification Center stayed in
+// the tab order — tabbing from the header walked all of it before reaching
+// the workspace (S-10). inert removes them; the open helper reverses it so the
+// slide-in transition still plays.
+function setPanelInert(id, inert) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  try {
+    if (inert) el.setAttribute('inert', '');
+    else el.removeAttribute('inert');
+  } catch {}
+  el.setAttribute('aria-hidden', inert ? 'true' : 'false');
+}
+// Closed drawers start inert, before any script runs.
+setPanelInert('settings-panel', true);
+setPanelInert('notif-panel', true);
+
 function openSettings() {
   const panel = document.getElementById('settings-panel');
   const isOpen = panel.classList.contains('open');
@@ -208,10 +223,15 @@ function openSettings() {
   // sidebar/header/tab strip can't be clicked or tabbed behind the dialog.
   if (!isOpen) {
     panel.classList.add('open');
-    if (window.innerWidth <= 768) {
-      document.getElementById('drawer-backdrop')?.classList.add('active');
-      if (typeof triggerHaptic === 'function') triggerHaptic('light');
-    }
+    // The drawer is modal at every width (it inerts the workspace and traps
+    // focus), so the scrim is no longer mobile-only — without it the drawer read
+    // as a static third column while clicks silently did nothing (D-15).
+    const scrim = document.getElementById('drawer-backdrop');
+    if (scrim) { scrim.classList.add('active'); scrim.classList.toggle('desktop-modal', window.innerWidth > 768); }
+    if (window.innerWidth <= 768 && typeof triggerHaptic === 'function') triggerHaptic('light');
+    // Clear inert BEFORE focusing anything inside, or the focus call and the
+    // focus trap both operate on an inert subtree (S-10).
+    setPanelInert('settings-panel', false);
     setupSettingsSections();
     updateSecurityUI();
     try { refreshSessions(); } catch {}
@@ -219,10 +239,16 @@ function openSettings() {
     // Tunnel ids change on auto-restart and dead rows otherwise linger until
     // reload — resync every time the panel opens, like sessions above.
     try { restoreTunnels(); } catch {}
-    // Replay staggered card entrance on every open
+    // Staggered card entrance used to replay on every open, and `sec-anim` was
+    // never cleared, so the last card was still sliding 0.53s after the panel
+    // settled (D-17). Play it once, then drop it.
     panel.classList.remove('sec-anim');
     void panel.offsetWidth;
     panel.classList.add('sec-anim');
+    panel.addEventListener('animationend', function once() {
+      panel.removeEventListener('animationend', once);
+      panel.classList.remove('sec-anim');
+    });
     panel.setAttribute('aria-modal', 'true');
     panel.setAttribute('role', 'dialog');
     // Defer inert + focus to next frame so panel transform can composite on GPU without reflowing sidebar/file-list
@@ -236,11 +262,13 @@ function openSettings() {
   } else {
     panel.classList.remove('open');
     panel.removeAttribute('aria-modal');
+    panel.classList.remove('sec-anim');
     setBackdropInert(false);
+    setPanelInert('settings-panel', true);
     removeFocusTrap();
     document.removeEventListener('click', closeSettingsOnClickOutside, true);
     if (!document.getElementById('sidebar')?.classList.contains('mobile-open')) {
-      document.getElementById('drawer-backdrop')?.classList.remove('active');
+      document.getElementById('drawer-backdrop')?.classList.remove('active', 'desktop-modal');
     }
   }
 }
@@ -248,11 +276,13 @@ function closeSettings() {
   const panel = document.getElementById('settings-panel');
   panel.classList.remove('open');
   panel.removeAttribute('aria-modal');
+  panel.classList.remove('sec-anim');
   setBackdropInert(false);
+  setPanelInert('settings-panel', true);
   removeFocusTrap();
   document.removeEventListener('click', closeSettingsOnClickOutside, true);
   if (!document.getElementById('sidebar')?.classList.contains('mobile-open')) {
-    document.getElementById('drawer-backdrop')?.classList.remove('active');
+    document.getElementById('drawer-backdrop')?.classList.remove('active', 'desktop-modal');
   }
 }
 function closeSettingsOnClickOutside(e) {
@@ -487,8 +517,11 @@ function applySidebarState() {
   } else {
     sb.classList.remove('mobile-open');
     sb.classList.toggle('hidden', !sidebarOpen);
-    const backdrop = document.getElementById('drawer-backdrop');
-    if (backdrop) backdrop.classList.remove('active');
+    // Don't clear the scrim if a modal drawer is currently using it (D-15).
+    if (!document.getElementById('settings-panel')?.classList.contains('open') &&
+        !document.getElementById('notif-panel')?.classList.contains('open')) {
+      document.getElementById('drawer-backdrop')?.classList.remove('active', 'desktop-modal');
+    }
     const mnavExplorer = document.getElementById('mnav-explorer');
     if (mnavExplorer) mnavExplorer.classList.remove('active');
   }
@@ -501,7 +534,10 @@ function wireSidebarResizeSync() {
   let _sbResizeT = null;
   window.addEventListener('resize', () => {
     clearTimeout(_sbResizeT);
-    _sbResizeT = setTimeout(() => { try { applySidebarState(); } catch {} }, 120);
+    _sbResizeT = setTimeout(() => {
+      try { applySidebarState(); } catch {}
+      try { applySidebarWidthToViewport(); } catch {}
+    }, 120);
   });
 }
 wireSidebarResizeSync();
@@ -566,11 +602,7 @@ function toggleMoreMenu(e) {
   if (menu) menu.classList.add('open');
   if (btn) btn.classList.add('active');
   if (mbtn) mbtn.classList.add('active');
-  if (window.innerWidth <= 768) {
-    if (typeof triggerHaptic === 'function') triggerHaptic('light');
-    const backdrop = document.getElementById('drawer-backdrop');
-    if (backdrop) backdrop.classList.add('active');
-  }
+  if (window.innerWidth <= 768 && typeof triggerHaptic === 'function') triggerHaptic('light');
   setTimeout(() => {
     document.addEventListener('click', closeMoreMenuOnClickOutside, true);
     const first = menu && menu.querySelector('.mm-item');
@@ -583,6 +615,50 @@ function updateSidebarNarrowClass() {
   const sb = document.getElementById('sidebar');
   if (!sb) return;
   sb.classList.toggle('narrow', sb.clientWidth < 220);
+}
+
+// The class used to be applied only from the resize handler and from
+// restoreSidebarWidth(), which returns early when nothing is stored — so a
+// fresh load never had it, and the toolbar flipped layout mid-session (D-03).
+// An observer tracks the real width however it got there.
+function setupSidebarNarrowObserver() {
+  const sb = document.getElementById('sidebar');
+  if (!sb || typeof ResizeObserver !== 'function') return;
+  const ro = new ResizeObserver(updateSidebarNarrowClass);
+  ro.observe(sb);
+  window._cleanups?.push(() => ro.disconnect());
+  updateSidebarNarrowClass();
+}
+
+// The tablet range has its own sidebar width, but JS wrote an inline width
+// (from dragging, or from a restored value) which beats both media queries and
+// left a 500px sidebar on a 900px window. Clearing the inline width above the
+// breakpoint hands control back to CSS; below it we clamp and also update
+// --sidebar-w, which the horizontal editor split reads for its max-width (D-10).
+function applySidebarWidthToViewport() {
+  const sb = document.getElementById('sidebar');
+  if (!sb || window.innerWidth <= 768) return;
+  const TABLET_MAX = 200;
+  if (window.innerWidth <= 1023) {
+    const current = sb.clientWidth || parseInt(safeStorage.getItem('wt-sidebar-width') || '', 10) || TABLET_MAX;
+    if (current > TABLET_MAX) {
+      sb.style.width = TABLET_MAX + 'px';
+      document.documentElement.style.setProperty('--sidebar-w', TABLET_MAX + 'px');
+      try { fitTerm(getActiveTab()); } catch {}
+    }
+  } else if (sb.style.width) {
+    // Above the tablet range the desktop default should govern again.
+    const stored = parseInt(safeStorage.getItem('wt-sidebar-width') || '', 10);
+    if (stored) {
+      const clamped = Math.max(150, Math.min(600, stored));
+      sb.style.width = clamped + 'px';
+      document.documentElement.style.setProperty('--sidebar-w', clamped + 'px');
+    } else {
+      sb.style.width = '';
+      document.documentElement.style.removeProperty('--sidebar-w');
+    }
+    try { fitTerm(getActiveTab()); } catch {}
+  }
 }
 
 function setupSidebarResize() {
@@ -644,6 +720,32 @@ function restoreSidebarWidth() {
       }
     }
   } catch(e) { console.warn(e); }
+}
+
+// ═══════════════════════════════════════════════════════
+// EDITOR PANEL TOOLBAR DENSITY
+// ═══════════════════════════════════════════════════════
+// The toolbar needs roughly 350px but the panel defaults to 300px and
+// #editor-view clips its overflow, so Save used to disappear (D-07). Below the
+// threshold the optional toggles are dropped instead of clipping the primary
+// action. Width comes from the observer, so it tracks dragging, the split
+// orientation, and the panel being docked into a file tab.
+function setupEditorToolbarDensity() {
+  const view = document.getElementById('editor-view');
+  if (!view) return;
+  const apply = () => {
+    const w = view.getBoundingClientRect().width;
+    view.classList.toggle('compact', w > 0 && w < 420);
+  };
+  if (typeof ResizeObserver === 'function') {
+    const ro = new ResizeObserver(apply);
+    ro.observe(view);
+    window._cleanups?.push(() => ro.disconnect());
+  } else {
+    window.addEventListener('resize', apply);
+    window._cleanups?.push(() => window.removeEventListener('resize', apply));
+  }
+  apply();
 }
 
 // ═══════════════════════════════════════════════════════

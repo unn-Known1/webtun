@@ -309,10 +309,9 @@ function renderSecurityAlert() {
   if (!btn) return;
   const n = getPendingAlerts().length;
   btn.style.display = n ? '' : 'none';
-  if (count) {
-    count.textContent = n > 1 ? String(n) : '';
-    count.style.display = n > 1 ? '' : 'none';
-  }
+  // The badge component hides itself when empty, so only the text is set —
+  // the previous inline display juggling fought the shared rule (S-23).
+  if (count) count.textContent = n > 1 ? String(n) : '';
   if (n) btn.setAttribute('aria-label', n === 1 ? 'Security alert: 1 unreviewed login' : `Security alert: ${n} unreviewed logins`);
   else btn.removeAttribute('aria-label');
 }
