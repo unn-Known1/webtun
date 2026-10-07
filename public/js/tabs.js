@@ -570,8 +570,22 @@ function setupTabEnhancements() {
     const scroll = document.getElementById('tab-scroll');
     scroll?.addEventListener('scroll', () => requestAnimationFrame(updateTabOverflow), { passive: true });
     window.addEventListener('resize', () => requestAnimationFrame(updateTabOverflow));
-    // Right-click the + button or empty tab-bar gutter for the new-tab menu.
-    document.getElementById('new-tab-btn')?.addEventListener('contextmenu', e => openNewTabMenu(e));
+    // Right-click or touch long-press the + button or empty tab-bar gutter for the new-tab menu.
+    const newTabBtn = document.getElementById('new-tab-btn');
+    if (newTabBtn) {
+      newTabBtn.addEventListener('contextmenu', e => openNewTabMenu(e));
+      let _newTabLongPress = null;
+      newTabBtn.addEventListener('touchstart', e => {
+        const t = e.touches[0];
+        _newTabLongPress = setTimeout(() => {
+          try {
+            if (typeof triggerHaptic === 'function') triggerHaptic('medium');
+            openNewTabMenu({ preventDefault() {}, stopPropagation() {}, clientX: t.clientX, clientY: t.clientY });
+          } catch {}
+        }, 500);
+      }, { passive: true });
+      ['touchend', 'touchcancel', 'touchmove'].forEach(ev => newTabBtn.addEventListener(ev, () => clearTimeout(_newTabLongPress), { passive: true }));
+    }
     document.getElementById('tab-bar')?.addEventListener('contextmenu', e => {
       if (e.target.closest('.tab') || e.target.closest('#tab-ctx-menu') || e.target.closest('#new-tab-menu') || e.target.closest('#tab-list-menu')) return;
       openNewTabMenu(e);
@@ -995,17 +1009,33 @@ function renderFilteredSessions(sessions) {
 
     const ico = document.createElement('span');
     ico.style.display = 'inline-flex';
+    ico.style.flexShrink = '0';
     ico.style.color = isExt ? '#60a5fa' : 'var(--accent)';
     ico.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>';
     nameGroup.appendChild(ico);
 
+    let displayName = sess.label;
+    if (!displayName) {
+      if (sess.external) {
+        displayName = sess.name || sess.id;
+        if (displayName.length > 22) displayName = displayName.slice(0, 20) + '…';
+      } else {
+        displayName = folderName ? `Terminal (${folderName})` : `Terminal (${sess.id.slice(0, 8)})`;
+      }
+    }
+
     const titleSpan = document.createElement('span');
+    titleSpan.className = 'term-sess-title';
     titleSpan.style.fontFamily = 'var(--font)';
     titleSpan.style.fontSize = '13px';
     titleSpan.style.fontWeight = '600';
     titleSpan.style.color = 'var(--fg1)';
-    const displayId = sess.id.length > 20 ? sess.id.slice(0, 18) + '…' : sess.id;
-    titleSpan.textContent = sess.label ? sess.label : (sess.name || displayId);
+    titleSpan.style.overflow = 'hidden';
+    titleSpan.style.textOverflow = 'ellipsis';
+    titleSpan.style.whiteSpace = 'nowrap';
+    titleSpan.style.minWidth = '0';
+    titleSpan.style.flex = '1';
+    titleSpan.textContent = displayName;
     titleSpan.title = sess.label ? `${sess.label} (${sess.name || sess.id})` : (sess.name || sess.id);
     nameGroup.appendChild(titleSpan);
 
@@ -1055,7 +1085,12 @@ function renderFilteredSessions(sessions) {
     dirSpan.style.display = 'inline-flex';
     dirSpan.style.alignItems = 'center';
     dirSpan.style.gap = '4px';
-    dirSpan.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> ' + (sess.cwd ? escapeHtml(sess.cwd) : 'Default Directory');
+    dirSpan.style.overflow = 'hidden';
+    dirSpan.style.textOverflow = 'ellipsis';
+    dirSpan.style.whiteSpace = 'nowrap';
+    dirSpan.style.minWidth = '0';
+    dirSpan.style.maxWidth = '100%';
+    dirSpan.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1">' + (sess.cwd ? escapeHtml(sess.cwd) : 'Default Directory') + '</span>';
     metaRow.appendChild(dirSpan);
 
     if (sess.command) {
@@ -1063,7 +1098,13 @@ function renderFilteredSessions(sessions) {
       cmdSpan.style.display = 'inline-flex';
       cmdSpan.style.alignItems = 'center';
       cmdSpan.style.gap = '4px';
-      cmdSpan.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> <code>' + escapeHtml(sess.command) + '</code>';
+      cmdSpan.style.overflow = 'hidden';
+      cmdSpan.style.textOverflow = 'ellipsis';
+      cmdSpan.style.whiteSpace = 'nowrap';
+      cmdSpan.style.minWidth = '0';
+      cmdSpan.style.maxWidth = '100%';
+      cmdSpan.style.flexShrink = '1';
+      cmdSpan.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> <code style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:100%;flex:1">' + escapeHtml(sess.command) + '</code>';
       metaRow.appendChild(cmdSpan);
     }
     item.appendChild(metaRow);
@@ -1076,6 +1117,7 @@ function renderFilteredSessions(sessions) {
     const labelBtn = document.createElement('button');
     labelBtn.className = 'btn btn-ghost';
     labelBtn.title = 'Set custom label for this session';
+    labelBtn.style.flexShrink = '0';
     labelBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>';
     labelBtn.onclick = (e) => {
       e.stopPropagation();
@@ -1086,7 +1128,15 @@ function renderFilteredSessions(sessions) {
     // Connect button
     const connBtn = document.createElement('button');
     connBtn.className = 'btn btn-primary';
-    connBtn.textContent = openTab ? 'Switch to Tab' : (isProc ? 'Open Shell in CWD' : 'Connect / Attach');
+    connBtn.style.overflow = 'hidden';
+    connBtn.style.textOverflow = 'ellipsis';
+    connBtn.style.whiteSpace = 'nowrap';
+    connBtn.style.minWidth = '0';
+    connBtn.innerHTML = openTab 
+      ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg> Switch to Tab' 
+      : (isProc 
+          ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> Open Shell' 
+          : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> Connect');
     connBtn.onclick = () => {
       closeOverlay('term-sessions-overlay');
       const termTitle = sess.label || (sess.name ? `Term (${sess.name})` : `Term (${folderName || sess.id.slice(0, 8)})`);
@@ -1098,14 +1148,15 @@ function renderFilteredSessions(sessions) {
     const killBtn = document.createElement('button');
     killBtn.className = 'btn btn-ghost';
     killBtn.style.color = 'var(--red)';
+    killBtn.style.flexShrink = '0';
     killBtn.title = 'Terminate session';
     killBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
     killBtn.onclick = async (e) => {
       e.stopPropagation();
-      const displayName = sess.label || sess.name || sess.id;
+      const killDisplayName = sess.label || sess.name || sess.id;
       const ok = await confirmDialog({
         title: 'Terminate Session?',
-        message: `Are you sure you want to terminate session "${displayName}"? Any running processes will be terminated.`,
+        message: `Are you sure you want to terminate session "${killDisplayName}"? Any running processes will be terminated.`,
         okText: 'Kill Session',
         cancelText: 'Cancel',
         danger: true
@@ -1113,7 +1164,7 @@ function renderFilteredSessions(sessions) {
       if (ok) {
         try {
           await api(`/api/sessions/${encodeURIComponent(sess.id)}`, { method: 'DELETE' });
-          toast(`Terminated session "${displayName}"`, 'info');
+          toast(`Terminated session "${killDisplayName}"`, 'info');
           if (openTab) closeTab(null, openTab.id, { force: true });
           refreshTerminalSessionsModal();
           updateLaunchpad();
@@ -1171,7 +1222,6 @@ async function refreshTerminalSessionsModal(silent = false) {
   } catch (err) {
     if (listEl && !silent) listEl.innerHTML = '<div style="padding:16px;color:var(--red);font-size:12px;text-align:center">Failed to load terminal sessions</div>';
   }
-}
 }
 
 async function activateTab(id) {

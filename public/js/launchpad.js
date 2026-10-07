@@ -256,6 +256,8 @@ async function renderLpSessions() {
 
       const t = document.createElement('span');
       t.style.flex = '1';
+      t.style.minWidth = '0';
+      t.style.whiteSpace = 'nowrap';
       t.style.overflow = 'hidden';
       t.style.textOverflow = 'ellipsis';
       const labelText = sess.label ? `${sess.label}` : (sess.name ? sess.name : `${folderName || 'Terminal'} (${sess.id.slice(0, 6)})`);
@@ -268,6 +270,7 @@ async function renderLpSessions() {
         extBadge.style.padding = '1px 5px';
         extBadge.style.borderRadius = '3px';
         extBadge.style.marginLeft = '4px';
+        extBadge.style.flexShrink = '0';
         extBadge.style.background = 'rgba(59, 130, 246, 0.15)';
         extBadge.style.color = '#60a5fa';
         extBadge.textContent = 'ext';
@@ -279,6 +282,7 @@ async function renderLpSessions() {
       badge.style.padding = '1px 5px';
       badge.style.borderRadius = '3px';
       badge.style.marginLeft = '4px';
+      badge.style.flexShrink = '0';
       if (openTab) {
         badge.style.background = 'var(--accent-bg, rgba(0,200,83,0.15))';
         badge.style.color = 'var(--accent)';

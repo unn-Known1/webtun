@@ -117,6 +117,9 @@
     <button class="icon-btn mobile-only-btn" id="mobile-cmd-btn" aria-label="Snippets & Commands" title="Snippets & Commands" onclick="toggleCmdLib()">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
     </button>
+    <button class="icon-btn mobile-only-btn" id="mobile-sessions-btn" aria-label="Terminal Sessions" title="Terminal Sessions" onclick="openTerminalSessionsModal()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+    </button>
     <button class="icon-btn" id="transfers-btn" aria-label="Transfers" title="Transfers — uploads, downloads, copy/move" aria-haspopup="dialog" aria-expanded="false" onclick="toggleTransfersPanel(event)" style="display:none">
       <svg class="tx-arrows" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="tx-up" d="M7 3v9"/><path class="tx-up" d="m4 6 3-3 3 3"/><path class="tx-down" d="M17 21v-9"/><path class="tx-down" d="m14 18 3 3 3-3"/><circle class="tx-pkt tx-p1" cx="7" cy="13" r="1.7" fill="currentColor" stroke="none"/><circle class="tx-pkt tx-p2" cx="17" cy="11" r="1.7" fill="currentColor" stroke="none"/></svg>
       <span id="transfers-count" aria-hidden="true">0</span>
@@ -323,6 +326,9 @@
               <span id="tab-list-title-count" style="font-size:11px;padding:1px 6px;border-radius:10px;background:var(--bg4);color:var(--fg2)">1</span>
             </span>
             <div style="display:flex;align-items:center;gap:4px">
+              <button class="btn btn-ghost" onclick="hideTabMenus();openTerminalSessionsModal()" style="height:28px;padding:0 8px;font-size:11px;display:flex;align-items:center;gap:4px;color:var(--accent)" title="Active Terminal Sessions">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> Sessions
+              </button>
               <button class="btn btn-ghost" onclick="hideTabMenus();newTab()" style="height:28px;padding:0 8px;font-size:11px;display:flex;align-items:center;gap:4px" title="New Terminal">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Terminal
               </button>
@@ -336,6 +342,12 @@
           </div>
           <input id="tab-list-search" type="text" placeholder="Filter tabs…" aria-label="Filter tabs" autocomplete="off">
           <div id="tab-list-items" role="group"></div>
+          <div class="tab-list-foot" style="padding:6px 4px 2px;border-top:1px solid var(--border);margin-top:6px;display:flex;gap:6px">
+            <button class="btn btn-ghost" onclick="hideTabMenus();openTerminalSessionsModal()" style="flex:1;height:30px;font-size:11.5px;color:var(--accent);justify-content:center;gap:6px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+              All Terminal Sessions…
+            </button>
+          </div>
         </div>
       </div>
       <!-- In-Terminal Quick Search & Zoom HUD (Termius-grade) -->
@@ -1020,7 +1032,7 @@
         </button>
       </div>
     </div>
-    <div style="font-size:12px;color:var(--fg3)">
+    <div class="term-sess-desc" style="font-size:12px;color:var(--fg3)">
       Active terminal sessions and background shells running on the server. Connect to any WebTun or external session to attach directly in a terminal tab.
     </div>
     <div class="term-sess-toolbar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -1033,7 +1045,7 @@
         <input type="text" id="term-sessions-search" class="input" placeholder="Search sessions, cwd, commands…" oninput="filterTerminalSessionsList()" style="width:100%;height:28px;font-size:11.5px;padding:0 10px;border-radius:var(--radius-sm)">
       </div>
     </div>
-    <div id="term-sessions-list" style="display:flex;flex-direction:column;gap:8px;max-height:380px;overflow-y:auto;padding-right:2px">
+    <div class="term-sess-list" id="term-sessions-list">
       <div style="padding:16px;text-align:center;color:var(--fg3);font-size:12px">Loading active sessions…</div>
     </div>
   </div>
