@@ -101,7 +101,7 @@ async function openPdfViewer(path) {
   const fileName = path.split(/[\\/]/).pop() || path;
   document.getElementById('editor-filename').textContent = fileName + '  /  ' + path;
   document.getElementById('editor-status').textContent = '';
-  const cm = document.querySelector('.CodeMirror');
+  const cm = document.querySelector('#editor-area .CodeMirror');
   if (cm) cm.style.display = 'none';
   document.getElementById('editor-preview').classList.remove('active');
   const iframe = document.getElementById('editor-preview-iframe');
@@ -545,7 +545,7 @@ async function openEpubViewer(path) {
   const fileName = path.split(/[\\/]/).pop() || path;
   document.getElementById('editor-filename').textContent = fileName + '  /  ' + path;
   document.getElementById('editor-status').textContent = '';
-  const cm = document.querySelector('.CodeMirror');
+  const cm = document.querySelector('#editor-area .CodeMirror');
   if (cm) cm.style.display = 'none';
   document.getElementById('editor-preview').classList.remove('active');
   const iframe = document.getElementById('editor-preview-iframe');
@@ -713,7 +713,7 @@ async function openOfficeViewer(path) {
   const fileName = path.split(/[\\/]/).pop() || path;
   document.getElementById('editor-filename').textContent = fileName + '  /  ' + path;
   document.getElementById('editor-status').textContent = '';
-  const cm = document.querySelector('.CodeMirror');
+  const cm = document.querySelector('#editor-area .CodeMirror');
   if (cm) cm.style.display = 'none';
   document.getElementById('editor-preview').classList.remove('active');
   const iframe = document.getElementById('editor-preview-iframe');
@@ -984,20 +984,22 @@ function setPreviewToggleState(active) {
 }
 
 function toggleHtmlPreview() {
-  const cmWrapper = document.querySelector('.CodeMirror');
+  const cmWrapper = document.querySelector('#editor-area .CodeMirror');
+  const textarea = document.getElementById('editor-textarea');
   const preview = document.getElementById('editor-preview');
   const iframe = document.getElementById('editor-preview-iframe');
   const refreshBtn = document.getElementById('preview-refresh-btn');
   const isActive = preview.classList.contains('active');
   if (isActive) {
     if (cmWrapper) cmWrapper.style.display = '';
+    if (!editor && textarea) textarea.style.display = '';
     preview.classList.remove('active');
     if (iframe) iframe.style.display = 'none';
     setPreviewToggleState(false);
     if (refreshBtn) refreshBtn.style.display = 'none';
     setFullBtnVisible(false);
     mdPreviewActive = false;
-    editor.focus();
+    if (editor) editor.focus(); else textarea?.focus();
     clearPreviewLiveReload();
   } else {
     // hide doc viewers when entering html preview
@@ -1005,6 +1007,7 @@ function toggleHtmlPreview() {
     document.getElementById('epub-viewer').classList.remove('active');
     renderHtmlPreview();
     if (cmWrapper) cmWrapper.style.display = 'none';
+    if (!editor && textarea) textarea.style.display = 'none';
     preview.classList.add('active');
     setPreviewToggleState(true);
     if (refreshBtn) refreshBtn.style.display = '';
@@ -1195,10 +1198,10 @@ async function renderHtmlPreview() {
 async function renderHtmlPreviewInner() {
   const iframe = document.getElementById('editor-preview-iframe');
   const mdContent = document.getElementById('md-preview-content');
-  const raw = editor ? editor.getValue() : '';
+  const raw = editor ? editor.getValue() : document.getElementById('editor-textarea')?.value || '';
   if (!iframe) return;
-  if (!editor || !raw) {
-    setPreviewDoc(iframe, '<p style="font-family:sans-serif;padding:16px">' + (!editor ? 'Nothing to preview — open a file first.' : 'Nothing to preview — the file is empty.') + '</p>');
+  if (!editorPath || !raw) {
+    setPreviewDoc(iframe, '<p style="font-family:sans-serif;padding:16px">' + (!editorPath ? 'Nothing to preview — open a file first.' : 'Nothing to preview — the file is empty.') + '</p>');
     return;
   }
   if (mdContent) mdContent.style.display = 'none';
@@ -1324,7 +1327,7 @@ async function renderMdPreview() {
   const preview = document.getElementById('editor-preview');
   const mdContent = document.getElementById('md-preview-content');
   const iframe = document.getElementById('editor-preview-iframe');
-  const raw = editor ? editor.getValue() : '';
+  const raw = editor ? editor.getValue() : document.getElementById('editor-textarea')?.value || '';
   if (!preview || !mdContent) return;
   if (iframe) iframe.style.display = 'none';
   mdContent.style.display = 'block';
@@ -1393,13 +1396,15 @@ let _previewLiveReloadTimer = null;
 // whole document text every tick. Same result, no polling, and it fires per edit.
 const PREVIEW_MAX_LIVE_BYTES = 200000;
 function schedulePreviewLiveReload() {
-  if (!mdPreviewActive || !editor) return;
-  if (editor.getValue().length > PREVIEW_MAX_LIVE_BYTES) return;
+  if (!mdPreviewActive) return;
+  const value = editor ? editor.getValue() : document.getElementById('editor-textarea')?.value || '';
+  if (value.length > PREVIEW_MAX_LIVE_BYTES) return;
   clearTimeout(_previewLiveReloadTimer);
   _previewLiveReloadTimer = setTimeout(() => {
     _previewLiveReloadTimer = null;
-    if (!mdPreviewActive || !editor) return;
-    if (editor.getValue().length > PREVIEW_MAX_LIVE_BYTES) return;
+    if (!mdPreviewActive) return;
+    const current = editor ? editor.getValue() : document.getElementById('editor-textarea')?.value || '';
+    if (current.length > PREVIEW_MAX_LIVE_BYTES) return;
     if (/\.html?$/i.test(editorPath)) renderHtmlPreview();
     else renderMdPreview();
   }, 350);
@@ -1414,7 +1419,7 @@ function clearPreviewLiveReload() {
 }
 
 function refreshPreview() {
-  if (!editor) return;
+  if (!editorPath) return;
   if (/\.html?$/i.test(editorPath)) renderHtmlPreview();
   else renderMdPreview();
   toast('Preview refreshed', 'success');
@@ -1425,7 +1430,8 @@ function toggleMdPreview() {
     toggleHtmlPreview();
     return;
   }
-  const cmWrapper = document.querySelector('.CodeMirror');
+  const cmWrapper = document.querySelector('#editor-area .CodeMirror');
+  const textarea = document.getElementById('editor-textarea');
   const preview = document.getElementById('editor-preview');
   const refreshBtn = document.getElementById('preview-refresh-btn');
   mdPreviewActive = !mdPreviewActive;
@@ -1434,16 +1440,18 @@ function toggleMdPreview() {
     document.getElementById('epub-viewer').classList.remove('active');
     renderMdPreview();
     if (cmWrapper) cmWrapper.style.display = 'none';
+    if (!editor && textarea) textarea.style.display = 'none';
     preview.classList.add('active');
     setPreviewToggleState(true);
     if (refreshBtn) refreshBtn.style.display = '';
     startPreviewLiveReload();
   } else {
     if (cmWrapper) cmWrapper.style.display = '';
+    if (!editor && textarea) textarea.style.display = '';
     preview.classList.remove('active');
     setPreviewToggleState(false);
     if (refreshBtn) refreshBtn.style.display = 'none';
-    editor.focus();
+    if (editor) editor.focus(); else textarea?.focus();
     clearPreviewLiveReload();
   }
 }

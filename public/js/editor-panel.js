@@ -303,7 +303,7 @@ async function showTextInPanel(path, content, original, history, mtime, size) {
     try { cm.setOption('mode', await resolveCMmode(fileName)); } catch {}
     if (myGen !== _panelGen) return; // superseded: a newer open owns the panel now
     cm.setOption('readOnly', false);
-    const cmEl = document.querySelector('.CodeMirror');
+    const cmEl = document.querySelector('#editor-area .CodeMirror');
     if (cmEl) cmEl.style.display = '';
     try { cm.refresh(); } catch {}
   } else {
@@ -393,8 +393,8 @@ async function showTextInPanel(path, content, original, history, mtime, size) {
     } catch(e) { console.warn(e); }
   }
   document.getElementById('editor-view').classList.add('open');
-  if (history) { try { cm.setHistory(history); } catch (e) { console.warn('Undo history restore failed:', e); } }
-  cm.focus();
+  if (history && cm) { try { cm.setHistory(history); } catch (e) { console.warn('Undo history restore failed:', e); } }
+  if (cm) cm.focus(); else document.getElementById('editor-textarea')?.focus();
 
   // Fit all terminals to new available space
   requestAnimationFrame(() => {
@@ -461,7 +461,7 @@ async function closeEditor() {
   if (previewIframe) clearPreviewDoc(previewIframe);
   const mdContent = document.getElementById('md-preview-content');
   if (mdContent) { mdContent.style.display = 'none'; mdContent.innerHTML = ''; }
-  const cm = document.querySelector('.CodeMirror');
+  const cm = document.querySelector('#editor-area .CodeMirror');
   if (cm) cm.style.display = '';
   mdPreviewActive = false;
   editorPath = '';

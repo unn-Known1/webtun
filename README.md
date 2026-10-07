@@ -212,6 +212,11 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 
 ## Changelog
 
+### v2.3.3
+- **File previews** — Markdown and HTML preview libraries are bundled for offline use; the split-panel Preview button now targets its own editor when file tabs are open and works with the textarea fallback when CodeMirror is unavailable.
+- **Accessibility and polish** — dialog and documentation-palette focus handling, named controls and keyboard-accessible connection status, improved light-theme contrast, mobile touch targets, and clearer billing and documentation states.
+- **Startup and motion** — deferred editor/preview assets and reduced persistent rendering effects while preserving useful interaction feedback.
+
 ### v2.3.2
 - **Mobile keyboard correctness** — the software-keyboard inset is now applied to a single layout owner instead of both the terminal and its parent, which was collapsing the visible terminal to a few pixels while keystrokes still reached the shell. Detection now measures the app's own rendered bottom against the visible viewport, so nothing is re-reserved on browsers that already resize above the keyboard.
 - **Desktop toolbar & stacking** — the editor toolbar no longer clips its **Save** button at the default panel width (progressive disclosure below 420px); the fullscreen editor no longer paints over the Settings/Notification drawers (which had focus-locked you into an invisible panel); Keyboard Shortcuts and Listening Ports are reachable again on desktop (the overflow menu that opens them was permanently hidden).
