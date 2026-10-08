@@ -1,10 +1,11 @@
 # WebTun — System Architecture & System Design Principles
 
-**Document Version**: 2.2.7  
+**Code baseline**: v2.3.3 with the current working-tree improvements
+
 **Author / Maintainer**: Gaurang Patel ([unn-Known1](https://github.com/unn-Known1))  
 **Target Environment**: Node.js ≥ 18.0.0, Linux / macOS / Windows, Web Browsers (PWA), Electron Desktop Application  
 **Primary Repository**: `github.com/unn-Known1/webtun`  
-**Last Architectural Review**: Multi-Specialist Architecture & Security Remediation — October 2026
+**Last updated**: October 7, 2026
 
 ---
 
@@ -147,12 +148,28 @@ The development of WebTun is governed by twelve core architectural principles fo
 
 ### 4.1 Entrypoints & Bootstrap Pipeline
 - **`bin/webtun.js`**: CLI executable entrypoint. Parses flags (`--port`, `--host`, `--pin`, `--tunnel`, `--help`, `--version`), loads local environment variables from `.env`, and boots `server.js`.
-- **`server.js`**: Main application core. Initializes Express, HTTP server, WebSocket server (`ws`), middleware pipelines, and background watchdogs. Imports avoid state side-effects until `startServer()` is called.
+- **`server.js`**: Composition entrypoint. Initializes Express, HTTP and WebSocket servers, middleware, and the remaining billing/history/system/preview routes. Domain services receive explicit dependencies. `startServer()` loads persisted runtime state and claims the terminal namespace after binding the port.
 - **`electron/main.js`**: Electron main process entrypoint. Forks `server.js` as a background child process bound strictly to `127.0.0.1`, configures window bounds, native menus, and manages application lifecycle.
+
+### Backend service boundaries
+
+| File | Responsibility |
+|---|---|
+| `lib/server/auth.js` | PIN validation, device approvals, rotation, preview file tokens, expiry timers. |
+| `lib/server/terminal.js` | Binary WebSocket protocol, PTY reattachment, tmux ownership, terminal session routes. |
+| `lib/server/files.js` | File read/write/transfer/search/archive routes and viewer assets. |
+| `lib/server/git.js` | Repository detection, status/diffs, staging, commits, branches/tags/stashes. |
+| `lib/server/tunnels.js` | On-demand cloudflared, persistence, liveness/backoff, tunnel routes. |
+| `lib/server/paths.js` | Workspace resolution and path confinement shared by file and Git services. |
+| `lib/server/errors.js` | Sanitized HTTP/Git errors; full details stay in server logs. |
+| `lib/server/process.js` | Shell selection, process execution, PID helpers, terminal environment. |
+| `lib/server/file-types.js`, `network.js` | Shared MIME/binary detection and tunnel address validation. |
+
+Factories receive the Express app and their collaborators rather than importing the server. Auth sends events through injected callbacks; terminal consumes the auth interface. Auth, terminal, and tunnel services expose `dispose()` to release timers, sockets, and owned processes. Existing routes and `server.js` public exports stay compatible.
 
 ### 4.2 Configuration & Runtime State Storage
 Runtime configurations are isolated based on environment execution (local checkout vs. package install):
-- **Data Directory (`DATA_DIR`)**: Resolves to `__dirname` for repository checkouts or `$XDG_CONFIG_HOME/webtun` (`~/.config/webtun`) for global npm installs.
+- **Data Directory (`DATA_DIR`)**: Resolves to `$XDG_CONFIG_HOME/webtun` (`~/.config/webtun`) for checkouts and installs. Legacy repository state migrates during startup; `__dirname` is a fallback when the config directory cannot be created.
 - **State Files**:
   - `.env`: Stores environment variables (`PORT`, `HOST`, `PIN`, `WORKSPACE_ROOT`, `TRUST_PROXY`, `PREVIEW_PORTS`, `ALLOWED_ORIGINS`, `ALLOW_FULL_FS`, `WEBTUN_SHELL`). Updated atomically with `0600` permissions on PIN changes.
   - `.tunnels.json`: Persists active Cloudflare tunnel metadata, PIDs, `startKey` timestamps, and `dead` status flags.
@@ -237,6 +254,9 @@ The client frontend is built entirely in vanilla JavaScript and modularized clea
 | Module File | Architectural Scope & Responsibility |
 |---|---|
 | `theme-init.js` | Immediate execution pre-paint theme initializer using `safeStorage`. |
+| `actions.js` | Delegates named click/change/input/key actions to handlers registered by feature scripts; no handler source evaluation. |
+| `editor-buffers.js` | One text buffer per path, surface ownership, serialized snapshot saves, revision guards, recovery drafts. |
+| `terminal-connection.js` | Bounded retry policy with jitter, auth/policy stops, one fresh-session fallback. |
 | `core.js` | Global variables, app state initialization, theme switching, tab/panel wiring. |
 | `ui.js` | Dialog modals, toast notifications, notification center drawer, overlay handling (`installFocusTrap`). |
 | `terminal.js` | xterm.js instance initialization, WebGL addon management, WS stream coupling. |
@@ -303,19 +323,19 @@ WebTun uses a flexible 3-tier workspace tab model:
 
 ## 6. Security Hardening & Threat Matrix
 
-| Threat Vector | Potential Vulnerability | Applied Mitigation Mechanism | Specialist Review Notes |
+| Threat Vector | Potential Vulnerability | Applied Mitigation Mechanism | Implementing component |
 |---|---|---|---|
-| **Path Access & Scope** | System file access outside workspace root. | Unconfined full-FS access (`ALLOW_FULL_FS=true`) is deliberate by product design for server administration; optional `ALLOW_FULL_FS=false` enforces `WORKSPACE_ROOT` boundary checks (`pathContained()`); `sendErr()` redacts internal system path leaks. | Security & Systems Specialist |
-| **Command Injection** | Arbitrary execution via untrusted shell commands. | Direct argument array spawning (`spawnRead`) bypassing shell execution for Git operations. | Security Specialist |
-| **WebSocket Hijacking** | Cross-Site WebSocket Hijacking (CSWSH). | Origin verification enforcing same-origin or explicitly configured `ALLOWED_ORIGINS` during WS handshake. | DevOps Specialist |
-| **Unauthenticated Access** | Brute-force PIN guessing or session hijacking. | Strict rate limiting (5 req/10s on auth/SSH routes), 64-hex token issuing, and pending session approval workflows. | Security Specialist |
-| **Cross-Site Scripting (XSS)** | Injection via HTML/Markdown previews or filenames. | DOMPurify sanitization on rendered Markdown/HTML previews and strict script execution sandbox rules on preview `<iframe>`s (`allow-scripts` without `allow-same-origin`). | Frontend Specialist |
-| **Information Leakage** | Exposing system stack traces or internal paths in API errors. | Centralized error formatting (`sendErr()`) converting exceptions into sanitized human-friendly messages. | Security Specialist |
-| **Clickjacking & Framing** | Embedding WebTun inside malicious third-party iframes. | `X-Frame-Options` policies, `X-Content-Type-Options: nosniff`, `referrer: no-referrer`, and CSP headers limiting framing permissions. | Security Specialist |
-| **Private Key Exposure** | Sensitive SSH keys remaining in client memory or DOM. | In-memory keypair generation via Node `crypto`; immediate memory purge of raw private keys upon SSH modal dismissal (`closeSshOverlay()`). | Security Specialist |
-| **Storage Exception Failures** | Third-party cookie / storage blocks crashing app initialization. | Protective `safeStorage` wrapper wrapping all `localStorage` access across Cloudflare tunnel domains. | Frontend Specialist |
-| **Tunnel SSRF Targets** | Non-canonical or mapped IP targets in tunnel requests. | `canonicalizeIp()` IP normalization handling hex, octal, and 32-bit integer literals prior to `isBlockedTunnelIp()` and `dns.lookup` resolution checks. | Security & DevOps Specialist |
-| **Disk Exhaustion via Uploads** | Unchecked upload batch sizes filling server storage. | Pre-flight length checks and Multer stream disk usage caps on `POST /api/files/upload`. | Systems Specialist |
+| **Path Access & Scope** | System file access outside workspace root. | Unconfined full-FS access (`ALLOW_FULL_FS=true`) is deliberate by product design for server administration; optional `ALLOW_FULL_FS=false` enforces `WORKSPACE_ROOT` boundary checks (`pathContained()`); `sendErr()` redacts internal system path leaks. | `paths.js`, `files.js` |
+| **Command Injection** | Arbitrary execution via untrusted shell commands. | Direct argument array spawning (`spawnRead`) bypassing shell execution for Git operations. | `git.js`, `process.js` |
+| **WebSocket Hijacking** | Cross-Site WebSocket Hijacking (CSWSH). | Origin verification enforcing same-origin or explicitly configured `ALLOWED_ORIGINS` during WS handshake. | `server.js` upgrade handler |
+| **Unauthenticated Access** | Brute-force PIN guessing or session hijacking. | Strict rate limiting (5 req/10s on auth/SSH routes), 64-hex token issuing, and pending session approval workflows. | `auth.js`, server rate limiters |
+| **Cross-Site Scripting (XSS)** | Injection via HTML/Markdown previews or filenames. | DOMPurify sanitization on rendered Markdown/HTML previews and strict script execution sandbox rules on preview `<iframe>`s (`allow-scripts` without `allow-same-origin`). | `preview.js`, `file-tabs.js` |
+| **Information Leakage** | Exposing system stack traces or internal paths in API errors. | Centralized error formatting (`sendErr()`) converting exceptions into sanitized human-friendly messages. | `errors.js` |
+| **Clickjacking & Framing** | Embedding WebTun inside malicious third-party iframes. | `X-Frame-Options` policies, `X-Content-Type-Options: nosniff`, `referrer: no-referrer`, and CSP headers limiting framing permissions. | `server.js` response headers |
+| **Private Key Exposure** | Sensitive SSH keys remaining in client memory or DOM. | In-memory keypair generation via Node `crypto`; immediate memory purge of raw private keys upon SSH modal dismissal (`closeSshOverlay()`). | `ssh.js`, `ssh-setup.js` |
+| **Storage Exception Failures** | Third-party cookie / storage blocks crashing app initialization. | Protective `safeStorage` wrapper wrapping all `localStorage` access across Cloudflare tunnel domains. | `theme-init.js` |
+| **Tunnel SSRF Targets** | Non-canonical or mapped IP targets in tunnel requests. | `canonicalizeIp()` IP normalization handling hex, octal, and 32-bit integer literals prior to `isBlockedTunnelIp()` and `dns.lookup` resolution checks. | `network.js`, `tunnels.js` |
+| **Disk Exhaustion via Uploads** | Unchecked upload batch sizes filling server storage. | Pre-flight length checks and Multer stream disk usage caps on `POST /api/files/upload`. | `files.js` upload handler |
 
 ---
 
@@ -330,8 +350,8 @@ WebTun uses a flexible 3-tier workspace tab model:
 
 ### 7.2 PWA & Service Worker Caching
 - **Service Worker (`public/sw.js`)**:
-  - Cache Namespace: `webtun-v7`.
-  - Precaches essential core assets: `/`, `/index.html`, `/css/styles.css`, `/js/app.js`, `/js/theme-init.js`, `/docs.html`, `/manifest.json`, `/commands.js`, `/favicon.png`, `/icon.svg`, `/icon-192.png`, `/icon-512.png`.
+  - Cache Namespace: `webtun-v40`.
+  - Precaches essential core assets: `/`, `/index.html`, `/css/styles.css`, `/js/*.js` (including actions, editor buffers, and connection policy), `/js/theme-init.js`, `/docs.html`, `/manifest.json`, `/commands.js`, `/favicon.png`, `/icon.svg`, `/icon-192.png`, `/icon-512.png`.
   - Non-Intrusive Updates: When a new service worker is detected, `registerSW()` displays a non-blocking toast notification offering `skipWaiting` installation without forcefully refreshing active live terminal connections.
 
 ---
@@ -339,13 +359,25 @@ WebTun uses a flexible 3-tier workspace tab model:
 ## 8. Verification, Build & Deployment Guidelines
 
 ### 8.1 Verification Commands
-WebTun relies on direct runtime verification rather than heavy test frameworks:
+Verification uses Node's built-in test runner for editor state and real HTTP/WebSocket services, plus Playwright Chromium for the running desktop and mobile frontend. The tests use temporary workspaces and a substituted PTY; they do not alter real terminal sessions.
+
+Playwright development checks require Node.js 20 or later. Release CI uses Node.js 24; the deployed application retains its Node.js 18 runtime minimum.
 
 ```bash
 # Verify version synchronization across package.json, package-lock.json, and git tags
 npm run version:check
 
-# Run server smoke test and build validation
+# Source, API/auth/Git, editor, binary WS, retry policy, and import regressions
+npm test
+
+# Install Chromium once, then exercise desktop and mobile user flows
+npx playwright install chromium
+npm run test:e2e
+
+# Run both suites
+npm run test:all
+
+# Verify the composition entrypoint and script assets
 npm run build
 
 # Start local development server with nodemon reloading
@@ -366,90 +398,12 @@ npm run rebuild:pty
 
 ---
 
-## 9. Brutal Architectural Rating & Critical Specialist Evaluation
+## 9. Change rules and verification limits
 
-To maintain engineering objectivity, WebTun is audited and rated against the architectural principles and design guidelines established in this document. This evaluation combines multi-specialist assessments across Security, Systems Performance, Infrastructure, Frontend UX, and Quality Engineering.
+- Keep text state in the shared buffer store. A save captures its path/content before waiting for the network; new edits remain dirty. A reload can apply only to the same buffer and edit revision. Moving panel → tab → panel transfers the same buffer and its view history. Opening a different file clears the old undo history.
+- Register named controls in the feature that owns their behavior. Use IDs/classes for DOM lookup. Return asynchronous work from action handlers so the dispatcher can report failures.
+- Reuse CSS spacing, typography, button, and semantic state tokens. Both editor fallback surfaces use `.editor-fallback`. Keep rectangular desktop-style tabs on mobile; Home has one primary terminal action and three workspace shortcuts.
+- Update `public/docs.html` for visible behavior changes and precache every new frontend script. Bump the cache when adding assets; existing terminals must not be auto-reloaded for an update.
+- PR and release gates run version/source checks, service tests, and desktop/mobile browser regressions before native Electron rebuilds. The packaging integrity gate checks the extracted services and frontend helpers as required assets.
 
-### 9.1 Overall Rating Summary
-
-```
-+-----------------------------------------------------------------------+
-|                       WEBTUN ARCHITECTURAL SCORE                      |
-|                                                                       |
-|                          9.50 / 10.0  (Grade: A)                      |
-|                                                                       |
-|   Category                             Weight   Score   Grade         |
-|   ----------------------------------  ------   -----   -----         |
-|   1. Zero-Bundler Core Architecture    15%     9.5/10   A             |
-|   2. Security Posture & Authentication  20%     9.5/10   A             |
-|   3. Terminal, PTY & Session Engine     20%     9.6/10   A             |
-|   4. File System & Workspace Editor    15%     9.4/10   A             |
-|   5. SSH & Infrastructure Supervision  10%     9.2/10   A             |
-|   6. Frontend UX, Themes & A11y        10%     9.5/10   A             |
-|   7. DevOps, Packaging & Distribution  10%     9.5/10   A             |
-+-----------------------------------------------------------------------+
-```
-
----
-
-### 9.2 Domain-by-Domain Critical Evaluation
-
-#### 1. Zero-Bundler Core Architecture — Score: 9.5 / 10 (Grade: A)
-- **Strengths**:
-  - Exceptional cold start times (<200 ms server execution) with zero frontend compilation overhead.
-  - Strict script loading order (`<script defer>`) with Subresource Integrity (SRI) hashes for external assets.
-  - Lightweight codebase footprint allowing execution on extremely constrained single-board devices (e.g. Raspberry Pi Zero 2 W).
-- **Minor Trade-offs**:
-  - Offline syntax highlighting depends on browser PWA cache / prior asset load when operating in completely air-gapped networks.
-
-#### 2. Security Posture & Authentication — Score: 9.5 / 10 (Grade: A)
-- **Strengths**:
-  - IP canonicalization (`canonicalizeIp()`) handling hex, octal, decimal integer, and IPv4-mapped IPv6 literals before SSRF filtering.
-  - Multi-session approval workflow over WebSocket (`0x03` push) that halts unrecognized devices despite entering a valid PIN.
-  - Atomic configuration writing with `0600` POSIX file permissions across state files (`.env`, `.tunnels.json`, `tunnel-url.txt`, `.ssh-state.json`).
-  - Rate limiting applied across both auth and file mutation REST endpoints (`rateLimiter`, `authRateLimiter`).
-
-#### 3. Terminal, PTY & Session Engine — Score: 9.6 / 10 (Grade: A)
-- **Strengths**:
-  - Process-specific `tmux` namespace ownership (`wt-webtun-<port>-{id}`) paired with cross-process claim file coordination (`webtun-tmux-<port>.json`).
-  - Framing efficiency using single-byte binary WebSocket frames (`0x00`–`0x03`) with chunked stdin writes (≤ 60 KB) and handling of `0x02` client ping bytes.
-  - High-performance xterm.js rendering utilizing the WebGL addon with canvas fallback.
-
-#### 4. File System & Workspace Editor — Score: 9.4 / 10 (Grade: A)
-- **Strengths**:
-  - Memory-efficient DOM node relocation (`dockEditorToTab`) for heavy viewers (PDF, EPUB, Office) ensuring complex documents remain single-live.
-  - Non-blocking external disk file watcher (`startOpenFileWatcher()`) that polls `mtime` snapshots every 10s and on window refocus without blocking UI rendering.
-  - Local auto-drafting (`wt-draft:<path>`) debounced at 2 seconds.
-  - Streaming ZIP writer (`ZipStoreWriter`) with total running byte cap enforcement (`maxTotal`) preventing disk fill.
-
-#### 5. SSH & Infrastructure Supervision — Score: 9.2 / 10 (Grade: A)
-- **Strengths**:
-  - Native in-memory Ed25519 key generation via Node.js `crypto.generateKeyPairSync('ed25519')` without temporary `/tmp` key file writes.
-  - `getHostFingerprints()` inspects both system `/etc/ssh/` keys and userspace `DATA_DIR/managed-sshd/` host keys.
-  - Non-interactive `sudo -n` execution and direct root execution in container environments (`isRoot()`).
-  - Atomically updated `authorized_keys` with strict 16-hex `webtun:<id>` tag parsing.
-
-#### 6. Frontend UX, Responsive Design & Accessibility — Score: 9.5 / 10 (Grade: A)
-- **Strengths**:
-  - Uncompromising typography discipline (`IBM Plex Sans` vs `JetBrains Mono`).
-  - 6 WCAG-AA compliant themes with explicit `color-scheme` metadata and instant pre-paint execution (`theme-init.js`).
-  - Active keyboard focus trapping (`installFocusTrap`) across modal dialogues (`#ssh-overlay`, `#shortcuts-overlay`, `#settings-overlay`).
-  - Robust `safeStorage` wrapper preventing app crashes under Edge Tracking Prevention or strict tunnel cookie policies.
-
-#### 7. DevOps, Build & Distribution — Score: 9.5 / 10 (Grade: A)
-- **Strengths**:
-  - `verify-version.js` strict guard preventing stale package lockfiles or mismatched release tags from reaching npm.
-  - Zero postinstall script policy in package distribution (`npm run rebuild:pty` is manual and repo-only).
-  - Automated GitHub Actions release pipeline building Electron assets across Linux, Windows, and macOS.
-
----
-
-### 9.3 Long-term Maintenance Guidelines
-
-1. **Continuous Security Auditing**:
-   - Re-run `npm run version:check` and build verification prior to every release tag bump.
-2. **Performance Monitoring**:
-   - Maintain non-blocking stats polling via `SYS_STATS_TTL_MS` (2s server cache) and client `fetchSystemStats()`.
-
----
-*End of WebTun System Architecture & System Design Principles Report (Multi-Specialist Edition).*
+The fake PTY verifies protocol and reattachment behavior, not native terminal ABI compatibility or platform-specific tmux behavior. Browser tests cover Chromium desktop and a mobile viewport; Safari, Firefox, live Cloudflare tunnels, billing providers, and installed Electron artifacts require their own checks. Release CI retains the existing native build, archive integrity, dependency audit, and installed-artifact smoke gates. Passing local tests is evidence for the exercised flows, not a numerical quality or security rating.

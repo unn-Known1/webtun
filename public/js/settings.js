@@ -287,7 +287,7 @@ function closeSettings() {
 }
 function closeSettingsOnClickOutside(e) {
   const panel = document.getElementById('settings-panel');
-  const btn = document.getElementById('settings-btn') || document.querySelector('[onclick="openSettings()"]');
+  const btn = document.getElementById('settings-btn');
   if (!panel.classList.contains('open')) { document.removeEventListener('click', closeSettingsOnClickOutside, true); return; }
   if (panel.contains(e.target) || (btn && btn.contains(e.target))) return;
   closeSettings();
@@ -1017,4 +1017,60 @@ document.addEventListener('visibilitychange', async () => {
       await requestWakeLock().catch(() => {});
     }
   } catch {}
+});
+
+// Declarative controls owned by this feature.
+uiActions.register("change", {
+  "toggle-keep-awake": function (event) { return toggleKeepAwake(this.checked); },
+  "apply-theme": function (event) { return applyTheme(this.value); },
+  "apply-font-size": function (event) { return applyFontSize(+this.value); },
+  "apply-font": function (event) { return applyFont(this.value); },
+  "apply-cursor": function (event) { return applyCursor(this.value); },
+  "apply-scrollback": function (event) { return applyScrollback(+this.value); },
+  "apply-screensaver-min": function (event) { return applyScreensaverMin(+this.value); },
+});
+uiActions.register("click", {
+  "toggle-sidebar": function (event) { return toggleSidebar(); },
+  "toggle-more-menu": function (event) { return toggleMoreMenu(event); },
+  "open-settings": function (event) { return openSettings(); },
+  "toggle-git-advanced": function (event) { return toggleGitAdvanced(); },
+  "toggle-editor-split": function (event) { return toggleEditorSplit(); },
+  "toggle-editor-fullscreen": function (event) { return toggleEditorFullscreen(); },
+  "close-settings": function (event) { return closeSettings(); },
+  "toggle-setting-blink": function (event) { return toggleSetting('blink'); },
+  "toggle-setting-bell": function (event) { return toggleSetting('bell'); },
+  "toggle-setting-clipboardread": function (event) { return toggleSetting('clipboardRead'); },
+  "toggle-setting-termrightclick": function (event) { return toggleSetting('termRightClick'); },
+  "toggle-setting-passctrlk": function (event) { return toggleSetting('passCtrlK'); },
+  "toggle-setting-mobilekeys": function (event) { return toggleSetting('mobilekeys'); },
+  "toggle-setting-confirmclose": function (event) { return toggleSetting('confirmclose'); },
+  "toggle-setting-datasaver": function (event) { return toggleSetting('datasaver'); },
+  "toggle-setting-screensaver": function (event) { return toggleSetting('screensaver'); },
+  "toggle-setting-autostart": function (event) { return toggleSetting('autostart'); },
+  "toggle-setting-gitenabled": function (event) { return toggleSetting('gitEnabled'); },
+  "toggle-setting-gitsimple": function (event) { return toggleSetting('gitSimple'); },
+  "toggle-setting-sshenabled": function (event) { return toggleSetting('sshEnabled'); },
+  "close-more-menu": function (event) { closeMoreMenu();return openTerminalSessionsModal(); },
+  "close-more-menu-2": function (event) { closeMoreMenu();return openPortsModal(); },
+  "close-more-menu-3": function (event) { closeMoreMenu();openSystemStats(); },
+  "close-more-menu-4": function (event) { closeMoreMenu();toggleTiles(); },
+  "close-more-menu-5": function (event) { closeMoreMenu();newPreviewPrompt(); },
+  "close-more-menu-6": function (event) { closeMoreMenu();toggleCmdLib(); },
+  "close-more-menu-7": function (event) { closeMoreMenu();openSshPanel(); },
+  "close-more-menu-8": function (event) { closeMoreMenu();openShortcuts(); },
+});
+uiActions.register("keydown", {
+  "toggle-setting-blink": function (event) { if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('blink')}; },
+  "toggle-setting-bell": function (event) { if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('bell')}; },
+  "toggle-setting-clipboardread": function (event) { if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('clipboardRead')}; },
+  "toggle-setting-termrightclick": function (event) { if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('termRightClick')}; },
+  "toggle-setting-passctrlk": function (event) { if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('passCtrlK')}; },
+  "toggle-setting-mobilekeys": function (event) { if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('mobilekeys')}; },
+  "toggle-setting-confirmclose": function (event) { if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('confirmclose')}; },
+  "toggle-setting-datasaver": function (event) { if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('datasaver')}; },
+  "toggle-setting-screensaver": function (event) { if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('screensaver')}; },
+  "toggle-setting-autostart": function (event) { if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('autostart')}; },
+  "toggle-setting-gitenabled": function (event) { if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('gitEnabled')}; },
+  "toggle-setting-gitsimple": function (event) { if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('gitSimple')}; },
+  "toggle-setting-sshenabled": function (event) { if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('sshEnabled')}; },
 });

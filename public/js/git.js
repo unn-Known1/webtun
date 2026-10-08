@@ -696,13 +696,13 @@ async function openGitDiff(file, cached, head) {
   if (!r || r.error) { toast((r && r.error) || 'Diff failed', 'error'); return; }
   const name = (String(file).split(/[\\/]/).pop() || file);
   const content = r.diff ? (r.truncated ? r.diff + '\n…(truncated at 200KB)' : r.diff) : '(no changes)';
-  // Read-only diff in the editor tab (editorPath stays empty so Save is a no-op)
+  // Read-only diff in the editor tab (panelState.path stays empty so Save is a no-op)
   await openGitReadonly(name + (cached ? ' (staged diff)' : head ? ' (conflict diff)' : ' (diff)') + '  /  ' + gitRoot, content, r.binary ? 'binary file' : 'read-only • git diff');
 }
 async function openGitReadonly(title, content, status) {
   cleanupDocViewers();
-  editorPath = '';
-  editorOriginalContent = content;
+  panelState.path = '';
+  panelState.original = content;
   document.getElementById('editor-save-btn').style.display = 'none';
   document.getElementById('md-preview-toggle').style.display = 'none';
   document.getElementById('preview-refresh-btn').style.display = 'none';
@@ -752,3 +752,29 @@ document.getElementById('git-tag-msg').addEventListener('keydown', e => { if (e.
 document.getElementById('git-id-email').addEventListener('keydown', e => { if (e.key === 'Enter') gitSaveIdentity(); });
 document.getElementById('git-id-name').addEventListener('keydown', e => { if (e.key === 'Enter') gitSaveIdentity(); });
 document.getElementById('git-reset-ref').addEventListener('keydown', e => { if (e.key === 'Enter') gitReset(); });
+
+
+// Declarative controls owned by this feature.
+uiActions.register("click", {
+  "toggle-git-panel": function (event) { return toggleGitPanel(); },
+  "git-branch-new": function (event) { event.stopPropagation();gitBranchNew(); },
+  "git-branch-create": function (event) { return gitBranchCreate(); },
+  "git-branch-new-cancel": function (event) { return gitBranchNewCancel(); },
+  "git-init": function (event) { return gitInit(); },
+  "git-save-identity": function (event) { return gitSaveIdentity(); },
+  "git-commit": function (event) { return gitCommit(); },
+  "git-amend": function (event) { return gitAmend(); },
+  "git-stash": function (event) { return gitStash(); },
+  "git-pull": function (event) { return gitPull(); },
+  "git-push": function (event) { return gitPush(); },
+  "git-fetch": function (event) { return gitFetch(); },
+  "refresh-git-panel": function (event) { return refreshGitPanel(currentPath, true); },
+  "git-reset": function (event) { return gitReset(); },
+  "git-tag-create": function (event) { return gitTagCreate(); },
+});
+uiActions.register("keydown", {
+  "toggle-git-panel": function (event) { if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleGitPanel();}; },
+});
+uiActions.register("change", {
+  "git-switch-branch": function (event) { return gitSwitchBranch(this.value); },
+});

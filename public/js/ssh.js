@@ -772,3 +772,25 @@ async function revokeSshKey(id, label, fingerprint, createdAt) {
   toast(`SSH key "${label || id}" revoked`, 'success');
   try { await refreshSshStatus(); } catch {}
 }
+
+
+// Declarative controls owned by this feature.
+uiActions.register("click", {
+  "open-ssh-panel": function (event) { return openSshPanel(); },
+  "open-ssh-settings": function (event) { return openSshSettings(); },
+  "tailscale-up-with-key": function (event) { return tailscaleUpWithKey(); },
+  "generate-ssh-credential": function (event) { return generateSshCredential(); },
+  "copy-ssh-once-key": function (event) { return copySshOnceKey(); },
+  "download-ssh-once-key": function (event) { return downloadSshOnceKey(); },
+  "copy-ssh-config-recipe": function (event) { return copySshConfigRecipe(); },
+  "open-ssh-uri": function (event) { return openSshUri(); },
+  "dismiss-ssh-once": function (event) { return dismissSshOnce(); },
+  "cleanup-ssh-orphans": function (event) { return cleanupSshOrphans(); },
+  "save-ssh-port": function (event) { return saveSshPort(); },
+  "refresh-ssh-status": function (event) { return refreshSshStatus(); },
+  "close-ssh-panel": function (event) { return closeSshPanel(); },
+});
+uiActions.register("keydown", {
+  "generate-ssh-credential": function (event) { if(event.key==='Enter'){event.preventDefault();return generateSshCredential();} },
+  "save-ssh-port": function (event) { if(event.key==='Enter'){event.preventDefault();return saveSshPort();} },
+});

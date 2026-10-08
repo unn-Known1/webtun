@@ -582,3 +582,22 @@ async function startCheckout(plan) {
   if (r && r.url) { window.open(r.url, '_blank', 'noopener'); }
   else toast((r && r.error) || 'Checkout unavailable', 'error');
 }
+
+
+// Declarative controls owned by this feature.
+uiActions.register("click", {
+  "open-security-review": function (event) { return openSecurityReview(); },
+  "change-pin": function (event) { return changePin(); },
+  "refresh-license": function (event) { return refreshLicense(); },
+  "save-license-key": function (event) { return saveLicenseKey(); },
+  "remove-license-key": function (event) { return removeLicenseKey(); },
+  "start-checkout-pro": function (event) { return startCheckout('pro'); },
+  "refresh-sessions": function (event) { return refreshSessions(); },
+  "revoke-other-sessions": function (event) { return revokeOtherSessions(); },
+  "create-tunnel": function (event) { return createTunnel(); },
+  "copy-text-ssh-once-cmd": function (event) { return copyText(document.getElementById('ssh-once-cmd').textContent); },
+});
+uiActions.register("keydown", {
+  "create-tunnel": function (event) { if(event.key==='Enter'){event.preventDefault();return createTunnel();} },
+  "copy-text-ssh-once-cmd": function (event) { if(event.key==='Enter'||event.key===' '){event.preventDefault();copyText(document.getElementById('ssh-once-cmd').textContent)}; },
+});

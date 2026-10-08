@@ -1,4 +1,4 @@
-// WebTun frontend - core.js (1/15: shared state, utils, boot/auth, API).
+// WebTun frontend - core.js (shared state, utils, boot/auth, API).
 
 // ═══════════════════════════════════════════════════════
 let authToken = '';
@@ -15,8 +15,8 @@ let skipHistoryPush = false;
 let ctxTarget = null;
 let termCtxTabId = null;
 let renamePath = '';
-let editorPath = '';
-let editorOriginalContent = '';
+const editorBuffers = WebTunEditorBuffers.createStore({ storage: safeStorage });
+const panelState = editorBuffers.createSurface('panel');
 let hasTmux = false;
   let settings = {
   theme: 'light', fontSize: 14, font: "'JetBrains Mono', 'SF Mono', 'Fira Code', Consolas, monospace",
@@ -224,10 +224,6 @@ function loadCurrentPath() {
 // ════════════════════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════════════════
-function handlePinKeydown(e) {
-  if (e.key === 'Enter') submitPin();
-}
-
 // ── Last-known server place ─────────────────────────────
 // Remembers where this app last reached a server (origin + path, never the
 // ?token= credential) so a saved PWA launched while offline can show what it
@@ -316,8 +312,6 @@ async function init() {
       // Trusted device? A stored session token skips the PIN screen.
       if (await tryResumeSession()) return;
       const pinIn = document.getElementById('pin-input');
-      pinIn.removeEventListener('keydown', handlePinKeydown);
-      pinIn.addEventListener('keydown', handlePinKeydown);
       pinIn.focus();
     } else {
       authToken = 'open';
@@ -667,8 +661,7 @@ async function unlockApp() {
           if (tab.closed) return;
           if (!tab.ws || tab.ws.readyState !== WebSocket.OPEN) {
             if (!tab.reconnectTimer) {
-              tab.reconnectDelay = 1000;
-              connectWebSocket(tab, true);
+              if (tab.type === 'term' && !terminalRetryPolicy(tab).stopped) connectWebSocket(tab, true);
             }
           }
         });
@@ -762,3 +755,15 @@ function escHtml(str) {
   if (typeof str !== 'string') return '';
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
+
+
+// Declarative controls owned by this feature.
+uiActions.register("keydown", {
+  "submit-pin": function (event) { if(event.key==='Enter'){event.preventDefault();return submitPin();} },
+});
+uiActions.register("click", {
+  "submit-pin": function (event) { return submitPin(); },
+  "retry-server-now": function (event) { return retryServerNow(); },
+  "open-last-server": function (event) { return openLastServer(); },
+  "sign-out": function (event) { return signOut(); },
+});

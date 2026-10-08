@@ -414,6 +414,7 @@ footer a{color:var(--mut)}
       <div class="grp">Daily driver</div>
       <a href="#terminal"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg>Terminal</a>
       <a href="#editor"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>Editor &amp; previews</a>
+      <a href="#editing-safely"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Keep edits safe</a>
       <a href="#files"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>File manager</a>
       <a href="#git"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>Git panel</a>
       <a href="#commands"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>History &amp; commands</a>
@@ -538,12 +539,13 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
       </section>
 
       <!-- ── HOME / LAUNCHPAD ── -->
-      <section id="home" data-title="Home launchpad dashboard recent commands places pulse today">
+      <section id="home" data-title="Home launchpad dashboard new terminal shortcuts explorer sessions snippets recent commands places pulse today">
         <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--gn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg></span>
           <div><h2>Home base <a class="hash" href="#home" aria-label="Link to this section">#</a></h2></div>
         </div>
         <p class="sec-sub rv">No tabs open? You don't get an empty screen — you get the <b>Launchpad</b>. The Home button pinned left of the tab bar brings it back any time.</p>
         <ul class="tight rv">
+          <li><b>Start with New terminal.</b> The three shortcuts below it open <b>Sessions</b>, <b>Explorer</b>, and <b>Snippets</b>. SSH access is in the header menu or Settings → SSH Access.</li>
           <li><b>Recent commands, one key away.</b> Your greatest hits are listed as cards — click one, or just press <kbd>1</kbd>–<kbd>6</kbd> to launch-and-run it in a fresh tab.</li>
           <li><b>Places</b> jump you to favorite folders instantly; the <b>Today strip</b> keeps the current context in sight.</li>
           <li><b>Live system pulse</b> — a sparkline of host load right on the dashboard, so you know before you SSH in whether the box is sweating.</li>
@@ -552,20 +554,23 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
       </section>
 
       <!-- ── TERMINAL ── -->
-      <section id="terminal" data-title="Terminal tabs sessions links history tmux clipboard pin color duplicate reopen bell activity">
+      <section id="terminal" data-title="Terminal tabs sessions links history tmux clipboard pin color duplicate reopen bell activity reconnect network retries revoked denied new terminal plus button tab bar cursor prompt top blank space scroll scrollback touch swipe TUI trackpad wheel">
         <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--tl)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg></span>
           <div><h2>Terminal <a class="hash" href="#terminal" aria-label="Link to this section">#</a></h2></div>
         </div>
         <p class="sec-sub rv">A real shell in every tab — <b>not a simulation</b>. Full filesystem access, your own shell, links you can click.</p>
         <ul class="tight rv">
-          <li><b>Tabs for everything</b> — <kbd>Ctrl</kbd>+<kbd>T</kbd> opens one, <kbd>Ctrl</kbd>+<kbd>W</kbd> closes it, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>→</kbd>/<kbd>←</kbd> cycles. Double-click a tab to rename it, and your whole tab layout (terminals, app previews and open files) is remembered across reloads. The tab strip is <b>keyboard reachable</b> too: <kbd>Tab</kbd> onto the active tab, then <kbd>←</kbd>/<kbd>→</kbd> to move (or <kbd>Home</kbd>/<kbd>End</kbd> for the ends), and in tile view each tile header is focusable and activates with <kbd>Enter</kbd>.</li>
+          <li><b>Tabs for everything</b> — <kbd>Ctrl</kbd>+<kbd>T</kbd> opens one, <kbd>Ctrl</kbd>+<kbd>W</kbd> closes it, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>→</kbd>/<kbd>←</kbd> cycles. The <b>+</b> button follows the last tab on desktop and mobile and stays visible when the tab strip needs scrolling. Double-click a tab to rename it, and your whole tab layout (terminals, app previews and open files) is remembered across reloads. The tab strip is <b>keyboard reachable</b> too: <kbd>Tab</kbd> onto the active tab, then <kbd>←</kbd>/<kbd>→</kbd> to move (or <kbd>Home</kbd>/<kbd>End</kbd> for the ends), and in tile view each tile header is focusable and activates with <kbd>Enter</kbd>.</li>
           <li><b>Jump directly</b> with <kbd>Alt</kbd>+<kbd>1</kbd>…<kbd>8</kbd> (<kbd>Alt</kbd>+<kbd>9</kbd> always lands on the last tab), <b>rename</b> with <kbd>F2</kbd>, <b>duplicate</b> the current terminal in its working directory with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd>, and <b>reopen</b> an accidentally closed tab with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> (a fresh shell in the same directory — scrollback can't be restored). Middle-click closes any tab (pinned tabs ask first).</li>
           <li><b>Notification center</b> — every toast is also kept in the bell panel (header, left of Settings) until you clear it: per-item dismiss, swipe-to-dismiss on touch, plus <b>Clear all</b>, newest first, with the badge counting what arrived while it was closed. The log <b>survives reloads</b>, so history from before a refresh is still there. Toasts carry their own <b>× close button</b>, errors stick around longer (and are never pushed out by info bursts), and hovering a toast pauses its auto-dismiss.</li>
           <li><b>Right-click any tab</b> for the full menu: Rename, Duplicate, a 7-color tag (green for the API server, red for prod-ssh…), Pin, Clear Buffer, Restart Session, Close, Close Others, Close Tabs to the Right. Colors and pins survive reloads; pinned tabs keep their titles (with a pin marker and amber underline), group left, are skipped by bulk-close, and ask first before any single close (×, middle-click, <kbd>Ctrl</kbd>+<kbd>W</kbd> included) — pin with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>, and a reopened pinned tab comes back pinned. Right-click the <b>+</b> button (or empty tab-bar space) for New Terminal / Duplicate / New Preview / Tile View.</li>
           <li><b>Background tabs speak up.</b> Output in a tab you're not looking at raises a green activity dot, a terminal bell raises an amber badge, and an exited process dims the tab with a red marker — all cleared the moment you visit. When the strip overflows, arrow buttons scroll it and the <b>⌄ switcher</b> lists every tab with a live filter.</li>
+          <li><b>New shells start at the top.</b> If shell startup leaves only empty rows above the first prompt, WebTun asks the shell to redraw it at the top. Startup messages and restored sessions keep their position, and typing cancels the startup redraw.</li>
+          <li><b>Connection recovery is bounded.</b> Network failures retry with increasing delays. If reattachment keeps failing, WebTun tries one fresh session, then stops automatic retries and offers <b>Reconnect</b>. A refused or revoked login stops retries immediately; sign in again when prompted.</li>
           <li><b>Sessions survive accidents.</b> Refresh the page, close the laptop, drop Wi-Fi — your shells keep running server-side (via tmux when available) and reattach exactly where you left them. <b>List &amp; connect to all terminal sessions</b> — both WebTun tabs and <b>external terminal sessions</b> (tmux sessions started via SSH, scripts, or CLI) — directly from the Launchpad, the <b>Sessions</b> button (<kbd>Alt</kbd>+<kbd>S</kbd>), Quick Search (<kbd>⌘K</kbd>), or the header menu. Filter by All, WebTun, or External, search live across session names and directories, customize session labels, attach seamlessly into live interactive tabs, and manage them on both desktop and mobile with touch-optimized responsive controls.</li>
           <li><b>Tile view</b> lays every terminal out in a grid at once — and every open code file with it, so you can watch two logs and edit three files in one screen. Find it in the overflow menu when you're juggling.</li>
           <li><b>Search inside output</b> with <kbd>Ctrl</kbd>+<kbd>F</kbd> (match highlighting, optional case-sensitivity), and <b>click file paths &amp; URLs</b> printed by your tools to jump straight there.</li>
+          <li><b>Scroll output and TUI apps</b> with your mouse wheel or a touch swipe. Scrollback keeps trackpad movement smooth; alternate-screen apps receive wheel navigation or mouse-wheel events according to their terminal mode. In a shell, the keyboard up/down arrows remain available for command history; selection mode has separate Scroll up/down buttons for moving through output.</li>
           <li><b>Confirm on Close</b> guards tab closes (on by default) — and warns about unsaved editor changes before a tab disappears.</li>
           <li><b>Commands are remembered.</b> What you type is tracked (escape sequences filtered out), so the command library and history stay clean and reusable.</li>
           <li><b>Clipboard access is opt-in.</b> Programs can always <b>copy</b> to your clipboard, but <b>reading</b> it (OSC 52 paste, used by terminal editors) is off by default — otherwise stray output could quietly pull your clipboard into the session. Turn on <b>Settings → Terminal → Allow terminal clipboard read</b> when you want it.</li>
@@ -621,6 +626,19 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
       </section>
 
       <!-- ── FILES ── -->
+      <section id="editing-safely" data-title="Keep edits safe save newer unsaved changes slow network reload draft recovery restore undo panel tab native textarea offline action failures error toast notification keyboard menu">
+        <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
+          <div><h2>Keep edits safe <a class="hash" href="#editing-safely" aria-label="Link to this section">#</a></h2></div>
+        </div>
+        <ul class="tight rv">
+          <li><b>Keep typing while a save runs.</b> Save writes the version you submitted. Edits made while it is pending remain marked unsaved and keep their recovery draft; save again to write them.</li>
+          <li><b>Move a file without losing your place.</b> Panel and tab views keep the same edits, dirty marker, and undo history. Opening a different file starts its own undo history. When you leave an edited panel file, <b>Keep draft and open</b> preserves its recovery draft.</li>
+          <li><b>Late disk reads preserve newer edits.</b> If you type while a reload is pending, your text stays in place and <b>Changed on disk</b> remains visible. Review the disk version when ready.</li>
+          <li><b>Editing still works if the editor library cannot load.</b> A plain text area supports edits, saves, drafts, and moving files between panel and tab. Syntax highlighting returns when the library is available.</li>
+        </ul>
+        <p>Unexpected action failures show an error toast and stay in the Notification center.</p>
+      </section>
+
       <section id="files" data-title="File manager upload download zip rename move copy search transfers progress speed content search properties permissions clipboard folder hierarchy bookmarks bookmark favorites places">
         <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--gn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
           <div><h2>File manager <a class="hash" href="#files" aria-label="Link to this section">#</a></h2></div>
@@ -701,7 +719,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
       </section>
 
       <!-- ── REMOTE ── -->
-      <section id="remote" data-title="Remote access tunnel cloudflare URL phone share">
+      <section id="remote" data-title="Remote access tunnel cloudflare URL phone share localhost IPv6 local target">
         <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--vi)" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span>
           <div><h2>Remote access <a class="hash" href="#remote" aria-label="Link to this section">#</a></h2></div>
         </div>
@@ -739,6 +757,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
         </div>
         <p class="sec-sub rv">A PIN keeps strangers out. <b>Device approvals</b> keep surprises out — even from people who know the PIN.</p>
         <ul class="tight rv">
+          <li><b>Local tunnel targets</b> accept <code class="inl">http://localhost:PORT</code>, <code class="inl">http://127.0.0.1:PORT</code>, and <code class="inl">http://[::1]:PORT</code>. Metadata and link-local destinations remain blocked.</li>
           <li><b>New devices wait in line.</b> When someone signs in while you're active, their session stays <i>pending</i> until you approve it from your screen. It lapses automatically after 5 minutes.</li>
           <li><b>Review every login.</b> The triangle badge in the header collects unreviewed sign-ins — open the security review to see what, where, and when.</li>
           <li><b>Revoke in one click.</b> The sessions list shows every active device; kicking one drops its connections instantly — or <b>sign out all other devices</b> at once and keep only this one.</li>

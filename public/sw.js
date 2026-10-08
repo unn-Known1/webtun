@@ -1,4 +1,4 @@
-const CACHE = 'webtun-v39';
+const CACHE = 'webtun-v42';
 const PRECACHE = [
   '/',
   '/index.html',
@@ -13,9 +13,12 @@ const PRECACHE = [
   // offline and behind a CDN-blocked tunnel.
   '/vendor/marked.min.js',
   '/vendor/purify.min.js',
+  '/js/editor-buffers.js',
   '/js/core.js',
+  '/js/actions.js',
   '/js/ui.js',
   '/js/tabs.js',
+  '/js/terminal-connection.js',
   '/js/terminal.js',
   '/js/files.js',
   '/js/transfers.js',
@@ -71,6 +74,12 @@ self.addEventListener('fetch', e => {
   if (!e.request.url.startsWith('http://') && !e.request.url.startsWith('https://')) return;
 
   const url = new URL(e.request.url);
+  // Cross-origin (jsDelivr viewer libs, Google Fonts) stays out of the cache
+  // and out of respondWith entirely: the browser applies script-src/style-src
+  // itself. The SW's own fetch() of these is connect-src governed, and a
+  // blocked one fell through to offlineFallback() — a 503 "Offline" that broke
+  // the PDF/EPUB/DOCX/XLSX viewers for every PWA session.
+  if (url.origin !== self.location.origin) return;
   // Exact path-segment matches: '/api' must not over-match a future '/apidocs'.
   if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return;
   if (url.pathname === '/ws' || url.pathname.startsWith('/ws/')) return;

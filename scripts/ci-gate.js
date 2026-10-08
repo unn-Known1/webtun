@@ -48,6 +48,11 @@ const REQUIRED = [
   'server.js', 'package.json',
   'electron/main.js', 'electron/preload.js',
   'lib/cloudflared.js', 'public/index.html',
+  'lib/server/auth.js', 'lib/server/terminal.js', 'lib/server/tunnels.js',
+  'lib/server/files.js', 'lib/server/git.js', 'lib/server/paths.js',
+  'lib/server/process.js', 'lib/server/errors.js', 'lib/server/file-types.js',
+  'lib/server/network.js', 'public/js/actions.js',
+  'public/js/editor-buffers.js', 'public/js/terminal-connection.js',
   'node_modules/express/package.json', 'node_modules/ws/package.json',
   'node_modules/multer/package.json', 'node_modules/node-pty/package.json',
 ];

@@ -34,14 +34,26 @@ jobs:
 
       - run: npm ci
 
-      - name: Version + lockfile sync
-        run: npm run version:check
-
       - name: Packaging smoke test
         run: npm pack --dry-run
 
-      - name: Server entry loads
-        run: node -e "require('./server.js'); console.log('require ok'); process.exit(0)"
+      - name: Version, source and service regression tests
+        run: npm test
+
+      - name: Install browser for UI checks
+        run: npx playwright install --with-deps chromium
+
+      - name: Desktop and mobile regression tests
+        run: npm run test:e2e
+
+      - name: Browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: browser-test-results
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Dependency audit (production only)
         run: npm audit --omit=dev

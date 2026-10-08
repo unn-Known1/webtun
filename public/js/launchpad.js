@@ -354,3 +354,10 @@ function wireLpKeys() {
     if (row) { e.preventDefault(); row.click(); }
   });
 }
+
+// Declarative controls owned by this feature.
+uiActions.register("click", {
+  "toggle-launchpad": function (event) { return toggleLaunchpad(); },
+  "lp-open-explorer": function (event) { return lpOpenExplorer(); },
+  "start-screensaver-now": function (event) { return startScreensaverNow(); },
+});

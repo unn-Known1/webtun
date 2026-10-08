@@ -184,6 +184,27 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 
 ---
 
+## Development and verification
+
+The backend services live in `lib/server/`; `server.js` wires them into the existing HTTP and WebSocket entrypoints. The frontend uses classic deferred scripts without a bundler. `editor-buffers.js` owns file content, saves, and drafts across editor surfaces; `actions.js` connects named controls to handlers in each feature script.
+
+Use Node.js 20 or later for browser development checks; the application runtime still supports Node.js 18 or later.
+
+```bash
+npm ci
+npm test                         # version, source, API, editor, WS, and import checks
+npx playwright install chromium # once per machine
+npm run test:e2e                  # desktop and mobile browser regressions
+npm run test:all                  # both suites
+npm start                        # run the app for manual checks
+```
+
+Tests use temporary files and substitute the operating-system PTY. Browser checks exercise the real frontend and file/auth/Git/terminal handlers, including slow saves, draft recovery, file handovers, and blocked editor dependencies. PR and release verification run both suites before Electron packaging. Playwright is a development dependency and does not ship in the npm runtime.
+
+See [the architecture guide](docs/SYSTEM_ARCHITECTURE_AND_DESIGN_PRINCIPLES.md) for service boundaries, UI conventions, and verification limits. User-facing changes also belong in the built-in [user guide](public/docs.html).
+
+---
+
 ## Security
 
 - PIN authentication on all API endpoints (`x-pin-token` header or `?token=` query)
@@ -211,6 +232,13 @@ It's also built into the app: open `/docs` on any running instance, or Settings 
 ---
 
 ## Changelog
+
+### v2.3.4
+- **About card rebuilt** — the settings panel's About card is no longer hand-styled inline markup: rows are aligned flex rows with a consistent icon gutter, the card sits at the same inset as the other seven sections, and the version is a themed pill instead of loose grey text (hidden until the server answers). The repo URL is monospace and wraps instead of overflowing the drawer, and the repo/docs rows are full-width tap targets.
+- **App icon at the app title** — the header wordmark and the About brand row now use the app's own terminal-window icon (matching the PIN screen and the favicon/PWA icon) instead of an abstract prompt glyph that was hard to read at 16px, and the About row no longer borrows GitHub's logo for the product name.
+- **Web fonts actually load** — the CSP never allowed `fonts.googleapis.com` in `style-src`, so the IBM Plex Sans / JetBrains Mono stylesheet was refused on every request and the whole app silently rendered in fallback system fonts (`font-src` already allowed gstatic, so only the sheet was missing).
+- **Document viewers work offline from the service worker** — `connect-src` omitted `cdn.jsdelivr.net`, so once the service worker claimed the page its proxied lazy loads of pdf.js, JSZip, mammoth, xlsx and epub.js were CSP-blocked and the worker answered with its 503 "Offline" page: PDF/EPUB/DOCX/XLSX previews were broken for every PWA session. The worker now ignores cross-origin requests outright and lets the browser apply `script-src`/`style-src`.
+- **Clean command history** — the keystroke tracker treated any `ESC` + printable as an Alt-modified key, so `ESC [`/`ESC O`/`ESC ]` sequence introducers were eaten as "Alt+[" and the sequence *body* was recorded as typed text. One arrow key, or the device-attribute/colour reply burst every session starts with, was prepended to the next command saved in history (e.g. `?1;2c>0;276;0c10;rgb:…export PS1=…`). Sequences are now recognised before the Meta branch, and the history sanitizer peels introducer-less VT replies.
 
 ### v2.3.3
 - **File previews** — Markdown and HTML preview libraries are bundled for offline use; the split-panel Preview button now targets its own editor when file tabs are open and works with the textarea fallback when CodeMirror is unavailable.

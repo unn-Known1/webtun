@@ -1,0 +1,10 @@
+'use strict';
+const fs = require('fs');
+const path = require('path');
+const { spawnSync } = require('child_process');
+const root = path.join(__dirname,'..');
+const tests = fs.readdirSync(path.join(root,'tests')).filter(name => name.endsWith('.test.js')).sort().map(name => path.join(root,'tests',name));
+if (!tests.length) throw new Error('No regression tests found');
+const result = spawnSync(process.execPath,['--test',...tests],{ cwd: root,stdio:'inherit' });
+if (result.error) throw result.error;
+process.exit(result.status ?? 1);

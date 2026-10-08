@@ -458,3 +458,13 @@ async function refreshPortsModal() {
     if (listEl) listEl.innerHTML = '<div style="padding:16px;color:var(--red);font-size:12px;text-align:center">Failed to scan listening ports</div>';
   }
 }
+
+// Declarative controls owned by this feature.
+uiActions.register("click", {
+  "new-preview-prompt": function (event) { return newPreviewPrompt(); },
+  "refresh-ports-modal": function (event) { return refreshPortsModal(); },
+  "confirm-new-preview": function (event) { return confirmNewPreview(); },
+});
+uiActions.register("keydown", {
+  "confirm-new-preview": function (event) { if(event.key==='Enter')confirmNewPreview(); },
+});

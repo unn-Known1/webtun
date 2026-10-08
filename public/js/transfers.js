@@ -148,8 +148,8 @@ function txRender(force) {
     const showPct = (j.total > 0 && j.loaded > 0) || j.filesTotal > 1;
     const st = j.status === 'done' ? 'done' : j.status === 'error' ? 'error' : j.status === 'waiting' ? 'waiting' : 'active';
     const canCancel = j.status === 'active';
-    const btn2 = canCancel ? `<button class="tx-act danger" onclick="cancelTransfer('${j.id}')">Stop</button>`
-      : (j.status !== 'active' && j.status !== 'waiting') ? `<button class="tx-act" onclick="dismissTransfer('${j.id}')">Dismiss</button>` : '';
+    const btn2 = canCancel ? `<button class="tx-act danger" data-action="cancel-transfer" data-transfer-id="${j.id}">Stop</button>`
+      : (j.status !== 'active' && j.status !== 'waiting') ? `<button class="tx-act" data-action="dismiss-transfer" data-transfer-id="${j.id}">Dismiss</button>` : '';
     return `<div class="tx-job" data-status="${st}"><div class="tx-row1"><span class="tx-ico ${j.type === 'download' ? 'dl' : j.type === 'copy' || j.type === 'move' ? 'mv' : ''}">${ico(j.type)}</span><span class="tx-name" title="${escHtml(j.label)}">${escHtml(j.label)}</span><span class="tx-pct">${showPct ? pct + '%' : ''}</span></div>`
       + `<div class="tx-bar" role="progressbar" aria-label="${escHtml(j.label)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><div class="tx-fill ${(j.status === 'active' && !measurable && j.filesTotal <= 1) ? 'indet' : ''}" style="${showPct ? 'width:' + pct + '%' : ''}"></div></div>`
       + `<div class="tx-row2"><span class="tx-meta" aria-live="off">${escHtml(txJobLine(j))}</span>${btn2}</div></div>`;
@@ -366,3 +366,16 @@ async function uploadFileList(items) {
   
   refreshFiles();
 }
+
+// Declarative controls owned by this feature.
+uiActions.register("click", {
+  "toggle-transfers-panel": function (event) { return toggleTransfersPanel(event); },
+  "cancel-upload": function (event) { return cancelUpload(); },
+  "clear-finished-transfers": function (event) { return clearFinishedTransfers(); },
+  "toggle-transfers-panel-2": function (event) { return toggleTransfersPanel(event, true); },
+});
+
+uiActions.register('click', {
+  'cancel-transfer': function () { return cancelTransfer(this.dataset.transferId); },
+  'dismiss-transfer': function () { return dismissTransfer(this.dataset.transferId); },
+});

@@ -235,8 +235,7 @@ function restartTabSession(id) {
     tab.sessionId = (typeof uuid === 'function') ? uuid() : String(Date.now());
     try { tab.term?.clear(); } catch {}
     try { tab.term?.writeln('\x1b[33m[Restarting session…]\x1b[0m'); } catch {}
-    tab.reconnectDelay = 1000;
-    tab.reconnectAttempts = 0;
+    terminalRetryPolicy(tab).reset();
     connectWebSocket(tab, false);
     toast('Session restarting…', 'info');
   } catch (e) { console.warn('restartTabSession failed:', e); }
@@ -258,7 +257,7 @@ async function bulkCloseTabs(targetIds, label) {
   // crash-safety draft instead of calling them clean.
   const dirtyFile = closable.some(t => {
     if (t.type !== 'file') return false;
-    if (t.cm) return t.cm.getValue() !== t.original;
+    if (t.cm) return t.cm.getValue() !== t.document.original;
     try { return typeof loadDraft === 'function' && loadDraft(t.path) != null; } catch { return false; }
   });
   if (dirtyFile) {
@@ -306,6 +305,7 @@ function updateTabOverflow() {
     if (!scroll) return;
     const overflow = scroll.scrollWidth > scroll.clientWidth + 2;
     const maxScroll = scroll.scrollWidth - scroll.clientWidth;
+    scroll.classList.toggle('can-scroll-right', overflow && scroll.scrollLeft < maxScroll - 2);
     if (left) left.style.display = (overflow && scroll.scrollLeft > 2) ? 'flex' : 'none';
     if (right) right.style.display = (overflow && scroll.scrollLeft < maxScroll - 2) ? 'flex' : 'none';
   } catch {}
@@ -889,7 +889,8 @@ function createTerminalWrapper(tab) {
 function newTab(title, sessionId, dir, opts = {}) {
   const id = ++tabCounter;
   const sid = sessionId || uuid();
-  const tab = { id, type: 'term', sessionId: sid, title: title || `Term ${nextTermNumber()}`, term: null, fitAddon: null, ws: null, el: null, wrapper: null, closed: false, reconnectDelay: 1000, dataDisposable: null, resizeDisposable: null, resizeObserver: null, cwd: dir || currentPath, color: (opts && opts.color) || '', pinned: !!(opts && opts.pinned) };
+  const tab = { id, type: 'term', sessionId: sid, title: title || `Term ${nextTermNumber()}`, term: null, fitAddon: null, ws: null, el: null, wrapper: null, closed: false, dataDisposable: null, resizeDisposable: null, resizeObserver: null, cwd: dir || currentPath, color: (opts && opts.color) || '', pinned: !!(opts && opts.pinned) };
+  tab._initialPromptPending = !sessionId;
   tabs.push(tab);
   createTabButton(tab);
   createTerminalWrapper(tab);
@@ -987,7 +988,7 @@ function renderFilteredSessions(sessions) {
     listEl.innerHTML = `
       <div style="padding:28px 12px;text-align:center;color:var(--fg3);font-size:13px">
         No matching terminal sessions found.<br>
-        <button class="btn btn-primary" onclick="closeOverlay('term-sessions-overlay');newTab();" style="margin-top:12px;height:32px;padding:0 14px;font-size:12px">
+        <button class="btn btn-primary" data-action="close-overlay-term-sessions-overlay" style="margin-top:12px;height:32px;padding:0 14px;font-size:12px">
           + Start New Terminal
         </button>
       </div>`;
@@ -1324,8 +1325,9 @@ async function closeTab(e, id, opts = {}) {
     // Text tabs own their buffer, so this is their own editor — not the panel's.
     // A parked tab (restored, never mounted) has cm == null: its draft is the
     // only record of unsaved work, so check that instead of calling it clean.
-    let dirty = !!(closing.cm && closing.cm.getValue() !== closing.original);
-    if (!closing.cm && closing.path) {
+    if (closing.cm) closing.document.buffer?.setContent(closing.cm.getValue());
+    let dirty = !!closing.document.buffer?.dirty;
+    if (!closing.document.buffer && closing.path) {
       try { dirty = typeof loadDraft === 'function' && loadDraft(closing.path) != null; } catch {}
     }
     if (dirty && !opts.force) {
@@ -1334,13 +1336,13 @@ async function closeTab(e, id, opts = {}) {
       // Explicit discard: drop the crash-safety draft so it is not offered again.
       if (closing.path) removeDraft(closing.path);
     }
-  } else if (_dockedFileTabId != null && closing && closing.id === _dockedFileTabId && !isDocPreview && currentContent !== editorOriginalContent) {
+  } else if (_dockedFileTabId != null && closing && closing.id === _dockedFileTabId && !isDocPreview && currentContent !== panelState.original) {
     // The closing tab owns the live panel buffer: discarding the tab discards
     // those edits. Unrelated terminal/preview tabs never prompt for the panel.
     const ok = await confirmDialog({ title: 'Unsaved changes', message: 'You have unsaved changes. Close anyway?', okText: 'Discard', cancelText: 'Keep Editing', danger: true });
     if (!ok) return;
     if (closing.path) removeDraft(closing.path);
-  } else if (_dockedFileTabId == null && editorOpen && !isDocPreview && currentContent !== editorOriginalContent && closing && (closing.type !== 'term' && closing.type !== 'preview')) {
+  } else if (_dockedFileTabId == null && editorOpen && !isDocPreview && currentContent !== panelState.original && closing && (closing.type !== 'term' && closing.type !== 'preview')) {
     // Panel mode (nothing docked): only a file-tab close can discard the
     // panel buffer. Closing an unrelated terminal/preview tab leaves it alone.
     const ok = await confirmDialog({ title: 'Unsaved changes', message: 'You have unsaved changes. Close anyway?', okText: 'Close', cancelText: 'Cancel', danger: true });
@@ -1510,3 +1512,22 @@ function setupTabBarDnD() {
     moveTabToEnd(tabDndId(e.dataTransfer));
   });
 }
+
+// Declarative controls owned by this feature.
+uiActions.register("click", {
+  "scroll-tab-bar": function (event) { return scrollTabBar(-1); },
+  "new-tab": function (event) { return newTab(); },
+  "scroll-tab-bar-2": function (event) { return scrollTabBar(1); },
+  "open-terminal-sessions-modal": function (event) { return openTerminalSessionsModal(); },
+  "hide-tab-menus": function (event) { hideTabMenus();return openTerminalSessionsModal(); },
+  "hide-tab-menus-2": function (event) { hideTabMenus();newTab(); },
+  "hide-tab-menus-3": function (event) { hideTabMenus();newPreviewPrompt(); },
+  "hide-tab-menus-4": function (event) { return hideTabMenus(); },
+  "refresh-terminal-sessions-modal": function (event) { return refreshTerminalSessionsModal(); },
+  "set-terminal-sessions-filter-all": function (event) { return setTerminalSessionsFilter('all'); },
+  "set-terminal-sessions-filter-webtun": function (event) { return setTerminalSessionsFilter('webtun'); },
+  "set-terminal-sessions-filter-external": function (event) { return setTerminalSessionsFilter('external'); },
+});
+uiActions.register("input", {
+  "filter-terminal-sessions-list": function (event) { return filterTerminalSessionsList(); },
+});

@@ -52,7 +52,7 @@
 <link rel="stylesheet" href="css/styles.css">
 </head>
 <body data-theme="light">
-<a class="skip-link" href="#content" onclick="document.getElementById('content')?.setAttribute('tabindex','-1');document.getElementById('content')?.focus();">Skip to content</a>
+<a class="skip-link" href="#content" data-action="focus-workspace-content">Skip to content</a>
 <script src="js/theme-init.js"></script>
 
 <!-- PIN Screen -->
@@ -61,10 +61,10 @@
     <div class="pin-eyebrow">Secure access</div>
     <h1 style="display:flex;align-items:center;justify-content:center;gap:6px"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="10" y2="8"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="6" y1="16" x2="8" y2="16"/><line x1="12" y1="8" x2="18" y2="8"/><line x1="12" y1="12" x2="18" y2="12"/><line x1="12" y1="16" x2="16" y2="16"/><line x1="10" y1="16" x2="10" y2="16"/></svg>WebTun</h1>
     <p>Enter PIN to continue</p>
-    <input id="pin-input" type="password" placeholder="••••" autocomplete="off" maxlength="64" inputmode="text" aria-label="PIN code" onkeydown="if(event.key==='Enter'){event.preventDefault();submitPin()}">
+    <input id="pin-input" type="password" placeholder="••••" autocomplete="off" maxlength="64" inputmode="text" aria-label="PIN code" data-keydown-action="submit-pin">
     <div id="pin-error" role="alert"></div>
     <div style="margin-top:12px">
-      <button class="btn btn-primary" id="pin-unlock-btn" onclick="submitPin()">Unlock</button>
+      <button class="btn btn-primary" id="pin-unlock-btn" data-action="submit-pin">Unlock</button>
     </div>
     <div class="pin-hint">Protected by PIN • WebTun</div>
   </div>
@@ -77,8 +77,8 @@
     <p id="offline-detail">Can't reach the WebTun server. It may be starting up or stopped.</p>
     <div id="offline-last"></div>
     <div>
-      <button class="btn btn-primary" onclick="retryServerNow()">Retry now</button>
-      <button class="btn" id="offline-open-last" onclick="openLastServer()" style="display:none">Open last known server</button>
+      <button class="btn btn-primary" data-action="retry-server-now">Retry now</button>
+      <button class="btn" id="offline-open-last" data-action="open-last-server" style="display:none">Open last known server</button>
     </div>
     <div class="pin-hint">Retrying automatically • WebTun</div>
   </div>
@@ -88,59 +88,61 @@
 <div id="app" style="display:none">
   <!-- Header -->
   <div id="header" role="banner">
-    <button id="conn-status" type="button" aria-label="Open System Stats" title="Connected — open System Stats" onclick="openSystemStats()"></button>
+    <button id="conn-status" type="button" aria-label="Open System Stats" title="Connected — open System Stats" data-action="open-system-stats"></button>
     <span id="conn-status-text" class="sr-only" role="status" aria-live="polite">Connected</span>
-    <span id="logo" style="display:flex;align-items:center;gap:6px" title="WebTun v2.3.3">
-      <svg class="logo-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="4 17 10 11 4 5"/>
-        <line x1="12" y1="19" x2="20" y2="19"/>
-        <circle cx="17" cy="8" r="4" stroke="currentColor" stroke-width="1.8" stroke-dasharray="2 2" opacity="0.6"/>
+    <span class="control-row control-row-compact" id="logo" title="WebTun v2.3.4">
+      <svg class="logo-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="2" y="4" width="20" height="16" rx="2"/>
+        <line x1="6" y1="8" x2="10" y2="8"/>
+        <line x1="6" y1="12" x2="10" y2="12"/>
+        <line x1="12" y1="8" x2="18" y2="8"/>
+        <line x1="12" y1="12" x2="18" y2="12"/>
       </svg>WebTun
     </span>
-    <button id="hostname-badge" onclick="openSshPanel()" title="Active host — click to manage SSH & connections">—</button>
-    <button class="header-palette-btn" onclick="openFinder()" title="Quick search (Ctrl+K or Ctrl+P)">
+    <button id="hostname-badge" data-action="open-ssh-panel" title="Active host — click to manage SSH & connections">—</button>
+    <button class="header-palette-btn" data-action="open-finder" title="Quick search (Ctrl+K or Ctrl+P)">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <span>Quick search…</span>
       <kbd>⌘K</kbd>
     </button>
     <div class="header-spacer"></div>
-    <button class="icon-btn" id="security-alert-btn" aria-label="Security alert: unreviewed login" title="Unreviewed login — click to review sessions" onclick="openSecurityReview()" style="display:none;color:var(--amber, #e5a50a)">
+    <button class="icon-btn" id="security-alert-btn" aria-label="Security alert: unreviewed login" title="Unreviewed login — click to review sessions" data-action="open-security-review" style="display:none;color:var(--amber, #e5a50a)">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
       <span id="security-alert-count" class="count-badge" aria-hidden="true"></span>
     </button>
     <label id="keep-awake-toggle" class="keep-awake" title="Keep Screen Awake">
-      <input type="checkbox" id="keep-awake-cb" aria-label="Keep screen awake" onchange="toggleKeepAwake(this.checked)">
+      <input type="checkbox" id="keep-awake-cb" aria-label="Keep screen awake" data-change-action="toggle-keep-awake">
       <span class="awake-cup" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path class="steam s1" d="M7.5 8.5c-1.2-1.4 1.2-2.2 0-3.6"/><path class="steam s2" d="M11.5 8.5c-1.2-1.4 1.2-2.2 0-3.6"/><path class="steam s3" d="M15.5 8.5c-1.2-1.4 1.2-2.2 0-3.6"/><path d="M4 10.5h13V16a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4v-5.5z"/><path d="M17 11.5h1.5a2.5 2.5 0 0 1 0 5H17"/><text id="sess-cup-num" x="10" y="17" text-anchor="middle" font-size="7.5" font-weight="700" fill="var(--accent)" stroke="none" style="display:none"></text></svg>
       </span>
     </label>
-    <button class="icon-btn mobile-only-btn" id="mobile-search-btn" aria-label="Find in terminal" title="Find in terminal" onclick="toggleTermSearch()">
+    <button class="icon-btn mobile-only-btn" id="mobile-search-btn" aria-label="Find in terminal" title="Find in terminal" data-action="toggle-term-search">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
     </button>
-    <button class="icon-btn" id="transfers-btn" aria-label="Transfers" title="Transfers — uploads, downloads, copy/move" aria-haspopup="dialog" aria-expanded="false" onclick="toggleTransfersPanel(event)" style="display:none">
+    <button class="icon-btn" id="transfers-btn" aria-label="Transfers" title="Transfers — uploads, downloads, copy/move" aria-haspopup="dialog" aria-expanded="false" data-action="toggle-transfers-panel" style="display:none">
       <svg class="tx-arrows" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="tx-up" d="M7 3v9"/><path class="tx-up" d="m4 6 3-3 3 3"/><path class="tx-down" d="M17 21v-9"/><path class="tx-down" d="m14 18 3 3 3-3"/><circle class="tx-pkt tx-p1" cx="7" cy="13" r="1.7" fill="currentColor" stroke="none"/><circle class="tx-pkt tx-p2" cx="17" cy="11" r="1.7" fill="currentColor" stroke="none"/></svg>
       <span id="transfers-count" class="count-badge" aria-hidden="true">0</span>
     </button>
-    <button class="icon-btn" id="sidebar-toggle" aria-label="Toggle sidebar" title="Toggle Explorer (Ctrl+B)" onclick="toggleSidebar()">
+    <button class="icon-btn" id="sidebar-toggle" aria-label="Toggle sidebar" title="Toggle Explorer (Ctrl+B)" data-action="toggle-sidebar">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
     </button>
-    <button class="icon-btn" id="system-stats-btn" aria-label="System Stats" title="System Stats" onclick="openSystemStats()">
+    <button class="icon-btn" id="system-stats-btn" aria-label="System Stats" title="System Stats" data-action="open-system-stats">
       <svg id="sys-live-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="2.5" opacity="0.4"/><rect id="sys-ico-cpu" x="4.6" y="5.6" width="0" height="2.8" rx="1.4" stroke="none" style="fill:var(--accent)"/><rect x="3" y="14" width="18" height="6" rx="2.5" opacity="0.4"/><rect id="sys-ico-mem" x="4.6" y="15.6" width="0" height="2.8" rx="1.4" stroke="none" style="fill:var(--cyan)"/></svg>
     </button>
-    <button class="icon-btn" id="more-btn" aria-label="More options" title="More options" onclick="toggleMoreMenu(event)">
+    <button class="icon-btn" id="more-btn" aria-label="More options" title="More options" data-action="toggle-more-menu">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
     </button>
-    <button id="notif-btn" class="icon-btn" aria-label="Notifications" title="Notifications" aria-haspopup="dialog" aria-expanded="false" onclick="toggleNotifPanel()">
+    <button id="notif-btn" class="icon-btn" aria-label="Notifications" title="Notifications" aria-haspopup="dialog" aria-expanded="false" data-action="toggle-notif-panel">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
       <span id="notif-count" class="count-badge" aria-hidden="true">0</span>
     </button>
-    <button id="settings-btn" class="icon-btn" aria-label="Settings" title="Settings" onclick="openSettings()">
+    <button id="settings-btn" class="icon-btn" aria-label="Settings" title="Settings" data-action="open-settings">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     </button>
-    <div id="upload-progress"><div id="upload-progress-bar"></div><span id="upload-progress-text"></span><button id="upload-cancel-btn" aria-label="Cancel upload" title="Cancel upload" onclick="cancelUpload()">Cancel</button></div>
+    <div id="upload-progress"><div id="upload-progress-bar"></div><span id="upload-progress-text"></span><button id="upload-cancel-btn" aria-label="Cancel upload" title="Cancel upload" data-action="cancel-upload">Cancel</button></div>
     <div id="transfers-livebar" aria-hidden="true"><div></div></div>
     <div id="transfers-panel" role="dialog" aria-label="File transfers">
-      <div class="tx-head"><span>Transfers</span><span class="tx-sub" id="transfers-sub"></span><span class="tx-spacer"></span><button onclick="clearFinishedTransfers()" title="Dismiss finished">Clear finished</button><button onclick="toggleTransfersPanel(event, true)" aria-label="Close transfers">✕</button></div>
+      <div class="tx-head"><span>Transfers</span><span class="tx-sub" id="transfers-sub"></span><span class="tx-spacer"></span><button data-action="clear-finished-transfers" title="Dismiss finished">Clear finished</button><button data-action="toggle-transfers-panel-2" aria-label="Close transfers">✕</button></div>
       <div id="transfers-list"></div>
     </div>
   </div>
@@ -152,35 +154,35 @@
     <div id="sidebar" role="navigation" aria-label="File explorer">
       <div id="sidebar-header">
         <div class="hdr-seg" role="group" aria-label="History navigation">
-          <button class="icon-btn" aria-label="Back" title="Back" onclick="navigateBack()" id="back-btn">
+          <button class="icon-btn" aria-label="Back" title="Back" data-action="navigate-back" id="back-btn">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
           </button>
-          <button class="icon-btn" aria-label="Forward" title="Forward" onclick="navigateForward()" id="fwd-btn">
+          <button class="icon-btn" aria-label="Forward" title="Forward" data-action="navigate-forward" id="fwd-btn">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           </button>
         </div>
-        <button class="icon-btn" aria-label="Go to terminal directory" title="Go to terminal directory" onclick="goToTerminalDir()" id="term-dir-btn">
+        <button class="icon-btn" aria-label="Go to terminal directory" title="Go to terminal directory" data-action="go-to-terminal-dir" id="term-dir-btn">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
         </button>
         <span class="hdr-sep" aria-hidden="true"></span>
-        <button class="icon-btn" aria-label="Go up" title="Go up" onclick="navigateUp()">
+        <button class="icon-btn" aria-label="Go up" title="Go up" data-action="navigate-up">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
         </button>
-        <button class="icon-btn" aria-label="Refresh" title="Refresh" onclick="refreshFiles()" id="refresh-btn">
+        <button class="icon-btn" aria-label="Refresh" title="Refresh" data-action="refresh-files" id="refresh-btn">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
         </button>
-        <button class="icon-btn" aria-label="Search file contents" title="Search file contents" onclick="openContentSearch()">
+        <button class="icon-btn" aria-label="Search file contents" title="Search file contents" data-action="open-content-search">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M8 11h6M11 8v6"/></svg>
         </button>
         <span class="hdr-sep" aria-hidden="true"></span>
-        <button class="icon-btn" aria-label="Toggle select mode" title="Toggle select mode" onclick="toggleSelectMode()">
+        <button id="file-select-toggle" class="icon-btn" aria-label="Toggle select mode" title="Toggle select mode" data-action="toggle-select-mode">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="9 12 11 14 15 10"/></svg>
         </button>
       </div>
       <div id="path-bar">
         <div id="path-segments" role="navigation" aria-label="Breadcrumb">/</div>
         <input id="path-input" type="text" placeholder="Path…" aria-label="File path" style="display:none">
-        <button class="icon-btn" id="path-edit-btn" style="width:28px;height:28px;min-width:28px;min-height:28px;flex-shrink:0" aria-label="Edit path" title="Edit path (type any path, Enter to go)" onclick="enterPathEdit()">
+        <button class="icon-btn" id="path-edit-btn" style="width:28px;height:28px;min-width:28px;min-height:28px;flex-shrink:0" aria-label="Edit path" title="Edit path (type any path, Enter to go)" data-action="enter-path-edit">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>
         </button>
       </div>
@@ -193,42 +195,42 @@
       </div>
       <div id="select-actions" style="display:none;padding:6px 8px;border-top:1px solid var(--border);background:var(--bg2);gap:3px;flex-wrap:wrap">
         <span id="select-count" style="font-size:11px;color:var(--fg2);line-height:28px;flex:1"></span>
-        <button class="sidebar-action-btn" id="select-all-btn" onclick="selectAllFiles()">Select All</button>
-        <button class="sidebar-action-btn" onclick="deleteSelected()">Delete</button>
-        <button class="sidebar-action-btn" onclick="downloadSelected()">Download</button>
-        <button class="sidebar-action-btn" onclick="clearSelection()">Cancel</button>
+        <button class="sidebar-action-btn" id="select-all-btn" data-action="select-all-files">Select All</button>
+        <button class="sidebar-action-btn" data-action="delete-selected">Delete</button>
+        <button class="sidebar-action-btn" data-action="download-selected">Download</button>
+        <button class="sidebar-action-btn" data-action="clear-selection">Cancel</button>
       </div>
-      <div id="bookmarks-header" role="button" tabindex="0" title="Hover to peek • click to pin" aria-expanded="true" aria-controls="bookmarks-list" onclick="toggleBookmarks()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleBookmarks();}"><span class="bm-head-ico" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></span>Bookmarks <span id="bm-count"></span><span class="bm-chev" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></span></div>
+      <div id="bookmarks-header" role="button" tabindex="0" title="Hover to peek • click to pin" aria-expanded="true" aria-controls="bookmarks-list" data-action="toggle-bookmarks" data-keydown-action="toggle-bookmarks"><span class="bm-head-ico" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></span>Bookmarks <span id="bm-count"></span><span class="bm-chev" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></span></div>
       <div id="bookmarks-list"><div class="bm-inner" id="bookmarks-inner"></div></div>
       <div id="git-section" style="display:none">
-        <div id="git-header" role="button" tabindex="0" aria-expanded="true" aria-controls="git-panel" onclick="toggleGitPanel()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleGitPanel();}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg> Git <select id="git-branch-sel" title="Switch branch" aria-label="Switch branch" onclick="event.stopPropagation()" onkeydown="event.stopPropagation()" onchange="gitSwitchBranch(this.value)"></select><button id="git-branch-add" title="New branch" aria-label="New branch" onclick="event.stopPropagation();gitBranchNew()">+</button><span id="git-sync" style="font-size:10px"></span><span id="git-count" style="margin-left:auto;font-size:10px"></span></div>
+        <div id="git-header" role="button" tabindex="0" aria-expanded="true" aria-controls="git-panel" data-action="toggle-git-panel" data-keydown-action="toggle-git-panel"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg> Git <select id="git-branch-sel" title="Switch branch" aria-label="Switch branch" data-action="focus-workspace" data-keydown-action="focus-workspace" data-change-action="git-switch-branch"></select><button id="git-branch-add" title="New branch" aria-label="New branch" data-action="git-branch-new">+</button><span id="git-sync" style="font-size:10px"></span><span id="git-count" style="margin-left:auto;font-size:10px"></span></div>
         <div id="git-newbranch-row" style="display:none">
           <input id="git-newbranch-input" type="text" placeholder="new-branch-name" aria-label="New branch name" maxlength="100">
-          <button class="sidebar-action-btn" onclick="gitBranchCreate()">Create</button>
-          <button class="sidebar-action-btn" onclick="gitBranchNewCancel()">Cancel</button>
+          <button class="sidebar-action-btn" data-action="git-branch-create">Create</button>
+          <button class="sidebar-action-btn" data-action="git-branch-new-cancel">Cancel</button>
         </div>
         <div class="field-error" id="git-branch-error" role="alert" style="padding:0 8px"></div>
         <div id="git-init-row" style="display:none">
           <span>Not a git repository</span>
-          <button class="sidebar-action-btn" id="git-init-btn" onclick="gitInit()">Init repo here</button>
+          <button class="sidebar-action-btn" id="git-init-btn" data-action="git-init">Init repo here</button>
         </div>
         <div id="git-panel">
           <div id="git-files"></div>
           <div id="git-identity-row" style="display:none">
             <input id="git-id-name" type="text" placeholder="Your name" aria-label="Git author name" maxlength="100">
             <input id="git-id-email" type="email" placeholder="you@example.com" aria-label="Git author email" maxlength="100">
-            <button class="sidebar-action-btn" onclick="gitSaveIdentity()" title="Save author identity for this repo">Save</button>
+            <button class="sidebar-action-btn" data-action="git-save-identity" title="Save author identity for this repo">Save</button>
           </div>
           <div class="field-error" id="git-identity-error" role="alert" style="padding:0 8px"></div>
           <div id="git-commit-row">
-            <input id="git-msg" type="text" placeholder="Commit message…" aria-label="Commit message" maxlength="1000" oninput="clearFieldError('git-msg-error')">
-            <button class="sidebar-action-btn" id="git-commit-btn" onclick="gitCommit()" title="Commit staged changes">Commit</button>
-            <button class="sidebar-action-btn git-rare" id="git-amend-btn" onclick="gitAmend()" title="Amend last commit with staged changes">Amend</button>
+            <input id="git-msg" type="text" placeholder="Commit message…" aria-label="Commit message" maxlength="1000" data-input-action="clear-field-error-git-msg-error">
+            <button class="sidebar-action-btn" id="git-commit-btn" data-action="git-commit" title="Commit staged changes">Commit</button>
+            <button class="sidebar-action-btn git-rare" id="git-amend-btn" data-action="git-amend" title="Amend last commit with staged changes">Amend</button>
           </div>
           <div class="field-error" id="git-msg-error" role="alert" style="padding:0 8px"></div>
           <label id="git-all-row"><input type="checkbox" id="git-all-cb"> Stage all + commit</label>
           <div id="git-stash-row" class="git-rare">
-            <button class="sidebar-action-btn" id="git-stash-btn" onclick="gitStash()" title="Stash tracked changes (commit box text becomes the message)">Stash</button>
+            <button class="sidebar-action-btn" id="git-stash-btn" data-action="git-stash" title="Stash tracked changes (commit box text becomes the message)">Stash</button>
             <span id="git-stash-count"></span>
           </div>
           <div id="git-stash-list" class="git-rare"></div>
@@ -238,10 +240,10 @@
               <option value="rebase">rebase</option>
               <option value="ff-only">ff-only</option>
             </select>
-            <button class="sidebar-action-btn" id="git-pull-btn" onclick="gitPull()" title="git pull">Pull</button>
-            <button class="sidebar-action-btn" id="git-push-btn" onclick="gitPush()" title="git push">Push</button>
-            <button class="sidebar-action-btn git-rare" id="git-fetch-btn" onclick="gitFetch()" title="git fetch --all">Fetch</button>
-            <button class="sidebar-action-btn git-rare" onclick="refreshGitPanel(currentPath, true)" title="Refresh git status">Refresh</button>
+            <button class="sidebar-action-btn" id="git-pull-btn" data-action="git-pull" title="git pull">Pull</button>
+            <button class="sidebar-action-btn" id="git-push-btn" data-action="git-push" title="git push">Push</button>
+            <button class="sidebar-action-btn git-rare" id="git-fetch-btn" data-action="git-fetch" title="git fetch --all">Fetch</button>
+            <button class="sidebar-action-btn git-rare" data-action="refresh-git-panel" title="Refresh git status">Refresh</button>
           </div>
           <div id="git-reset-row" class="git-rare">
             <select id="git-reset-mode" title="Reset mode" aria-label="Reset mode">
@@ -250,36 +252,36 @@
               <option value="hard">hard</option>
             </select>
             <input id="git-reset-ref" type="text" value="HEAD" aria-label="Reset target" spellcheck="false">
-            <button class="sidebar-action-btn" onclick="gitReset()" title="Reset to ref">Reset</button>
+            <button class="sidebar-action-btn" data-action="git-reset" title="Reset to ref">Reset</button>
           </div>
           <div class="field-error" id="git-reset-error" role="alert" style="padding:0 8px"></div>
           <div id="git-tags-row" class="git-rare">
             <input id="git-tag-input" type="text" placeholder="v1.0.0" aria-label="New tag name" maxlength="200">
             <input id="git-tag-msg" type="text" placeholder="message (optional)" aria-label="Tag message" maxlength="500">
-            <button class="sidebar-action-btn" onclick="gitTagCreate()" title="Create tag">Tag</button>
+            <button class="sidebar-action-btn" data-action="git-tag-create" title="Create tag">Tag</button>
           </div>
           <div class="field-error" id="git-tag-error" role="alert" style="padding:0 8px"></div>
           <div id="git-tags-list" class="git-rare"></div>
           <div id="git-log"></div>
           <div id="git-foot-row" style="display:none">
-            <button class="sidebar-action-btn" id="git-adv-toggle" onclick="toggleGitAdvanced()" aria-expanded="false" title="Show rarely-used git actions">Show advanced…</button>
+            <button class="sidebar-action-btn" id="git-adv-toggle" data-action="toggle-git-advanced" aria-expanded="false" title="Show rarely-used git actions">Show advanced…</button>
           </div>
         </div>
       </div>
       <div id="sidebar-footer" role="toolbar" aria-label="File actions">
-        <button class="icon-btn" onclick="bookmarkCurrentDir()" title="Bookmark current directory" aria-label="Bookmark current directory">
+        <button class="icon-btn" data-action="bookmark-current-dir" title="Bookmark current directory" aria-label="Bookmark current directory">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
         </button>
-        <button class="icon-btn" onclick="uploadFiles()" title="Upload files" aria-label="Upload files">
+        <button class="icon-btn" data-action="upload-files" title="Upload files" aria-label="Upload files">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         </button>
-        <button class="icon-btn" onclick="newFolder()" title="New folder" aria-label="New folder">
+        <button class="icon-btn" data-action="new-folder" title="New folder" aria-label="New folder">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
         </button>
-        <button class="icon-btn" onclick="newFile()" title="New file" aria-label="New file">
+        <button class="icon-btn" data-action="new-file" title="New file" aria-label="New file">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
         </button>
-        <button class="icon-btn" id="footer-paste-btn" onclick="pasteFromClipboard(currentPath)" title="Paste" aria-label="Paste" style="display:none">
+        <button class="icon-btn" id="footer-paste-btn" data-action="paste-from-clipboard" title="Paste" aria-label="Paste" style="display:none">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="14" y="2" width="8" height="8" rx="2"/><path d="M16 14H8M8 18h8"/><path d="M5 4h4"/><rect x="2" y="6" width="16" height="16" rx="2"/></svg>
         </button>
       </div>
@@ -289,10 +291,10 @@
     <!-- Content -->
     <div id="content" role="main" tabindex="-1">
       <div id="tab-bar">
-        <button id="home-btn" onclick="toggleLaunchpad()" title="Home dashboard" aria-label="Home dashboard" aria-pressed="false">
+        <button id="home-btn" data-action="toggle-launchpad" title="Home dashboard" aria-label="Home dashboard" aria-pressed="false">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         </button>
-        <button id="tab-scroll-left" class="tab-nav-btn" onclick="scrollTabBar(-1)" title="Scroll tabs left" aria-label="Scroll tabs left" style="display:none">
+        <button id="tab-scroll-left" class="tab-nav-btn" data-action="scroll-tab-bar" title="Scroll tabs left" aria-label="Scroll tabs left" style="display:none">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
         <div id="tab-scroll"></div>
@@ -300,16 +302,16 @@
              made the leading `+` jump from the left edge to a pinned right slot
              the moment the strip overflowed, while preview/SSH scrolled away
              and the fade mask dimmed the pinned button (D-14). -->
-        <button id="new-tab-btn" onclick="newTab()" title="New terminal (right-click for more)" aria-label="New terminal" aria-haspopup="menu">
+        <button id="new-tab-btn" data-action="new-tab" title="New terminal (right-click for more)" aria-label="New terminal" aria-haspopup="menu">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
-        <button id="new-preview-btn" onclick="newPreviewPrompt()" title="New app preview" aria-label="New app preview">
+        <button id="new-preview-btn" data-action="new-preview-prompt" title="New app preview" aria-label="New app preview">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
         </button>
-        <button id="ssh-toggle" onclick="openSshPanel()" title="SSH Access — on-demand keys for Termius & ssh" aria-label="SSH Access" aria-haspopup="dialog">
+        <button id="ssh-toggle" data-action="open-ssh-panel" title="SSH Access — on-demand keys for Termius & ssh" aria-label="SSH Access" aria-haspopup="dialog">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
         </button>
-        <button id="tab-scroll-right" class="tab-nav-btn" onclick="scrollTabBar(1)" title="Scroll tabs right" aria-label="Scroll tabs right" style="display:none">
+        <button id="tab-scroll-right" class="tab-nav-btn" data-action="scroll-tab-bar-2" title="Scroll tabs right" aria-label="Scroll tabs right" style="display:none">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
         </button>
       </div>
@@ -318,9 +320,9 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <input id="term-search-input" type="text" placeholder="Find in buffer…" autocomplete="off" spellcheck="false" aria-label="Search terminal buffer">
         <span id="term-search-count" class="term-search-count"></span>
-        <button class="icon-btn" id="term-search-prev" onclick="findTermPrev()" title="Previous match" aria-label="Previous match"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="18 15 12 9 6 15"/></svg></button>
-        <button class="icon-btn" id="term-search-next" onclick="findTermNext()" title="Next match" aria-label="Next match"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 9 12 15 18 9"/></svg></button>
-        <button class="icon-btn" id="term-search-close" onclick="closeTermSearch()" title="Close search" aria-label="Close search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <button class="icon-btn" id="term-search-prev" data-action="find-term-prev" title="Previous match" aria-label="Previous match"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="18 15 12 9 6 15"/></svg></button>
+        <button class="icon-btn" id="term-search-next" data-action="find-term-next" title="Next match" aria-label="Next match"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 9 12 15 18 9"/></svg></button>
+        <button class="icon-btn" id="term-search-close" data-action="close-term-search" title="Close search" aria-label="Close search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
       <div id="term-zoom-hud" class="term-zoom-hud" aria-hidden="true" style="display:none">14px</div>
       <div id="editor-split-area">
@@ -334,20 +336,18 @@
               <div class="lp-pulse" id="lp-pulse" aria-live="off"></div>
               <canvas id="lp-spark" width="220" height="44" aria-hidden="true"></canvas>
               <div class="lp-today" id="lp-today"></div>
-              <button class="btn btn-primary lp-new" onclick="newTab()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New terminal</button>
+              <button class="btn btn-primary lp-new" data-action="new-tab"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New terminal</button>
               <div class="lp-quick">
-                <button class="btn btn-ghost" onclick="newTab()" title="New local shell (Ctrl+T)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Terminal</button>
-                <button class="btn btn-ghost" onclick="openTerminalSessionsModal()" title="List & connect terminal sessions (Alt+S)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>Sessions</button>
-                <button class="btn btn-ghost" onclick="openSshPanel()" title="Connect external SSH clients (Termius)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>SSH Host</button>
-                <button class="btn btn-ghost" onclick="lpOpenExplorer()" title="Toggle File Explorer (Ctrl+B)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Explorer</button>
-                <button class="btn btn-ghost" onclick="toggleCmdLib()" title="Snippets & Command Library"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>Snippets</button>
+                <button class="btn btn-ghost" data-action="open-terminal-sessions-modal" title="List & connect terminal sessions (Alt+S)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>Sessions</button>
+                <button class="btn btn-ghost" data-action="lp-open-explorer" title="Toggle File Explorer (Ctrl+B)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Explorer</button>
+                <button class="btn btn-ghost" data-action="toggle-cmd-lib" title="Snippets & Command Library"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>Snippets</button>
               </div>
               <div class="lp-cols">
                 <div class="lp-card"><h3>Recent commands</h3><div id="lp-cmds"></div></div>
                 <div class="lp-card">
-                  <div style="display:flex;align-items:center;justify-content:space-between;padding:0 6px 6px">
-                    <h3 style="padding:0;margin:0">Active Sessions</h3>
-                    <button class="btn btn-ghost" style="padding:0 4px;font-size:10px;height:18px" onclick="openTerminalSessionsModal()">All</button>
+                  <div class="lp-card-heading">
+                    <h3>Active sessions</h3>
+                    <button class="btn btn-ghost lp-card-action" data-action="open-terminal-sessions-modal">View all</button>
                   </div>
                   <div id="lp-sessions"></div>
                 </div>
@@ -366,32 +366,32 @@
               Command Library
             </h3>
             <div class="cmd-lib-header-actions">
-              <button class="icon-btn" id="cmd-lib-export-btn" onclick="exportCmdLibrary()" title="Export custom commands (JSON)" aria-label="Export custom commands">
+              <button class="icon-btn" id="cmd-lib-export-btn" data-action="export-cmd-library" title="Export custom commands (JSON)" aria-label="Export custom commands">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               </button>
-              <button class="icon-btn" id="cmd-lib-import-btn" onclick="triggerImportCmdLib()" title="Import commands (JSON)" aria-label="Import commands">
+              <button class="icon-btn" id="cmd-lib-import-btn" data-action="trigger-import-cmd-lib" title="Import commands (JSON)" aria-label="Import commands">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
               </button>
-              <input type="file" id="cmd-lib-file-input" accept=".json,application/json" style="display:none" onchange="importCmdLibFile(event)">
-              <button class="icon-btn" style="width:24px;height:24px" onclick="toggleCmdLib()" title="Close">
+              <input type="file" id="cmd-lib-file-input" accept=".json,application/json" style="display:none" data-change-action="import-cmd-lib-file">
+              <button class="icon-btn" style="width:24px;height:24px" data-action="toggle-cmd-lib" title="Close">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
           </div>
           <div class="cmd-lib-tabs" role="tablist">
-            <button class="cmd-lib-tab active" id="cmd-tab-lib" role="tab" aria-selected="true" aria-controls="cmd-lib-list" onclick="switchCmdTab('library')">
+            <button class="cmd-lib-tab active" id="cmd-tab-lib" role="tab" aria-selected="true" aria-controls="cmd-lib-list" data-action="switch-cmd-tab-library">
               <span>Library</span>
               <span class="cmd-tab-badge" id="cmd-lib-count">0</span>
             </button>
-            <button class="cmd-lib-tab" id="cmd-tab-hist" role="tab" aria-selected="false" aria-controls="cmd-hist-list" onclick="switchCmdTab('history')">
+            <button class="cmd-lib-tab" id="cmd-tab-hist" role="tab" aria-selected="false" aria-controls="cmd-hist-list" data-action="switch-cmd-tab-history">
               <span>History</span>
               <span class="cmd-tab-badge" id="cmd-hist-count">0</span>
             </button>
           </div>
           <div class="cmd-lib-search-wrap">
             <svg class="cmd-search-ico" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input id="cmd-lib-search" type="text" aria-label="Search commands" placeholder="Search commands by name, syntax, or category…" oninput="onCmdSearchInput()">
-            <button class="cmd-search-clear" id="cmd-search-clear-btn" onclick="clearCmdSearch()" aria-label="Clear filter" style="display:none" title="Clear">
+            <input id="cmd-lib-search" type="text" aria-label="Search commands" placeholder="Search commands by name, syntax, or category…" data-input-action="on-cmd-search-input">
+            <button class="cmd-search-clear" id="cmd-search-clear-btn" data-action="clear-cmd-search" aria-label="Clear filter" style="display:none" title="Clear">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
           </div>
@@ -403,23 +403,23 @@
           </div>
           <div class="cmd-hist-header" id="cmd-hist-header" style="display:none">
             <div class="cmd-hist-cfg">
-              <label>Keep last <input type="number" id="cmd-hist-max" min="10" max="500" value="50" onchange="updateHistMax(+this.value)"> cmds</label>
+              <label>Keep last <input type="number" id="cmd-hist-max" min="10" max="500" value="50" data-change-action="update-hist-max"> cmds</label>
             </div>
             <div class="cmd-hist-actions">
-              <button class="btn btn-sm" onclick="exportCmdHist()" title="Export history to text file">Export</button>
-              <button class="cmd-hist-clear" onclick="confirmClearCmdHist()">Clear All</button>
+              <button class="btn btn-sm" data-action="export-cmd-hist" title="Export history to text file">Export</button>
+              <button class="cmd-hist-clear" data-action="confirm-clear-cmd-hist">Clear All</button>
             </div>
           </div>
           <div id="cmd-lib-footer">
             <div class="cmd-lib-form-row">
-              <input id="cmd-lib-name-input" type="text" aria-label="Command label" placeholder="Command Label" onkeydown="if(event.key==='Enter')document.getElementById('cmd-lib-cat-input').focus()">
-              <input id="cmd-lib-cat-input" type="text" aria-label="Command category" placeholder="Category (e.g. Docker, Dev)" list="cmd-cat-datalist" onkeydown="if(event.key==='Enter')document.getElementById('cmd-lib-cmd-input').focus()">
+              <input id="cmd-lib-name-input" type="text" aria-label="Command label" placeholder="Command Label" data-keydown-action="focus-workspace-cmd-lib-cat-input">
+              <input id="cmd-lib-cat-input" type="text" aria-label="Command category" placeholder="Category (e.g. Docker, Dev)" list="cmd-cat-datalist" data-keydown-action="focus-workspace-cmd-lib-cmd-input">
               <datalist id="cmd-cat-datalist"></datalist>
             </div>
             <div class="cmd-lib-form-row">
-              <input id="cmd-lib-cmd-input" type="text" aria-label="Command syntax" placeholder="Command syntax (e.g. docker ps -a)" onkeydown="if(event.key==='Enter')saveCustomCmdFromForm()">
-              <button class="btn btn-primary" id="cmd-lib-save-btn" onclick="saveCustomCmdFromForm()">Add</button>
-              <button class="btn" id="cmd-lib-cancel-edit-btn" onclick="cancelEditCustomCmd()" style="display:none">Cancel</button>
+              <input id="cmd-lib-cmd-input" type="text" aria-label="Command syntax" placeholder="Command syntax (e.g. docker ps -a)" data-keydown-action="save-custom-cmd-from-form">
+              <button class="btn btn-primary" id="cmd-lib-save-btn" data-action="save-custom-cmd-from-form">Add</button>
+              <button class="btn" id="cmd-lib-cancel-edit-btn" data-action="cancel-edit-custom-cmd" style="display:none">Cancel</button>
             </div>
           </div>
         </div>
@@ -430,26 +430,26 @@
         <!-- Editor view -->
         <div id="editor-view">
           <div id="editor-header">
-            <button class="icon-btn" aria-label="Close editor" onclick="closeEditor()" title="Close editor">
+            <button class="icon-btn" aria-label="Close editor" data-action="close-editor" title="Close editor">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
             <span id="editor-filename-wrap" aria-live="polite"><span class="editor-dirty-dot" id="editor-dirty-dot" aria-label="Unsaved changes" role="status"></span><span class="editor-ext-dot" id="editor-ext-dot" aria-label="No external changes" role="status"></span><span id="editor-filename">—</span></span>
             <span id="editor-status"></span>
-            <button class="btn" id="md-preview-toggle" style="height:26px;padding:0 12px;font-size:12px;display:none" aria-pressed="false" onclick="toggleMdPreview()"><svg class="pm-ico pm-ico-preview" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="pm-ico pm-ico-edit" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg><span class="pm-label">Preview</span></button>
-            <button class="icon-btn" id="preview-refresh-btn" aria-label="Refresh preview" title="Refresh preview (Ctrl+Shift+R)" onclick="refreshPreview()" style="display:none">
+            <button class="btn btn-compact" id="md-preview-toggle" style="display:none" aria-pressed="false" data-action="toggle-md-preview"><svg class="pm-ico pm-ico-preview" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="pm-ico pm-ico-edit" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg><span class="pm-label">Preview</span></button>
+            <button class="icon-btn" id="preview-refresh-btn" aria-label="Refresh preview" title="Refresh preview (Ctrl+Shift+R)" data-action="refresh-preview" style="display:none">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
             </button>
-            <button class="btn btn-ghost" id="html-full-toggle" style="height:26px;padding:0 12px;font-size:12px;display:none" aria-pressed="false" title="Full preview — run this file's scripts in an isolated frame (no access to the app)" onclick="toggleFullHtmlPreview()">Full</button>
-            <button class="icon-btn active" id="editor-split-toggle" aria-label="Toggle split orientation" onclick="toggleEditorSplit()" title="Switch to horizontal split">
+            <button class="btn btn-ghost btn-compact" id="html-full-toggle" style="display:none" aria-pressed="false" title="Full preview — run this file's scripts in an isolated frame (no access to the app)" data-action="toggle-full-html-preview">Full</button>
+            <button class="icon-btn active" id="editor-split-toggle" aria-label="Toggle split orientation" data-action="toggle-editor-split" title="Switch to horizontal split">
               <svg id="split-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/></svg>
             </button>
-            <button class="icon-btn" id="editor-fullscreen-toggle" aria-label="Fullscreen" title="Fullscreen (F11)" onclick="toggleEditorFullscreen()">
+            <button class="icon-btn" id="editor-fullscreen-toggle" aria-label="Fullscreen" title="Fullscreen (F11)" data-action="toggle-editor-fullscreen">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
             </button>
-            <button class="icon-btn" id="editor-tab-toggle" aria-label="Open in a tab" title="Open in a tab — keep it alongside your terminals" onclick="openEditorAsTab()">
+            <button class="icon-btn" id="editor-tab-toggle" aria-label="Open in a tab" title="Open in a tab — keep it alongside your terminals" data-action="open-editor-as-tab">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M8 8V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v3"/><line x1="9" y1="21" x2="9" y2="3"/></svg>
             </button>
-            <button class="btn btn-primary" id="editor-save-btn" style="height:26px;padding:0 12px;font-size:12px" onclick="saveFile()">Save</button>
+            <button class="btn btn-primary" id="editor-save-btn" style="height:26px;padding:0 12px;font-size:12px" data-action="save-file">Save</button>
           </div>
           <div id="editor-area">
             <textarea id="editor-textarea" spellcheck="false"></textarea>
@@ -458,11 +458,11 @@
               <div class="doc-toolbar">
                 <span class="doc-title" id="pdf-title"></span>
                 <span class="doc-page-info" id="pdf-page-info"></span>
-                <button class="icon-btn" title="Zoom out" onclick="pdfZoom(-0.2)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>
-                <button class="icon-btn" title="Zoom in" onclick="pdfZoom(0.2)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>
-                <button class="icon-btn" title="Previous page" onclick="pdfNav(-1)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>
-                <button class="icon-btn" title="Next page" onclick="pdfNav(1)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>
-                <button class="icon-btn" title="Download" onclick="downloadFile(editorPath)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+                <button class="icon-btn" title="Zoom out" data-action="pdf-zoom"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>
+                <button class="icon-btn" title="Zoom in" data-action="pdf-zoom-2"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>
+                <button class="icon-btn" title="Previous page" data-action="pdf-nav"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>
+                <button class="icon-btn" title="Next page" data-action="pdf-nav-2"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>
+                <button class="icon-btn" title="Download" data-action="download-file"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
               </div>
               <div id="pdf-canvas-wrap"></div>
             </div>
@@ -470,9 +470,9 @@
               <div class="doc-toolbar">
                 <span class="doc-title" id="epub-title"></span>
                 <span class="doc-page-info" id="epub-loc"></span>
-                <button class="icon-btn" title="Previous" onclick="epubNav(-1)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>
-                <button class="icon-btn" title="Next" onclick="epubNav(1)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>
-                <button class="icon-btn" title="Download" onclick="downloadFile(editorPath)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+                <button class="icon-btn" title="Previous" data-action="epub-nav"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>
+                <button class="icon-btn" title="Next" data-action="epub-nav-2"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>
+                <button class="icon-btn" title="Download" data-action="download-file"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
               </div>
               <div id="epub-wrap"><div id="epub-view"></div></div>
             </div>
@@ -480,8 +480,8 @@
               <div class="doc-toolbar">
                 <span class="doc-title" id="office-title"></span>
                 <span class="doc-page-info" id="office-info"></span>
-                <select id="office-sheet-sel" title="Sheet" aria-label="Sheet" style="display:none;height:26px;font-size:11px;background:var(--bg3);color:var(--fg2);border:1px solid var(--border);border-radius:var(--radius-sm);max-width:160px" onchange="officeSheetChanged(this.value)"></select>
-                <button class="icon-btn" title="Download" onclick="downloadFile(editorPath)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+                <select id="office-sheet-sel" title="Sheet" aria-label="Sheet" style="display:none;height:26px;font-size:11px;background:var(--bg3);color:var(--fg2);border:1px solid var(--border);border-radius:var(--radius-sm);max-width:160px" data-change-action="office-sheet-changed"></select>
+                <button class="icon-btn" title="Download" data-action="download-file"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
               </div>
               <div id="office-wrap"><div id="office-content"></div></div>
             </div>
@@ -492,83 +492,83 @@
       <!-- Mobile key bar -->
       <div id="mobile-keys">
         <div id="mkey-scroll">
-          <button class="mkey mkey-esc" onclick="sendKey('\x1b')" title="Escape" aria-label="Escape">ESC</button>
-          <button class="mkey mkey-tab" onclick="sendKey('\t')" title="Tab" aria-label="Tab">TAB</button>
+          <button class="mkey mkey-esc" data-action="send-key-x1b" title="Escape" aria-label="Escape">ESC</button>
+          <button class="mkey mkey-tab" data-action="send-key-t" title="Tab" aria-label="Tab">TAB</button>
           <span class="mkey-sep"></span>
-          <button class="mkey mkey-mod" onclick="toggleCtrl()" title="Ctrl modifier (latches, double-tap for row)" id="ctrl-toggle-btn" aria-label="Control modifier">CTRL</button>
-          <button class="mkey mkey-mod" onclick="toggleAlt()" title="Alt modifier (latches)" id="alt-toggle-btn" aria-label="Alt modifier">ALT</button>
-          <button class="mkey mkey-mod" onclick="toggleShift()" title="Shift modifier (latches)" id="shift-toggle-btn" aria-label="Shift modifier"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 6h6"/><path d="M12 18V9"/><path d="m6 12 6-6 6 6"/></svg></button>
+          <button class="mkey mkey-mod" data-action="toggle-ctrl" title="Ctrl modifier (latches, double-tap for row)" id="ctrl-toggle-btn" aria-label="Control modifier">CTRL</button>
+          <button class="mkey mkey-mod" data-action="toggle-alt" title="Alt modifier (latches)" id="alt-toggle-btn" aria-label="Alt modifier">ALT</button>
+          <button class="mkey mkey-mod" data-action="toggle-shift" title="Shift modifier (latches)" id="shift-toggle-btn" aria-label="Shift modifier"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M9 6h6"/><path d="M12 18V9"/><path d="m6 12 6-6 6 6"/></svg></button>
           <span class="mkey-sep"></span>
           <div class="mkey-group mkey-arrows">
-            <button class="mkey mkey-arrow" onclick="sendKey('\x1b[A')" title="Arrow Up" aria-label="Arrow Up"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg></button>
-            <button class="mkey mkey-arrow" onclick="sendKey('\x1b[B')" title="Arrow Down" aria-label="Arrow Down"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></button>
-            <button class="mkey mkey-arrow" onclick="sendKey('\x1b[D')" title="Arrow Left" aria-label="Arrow Left"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg></button>
-            <button class="mkey mkey-arrow" onclick="sendKey('\x1b[C')" title="Arrow Right" aria-label="Arrow Right"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></button>
+            <button class="mkey mkey-arrow" data-action="send-key-x1b-a" title="Arrow Up" aria-label="Arrow Up"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg></button>
+            <button class="mkey mkey-arrow" data-action="send-key-x1b-b" title="Arrow Down" aria-label="Arrow Down"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></button>
+            <button class="mkey mkey-arrow" data-action="send-key-x1b-d" title="Arrow Left" aria-label="Arrow Left"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg></button>
+            <button class="mkey mkey-arrow" data-action="send-key-x1b-c" title="Arrow Right" aria-label="Arrow Right"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></button>
           </div>
           <span class="mkey-sep"></span>
-          <button class="mkey mkey-snippets" onclick="toggleCmdLib()" title="Snippets & Commands" aria-label="Snippets & Commands">⚡ Snippets</button>
+          <button class="mkey mkey-snippets" data-action="toggle-cmd-lib" title="Snippets & Commands" aria-label="Snippets & Commands">⚡ Snippets</button>
           <span class="mkey-sep"></span>
-          <button class="mkey mkey-sigint" onclick="sendKey('\x03')" title="Ctrl+C (Interrupt)" aria-label="Interrupt">^C</button>
-          <button class="mkey" onclick="sendKey('\x04')" title="Ctrl+D (EOF)" aria-label="EOF">^D</button>
-          <button class="mkey" onclick="sendKey('\x1a')" title="Ctrl+Z (Suspend)" aria-label="Suspend">^Z</button>
-          <button class="mkey" onclick="sendKey('\x0c')" title="Ctrl+L (Clear screen)" aria-label="Clear screen">^L</button>
-          <button class="mkey" onclick="sendKey('\x12')" title="Ctrl+R (Reverse search)" aria-label="Reverse search">^R</button>
+          <button class="mkey mkey-sigint" data-action="send-key-x03" title="Ctrl+C (Interrupt)" aria-label="Interrupt">^C</button>
+          <button class="mkey" data-action="send-key-x04" title="Ctrl+D (EOF)" aria-label="EOF">^D</button>
+          <button class="mkey" data-action="send-key-x1a" title="Ctrl+Z (Suspend)" aria-label="Suspend">^Z</button>
+          <button class="mkey" data-action="send-key-x0c" title="Ctrl+L (Clear screen)" aria-label="Clear screen">^L</button>
+          <button class="mkey" data-action="send-key-x12" title="Ctrl+R (Reverse search)" aria-label="Reverse search">^R</button>
           <span class="mkey-sep"></span>
-          <button class="mkey mkey-sym" onclick="sendKey('/')" title="Slash">/</button>
-          <button class="mkey mkey-sym" onclick="sendKey('-')" title="Dash">-</button>
-          <button class="mkey mkey-sym" onclick="sendKey('~')" title="Tilde">~</button>
-          <button class="mkey mkey-sym" onclick="sendKey('|')" title="Pipe">|</button>
-          <button class="mkey mkey-sym" onclick="sendKey('_')" title="Underscore">_</button>
-          <button class="mkey mkey-sym" onclick="sendKey('$')" title="Dollar">$</button>
-          <button class="mkey mkey-sym" onclick="sendKey(':')" title="Colon">:</button>
-          <button class="mkey mkey-sym" onclick="sendKey(';')" title="Semicolon">;</button>
-          <button class="mkey mkey-sym" onclick="sendKey('\\')" title="Backslash">\</button>
-          <button class="mkey mkey-sym" onclick="sendKey('.')" title="Dot">.</button>
-          <button class="mkey mkey-sym" onclick="sendKey('&quot;')" title="Quote">"</button>
-          <button class="mkey mkey-sym" onclick="sendKey('\'')" title="Single quote">'</button>
-          <button class="mkey mkey-sym" onclick="sendKey('`')" title="Backtick">`</button>
-          <button class="mkey mkey-sym" onclick="sendKey('=')" title="Equals">=</button>
+          <button class="mkey mkey-sym" data-action="send-key" title="Slash">/</button>
+          <button class="mkey mkey-sym" data-action="send-key-2" title="Dash">-</button>
+          <button class="mkey mkey-sym" data-action="send-key-3" title="Tilde">~</button>
+          <button class="mkey mkey-sym" data-action="send-key-4" title="Pipe">|</button>
+          <button class="mkey mkey-sym" data-action="send-key-5" title="Underscore">_</button>
+          <button class="mkey mkey-sym" data-action="send-key-6" title="Dollar">$</button>
+          <button class="mkey mkey-sym" data-action="send-key-7" title="Colon">:</button>
+          <button class="mkey mkey-sym" data-action="send-key-8" title="Semicolon">;</button>
+          <button class="mkey mkey-sym" data-action="send-key-9" title="Backslash">\</button>
+          <button class="mkey mkey-sym" data-action="send-key-10" title="Dot">.</button>
+          <button class="mkey mkey-sym" data-action="send-key-11" title="Quote">"</button>
+          <button class="mkey mkey-sym" data-action="send-key-12" title="Single quote">'</button>
+          <button class="mkey mkey-sym" data-action="send-key-13" title="Backtick">`</button>
+          <button class="mkey mkey-sym" data-action="send-key-14" title="Equals">=</button>
           <span class="mkey-sep"></span>
-          <button class="mkey" onclick="sendKey('\x1b[H')" title="Home">Home</button>
-          <button class="mkey" onclick="sendKey('\x1b[F')" title="End">End</button>
-          <button class="mkey" onclick="sendKey('\x1b[5~')" title="Page Up">PgUp</button>
-          <button class="mkey" onclick="sendKey('\x1b[6~')" title="Page Down">PgDn</button>
+          <button class="mkey" data-action="send-key-x1b-h" title="Home">Home</button>
+          <button class="mkey" data-action="send-key-x1b-f" title="End">End</button>
+          <button class="mkey" data-action="send-key-x1b-5" title="Page Up">PgUp</button>
+          <button class="mkey" data-action="send-key-x1b-6" title="Page Down">PgDn</button>
           <span class="mkey-sep"></span>
-          <button class="mkey" onclick="sendKey('\x1b[3~')" title="Delete">DEL</button>
-          <button class="mkey" onclick="sendKey('\x7f')" title="Backspace"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 5H9l-7 7 7 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1Z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg></button>
+          <button class="mkey" data-action="send-key-x1b-3" title="Delete">DEL</button>
+          <button class="mkey" data-action="send-key-x7f" title="Backspace"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 5H9l-7 7 7 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1Z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg></button>
           <span class="mkey-sep"></span>
-          <button class="mkey sel-toggle" onclick="toggleTermSelect()" title="Toggle selection mode" id="sel-toggle-btn" aria-label="Toggle selection mode"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="5" width="14" height="14" rx="2"/><line x1="5" y1="12" x2="19" y2="12"/><line x1="12" y1="5" x2="12" y2="19"/></svg> Sel</button>
-          <button class="mkey" onclick="toggleCtrlRow()" title="All Ctrl shortcuts" aria-label="All Ctrl shortcuts">^Row</button>
+          <button class="mkey sel-toggle" data-action="toggle-term-select" title="Toggle selection mode" id="sel-toggle-btn" aria-label="Toggle selection mode"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="5" width="14" height="14" rx="2"/><line x1="5" y1="12" x2="19" y2="12"/><line x1="12" y1="5" x2="12" y2="19"/></svg> Sel</button>
+          <button class="mkey" data-action="toggle-ctrl-row" title="All Ctrl shortcuts" aria-label="All Ctrl shortcuts">^Row</button>
         </div>
-        <button class="mkey mkey-hide-kb" onclick="hideMobileKeyboard()" title="Hide Keyboard" aria-label="Hide Keyboard" id="mkey-hide-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="6 9 12 15 18 9"/></svg><span>Hide</span></button>
+        <button class="mkey mkey-hide-kb" data-action="hide-mobile-keyboard" title="Hide Keyboard" aria-label="Hide Keyboard" id="mkey-hide-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="6 9 12 15 18 9"/></svg><span>Hide</span></button>
       </div>
       <div id="mkey-ctrl-row">
-        <button class="mkey" onclick="sendKey('\x01')" title="Ctrl+A (Start of line)">^A</button>
-        <button class="mkey" onclick="sendKey('\x02')" title="Ctrl+B (Backward char)">^B</button>
-        <button class="mkey" onclick="sendKey('\x03')" title="Ctrl+C (Interrupt)">^C</button>
-        <button class="mkey" onclick="sendKey('\x04')" title="Ctrl+D (EOF)">^D</button>
-        <button class="mkey" onclick="sendKey('\x05')" title="Ctrl+E (End of line)">^E</button>
-        <button class="mkey" onclick="sendKey('\x06')" title="Ctrl+F (Forward char)">^F</button>
-        <button class="mkey" onclick="sendKey('\x0b')" title="Ctrl+K (Kill to end)">^K</button>
-        <button class="mkey" onclick="sendKey('\x0c')" title="Ctrl+L (Clear)">^L</button>
-        <button class="mkey" onclick="sendCtrlP()" title="Ctrl+P (Fuzzy finder)">^P</button>
-        <button class="mkey" onclick="sendKey('\x12')" title="Ctrl+R (Reverse search)">^R</button>
-        <button class="mkey" onclick="sendKey('\x15')" title="Ctrl+U (Kill to start)">^U</button>
-        <button class="mkey" onclick="sendKey('\x17')" title="Ctrl+W (Kill word)">^W</button>
-        <button class="mkey" onclick="sendKey('\x1a')" title="Ctrl+Z (Suspend)">^Z</button>
+        <button class="mkey" data-action="send-key-x01" title="Ctrl+A (Start of line)">^A</button>
+        <button class="mkey" data-action="send-key-x02" title="Ctrl+B (Backward char)">^B</button>
+        <button class="mkey" data-action="send-key-x03" title="Ctrl+C (Interrupt)">^C</button>
+        <button class="mkey" data-action="send-key-x04" title="Ctrl+D (EOF)">^D</button>
+        <button class="mkey" data-action="send-key-x05" title="Ctrl+E (End of line)">^E</button>
+        <button class="mkey" data-action="send-key-x06" title="Ctrl+F (Forward char)">^F</button>
+        <button class="mkey" data-action="send-key-x0b" title="Ctrl+K (Kill to end)">^K</button>
+        <button class="mkey" data-action="send-key-x0c" title="Ctrl+L (Clear)">^L</button>
+        <button class="mkey" data-action="send-ctrl-p" title="Ctrl+P (Fuzzy finder)">^P</button>
+        <button class="mkey" data-action="send-key-x12" title="Ctrl+R (Reverse search)">^R</button>
+        <button class="mkey" data-action="send-key-x15" title="Ctrl+U (Kill to start)">^U</button>
+        <button class="mkey" data-action="send-key-x17" title="Ctrl+W (Kill word)">^W</button>
+        <button class="mkey" data-action="send-key-x1a" title="Ctrl+Z (Suspend)">^Z</button>
       </div>
       <!-- Selection mode action bar -->
       <div id="mkey-sel-row">
-        <button class="mkey" onclick="copyTermSelection()" title="Copy selected text">Copy</button>
-        <button class="mkey" onclick="pasteToTerminal()" title="Paste text into terminal">Paste</button>
-        <button class="mkey" onclick="selectAllTerm()" title="Select all terminal content">Select All</button>
-        <button class="mkey" onclick="selectTermLine()" title="Select current visible line">Line</button>
+        <button class="mkey" data-action="copy-term-selection" title="Copy selected text">Copy</button>
+        <button class="mkey" data-action="paste-to-terminal" title="Paste text into terminal">Paste</button>
+        <button class="mkey" data-action="select-all-term" title="Select all terminal content">Select All</button>
+        <button class="mkey" data-action="select-term-line" title="Select current visible line">Line</button>
         <span class="mkey-sep"></span>
-        <button class="mkey" onclick="termScrollUp()" title="Scroll up"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg></button>
-        <button class="mkey" onclick="termScrollDn()" title="Scroll down"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></button>
-        <button class="mkey" id="sel-scroll-btn" onclick="toggleScrollMode()" title="Toggle scroll mode">Scroll</button>
+        <button class="mkey" data-action="term-scroll-up" title="Scroll up"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg></button>
+        <button class="mkey" data-action="term-scroll-dn" title="Scroll down"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></button>
+        <button class="mkey" id="sel-scroll-btn" data-action="toggle-scroll-mode" title="Toggle scroll mode">Scroll</button>
         <span class="mkey-sep"></span>
-        <button class="mkey sel-done" onclick="toggleTermSelect()" title="Exit selection mode">Done</button>
+        <button class="mkey sel-done" data-action="toggle-term-select" title="Exit selection mode">Done</button>
       </div>
     </div>
 
@@ -577,8 +577,8 @@
       <div class="notif-panel-header">
         <span style="font-size:14px;font-weight:700;display:flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>Notifications <span id="notif-head-count"></span></span>
         <span style="display:flex;align-items:center;gap:4px">
-          <button class="notif-clear-btn" id="notif-clear-all" onclick="clearAllNotifs()" title="Clear all notifications">Clear all</button>
-          <button class="icon-btn" onclick="closeNotifPanel()" title="Close notifications" aria-label="Close notifications">
+          <button class="notif-clear-btn" id="notif-clear-all" data-action="clear-all-notifs" title="Clear all notifications">Clear all</button>
+          <button class="icon-btn" data-action="close-notif-panel" title="Close notifications" aria-label="Close notifications">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </span>
@@ -593,7 +593,7 @@
     <div id="settings-panel" role="dialog" aria-label="Settings" aria-hidden="true" inert>
       <div class="settings-panel-header">
          <span style="font-size:14px;font-weight:700;display:flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Settings</span>
-        <button class="icon-btn" onclick="closeSettings()" title="Close settings">
+        <button class="icon-btn" data-action="close-settings" title="Close settings">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
@@ -611,49 +611,49 @@
           </div>
           <div class="setting-row">
             <label for="pin-current">Current PIN</label>
-            <input type="password" id="pin-current" autocomplete="off" maxlength="64" placeholder="Required to change" oninput="clearFieldError('pin-field-error')">
+            <input type="password" id="pin-current" autocomplete="off" maxlength="64" placeholder="Required to change" data-input-action="clear-field-error-pin-field-error">
           </div>
           <div class="setting-row">
             <label for="pin-new">New PIN</label>
-            <input type="password" id="pin-new" autocomplete="new-password" maxlength="64" placeholder="Empty removes protection" oninput="clearFieldError('pin-field-error')">
+            <input type="password" id="pin-new" autocomplete="new-password" maxlength="64" placeholder="Empty removes protection" data-input-action="clear-field-error-pin-field-error">
           </div>
           <div class="field-error" id="pin-field-error" role="alert"></div>
           <div style="display:flex;gap:6px;margin-top:6px">
-            <button class="btn btn-primary" id="pin-save-btn" onclick="changePin()" style="flex:1">Set / Update PIN</button>
+            <button class="btn btn-primary flex-fill" id="pin-save-btn" data-action="change-pin">Set / Update PIN</button>
           </div>
-          <div style="font-size:11px;color:var(--fg3);margin-top:6px">Applies instantly. Saved to <span style="font-family:var(--font)">.env</span> so it survives restarts.</div>
+          <div>Applies instantly. Saved to <span>.env</span> so it survives restarts.</div>
           <div class="setting-row" style="margin-top:10px">
             <label>License <span id="lic-plan" style="color:var(--fg3)"></span></label>
-            <button class="btn btn-ghost" onclick="refreshLicense()" title="Refresh license status" aria-label="Refresh license status" style="height:26px;padding:0 10px;font-size:11px">Refresh</button>
+            <button class="btn btn-ghost" data-action="refresh-license" title="Refresh license status" aria-label="Refresh license status" style="height:26px;padding:0 10px;font-size:11px">Refresh</button>
           </div>
           <div id="lic-status" style="font-size:12px;color:var(--fg2);margin:2px 0 6px">Free plan — community use.</div>
           <div class="setting-row">
             <label for="lic-key">Key</label>
-            <input type="text" id="lic-key" autocomplete="off" spellcheck="false" placeholder="wt1.… (Pro or Team)" oninput="clearFieldError('lic-field-error')" style="font-family:var(--font)">
+            <input class="code-font" type="text" id="lic-key" autocomplete="off" spellcheck="false" placeholder="wt1.… (Pro or Team)" data-input-action="clear-field-error-lic-field-error">
           </div>
           <div class="field-error" id="lic-field-error" role="alert"></div>
           <div style="display:flex;gap:6px;margin-top:6px">
-            <button class="btn btn-primary" id="lic-save-btn" onclick="saveLicenseKey()" style="flex:1">Activate</button>
-            <button class="btn btn-ghost" onclick="removeLicenseKey()" style="flex:1">Remove</button>
-            <button class="btn btn-ghost" onclick="startCheckout('pro')" style="flex:1" title="Buy Pro">Upgrade</button>
+            <button class="btn btn-primary flex-fill" id="lic-save-btn" data-action="save-license-key">Activate</button>
+            <button class="btn btn-ghost flex-fill" data-action="remove-license-key">Remove</button>
+            <button class="btn btn-ghost flex-fill" data-action="start-checkout-pro" title="Buy Pro">Upgrade</button>
           </div>
-          <div style="font-size:11px;color:var(--fg3);margin-top:6px">Keys work offline. Expiry gives a 7 day grace — the terminal itself is never locked.</div>
+          <div>Keys work offline. Expiry gives a 7 day grace — the terminal itself is never locked.</div>
           <div class="setting-row" style="margin-top:10px">
             <label>Active sessions <span id="sess-count" style="color:var(--fg3)"></span></label>
-            <button class="btn btn-ghost" onclick="refreshSessions()" title="Refresh session list" aria-label="Refresh session list" style="height:26px;padding:0 10px;font-size:11px">Refresh</button>
+            <button class="btn btn-ghost" data-action="refresh-sessions" title="Refresh session list" aria-label="Refresh session list" style="height:26px;padding:0 10px;font-size:11px">Refresh</button>
           </div>
           <div id="sessions-list" style="display:flex;flex-direction:column;gap:6px;margin-top:2px"></div>
           <div style="display:flex;gap:6px;margin-top:8px">
-            <button class="btn btn-ghost" onclick="revokeOtherSessions()" style="flex:1">Sign out other sessions</button>
-            <button class="btn btn-ghost" onclick="signOut()" style="flex:1" title="End this session on this device">Sign out here</button>
+            <button class="btn btn-ghost flex-fill" data-action="revoke-other-sessions">Sign out other sessions</button>
+            <button class="btn btn-ghost flex-fill" data-action="sign-out" title="End this session on this device">Sign out here</button>
           </div>
-          <div style="font-size:11px;color:var(--fg3);margin-top:6px">New logins alert every open tab. Revoking kicks that device immediately.</div>
+          <div>New logins alert every open tab. Revoking kicks that device immediately.</div>
         </div>
         <div class="settings-section" data-sec="appearance">
           <h3>Appearance</h3>
           <div class="setting-row">
             <label for="s-theme">Theme</label>
-            <select id="s-theme" onchange="applyTheme(this.value)">
+            <select id="s-theme" data-change-action="apply-theme">
               <option value="system">System</option>
               <option value="light">Light</option>
               <option value="catppuccin-latte">Catppuccin Latte</option>
@@ -668,11 +668,11 @@
           </div>
           <div class="setting-row">
             <label for="s-fontsize">Font Size</label>
-            <input type="number" id="s-fontsize" min="8" max="32" value="14" onchange="applyFontSize(+this.value)">
+            <input type="number" id="s-fontsize" min="8" max="32" value="14" data-change-action="apply-font-size">
           </div>
           <div class="setting-row">
             <label for="s-font">Font Family</label>
-            <select id="s-font" onchange="applyFont(this.value)">
+            <select id="s-font" data-change-action="apply-font">
               <option value="'JetBrains Mono', 'SF Mono', 'Fira Code', Consolas, monospace">JetBrains Mono</option>
               <option value="'SF Mono', 'Fira Code', Consolas, monospace">System Mono</option>
               <option value="'Fira Code', monospace">Fira Code</option>
@@ -682,7 +682,7 @@
           </div>
           <div class="setting-row">
             <label for="s-cursor">Cursor Style</label>
-            <select id="s-cursor" onchange="applyCursor(this.value)">
+            <select id="s-cursor" data-change-action="apply-cursor">
               <option value="block">Block</option>
               <option value="underline">Underline</option>
               <option value="bar">Bar</option>
@@ -690,91 +690,91 @@
           </div>
           <div class="setting-row">
             <label for="s-blink-cb">Cursor Blink</label>
-            <div class="toggle" id="s-blink" role="switch" tabindex="0" aria-checked="true" onclick="toggleSetting('blink')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('blink')}"><input type="checkbox" id="s-blink-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
+            <div class="toggle" id="s-blink" role="switch" tabindex="0" aria-checked="true" data-action="toggle-setting-blink" data-keydown-action="toggle-setting-blink"><input class="control-visually-hidden" type="checkbox" id="s-blink-cb"></div>
           </div>
         </div>
         <div class="settings-section" data-sec="terminal">
           <h3>Terminal</h3>
           <div class="setting-row">
             <label for="s-scrollback">Scrollback Lines</label>
-            <input type="number" id="s-scrollback" min="100" max="50000" value="5000" onchange="applyScrollback(+this.value)">
+            <input type="number" id="s-scrollback" min="100" max="50000" value="5000" data-change-action="apply-scrollback">
           </div>
           <div class="setting-row">
             <label for="s-bell-cb">Bell Sound</label>
-            <div class="toggle" id="s-bell" role="switch" tabindex="0" aria-checked="false" onclick="toggleSetting('bell')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('bell')}"><input type="checkbox" id="s-bell-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
+            <div class="toggle" id="s-bell" role="switch" tabindex="0" aria-checked="false" data-action="toggle-setting-bell" data-keydown-action="toggle-setting-bell"><input class="control-visually-hidden" type="checkbox" id="s-bell-cb"></div>
           </div>
           <div class="setting-row">
             <label for="s-clipboardRead-cb">Allow terminal clipboard read</label>
-            <div class="toggle" id="s-clipboardRead" role="switch" tabindex="0" aria-checked="false" onclick="toggleSetting('clipboardRead')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('clipboardRead')}"><input type="checkbox" id="s-clipboardRead-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
+            <div class="toggle" id="s-clipboardRead" role="switch" tabindex="0" aria-checked="false" data-action="toggle-setting-clipboardread" data-keydown-action="toggle-setting-clipboardread"><input class="control-visually-hidden" type="checkbox" id="s-clipboardRead-cb"></div>
           </div>
           <div class="setting-row">
             <label for="s-termRightClick-cb">Right-Click Menu</label>
-            <div class="toggle on" id="s-termRightClick" role="switch" tabindex="0" aria-checked="true" onclick="toggleSetting('termRightClick')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('termRightClick')}"><input type="checkbox" id="s-termRightClick-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
+            <div class="toggle on" id="s-termRightClick" role="switch" tabindex="0" aria-checked="true" data-action="toggle-setting-termrightclick" data-keydown-action="toggle-setting-termrightclick"><input class="control-visually-hidden" type="checkbox" id="s-termRightClick-cb"></div>
           </div>
           <div class="setting-row">
             <div>
               <label for="s-passCtrlK-cb" style="display:block">Pass Ctrl+K to terminal</label>
-              <span style="font-size:11px;color:var(--fg3)">Sends Ctrl+K directly to TUI apps (nano, micro, fzf, lazygit, readline). When enabled, open Quick Search with Ctrl+Shift+K.</span>
+              <span>Sends Ctrl+K directly to TUI apps (nano, micro, fzf, lazygit, readline). When enabled, open Quick Search with Ctrl+Shift+K.</span>
             </div>
-            <div class="toggle" id="s-passCtrlK" role="switch" tabindex="0" aria-checked="false" onclick="toggleSetting('passCtrlK')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('passCtrlK')}"><input type="checkbox" id="s-passCtrlK-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
+            <div class="toggle" id="s-passCtrlK" role="switch" tabindex="0" aria-checked="false" data-action="toggle-setting-passctrlk" data-keydown-action="toggle-setting-passctrlk"><input class="control-visually-hidden" type="checkbox" id="s-passCtrlK-cb"></div>
           </div>
         </div>
         <div class="settings-section" data-sec="interface">
           <h3>Interface</h3>
           <div class="setting-row">
             <label for="s-mobilekeys-cb">Show Mobile Keys</label>
-            <div class="toggle" id="s-mobilekeys" role="switch" tabindex="0" aria-checked="false" onclick="toggleSetting('mobilekeys')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('mobilekeys')}"><input type="checkbox" id="s-mobilekeys-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
+            <div class="toggle" id="s-mobilekeys" role="switch" tabindex="0" aria-checked="false" data-action="toggle-setting-mobilekeys" data-keydown-action="toggle-setting-mobilekeys"><input class="control-visually-hidden" type="checkbox" id="s-mobilekeys-cb"></div>
           </div>
           <div class="setting-row">
             <label for="s-confirmclose-cb">Confirm on Close</label>
-            <div class="toggle on" id="s-confirmclose" role="switch" tabindex="0" aria-checked="true" onclick="toggleSetting('confirmclose')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('confirmclose')}"><input type="checkbox" id="s-confirmclose-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
+            <div class="toggle on" id="s-confirmclose" role="switch" tabindex="0" aria-checked="true" data-action="toggle-setting-confirmclose" data-keydown-action="toggle-setting-confirmclose"><input class="control-visually-hidden" type="checkbox" id="s-confirmclose-cb"></div>
           </div>
           <div class="setting-row">
             <label for="s-datasaver-cb">Data Saver</label>
-            <div class="toggle" id="s-datasaver" role="switch" tabindex="0" aria-checked="false" onclick="toggleSetting('datasaver')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('datasaver')}"><input type="checkbox" id="s-datasaver-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
+            <div class="toggle" id="s-datasaver" role="switch" tabindex="0" aria-checked="false" data-action="toggle-setting-datasaver" data-keydown-action="toggle-setting-datasaver"><input class="control-visually-hidden" type="checkbox" id="s-datasaver-cb"></div>
           </div>
           <div class="setting-row">
             <label for="s-screensaver-cb">Dashboard screensaver</label>
-            <div class="toggle" id="s-screensaver" role="switch" tabindex="0" aria-checked="false" onclick="toggleSetting('screensaver')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('screensaver')}"><input type="checkbox" id="s-screensaver-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
+            <div class="toggle" id="s-screensaver" role="switch" tabindex="0" aria-checked="false" data-action="toggle-setting-screensaver" data-keydown-action="toggle-setting-screensaver"><input class="control-visually-hidden" type="checkbox" id="s-screensaver-cb"></div>
           </div>
           <div class="setting-row">
             <label for="s-screensaver-min">Screensaver idle (min)</label>
-            <input type="number" id="s-screensaver-min" min="1" max="120" value="5" onchange="applyScreensaverMin(+this.value)">
+            <input type="number" id="s-screensaver-min" min="1" max="120" value="5" data-change-action="apply-screensaver-min">
           </div>
           <div class="setting-row">
             <label for="screensaver-start-btn">Preview screensaver</label>
-            <button class="btn btn-ghost" id="screensaver-start-btn" style="height:28px;padding:0 12px;font-size:12px;flex-shrink:0" onclick="startScreensaverNow()">Start now</button>
+            <button class="btn btn-ghost btn-compact" id="screensaver-start-btn" data-action="start-screensaver-now">Start now</button>
           </div>
           <div class="setting-row electron-only" style="display:none">
             <label for="s-autostart-cb">Start on Login</label>
-            <div class="toggle" id="s-autostart" role="switch" tabindex="0" aria-checked="false" onclick="toggleSetting('autostart')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('autostart')}"><input type="checkbox" id="s-autostart-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
+            <div class="toggle" id="s-autostart" role="switch" tabindex="0" aria-checked="false" data-action="toggle-setting-autostart" data-keydown-action="toggle-setting-autostart"><input class="control-visually-hidden" type="checkbox" id="s-autostart-cb"></div>
           </div>
         </div>
         <div class="settings-section" data-sec="features">
           <h3>Features</h3>
           <div class="setting-row">
             <label for="s-gitEnabled-cb">Git Panel</label>
-            <div class="toggle on" id="s-gitEnabled" role="switch" tabindex="0" aria-checked="true" onclick="toggleSetting('gitEnabled')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('gitEnabled')}"><input type="checkbox" id="s-gitEnabled-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
+            <div class="toggle on" id="s-gitEnabled" role="switch" tabindex="0" aria-checked="true" data-action="toggle-setting-gitenabled" data-keydown-action="toggle-setting-gitenabled"><input class="control-visually-hidden" type="checkbox" id="s-gitEnabled-cb"></div>
           </div>
-          <div style="font-size:11px;color:var(--fg3);margin-top:6px">Show the Git section in the sidebar and enable git status checks.</div>
+          <div>Show the Git section in the sidebar and enable git status checks.</div>
           <div class="setting-row">
             <label for="s-gitSimple-cb">Simple Git panel</label>
-            <div class="toggle on" id="s-gitSimple" role="switch" tabindex="0" aria-checked="true" onclick="toggleSetting('gitSimple')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('gitSimple')}"><input type="checkbox" id="s-gitSimple-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
+            <div class="toggle on" id="s-gitSimple" role="switch" tabindex="0" aria-checked="true" data-action="toggle-setting-gitsimple" data-keydown-action="toggle-setting-gitsimple"><input class="control-visually-hidden" type="checkbox" id="s-gitSimple-cb"></div>
           </div>
-          <div style="font-size:11px;color:var(--fg3);margin-top:6px">Hide rarely-used actions (amend, fetch, stash, reset, tags). A “Show advanced…” button reveals them in place.</div>
+          <div>Hide rarely-used actions (amend, fetch, stash, reset, tags). A “Show advanced…” button reveals them in place.</div>
           <div class="setting-row" data-keywords="ssh remote termius access enable disable key credentials">
             <label for="s-sshEnabled-cb">SSH Access</label>
-            <div class="toggle" id="s-sshEnabled" role="switch" tabindex="0" aria-checked="false" onclick="toggleSetting('sshEnabled')" onkeydown="if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('sshEnabled')}"><input type="checkbox" id="s-sshEnabled-cb" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0"></div>
+            <div class="toggle" id="s-sshEnabled" role="switch" tabindex="0" aria-checked="false" data-action="toggle-setting-sshenabled" data-keydown-action="toggle-setting-sshenabled"><input class="control-visually-hidden" type="checkbox" id="s-sshEnabled-cb"></div>
           </div>
-          <div style="font-size:11px;color:var(--fg3);margin-top:6px">On-demand key-only credentials for Termius &amp; ssh. The header SSH button opens the full panel — it stays locked until you enable it here.</div>
+          <div>On-demand key-only credentials for Termius &amp; ssh. The header SSH button opens the full panel — it stays locked until you enable it here.</div>
         </div>
         <div class="settings-section" data-sec="tunnel">
           <h3>Tunnel</h3>
           <div class="setting-row" style="flex-wrap:wrap;gap:6px">
             <label for="tunnel-url" style="flex:0 0 auto">Local URL</label>
             <div style="display:flex;flex:1;gap:6px;min-width:0">
-              <input type="text" id="tunnel-url" value="http://localhost:3000" placeholder="http://localhost:PORT" style="flex:1;min-width:0" oninput="clearFieldError('tunnel-field-error')" onkeydown="if(event.key==='Enter'){event.preventDefault();createTunnel()}">
-              <button class="btn btn-primary" id="tunnel-create-btn" style="height:28px;padding:0 12px;font-size:12px;flex-shrink:0" onclick="createTunnel()">Create</button>
+              <input type="text" id="tunnel-url" value="http://localhost:3000" placeholder="http://localhost:PORT" style="flex:1;min-width:0" data-input-action="clear-field-error-tunnel-field-error" data-keydown-action="create-tunnel">
+              <button class="btn btn-primary btn-compact" id="tunnel-create-btn" data-action="create-tunnel">Create</button>
             </div>
           </div>
           <div class="field-error" id="tunnel-field-error" role="alert"></div>
@@ -785,33 +785,33 @@
           <h3>System</h3>
           <div class="setting-row" data-keywords="reset default settings restore">
             <label for="reset-settings-btn">Reset</label>
-            <button class="btn btn-ghost" id="reset-settings-btn" onclick="resetSettings()" style="height:28px;padding:0 12px;font-size:12px;flex-shrink:0">Reset settings</button>
+            <button class="btn btn-ghost btn-compact" id="reset-settings-btn" data-action="reset-settings">Reset settings</button>
           </div>
           <div class="setting-row" data-keywords="exit quit close app shutdown stop server">
             <label for="exit-app-btn">Application</label>
-            <button class="btn btn-danger" id="exit-app-btn" onclick="exitApp()" style="height:28px;padding:0 12px;font-size:12px;flex-shrink:0" title="Stops the server and closes all sessions">Exit app</button>
+            <button class="btn btn-danger btn-compact" id="exit-app-btn" data-action="exit-app" title="Stops the server and closes all sessions">Exit app</button>
           </div>
         </div>
-        <div class="settings-section" data-static="1" style="margin-top:12px;border-top:1px solid var(--border);padding-top:16px">
-          <h3>About</h3>
-          <div style="display:flex;flex-direction:column;gap:8px;font-size:12px;color:var(--fg2)">
-            <div style="display:flex;align-items:center;gap:8px">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
-              <span>WebTun</span>
-              <span id="about-version" style="color:var(--fg3);font-size:11px"></span>
+        <div class="settings-section" data-static="1">
+          <h3><span class="sec-ico" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>About</h3>
+          <div class="about-list">
+            <div class="about-row">
+              <svg class="about-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="10" y2="8"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="12" y1="8" x2="18" y2="8"/><line x1="12" y1="12" x2="18" y2="12"/></svg>
+              <span class="about-brand">WebTun</span>
+              <span class="about-ver" id="about-version"></span>
             </div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--fg2)" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-              <span>Made by <a href="https://github.com/unn-Known1" target="_blank" rel="noopener" style="color:var(--accent)">Gaurang Patel</a></span>
+            <div class="about-row">
+              <svg class="about-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              <span class="about-text">Made by <a href="https://github.com/unn-Known1" target="_blank" rel="noopener">Gaurang Patel</a></span>
             </div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--fg2)" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-              <a href="https://github.com/unn-Known1/webtun" target="_blank" rel="noopener" style="color:var(--accent)">https://github.com/unn-Known1/webtun</a>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--fg2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-              <a href="/docs" target="_blank" rel="noopener" style="color:var(--accent)">User guide &amp; docs</a>
-            </div>
+            <a class="about-row about-row-link" href="https://github.com/unn-Known1/webtun" target="_blank" rel="noopener">
+              <svg class="about-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              <span class="about-url">https://github.com/unn-Known1/webtun</span>
+            </a>
+            <a class="about-row about-row-link" href="/docs" target="_blank" rel="noopener">
+              <svg class="about-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+              <span class="about-text">User guide &amp; docs</span>
+            </a>
           </div>
         </div>
       </div>
@@ -819,27 +819,27 @@
   </div>
 
   <!-- Mobile Drawer Backdrop -->
-  <div id="drawer-backdrop" class="drawer-backdrop" onclick="closeAllDrawers()"></div>
+  <div id="drawer-backdrop" class="drawer-backdrop" data-action="close-all-drawers"></div>
 
   <!-- Mobile Bottom Navigation Bar -->
   <nav id="mobile-nav-bar" role="navigation" aria-label="Mobile Navigation">
-    <button id="mnav-explorer" class="mnav-btn" onclick="triggerHaptic('light');toggleSidebar()" aria-label="Files">
+    <button id="mnav-explorer" class="mnav-btn" data-action="trigger-haptic-light" aria-label="Files">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
       <span>Files</span>
     </button>
-    <button id="mnav-tabs" class="mnav-btn" onclick="triggerHaptic('light');toggleTabListMenu(event)" aria-label="Tabs">
+    <button id="mnav-tabs" class="mnav-btn" data-action="trigger-haptic-light-2" aria-label="Tabs">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
       <span>Tabs</span>
       <span id="mnav-tab-badge" class="count-badge" aria-hidden="true">1</span>
     </button>
-    <button id="mnav-new" class="mnav-btn mnav-fab" onclick="handleMobileNewAction()" aria-label="New Session">
+    <button id="mnav-new" class="mnav-btn mnav-fab" data-action="handle-mobile-new-action" aria-label="New Session">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     </button>
-    <button id="mnav-keyboard" class="mnav-btn" onclick="toggleMobileKeyboard()" aria-label="Input">
+    <button id="mnav-keyboard" class="mnav-btn" data-action="toggle-mobile-keyboard" aria-label="Input">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="10" y2="8"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="14" y1="8" x2="18" y2="8"/><line x1="14" y1="12" x2="18" y2="12"/><line x1="8" y1="16" x2="16" y2="16"/></svg>
       <span>Input</span>
     </button>
-    <button id="mnav-more" class="mnav-btn" onclick="triggerHaptic('light');toggleMoreMenu(event)" aria-label="More Options">
+    <button id="mnav-more" class="mnav-btn" data-action="trigger-haptic-light-3" aria-label="More Options">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="12" r="1.5"/></svg>
       <span>More</span>
     </button>
@@ -848,14 +848,14 @@
 
 <!-- More menu -->
 <div id="more-menu" role="menu">
-  <button class="mm-item" role="menuitem" onclick="closeMoreMenu();openTerminalSessionsModal()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> Terminal Sessions</button>
-  <button class="mm-item" role="menuitem" onclick="closeMoreMenu();openPortsModal()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> Listening Ports</button>
-  <button class="mm-item" role="menuitem" onclick="closeMoreMenu();openSystemStats()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="4" rx="1"/><rect x="2" y="10" width="20" height="4" rx="1"/><rect x="2" y="18" width="20" height="4" rx="1"/><circle cx="6" cy="4" r="1" fill="currentColor"/><circle cx="6" cy="12" r="1" fill="currentColor"/><circle cx="6" cy="20" r="1" fill="currentColor"/></svg> System Stats</button>
-  <button class="mm-item" role="menuitem" onclick="closeMoreMenu();toggleTiles()" data-more-item="tiles" aria-pressed="false"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> Tiles Mode</button>
-  <button class="mm-item" role="menuitem" onclick="closeMoreMenu();newPreviewPrompt()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> New Preview</button>
-  <button class="mm-item" role="menuitem" onclick="closeMoreMenu();toggleCmdLib()" data-more-item="cmdlib" aria-expanded="false"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> Command Library</button>
-  <button class="mm-item" role="menuitem" onclick="closeMoreMenu();openSshPanel()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> SSH Access</button>
-  <button class="mm-item" role="menuitem" onclick="closeMoreMenu();openShortcuts()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 8h6M12 8v8"/><path d="m7 12 10-4"/><path d="m7 12 10 4"/></svg> Keyboard Shortcuts</button>
+  <button class="mm-item" role="menuitem" data-action="close-more-menu"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> Terminal Sessions</button>
+  <button class="mm-item" role="menuitem" data-action="close-more-menu-2"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> Listening Ports</button>
+  <button class="mm-item" role="menuitem" data-action="close-more-menu-3"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="4" rx="1"/><rect x="2" y="10" width="20" height="4" rx="1"/><rect x="2" y="18" width="20" height="4" rx="1"/><circle cx="6" cy="4" r="1" fill="currentColor"/><circle cx="6" cy="12" r="1" fill="currentColor"/><circle cx="6" cy="20" r="1" fill="currentColor"/></svg> System Stats</button>
+  <button class="mm-item" role="menuitem" data-action="close-more-menu-4" data-more-item="tiles" aria-pressed="false"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> Tiles Mode</button>
+  <button class="mm-item" role="menuitem" data-action="close-more-menu-5"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> New Preview</button>
+  <button class="mm-item" role="menuitem" data-action="close-more-menu-6" data-more-item="cmdlib" aria-expanded="false"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> Command Library</button>
+  <button class="mm-item" role="menuitem" data-action="close-more-menu-7"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> SSH Access</button>
+  <button class="mm-item" role="menuitem" data-action="close-more-menu-8"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 8h6M12 8v8"/><path d="m7 12 10-4"/><path d="m7 12 10 4"/></svg> Keyboard Shortcuts</button>
 </div>
 <!-- Tab switcher sheet. Lives at document level, NOT inside #tab-bar: on mobile
      #tab-bar has `backdrop-filter`, which makes it the containing block for
@@ -869,16 +869,16 @@
       <span id="tab-list-title-count" style="font-size:11px;padding:1px 6px;border-radius:10px;background:var(--bg4);color:var(--fg2)">1</span>
     </span>
     <div style="display:flex;align-items:center;gap:4px">
-      <button class="btn btn-ghost" onclick="hideTabMenus();openTerminalSessionsModal()" style="height:28px;padding:0 8px;font-size:11px;display:flex;align-items:center;gap:4px;color:var(--accent)" title="Active Terminal Sessions">
+      <button class="btn btn-ghost" data-action="hide-tab-menus" style="height:28px;padding:0 8px;font-size:11px;display:flex;align-items:center;gap:4px;color:var(--accent)" title="Active Terminal Sessions">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> Sessions
       </button>
-      <button class="btn btn-ghost" onclick="hideTabMenus();newTab()" style="height:28px;padding:0 8px;font-size:11px;display:flex;align-items:center;gap:4px" title="New Terminal">
+      <button class="btn btn-ghost" data-action="hide-tab-menus-2" style="height:28px;padding:0 8px;font-size:11px;display:flex;align-items:center;gap:4px" title="New Terminal">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Terminal
       </button>
-      <button class="btn btn-ghost" onclick="hideTabMenus();newPreviewPrompt()" style="height:28px;padding:0 8px;font-size:11px;display:flex;align-items:center;gap:4px" title="New Preview">
+      <button class="btn btn-ghost" data-action="hide-tab-menus-3" style="height:28px;padding:0 8px;font-size:11px;display:flex;align-items:center;gap:4px" title="New Preview">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> Preview
       </button>
-      <button class="icon-btn" onclick="hideTabMenus()" style="width:26px;height:26px;min-width:26px;min-height:26px;margin-left:4px" title="Close" aria-label="Close">
+      <button class="icon-btn" data-action="hide-tab-menus-4" style="width:26px;height:26px;min-width:26px;min-height:26px;margin-left:4px" title="Close" aria-label="Close">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
@@ -886,7 +886,7 @@
   <input id="tab-list-search" type="text" placeholder="Filter tabs…" aria-label="Filter tabs" autocomplete="off">
   <div id="tab-list-items" role="group"></div>
   <div class="tab-list-foot" style="padding:6px 4px 2px;border-top:1px solid var(--border);margin-top:6px;display:flex;gap:6px">
-    <button class="btn btn-ghost" onclick="hideTabMenus();openTerminalSessionsModal()" style="flex:1;height:30px;font-size:11.5px;color:var(--accent);justify-content:center;gap:6px">
+    <button class="btn btn-ghost" data-action="hide-tab-menus" style="flex:1;height:30px;font-size:11.5px;color:var(--accent);justify-content:center;gap:6px">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
       All Terminal Sessions…
     </button>
@@ -917,7 +917,7 @@
   <div class="ctx-item" id="ctx-open-term" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> Open Terminal Here</div>
   <div class="ctx-sep"></div>
   <div class="ctx-item danger" id="ctx-delete" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg> Delete</div>
-  <div class="ctx-item sheet-cancel-item" onclick="hideAllCtxMenus()" role="menuitem" style="display:none">Cancel</div>
+  <div class="ctx-item sheet-cancel-item" data-action="hide-all-ctx-menus" role="menuitem" style="display:none">Cancel</div>
 </div>
 
 <!-- Terminal context menu -->
@@ -952,22 +952,22 @@
   <!-- Danger -->
   <div class="ctx-sep"></div>
   <div class="ctx-item danger" id="term-ctx-clear" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg> Clear</div>
-  <div class="ctx-item sheet-cancel-item" onclick="hideAllCtxMenus()" role="menuitem" style="display:none">Cancel</div>
+  <div class="ctx-item sheet-cancel-item" data-action="hide-all-ctx-menus" role="menuitem" style="display:none">Cancel</div>
 </div>
 
 <!-- Floating touch selection action bar -->
 <div id="term-selection-bar" role="toolbar" aria-label="Selection actions" style="display:none">
-  <button class="tsel-btn" id="tsel-copy" onclick="copyTermSelection()" title="Copy selected text">
+  <button class="tsel-btn" id="tsel-copy" data-action="copy-term-selection" title="Copy selected text">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
     <span>Copy</span>
   </button>
-  <button class="tsel-btn" id="tsel-line" onclick="selectTermLine()" title="Select line">
+  <button class="tsel-btn" id="tsel-line" data-action="select-term-line" title="Select line">
     <span>Line</span>
   </button>
-  <button class="tsel-btn" id="tsel-all" onclick="selectAllTerm()" title="Select all">
+  <button class="tsel-btn" id="tsel-all" data-action="select-all-term" title="Select all">
     <span>All</span>
   </button>
-  <button class="tsel-btn tsel-close" onclick="clearTermSelection()" title="Dismiss selection" aria-label="Dismiss selection">
+  <button class="tsel-btn tsel-close" data-action="clear-term-selection" title="Dismiss selection" aria-label="Dismiss selection">
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
   </button>
 </div>
@@ -996,7 +996,7 @@
   <div class="ctx-item" id="tab-ctx-close" role="menuitem"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Close Tab <span class="ctx-hint">Ctrl+W</span></div>
   <div class="ctx-item" id="tab-ctx-close-others" role="menuitem"> Close Other Tabs</div>
   <div class="ctx-item" id="tab-ctx-close-right" role="menuitem"> Close Tabs to the Right</div>
-  <div class="ctx-item sheet-cancel-item" onclick="hideAllCtxMenus()" role="menuitem" style="display:none">Cancel</div>
+  <div class="ctx-item sheet-cancel-item" data-action="hide-all-ctx-menus" role="menuitem" style="display:none">Cancel</div>
 </div>
 
 <!-- New-tab menu (right-click the + button or empty tab bar) -->
@@ -1019,14 +1019,14 @@
         <span id="term-sessions-count" style="font-size:11px;font-weight:600;background:var(--bg3);color:var(--accent);padding:2px 8px;border-radius:10px">0</span>
       </h2>
       <div class="term-sess-header-actions">
-        <button class="btn btn-ghost" onclick="refreshTerminalSessionsModal()" title="Refresh session list" style="height:28px;padding:0 10px;font-size:11px;display:flex;align-items:center;gap:4px">
+        <button class="btn btn-ghost" data-action="refresh-terminal-sessions-modal" title="Refresh session list" style="height:28px;padding:0 10px;font-size:11px;display:flex;align-items:center;gap:4px">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6"/><path d="M2 11.5a10 10 0 0 1 18.8-4.3L21.5 8M22 12.5a10 10 0 0 1-18.8 4.3L2.5 16"/></svg>
           Refresh
         </button>
-        <button class="btn btn-primary" onclick="closeOverlay('term-sessions-overlay');newTab();" style="height:28px;padding:0 12px;font-size:11px;display:flex;align-items:center;gap:4px">
+        <button class="btn btn-primary" data-action="close-overlay-term-sessions-overlay" style="height:28px;padding:0 12px;font-size:11px;display:flex;align-items:center;gap:4px">
           + New Terminal
         </button>
-        <button class="icon-btn" onclick="closeOverlay('term-sessions-overlay')" title="Close" aria-label="Close">
+        <button class="icon-btn" data-action="close-overlay-term-sessions-overlay-2" title="Close" aria-label="Close">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
@@ -1036,12 +1036,12 @@
     </div>
     <div class="term-sess-toolbar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       <div class="term-sess-filters" id="term-sess-filters">
-        <button class="term-sess-filter-btn active" data-filter="all" onclick="setTerminalSessionsFilter('all')">All (<span id="sess-filter-all-count">0</span>)</button>
-        <button class="term-sess-filter-btn" data-filter="webtun" onclick="setTerminalSessionsFilter('webtun')">WebTun (<span id="sess-filter-webtun-count">0</span>)</button>
-        <button class="term-sess-filter-btn" data-filter="external" onclick="setTerminalSessionsFilter('external')">External (<span id="sess-filter-ext-count">0</span>)</button>
+        <button class="term-sess-filter-btn active" data-filter="all" data-action="set-terminal-sessions-filter-all">All (<span id="sess-filter-all-count">0</span>)</button>
+        <button class="term-sess-filter-btn" data-filter="webtun" data-action="set-terminal-sessions-filter-webtun">WebTun (<span id="sess-filter-webtun-count">0</span>)</button>
+        <button class="term-sess-filter-btn" data-filter="external" data-action="set-terminal-sessions-filter-external">External (<span id="sess-filter-ext-count">0</span>)</button>
       </div>
       <div class="term-sess-search-wrap">
-        <input type="text" id="term-sessions-search" class="input" aria-label="Search terminal sessions" placeholder="Search sessions, cwd, commands…" oninput="filterTerminalSessionsList()" style="width:100%;height:28px;font-size:11.5px;padding:0 10px;border-radius:var(--radius-sm)">
+        <input type="text" id="term-sessions-search" class="input" aria-label="Search terminal sessions" placeholder="Search sessions, cwd, commands…" data-input-action="filter-terminal-sessions-list" style="width:100%;height:28px;font-size:11.5px;padding:0 10px;border-radius:var(--radius-sm)">
       </div>
     </div>
     <div class="term-sess-list" id="term-sessions-list">
@@ -1060,11 +1060,11 @@
         <span id="ports-count" style="font-size:11px;font-weight:600;background:var(--bg3);color:var(--cyan);padding:2px 8px;border-radius:10px">0</span>
       </h2>
       <div style="display:flex;gap:8px;align-items:center">
-        <button class="btn btn-ghost" onclick="refreshPortsModal()" title="Refresh listening ports" style="height:28px;padding:0 10px;font-size:11px;display:flex;align-items:center;gap:4px">
+        <button class="btn btn-ghost" data-action="refresh-ports-modal" title="Refresh listening ports" style="height:28px;padding:0 10px;font-size:11px;display:flex;align-items:center;gap:4px">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6"/><path d="M2 11.5a10 10 0 0 1 18.8-4.3L21.5 8M22 12.5a10 10 0 0 1-18.8 4.3L2.5 16"/></svg>
           Refresh
         </button>
-        <button class="icon-btn" onclick="closeOverlay('ports-overlay')" title="Close" aria-label="Close">
+        <button class="icon-btn" data-action="close-overlay-ports-overlay" title="Close" aria-label="Close">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
@@ -1081,7 +1081,7 @@
 <!-- Fuzzy Finder Modal -->
 <div class="overlay" id="finder-overlay" role="dialog" aria-modal="true" aria-label="Search files">
   <div class="modal modal-md" style="padding:12px">
-    <input id="finder-input" type="text" aria-label="Search files and folders" placeholder="Search files and folders…" autocomplete="off" oninput="doFinderSearch()" onkeydown="finderKeydown(event)">
+    <input id="finder-input" type="text" aria-label="Search files and folders" placeholder="Search files and folders…" autocomplete="off" data-input-action="do-finder-search" data-keydown-action="finder-keydown">
     <div id="finder-results"></div>
     <div id="finder-empty">Start typing to search files</div>
   </div>
@@ -1118,7 +1118,7 @@
       </table>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-primary" onclick="closeOverlay('shortcuts-overlay')">Close</button>
+      <button class="btn btn-primary" data-action="close-overlay-shortcuts-overlay">Close</button>
     </div>
   </div>
 </div>
@@ -1126,7 +1126,7 @@
 <!-- System Stats Modal -->
 <div class="overlay" id="sys-overlay" role="dialog" aria-modal="true" aria-label="System Stats">
   <div class="modal">
-    <h2 style="display:flex;align-items:center;gap:6px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>System Stats</h2>
+    <h2><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>System Stats</h2>
     <div id="sys-loading" style="text-align:center;padding:20px;color:var(--fg2);display:none">Loading…</div>
     <div id="sys-content">
       <div class="sys-grid">
@@ -1160,18 +1160,18 @@
           <h3 style="margin:0">Processes</h3>
           <div class="sys-proc-search-wrap" style="position:relative;display:flex;align-items:center">
             <svg style="position:absolute;left:8px;color:var(--fg3);pointer-events:none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input id="sys-proc-filter" type="text" aria-label="Filter processes" placeholder="Filter processes (e.g. node, ssh)..." autocomplete="off" oninput="filterSysProcesses()" style="padding-left:26px;height:26px;font-size:11.5px;width:220px;border-radius:6px">
+            <input id="sys-proc-filter" type="text" aria-label="Filter processes" placeholder="Filter processes (e.g. node, ssh)..." autocomplete="off" data-input-action="filter-sys-processes" style="padding-left:26px;height:26px;font-size:11.5px;width:220px;border-radius:6px">
           </div>
         </div>
         <div class="sys-table-wrap">
           <table class="sys-table" id="sys-proc-table">
             <thead>
               <tr>
-                <th onclick="sortSysProcesses('pid')" style="cursor:pointer;user-select:none" title="Sort by PID">PID <span class="sort-caret" id="sort-pid"></span></th>
-                <th onclick="sortSysProcesses('user')" style="cursor:pointer;user-select:none" title="Sort by User">User <span class="sort-caret" id="sort-user"></span></th>
-                <th onclick="sortSysProcesses('cpu')" style="cursor:pointer;user-select:none" title="Sort by CPU%">CPU% <span class="sort-caret" id="sort-cpu">▼</span></th>
-                <th onclick="sortSysProcesses('mem')" style="cursor:pointer;user-select:none" title="Sort by Mem%">Mem% <span class="sort-caret" id="sort-mem"></span></th>
-                <th onclick="sortSysProcesses('cmd')" style="cursor:pointer;user-select:none" title="Sort by Command">Command <span class="sort-caret" id="sort-cmd"></span></th>
+                <th class="sort-label" data-action="sort-sys-processes-pid" title="Sort by PID">PID <span class="sort-caret" id="sort-pid"></span></th>
+                <th class="sort-label" data-action="sort-sys-processes-user" title="Sort by User">User <span class="sort-caret" id="sort-user"></span></th>
+                <th class="sort-label" data-action="sort-sys-processes-cpu" title="Sort by CPU%">CPU% <span class="sort-caret" id="sort-cpu">▼</span></th>
+                <th class="sort-label" data-action="sort-sys-processes-mem" title="Sort by Mem%">Mem% <span class="sort-caret" id="sort-mem"></span></th>
+                <th class="sort-label" data-action="sort-sys-processes-cmd" title="Sort by Command">Command <span class="sort-caret" id="sort-cmd"></span></th>
                 <th style="width:78px;text-align:center">Action</th>
               </tr>
             </thead>
@@ -1181,8 +1181,8 @@
       </div>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-primary" onclick="refreshSystemStats()">Refresh</button>
-      <button class="btn btn-ghost" onclick="closeSystemStats()">Close</button>
+      <button class="btn btn-primary" data-action="refresh-system-stats">Refresh</button>
+      <button class="btn btn-ghost" data-action="close-system-stats">Close</button>
     </div>
   </div>
 </div>
@@ -1190,55 +1190,55 @@
 <!-- SSH Access popup -->
 <div class="overlay" id="ssh-overlay" role="dialog" aria-modal="true" aria-label="SSH Access">
   <div class="modal">
-    <h2 style="display:flex;align-items:center;gap:6px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>SSH Access</h2>
-    <div class="ssh-sub">Key-only shell access for external apps (Termius, VS&nbsp;Code Remote-SSH, <span style="font-family:var(--font)">ssh</span>). Off until you generate a key — nothing is created automatically.</div>
+    <h2><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>SSH Access</h2>
+    <div class="ssh-sub">Key-only shell access for external apps (Termius, VS&nbsp;Code Remote-SSH, <span>ssh</span>). Off until you generate a key — nothing is created automatically.</div>
     <div id="ssh-gate" class="ssh-gate" style="display:none">
       <div class="ssh-gate-title">SSH is turned off</div>
       <div class="ssh-gate-sub">Enable it in Settings → Features → SSH Access to generate keys and connect Termius &amp; co.</div>
-      <button class="btn btn-primary" onclick="openSshSettings()">Open Settings</button>
+      <button class="btn btn-primary" data-action="open-ssh-settings">Open Settings</button>
     </div>
     <div id="ssh-body">
       <div class="ssh-sec-t">Status</div>
       <div id="ssh-status"></div>
       <div id="ssh-unmanaged-note" class="ssh-warnline" style="display:none"></div>
       <div class="ssh-sec-t">Easy setup</div>
-      <div style="font-size:11px;color:var(--fg3)">One tap per row — the app does the rest.</div>
+      <div>One tap per row — the app does the rest.</div>
       <div id="ssh-setup-list"></div>
       <div id="ssh-setup-result" class="ssh-note-box" style="display:none"></div>
       <div id="ssh-tskey-row" class="ssh-inline-row" style="display:none">
         <input type="password" id="ssh-tskey" aria-label="Optional Tailscale authentication key" placeholder="tskey-auth-… (optional, headless login)" autocomplete="off">
-        <button class="btn btn-primary" id="ssh-tskey-btn" onclick="tailscaleUpWithKey()">Connect</button>
+        <button class="btn btn-primary" id="ssh-tskey-btn" data-action="tailscale-up-with-key">Connect</button>
       </div>
       <div class="ssh-sec-t">Credentials</div>
       <div class="ssh-inline-row">
-        <input type="text" id="ssh-label" aria-label="New SSH key label" value="" maxlength="64" placeholder="New key label, e.g. Termius on iPhone" oninput="clearFieldError('ssh-field-error')" onkeydown="if(event.key==='Enter'){event.preventDefault();generateSshCredential()}">
-        <button class="btn btn-primary" id="ssh-generate-btn" onclick="generateSshCredential()">Generate</button>
+        <input type="text" id="ssh-label" aria-label="New SSH key label" value="" maxlength="64" placeholder="New key label, e.g. Termius on iPhone" data-input-action="clear-field-error-ssh-field-error" data-keydown-action="generate-ssh-credential">
+        <button class="btn btn-primary" id="ssh-generate-btn" data-action="generate-ssh-credential">Generate</button>
       </div>
       <div class="field-error" id="ssh-field-error" role="alert"></div>
       <div id="ssh-once" class="ssh-once" style="display:none">
         <div class="ssh-once-title">Copy this private key now — it will never be shown again</div>
         <div id="ssh-once-warn" class="ssh-once-warn" style="display:none"></div>
-        <textarea id="ssh-once-key" aria-label="Generated private key" readonly rows="6" spellcheck="false" onclick="this.select()"></textarea>
-        <div class="ssh-cmd" id="ssh-once-cmd" title="Click to copy" role="button" tabindex="0" onclick="copyText(document.getElementById('ssh-once-cmd').textContent)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();copyText(document.getElementById('ssh-once-cmd').textContent)}"></div>
+        <textarea id="ssh-once-key" aria-label="Generated private key" readonly rows="6" spellcheck="false" data-action="focus-workspace-2"></textarea>
+        <div class="ssh-cmd" id="ssh-once-cmd" title="Click to copy" role="button" tabindex="0" data-action="copy-text-ssh-once-cmd" data-keydown-action="copy-text-ssh-once-cmd"></div>
         <div class="ssh-once-actions">
-          <button class="btn btn-primary" onclick="copySshOnceKey()">Copy private key</button>
-          <button class="btn btn-ghost" onclick="downloadSshOnceKey()">Download .key file</button>
-          <button class="btn btn-ghost" onclick="copySshConfigRecipe()" title="Copy ready-to-use ~/.ssh/config entry">Copy ~/.ssh/config</button>
-          <button class="btn btn-ghost" onclick="openSshUri()" title="Open ssh:// link directly in Termius or system terminal">Open in Termius</button>
-          <button class="btn btn-ghost" onclick="dismissSshOnce()">I've saved it</button>
+          <button class="btn btn-primary" data-action="copy-ssh-once-key">Copy private key</button>
+          <button class="btn btn-ghost" data-action="download-ssh-once-key">Download .key file</button>
+          <button class="btn btn-ghost" data-action="copy-ssh-config-recipe" title="Copy ready-to-use ~/.ssh/config entry">Copy ~/.ssh/config</button>
+          <button class="btn btn-ghost" data-action="open-ssh-uri" title="Open ssh:// link directly in Termius or system terminal">Open in Termius</button>
+          <button class="btn btn-ghost" data-action="dismiss-ssh-once">I've saved it</button>
         </div>
-        <div class="ssh-once-hint">Save as <span style="font-family:var(--font)">~/.ssh/webtun-key</span> (<span style="font-family:var(--font)">chmod 600</span>), or import into Termius via Keychain → + → New Key → paste.</div>
+        <div class="ssh-once-hint">Save as <span>~/.ssh/webtun-key</span> (<span>chmod 600</span>), or import into Termius via Keychain → + → New Key → paste.</div>
       </div>
       <div id="ssh-keys-empty" class="ssh-empty" style="display:none">No SSH keys yet — label and Generate one above. Each key works like a device login and can be revoked individually.</div>
       <div id="ssh-keys-list" style="display:none"></div>
       <div id="ssh-orphans" style="display:none;margin-top:8px">
-        <button class="btn btn-ghost" id="ssh-cleanup-btn" onclick="cleanupSshOrphans()" style="height:28px;padding:0 12px;font-size:12px"></button>
+        <button class="btn btn-ghost" id="ssh-cleanup-btn" data-action="cleanup-ssh-orphans" style="height:28px;padding:0 12px;font-size:12px"></button>
       </div>
       <div class="ssh-inline-row">
-        <input type="number" id="ssh-port" aria-label="SSH port" min="1" max="65535" value="2222" oninput="clearFieldError('ssh-field-error')" onkeydown="if(event.key==='Enter'){event.preventDefault();saveSshPort()}" title="Expected SSH port">
-        <button class="btn btn-ghost" id="ssh-port-btn" onclick="saveSshPort()">Save port</button>
+        <input type="number" id="ssh-port" aria-label="SSH port" min="1" max="65535" value="2222" data-input-action="clear-field-error-ssh-field-error" data-keydown-action="save-ssh-port" title="Expected SSH port">
+        <button class="btn btn-ghost" id="ssh-port-btn" data-action="save-ssh-port">Save port</button>
       </div>
-      <div class="ssh-hint">Tells the recipes which port to show. Set <span style="font-family:var(--font)">SSH_PORT</span> in <span style="font-family:var(--font)">.env</span> to make it permanent.</div>
+      <div class="ssh-hint">Tells the recipes which port to show. Set <span>SSH_PORT</span> in <span>.env</span> to make it permanent.</div>
       <div class="ssh-sec-t">Connect</div>
       <div id="ssh-recipe"></div>
       <div id="ssh-setup-hint" style="display:none">
@@ -1247,8 +1247,8 @@
       </div>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-primary" id="ssh-refresh-btn" onclick="refreshSshStatus()">Refresh</button>
-      <button class="btn btn-ghost" onclick="closeSshPanel()">Close</button>
+      <button class="btn btn-primary" id="ssh-refresh-btn" data-action="refresh-ssh-status">Refresh</button>
+      <button class="btn btn-ghost" data-action="close-ssh-panel">Close</button>
     </div>
   </div>
 </div>
@@ -1259,12 +1259,12 @@
     <h2>Rename</h2>
     <div class="modal-row">
       <label for="rename-input">New Name</label>
-      <input type="text" id="rename-input" onkeydown="if(event.key==='Enter')confirmRename()">
+      <input type="text" id="rename-input" data-keydown-action="confirm-rename">
       <div class="field-error" id="rename-error" role="alert"></div>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeOverlay('rename-overlay')">Cancel</button>
-      <button class="btn btn-primary" id="rename-ok-btn" onclick="confirmRename()">Rename</button>
+      <button class="btn btn-ghost" data-action="close-overlay-rename-overlay">Cancel</button>
+      <button class="btn btn-primary" id="rename-ok-btn" data-action="confirm-rename">Rename</button>
     </div>
   </div>
 </div>
@@ -1275,12 +1275,12 @@
     <h2>New Folder</h2>
     <div class="modal-row">
       <label for="newfolder-input">Folder Name</label>
-      <input type="text" id="newfolder-input" onkeydown="if(event.key==='Enter')confirmNewFolder()">
+      <input type="text" id="newfolder-input" data-keydown-action="confirm-new-folder">
       <div class="field-error" id="newfolder-error" role="alert"></div>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeOverlay('newfolder-overlay')">Cancel</button>
-      <button class="btn btn-primary" id="newfolder-ok-btn" onclick="confirmNewFolder()">Create</button>
+      <button class="btn btn-ghost" data-action="close-overlay-newfolder-overlay">Cancel</button>
+      <button class="btn btn-primary" id="newfolder-ok-btn" data-action="confirm-new-folder">Create</button>
     </div>
   </div>
 </div>
@@ -1291,12 +1291,12 @@
     <h2>New File</h2>
     <div class="modal-row">
       <label for="newfile-input">File Name</label>
-      <input type="text" id="newfile-input" onkeydown="if(event.key==='Enter')confirmNewFile()">
+      <input type="text" id="newfile-input" data-keydown-action="confirm-new-file">
       <div class="field-error" id="newfile-error" role="alert"></div>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeOverlay('newfile-overlay')">Cancel</button>
-      <button class="btn btn-primary" id="newfile-ok-btn" onclick="confirmNewFile()">Create</button>
+      <button class="btn btn-ghost" data-action="close-overlay-newfile-overlay">Cancel</button>
+      <button class="btn btn-primary" id="newfile-ok-btn" data-action="confirm-new-file">Create</button>
     </div>
   </div>
 </div>
@@ -1307,12 +1307,12 @@
     <h2>New Preview</h2>
     <div class="modal-row">
       <label for="preview-port-input">Local port</label>
-      <input type="text" id="preview-port-input" list="preview-ports-list" inputmode="numeric" pattern="[0-9]*" placeholder="8000 or localhost:5173/docs" autocomplete="off" onkeydown="if(event.key==='Enter')confirmNewPreview()">
+      <input type="text" id="preview-port-input" list="preview-ports-list" inputmode="numeric" pattern="[0-9]*" placeholder="8000 or localhost:5173/docs" autocomplete="off" data-keydown-action="confirm-new-preview">
       <div class="field-error" id="preview-error" role="alert"></div>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeOverlay('preview-overlay')">Cancel</button>
-      <button class="btn btn-primary" id="preview-ok-btn" onclick="confirmNewPreview()">Open</button>
+      <button class="btn btn-ghost" data-action="close-overlay-preview-overlay">Cancel</button>
+      <button class="btn btn-primary" id="preview-ok-btn" data-action="confirm-new-preview">Open</button>
     </div>
   </div>
 </div>
@@ -1325,11 +1325,11 @@
     <p id="conflict-dir-hint">The destination already contains a folder with this name.</p>
     <label id="conflict-apply-all-row" style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--fg2);margin:8px 0"><input type="checkbox" id="conflict-apply-all"> Apply to all remaining conflicts</label>
     <div class="modal-actions" id="conflict-actions">
-      <button class="btn btn-primary" id="conflict-replace" onclick="resolveConflict('replace')">Replace</button>
-      <button class="btn" id="conflict-merge" onclick="resolveConflict('merge')">Merge</button>
-      <button class="btn btn-ghost" id="conflict-keep-both" onclick="resolveConflict('keep_both')">Keep Both</button>
-      <button class="btn btn-ghost" id="conflict-skip" onclick="resolveConflict('skip')">Skip</button>
-      <button class="btn btn-ghost" id="conflict-cancel" onclick="resolveConflict('cancel')">Cancel</button>
+      <button class="btn btn-primary" id="conflict-replace" data-action="resolve-conflict-replace">Replace</button>
+      <button class="btn" id="conflict-merge" data-action="resolve-conflict-merge">Merge</button>
+      <button class="btn btn-ghost" id="conflict-keep-both" data-action="resolve-conflict-keep-both">Keep Both</button>
+      <button class="btn btn-ghost" id="conflict-skip" data-action="resolve-conflict-skip">Skip</button>
+      <button class="btn btn-ghost" id="conflict-cancel" data-action="resolve-conflict-cancel">Cancel</button>
     </div>
   </div>
 </div>
@@ -1340,18 +1340,18 @@
     <h2>Search file contents</h2>
     <div class="modal-row">
       <label for="cs-query">Search for</label>
-      <input type="text" id="cs-query" placeholder="TODO, import os, \(err\) => …" autocomplete="off" onkeydown="if(event.key==='Enter')runContentSearch()">
+      <input type="text" id="cs-query" placeholder="TODO, import os, \(err\) => …" autocomplete="off" data-keydown-action="run-content-search">
       <div class="field-error" id="cs-error" role="alert"></div>
     </div>
     <div class="modal-row">
       <label for="cs-path">In folder</label>
-      <input type="text" id="cs-path" autocomplete="off" spellcheck="false" onkeydown="if(event.key==='Enter')runContentSearch()">
+      <input type="text" id="cs-path" autocomplete="off" spellcheck="false" data-keydown-action="run-content-search">
     </div>
     <label id="cs-regex-row" style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--fg2);margin-bottom:8px"><input type="checkbox" id="cs-regex"> Regular expression</label>
     <div id="cs-results" aria-live="polite"></div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeOverlay('content-search-overlay')">Close</button>
-      <button class="btn btn-primary" id="cs-search-btn" onclick="runContentSearch()">Search</button>
+      <button class="btn btn-ghost" data-action="close-overlay-content-search-overlay">Close</button>
+      <button class="btn btn-primary" id="cs-search-btn" data-action="run-content-search">Search</button>
     </div>
   </div>
 </div>
@@ -1362,22 +1362,22 @@
     <h2>Properties</h2>
     <div id="props-body"></div>
     <div class="modal-row" id="props-mode-row">
-      <label for="props-mode" style="display:flex;align-items:center;gap:6px">Permissions (octal)
-        <button class="icon-btn props-info-btn" id="props-mode-info-btn" aria-label="What do permission numbers mean?" title="What do permission numbers mean?" aria-expanded="false" onclick="togglePropsModeHelp()">
+      <label class="control-row control-row-compact" for="props-mode">Permissions (octal)
+        <button class="icon-btn props-info-btn" id="props-mode-info-btn" aria-label="What do permission numbers mean?" title="What do permission numbers mean?" aria-expanded="false" data-action="toggle-props-mode-help">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
         </button>
       </label>
-      <input type="text" id="props-mode" inputmode="numeric" maxlength="4" placeholder="755" autocomplete="off" onkeydown="if(event.key==='Enter')savePropsMode()" oninput="updatePropsModeDecode()">
+      <input type="text" id="props-mode" inputmode="numeric" maxlength="4" placeholder="755" autocomplete="off" data-keydown-action="save-props-mode" data-input-action="update-props-mode-decode">
       <div id="props-mode-decode" style="font-size:11px;color:var(--fg2);margin-top:4px;min-height:14px" aria-live="polite"></div>
       <div id="props-mode-help" style="display:none;font-size:11px;color:var(--fg2);line-height:1.7;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-top:6px">
         Each digit stands for <b>Owner</b>, <b>Group</b>, <b>Others</b> — add the bits: <b>Read&nbsp;4</b> + <b>Write&nbsp;2</b> + <b>Execute&nbsp;1</b> (so 7&nbsp;=&nbsp;read+write+execute, 5&nbsp;=&nbsp;read+execute).<br>
-        Common codes: <span style="font-family:var(--font)">755</span> scripts &amp; folders · <span style="font-family:var(--font)">644</span> plain files · <span style="font-family:var(--font)">700</span>/<span style="font-family:var(--font)">600</span> private (only you) · <span style="font-family:var(--font)">777</span> everyone — avoid it.
+        Common codes: <span>755</span> scripts &amp; folders · <span>644</span> plain files · <span>700</span>/<span>600</span> private (only you) · <span>777</span> everyone — avoid it.
       </div>
       <div class="field-error" id="props-error" role="alert"></div>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeOverlay('props-overlay')">Close</button>
-      <button class="btn btn-primary" id="props-save-btn" onclick="savePropsMode()">Apply permissions</button>
+      <button class="btn btn-ghost" data-action="close-overlay-props-overlay">Close</button>
+      <button class="btn btn-primary" id="props-save-btn" data-action="save-props-mode">Apply permissions</button>
     </div>
   </div>
 </div>
@@ -1399,7 +1399,7 @@
   <div class="modal">
     <div class="iv-header">
       <span class="iv-name" id="iv-name"></span>
-      <button class="iv-close" onclick="closeImageViewer()" aria-label="Close image viewer">
+      <button class="iv-close" data-action="close-image-viewer" aria-label="Close image viewer">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
@@ -1415,19 +1415,22 @@
 <div id="toast-container" aria-live="polite"></div>
 
 <!-- Hidden file input for upload -->
-<input type="file" id="upload-input" multiple style="display:none" onchange="handleUploadInput()">
+<input type="file" id="upload-input" multiple style="display:none" data-change-action="handle-upload-input">
 
 <!-- PWA Install Banner -->
 <div id="install-banner" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:var(--z-menu);background:var(--bg3);border-top:1px solid var(--border);padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom));align-items:center;gap:10px;box-shadow:0 -4px 16px rgba(0,0,0,0.3)">
   <span class="install-msg" style="flex:1;font-size:13px">Install WebTun for the best experience</span>
-  <button class="btn btn-ghost" style="height:32px;padding:0 12px;font-size:12px" onclick="dismissInstall()">Not now</button>
-  <button class="btn btn-primary" style="height:32px;padding:0 12px;font-size:12px" onclick="installPWA()">Install</button>
+  <button class="btn btn-ghost btn-medium" data-action="dismiss-install">Not now</button>
+  <button class="btn btn-primary btn-medium" data-action="install-pwa">Install</button>
 </div>
 
 <script defer src="/commands.js"></script>
+<script defer src="js/actions.js"></script>
+<script defer src="js/editor-buffers.js"></script>
 <script defer src="js/core.js"></script>
 <script defer src="js/ui.js"></script>
 <script defer src="js/tabs.js"></script>
+<script defer src="js/terminal-connection.js"></script>
 <script defer src="js/terminal.js"></script>
 <script defer src="js/files.js"></script>
 <script defer src="js/transfers.js"></script>

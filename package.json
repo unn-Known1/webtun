@@ -1,6 +1,6 @@
 {
   "name": "webtun",
-  "version": "2.3.3",
+  "version": "2.3.4",
   "description": "Self-hosted web terminal with Cloudflare Tunnel, file explorer, and PWA support",
   "author": {
     "name": "Gaurang Patel",
@@ -23,9 +23,14 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "build": "npm run version:check && node -e \"require('./server.js'); console.log('build ok')\"",
+    "build": "npm run version:check && npm run check && npm run test:smoke",
     "start": "node server.js",
-    "test": "npm run version:check && node -e \"require('./server.js'); console.log('smoke ok')\"",
+    "check": "node scripts/check-source.js",
+    "test": "npm run version:check && npm run check && npm run test:unit && npm run test:smoke",
+    "test:unit": "node scripts/test.js",
+    "test:smoke": "node -e \"require('./server.js'); console.log('smoke ok')\"",
+    "test:e2e": "playwright test",
+    "test:all": "npm test && npm run test:e2e",
     "dev": "nodemon server.js",
     "electron": "electron .",
     "rebuild:electron": "electron-builder install-app-deps",
@@ -75,6 +80,7 @@
     "node-pty": "^1.1.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
     "electron": "^44.4.5",
     "electron-builder": "^26.16.1",
     "nodemon": "^3.1.14"

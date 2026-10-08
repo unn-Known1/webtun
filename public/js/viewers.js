@@ -96,8 +96,8 @@ async function openPdfViewer(path) {
   if (_prevWrap && _pdfScrollHandler) try { _prevWrap.removeEventListener('scroll', _pdfScrollHandler); } catch {}
   _pdfScrollHandler = null;
   // Show viewer shell immediately for perceived performance
-  editorPath = path;
-  editorOriginalContent = '';
+  panelState.path = path;
+  panelState.original = '';
   const fileName = path.split(/[\\/]/).pop() || path;
   document.getElementById('editor-filename').textContent = fileName + '  /  ' + path;
   document.getElementById('editor-status').textContent = '';
@@ -540,8 +540,8 @@ function hardenEpubRendition(rendition) {
 }
 
 async function openEpubViewer(path) {
-  editorPath = path;
-  editorOriginalContent = '';
+  panelState.path = path;
+  panelState.original = '';
   const fileName = path.split(/[\\/]/).pop() || path;
   document.getElementById('editor-filename').textContent = fileName + '  /  ' + path;
   document.getElementById('editor-status').textContent = '';
@@ -708,8 +708,8 @@ async function openOfficeViewer(path) {
   const myGen = ++_officeGen;
   _officePath = '';
   // Viewer shell (mirrors openPdfViewer/openEpubViewer)
-  editorPath = path;
-  editorOriginalContent = '';
+  panelState.path = path;
+  panelState.original = '';
   const fileName = path.split(/[\\/]/).pop() || path;
   document.getElementById('editor-filename').textContent = fileName + '  /  ' + path;
   document.getElementById('editor-status').textContent = '';
@@ -1018,7 +1018,7 @@ function toggleHtmlPreview() {
 }
 
 function toggleFullHtmlPreview() {
-  if (!/\.html?$/i.test(editorPath || '')) return;
+  if (!/\.html?$/i.test(panelState.path || '')) return;
   htmlFullPreview = !htmlFullPreview;
   const b = document.getElementById('html-full-toggle');
   if (b) {
@@ -1040,7 +1040,7 @@ function toggleFullHtmlPreview() {
 }
 
 function getHtmlBaseDir() {
-  const p = editorPath || currentPath || '';
+  const p = panelState.path || currentPath || '';
   if (!p) return '';
   const sep = p.includes('\\') ? '\\' : '/';
   const idx = p.lastIndexOf(sep);
@@ -1200,8 +1200,8 @@ async function renderHtmlPreviewInner() {
   const mdContent = document.getElementById('md-preview-content');
   const raw = editor ? editor.getValue() : document.getElementById('editor-textarea')?.value || '';
   if (!iframe) return;
-  if (!editorPath || !raw) {
-    setPreviewDoc(iframe, '<p style="font-family:sans-serif;padding:16px">' + (!editorPath ? 'Nothing to preview — open a file first.' : 'Nothing to preview — the file is empty.') + '</p>');
+  if (!panelState.path || !raw) {
+    setPreviewDoc(iframe, '<p style="font-family:sans-serif;padding:16px">' + (!panelState.path ? 'Nothing to preview — open a file first.' : 'Nothing to preview — the file is empty.') + '</p>');
     return;
   }
   if (mdContent) mdContent.style.display = 'none';
@@ -1211,7 +1211,7 @@ async function renderHtmlPreviewInner() {
   // when authed but minting fails.
   let ptok = null;
   try {
-    ptok = await mintPreviewFileToken(editorPath);
+    ptok = await mintPreviewFileToken(panelState.path);
   } catch (e) {
     setPreviewDoc(iframe, '<p style="font-family:sans-serif;padding:16px">Preview unavailable — could not authorize file assets (' + escHtml((e && e.message) || 'unknown error') + ').</p>');
     try { toast('Preview unavailable: ' + ((e && e.message) || 'unknown error'), 'error'); } catch {}
@@ -1345,7 +1345,7 @@ async function renderMdPreview() {
     try {
       const mdBase = (typeof getHtmlBaseDir === 'function') ? getHtmlBaseDir() : '';
       let mdTok = null;
-      try { mdTok = await mintPreviewFileToken(editorPath); } catch {}
+      try { mdTok = await mintPreviewFileToken(panelState.path); } catch {}
       sanitized = rewriteHtmlRelativeUrls(sanitized, mdBase, mdTok);
     } catch {}
     try {
@@ -1405,7 +1405,7 @@ function schedulePreviewLiveReload() {
     if (!mdPreviewActive) return;
     const current = editor ? editor.getValue() : document.getElementById('editor-textarea')?.value || '';
     if (current.length > PREVIEW_MAX_LIVE_BYTES) return;
-    if (/\.html?$/i.test(editorPath)) renderHtmlPreview();
+    if (/\.html?$/i.test(panelState.path)) renderHtmlPreview();
     else renderMdPreview();
   }, 350);
 }
@@ -1419,14 +1419,14 @@ function clearPreviewLiveReload() {
 }
 
 function refreshPreview() {
-  if (!editorPath) return;
-  if (/\.html?$/i.test(editorPath)) renderHtmlPreview();
+  if (!panelState.path) return;
+  if (/\.html?$/i.test(panelState.path)) renderHtmlPreview();
   else renderMdPreview();
   toast('Preview refreshed', 'success');
 }
 
 function toggleMdPreview() {
-  if (/\.html?$/i.test(editorPath)) {
+  if (/\.html?$/i.test(panelState.path)) {
     toggleHtmlPreview();
     return;
   }
@@ -1455,3 +1455,21 @@ function toggleMdPreview() {
     clearPreviewLiveReload();
   }
 }
+
+
+// Declarative controls owned by this feature.
+uiActions.register("click", {
+  "toggle-md-preview": function (event) { return toggleMdPreview(); },
+  "refresh-preview": function (event) { return refreshPreview(); },
+  "toggle-full-html-preview": function (event) { return toggleFullHtmlPreview(); },
+  "pdf-zoom": function (event) { return pdfZoom(-0.2); },
+  "pdf-zoom-2": function (event) { return pdfZoom(0.2); },
+  "pdf-nav": function (event) { return pdfNav(-1); },
+  "pdf-nav-2": function (event) { return pdfNav(1); },
+  "epub-nav": function (event) { return epubNav(-1); },
+  "epub-nav-2": function (event) { return epubNav(1); },
+  "close-image-viewer": function (event) { return closeImageViewer(); },
+});
+uiActions.register("change", {
+  "office-sheet-changed": function (event) { return officeSheetChanged(this.value); },
+});

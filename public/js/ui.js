@@ -1,13 +1,14 @@
-// WebTun frontend - ui.js (2/15: toasts, overlays, dialogs, shared UI helpers).
+// WebTun frontend - ui.js (toasts, overlays, dialogs, shared UI helpers).
 
 function hideTermLoading(tab) {
   if (tab && tab.loadingEl) tab.loadingEl.classList.add('hidden');
 }
+function paintEditorDirty() {
+  document.getElementById('editor-view')?.classList.toggle('editor-dirty', !!panelState.buffer?.dirty);
+}
 function updateEditorDirty() {
-  const el = document.getElementById('editor-view');
-  if (!el) return;
-  const currentContent = editor ? editor.getValue() : document.getElementById('editor-textarea').value;
-  el.classList.toggle('editor-dirty', currentContent !== editorOriginalContent);
+  panelState.buffer?.setContent(panelContent());
+  paintEditorDirty();
 }
 async function resetSettings() {
   const ok = await confirmDialog({ title: 'Reset settings', message: 'Reset all settings to defaults?', okText: 'Reset', danger: true });
@@ -1054,16 +1055,40 @@ function showPinScreen() {
   });
   tabs = [];
   activeTabId = null;
-  // Enter-to-unlock must work on EVERY showing of this screen, not just first
-  // load: init() wires it only on the fresh-boot PIN path, so sessions that
-  // resume via stored token (or get kicked here by a 401/revoke later) ended
-  // up with an input where Enter did nothing. Idempotent remove+add.
+  // The named key action works on every showing of the PIN screen.
   try {
     const pinIn = document.getElementById('pin-input');
-    if (pinIn && typeof handlePinKeydown === 'function') {
-      pinIn.removeEventListener('keydown', handlePinKeydown);
-      pinIn.addEventListener('keydown', handlePinKeydown);
-      pinIn.focus();
-    }
+    if (pinIn) pinIn.focus();
   } catch {}
 }
+
+
+// Declarative controls owned by this feature.
+uiActions.register("click", {
+  "focus-workspace-content": function (event) { document.getElementById('content')?.setAttribute('tabindex','-1');document.getElementById('content')?.focus(); },
+  "toggle-notif-panel": function (event) { return toggleNotifPanel(); },
+  "focus-workspace": function (event) { return event.stopPropagation(); },
+  "clear-all-notifs": function (event) { return clearAllNotifs(); },
+  "close-notif-panel": function (event) { return closeNotifPanel(); },
+  "reset-settings": function (event) { return resetSettings(); },
+  "close-all-drawers": function (event) { return closeAllDrawers(); },
+  "hide-all-ctx-menus": function (event) { return hideAllCtxMenus(); },
+  "close-overlay-term-sessions-overlay": function (event) { closeOverlay('term-sessions-overlay');newTab(); },
+  "close-overlay-term-sessions-overlay-2": function (event) { return closeOverlay('term-sessions-overlay'); },
+  "close-overlay-ports-overlay": function (event) { return closeOverlay('ports-overlay'); },
+  "close-overlay-shortcuts-overlay": function (event) { return closeOverlay('shortcuts-overlay'); },
+  "focus-workspace-2": function (event) { return this.select(); },
+  "close-overlay-preview-overlay": function (event) { return closeOverlay('preview-overlay'); },
+});
+uiActions.register("keydown", {
+  "focus-workspace": function (event) { return event.stopPropagation(); },
+  "focus-workspace-cmd-lib-cat-input": function (event) { if(event.key==='Enter')document.getElementById('cmd-lib-cat-input').focus(); },
+  "focus-workspace-cmd-lib-cmd-input": function (event) { if(event.key==='Enter')document.getElementById('cmd-lib-cmd-input').focus(); },
+});
+uiActions.register("input", {
+  "clear-field-error-git-msg-error": function (event) { return clearFieldError('git-msg-error'); },
+  "clear-field-error-pin-field-error": function (event) { return clearFieldError('pin-field-error'); },
+  "clear-field-error-lic-field-error": function (event) { return clearFieldError('lic-field-error'); },
+  "clear-field-error-tunnel-field-error": function (event) { return clearFieldError('tunnel-field-error'); },
+  "clear-field-error-ssh-field-error": function (event) { return clearFieldError('ssh-field-error'); },
+});

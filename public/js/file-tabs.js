@@ -87,7 +87,7 @@ function newFileTab(path, opts = {}) {
   }
   const id = ++tabCounter;
   const tab = {
-    id, type: 'file', path, viewer: fileTabViewerKind(path), title: fileTabName(path),
+    id, document: editorBuffers.createSurface('tab:' + id), type: 'file', path, viewer: fileTabViewerKind(path), title: fileTabName(path),
     el: null, wrapper: null, bodyEl: null, cardEl: null, closed: false,
     mountedOnce: false, dirty: false, viewState: null, seed: null, imgUrl: null,
     cwd: currentPath, color: opts.color || '', pinned: !!opts.pinned,
@@ -278,7 +278,7 @@ async function mountFileTab(tab) {
   // live at a time: the shared panel is relocated into the tab that owns it. If this
   // tab already owns the live viewer, just show it again — re-opening would re-fetch
   // the document and lose the scroll position.
-  if (tab.mountedOnce && _dockedFileTabId === tab.id && editorPath === tab.path) {
+  if (tab.mountedOnce && _dockedFileTabId === tab.id && panelState.path === tab.path) {
     if (activeTabId === tab.id) { try { editor?.focus(); } catch {} }
     return;
   }
@@ -298,11 +298,11 @@ async function mountFileTab(tab) {
       await openOfficeViewer(tab.path);
     }
   } catch (e) { console.warn('File tab open failed:', e); }
-  // Every opener sets editorPath before its async work and bails out with a toast for
+  // Every opener sets panelState.path before its async work and bails out with a toast for
   // files it cannot render. A refusal would leave this tab labelled with a file the
   // panel is not actually showing, so drop the tab — but first restore the panel
   // file the dock just hid, or file X stays loaded yet invisible.
-  if (editorPath !== tab.path) {
+  if (panelState.path !== tab.path) {
     const stackTop = _undockRestoreStack[_undockRestoreStack.length - 1];
     const restores = stackTop && stackTop.id === tab.id ? !!stackTop.restores : _undockRestoresPanel;
     abandonFileTab(tab);
@@ -320,9 +320,9 @@ async function mountFileTab(tab) {
   try {
     const st = await api(`/api/files/stat?path=${encodeURIComponent(tab.path)}`);
     if (st && !st.error && st.mtime !== undefined) {
-      tab.diskMtime = String(st.mtime);
-      tab.diskSize = st.size;
-      tab._wasMissing = false;
+      tab.document.diskMtime = String(st.mtime);
+      tab.document.diskSize = st.size;
+      tab.document.missing = false;
     }
   } catch {}
   if (tab.viewer === 'pdf' && s && s.page > 1) {
@@ -346,12 +346,14 @@ function releaseFileTabResources(tab) {
   // Destroy heavy viewer docs when this tab owned them.
   if (_dockedFileTabId === tab.id) { tab.mountedOnce = false; try { cleanupDocViewers(); } catch (_) {} }
   try { if (tab.imgUrl) { URL.revokeObjectURL(tab.imgUrl); tab.imgUrl = null; } } catch (_) {}
-  clearTimeout(tab.draftTimer);
+  tab.document.buffer?.cancelDraft();
   clearTimeout(tab.previewTimer);
   try { if (tab.previewDocUrl) { URL.revokeObjectURL(tab.previewDocUrl); tab.previewDocUrl = null; } } catch (_) {}
   // Drop the CodeMirror instance along with the tab; removing the wrapper disposes of
   // its DOM, and this releases our last reference to the view.
+  tab.document.clear({ discard: tab.closed });
   tab.cm = null;
+  tab.editorReady = null;
   tab.viewState = null;
 }
 
@@ -454,19 +456,28 @@ function buildTabEditorChrome(tab) {
 
 // `seed` ({content, original, history, cursor}) lets a buffer move from the panel into
 // the tab without a disk round-trip and without losing edits or undo history.
-async function ensureTabEditor(tab, seed) {
-  if (tab.cm) return true;
+function ensureTabEditor(tab, seed) {
+  if (tab.closed) return Promise.resolve(false);
+  if (tab.cm) return Promise.resolve(true);
+  if (!tab.editorReady) tab.editorReady = initializeTabEditor(tab, seed);
+  return tab.editorReady;
+}
+
+async function initializeTabEditor(tab, seed) {
   const data = seed || await readTextForEditor(tab.path);
   if (!data || tab.closed) return false;
   buildTabEditorChrome(tab);
   if (!tab.fteHost) return false;
 
   const loaded = typeof ensureCodeMirrorLoaded === 'function' ? await ensureCodeMirrorLoaded() : (typeof CodeMirror !== 'undefined');
+  if (tab.closed) { data.buffer?.release(); return false; }
+  const buffer = tab.document.buffer || tab.document.open(tab.path, data, data.buffer);
+  tab.document.onChange = () => { paintTabDirty(tab); if (!buffer.extChanged) setTabExtChanged(tab, false); };
   let cm = null;
   if (loaded && typeof CodeMirror !== 'undefined') {
     try {
       cm = CodeMirror(tab.fteHost, Object.assign({}, CM_BASE_OPTIONS, {
-        value: data.content,
+        value: buffer.content,
         extraKeys: {
           'Ctrl-S': () => saveTabFile(tab),
           'Cmd-S': () => saveTabFile(tab),
@@ -481,16 +492,8 @@ async function ensureTabEditor(tab, seed) {
 
   if (!cm) {
     const ta = document.createElement('textarea');
-    ta.style.width = '100%';
-    ta.style.height = '100%';
-    ta.style.background = 'var(--bg)';
-    ta.style.color = 'var(--fg)';
-    ta.style.fontFamily = 'var(--font)';
-    ta.style.fontSize = '13px';
-    ta.style.border = 'none';
-    ta.style.padding = '12px';
-    ta.style.outline = 'none';
-    ta.value = data.content;
+    ta.classList.add('editor-fallback');
+    ta.value = buffer.content;
     ta.addEventListener('input', () => { markTabDirty(tab); scheduleTabDraft(tab); scheduleTabPreview(tab); });
     tab.fteHost.appendChild(ta);
     cm = {
@@ -509,21 +512,13 @@ async function ensureTabEditor(tab, seed) {
   }
 
   tab.cm = cm;
-  tab.original = data.original != null ? data.original : data.content;
-  // Disk revision this buffer came from — the open-file watcher compares fresh
-  // stats against it (null = unknown, adopt silently on first poll).
-  tab.diskMtime = data.mtime != null ? String(data.mtime) : null;
-  // stat bytes, never read length (chars): non-ASCII files phantom-flagged
-  // "Changed on disk" when chars and bytes disagreed.
-  tab.diskSize = typeof data.size === 'number' ? data.size : null;
-  tab.extChanged = false;
   if (data.history) { try { cm.setHistory(data.history); } catch (e) { console.warn('Undo history restore failed:', e); } }
   if (data.cursor) { try { cm.setCursor(data.cursor); } catch {} }
   if (!cm.isFallback) {
     cm.on('change', () => { markTabDirty(tab); scheduleTabDraft(tab); scheduleTabPreview(tab); });
   }
   markTabDirty(tab);
-  if (data.extChanged) setTabExtChanged(tab, true, data.extMsg && /Deleted/.test(data.extMsg) ? data.extMsg : undefined);
+  if (buffer.extChanged) setTabExtChanged(tab, true, data.extMsg && /Deleted/.test(data.extMsg) ? data.extMsg : undefined);
   try { cm.setOption('mode', await resolveCMmode(fileTabName(tab.path))); } catch (e) { console.warn('Mode resolve failed:', e); }
   return !tab.closed;
 }
@@ -534,8 +529,8 @@ async function ensureTabEditor(tab, seed) {
 function setTabExtChanged(tab, on, msg) {
   if (!tab) return;
   on = !!on;
-  const was = !!tab.extChanged;
-  tab.extChanged = on;
+  const was = !!tab.document.extChanged;
+  tab.document.extChanged = on;
   if (tab.fteDot) {
     tab.fteDot.classList.toggle('ext', on);
     tab.fteDot.setAttribute('aria-label', on ? 'File changed on disk'
@@ -574,9 +569,9 @@ function setTabExtChanged(tab, on, msg) {
 
 // Transient toolbar word that never wipes the persistent external-change note.
 function flashTabStatus(tab, text) {
-  if (!tab?.fteStatus || tab.extChanged) return;
+  if (!tab?.fteStatus || tab.document.extChanged) return;
   tab.fteStatus.textContent = text;
-  setTimeout(() => { if (!tab.extChanged && tab.fteStatus) tab.fteStatus.textContent = ''; }, 2000);
+  setTimeout(() => { if (!tab.document.extChanged && tab.fteStatus) tab.fteStatus.textContent = ''; }, 2000);
 }
 
 async function refreshTabDiskSnapshot(tab) {
@@ -584,8 +579,8 @@ async function refreshTabDiskSnapshot(tab) {
   try {
     const s = await api(`/api/files/stat?path=${encodeURIComponent(tab.path)}`);
     if (s && !s.error && s.mtime !== undefined) {
-      tab.diskMtime = String(s.mtime);
-      tab.diskSize = s.size;
+      tab.document.diskMtime = String(s.mtime);
+      tab.document.diskSize = s.size;
     }
   } catch {}
 }
@@ -836,83 +831,70 @@ function scheduleTabPreview(tab) {
   }, 350);
 }
 
-function markTabDirty(tab) {
-  if (!tab) return;
-  const dirty = !!tab.cm && tab.cm.getValue() !== tab.original;
+function paintTabDirty(tab) {
+  if (!tab || tab.closed) return;
+  const dirty = !!tab.document.buffer?.dirty;
   tab.dirty = dirty;
   if (tab.fteDot) {
     tab.fteDot.classList.toggle('on', dirty);
-    tab.fteDot.setAttribute('aria-label', tab.extChanged ? 'File changed on disk'
-      : (dirty ? 'Unsaved changes' : 'No unsaved changes'));
+    tab.fteDot.setAttribute('aria-label', tab.document.extChanged ? 'File changed on disk' : (dirty ? 'Unsaved changes' : 'No unsaved changes'));
   }
-  try { tab.el?.classList.toggle('has-dirty', dirty); } catch {}
+  tab.el?.classList.toggle('has-dirty', dirty);
+}
+function markTabDirty(tab) {
+  if (tab?.cm) tab.document.buffer?.setContent(tab.cm.getValue());
+  paintTabDirty(tab);
 }
 
 // Same 2s debounce and same `wt-draft:<path>` keys as the panel, so a draft written by
 // a tab is offered by the panel too, and vice versa.
 function scheduleTabDraft(tab) {
-  clearTimeout(tab.draftTimer);
-  tab.draftTimer = setTimeout(() => {
-    try {
-      if (!tab.cm || tab.closed) return;
-      const content = tab.cm.getValue();
-      if (content !== tab.original) safeStorage.setItem('wt-draft:' + tab.path, content);
-      else safeStorage.removeItem('wt-draft:' + tab.path);
-    } catch {}
-  }, 2000);
+  if (tab?.cm && !tab.closed) {
+    tab.document.buffer?.setContent(tab.cm.getValue());
+    tab.document.buffer?.scheduleDraft();
+  }
 }
 
 async function saveTabFile(tab) {
-  if (!tab || !tab.cm) return;
+  const buffer = tab?.document.buffer;
+  if (!buffer || !tab.cm || tab.closed) return;
+  buffer.setContent(tab.cm.getValue());
   setBtnBusy(tab.fteSaveBtn, true);
-  let r = null, content = '';
   try {
-    content = tab.cm.getValue();
-    r = await api('/api/files/write', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: tab.path, content }),
-    });
-  } finally {
-    // Always release the busy state, even if the request throws.
-    setBtnBusy(tab.fteSaveBtn, false);
-  }
-  if (r && r.success) {
-    tab.original = content;
-    clearTimeout(tab.draftTimer);
-    removeDraft(tab.path);
-    await refreshTabDiskSnapshot(tab);
-    setTabExtChanged(tab, false);
-    markTabDirty(tab);
-    flashTabStatus(tab, 'Saved');
-    toast('Saved ' + fileTabName(tab.path), 'success');
+    const result = await saveEditorBuffer(buffer);
+    if (!result || !result.success) { toast(result?.error || 'Save failed', 'error'); return; }
+    if (!tab.closed && tab.document.buffer === buffer) {
+      setTabExtChanged(tab, false);
+      markTabDirty(tab);
+      flashTabStatus(tab, buffer.dirty ? 'Saved; newer edits are unsaved' : 'Saved');
+    }
+    toast('Saved ' + fileTabName(buffer.path), 'success');
     try { notifyPreviewFileSaved(); } catch {}
-  } else {
-    toast((r && r.error) || 'Save failed', 'error');
-  }
+  } catch { toast('Save failed — your edits are kept', 'error'); }
+  finally { if (!buffer.saving) setBtnBusy(tab.fteSaveBtn, false); }
 }
 
 async function reloadTabFile(tab) {
-  if (!tab || !tab.cm) return;
-  if (tab.cm.getValue() !== tab.original) {
+  const buffer = tab?.document.buffer;
+  if (!buffer || !tab.cm || tab.closed || buffer.saving) return;
+  buffer.setContent(tab.cm.getValue());
+  if (buffer.dirty) {
     const ok = await confirmDialog({ title: 'Discard changes', message: 'Re-read this file from disk and discard your unsaved changes?', okText: 'Discard', cancelText: 'Keep Editing', danger: true });
-    if (!ok) return;
+    if (!ok || tab.closed) return;
   }
-  // Deliberately a raw read: Reload means disk, so it must not offer the draft again.
-  const r = await api(`/api/files/read?path=${encodeURIComponent(tab.path)}`);
-  if (r.error) { toast(r.error, 'error'); return; }
-  clearTimeout(tab.draftTimer);
-  removeDraft(tab.path);
-  tab.cm.setValue(r.content);
-  tab.original = r.content;
-  if (r.mtime != null) tab.diskMtime = String(r.mtime);
-  // r.length is chars; the watcher compares stat bytes — refresh from stat.
-  await refreshTabDiskSnapshot(tab);
+  const revision = buffer.revision;
+  const result = await fetchDiskContent(buffer.path);
+  if (tab.closed || tab.document.buffer !== buffer) return;
+  if (result.error) { toast(result.error, 'error'); return; }
+  buffer.setContent(tab.cm.getValue());
+  if (!buffer.acceptDisk(result, revision)) { toast('Edits made while loading were kept', 'info'); return; }
+  tab.cm.setValue(buffer.content);
+  await refreshEditorDiskSnapshot(buffer);
+  if (tab.closed || tab.document.buffer !== buffer) return;
   setTabExtChanged(tab, false);
   markTabDirty(tab);
   flashTabStatus(tab, 'Reloaded');
-  // A manual Reload must re-render an open preview like the panel does.
-  if (tab.previewOn) { try { renderTabPreview(tab); } catch {} }
+  if (tab.previewOn) renderTabPreview(tab);
 }
 
 // Hand the file to the split panel, carrying the buffer and undo history so nothing is
@@ -921,19 +903,20 @@ async function moveTabToPanel(tab) {
   if (!tab || tab.type !== 'file') return;
   const path = tab.path;
   const content = tab.cm ? tab.cm.getValue() : '';
-  const original = tab.original != null ? tab.original : content;
+  const original = tab.document.original != null ? tab.document.original : content;
   const history = tab.cm ? tab.cm.getHistory() : null;
   const cursor = tab.cm ? tab.cm.getCursor() : null;
-  clearTimeout(tab.draftTimer);
+  tab.document.buffer?.cancelDraft();
   clearTimeout(tab.previewTimer);
   // Crash-safety net for the handover: if the tab goes away but the panel never opens,
   // the draft still holds the text.
   if (content !== original) safeStorage.setItem('wt-draft:' + path, content);
-  const diskMtime = tab.diskMtime, diskSize = tab.diskSize, wasExt = tab.extChanged;
+  const diskMtime = tab.document.diskMtime, diskSize = tab.document.diskSize, wasExt = tab.document.extChanged;
   const wasExtMsg = tab.fteStatus && tab.fteStatus.classList.contains('ext') ? tab.fteStatus.textContent : null;
   const wasPreview = !!tab.previewOn, wasFull = !!tab.htmlFull;
+  const buffer = tab.document.take();
   await closeTab({ stopPropagation() {} }, tab.id, { force: true, noReopen: true });
-  await showTextInPanel(path, content, original, history, diskMtime, diskSize);
+  await showTextInPanel(path, content, original, history, diskMtime, diskSize, buffer);
   // Carry preview state + the specific ext message (Deleted vs Changed).
   if (wasPreview && typeof mdPreviewActive !== 'undefined' && !mdPreviewActive) {
     try {
@@ -973,18 +956,19 @@ function openFileAsTab(path) {
   if (!path) return null;
   const existing = findFileTab(path);
   if (existing) { activateTab(existing.id); return existing; }
-  const fromPanel = !!editor && editorPath === path;
+  const fromPanel = panelState.path === path && (!!panelState.buffer || !!editor);
   const tab = newFileTab(path, { mount: false });
   if (!tab) return null;
   if (fromPanel) tab._cameFromPanel = true;
   if (fromPanel && tab.viewer === 'text') {
-    tab.seed = { content: editor.getValue(), original: editorOriginalContent, history: editor.getHistory(), cursor: editor.getCursor(), mtime: editorDiskMtime, size: editorDiskSize, extChanged: editorExtChanged };
+    panelState.buffer?.setContent(panelContent());
+    tab.seed = { content: panelContent(), original: panelState.original, history: editor?.getHistory(), cursor: editor?.getCursor(), mtime: panelState.diskMtime, size: panelState.diskSize, extChanged: panelState.extChanged };
     // Carry the panel preview state so Panel→tab keeps showing the preview.
     try {
       if (typeof mdPreviewActive !== 'undefined' && mdPreviewActive) tab.previewOn = true;
       if (typeof htmlFullPreview !== 'undefined' && htmlFullPreview) tab.htmlFull = true;
     } catch {}
-    if (editorExtChanged) {
+    if (panelState.extChanged) {
       try {
         const st = document.getElementById('editor-status');
         tab.seed.extMsg = (st && /Deleted/.test(st.textContent)) ? st.textContent : null;
@@ -993,6 +977,8 @@ function openFileAsTab(path) {
   } else if (fromPanel && tab.viewer === 'pdf') {
     tab.viewState = { page: _pdfCurrentPage, scale: _pdfScale };
   }
+  if (fromPanel && tab.viewer === 'text') tab.seed.buffer = panelState.take();
+  if (tab.seed?.buffer) tab.document.open(path, tab.seed, tab.seed.buffer);
   activateTab(tab.id);
   if (fromPanel && tab.viewer === 'text') releasePanelSurface();
   return tab;
@@ -1000,6 +986,11 @@ function openFileAsTab(path) {
 
 // The header button: move the open file out of the panel and into its own tab.
 function openEditorAsTab() {
-  if (!editorPath) { toast('No file open', 'error'); return; }
-  openFileAsTab(editorPath);
+  if (!panelState.path) { toast('No file open', 'error'); return; }
+  openFileAsTab(panelState.path);
 }
+
+// Declarative controls owned by this feature.
+uiActions.register("click", {
+  "open-editor-as-tab": function (event) { return openEditorAsTab(); },
+});

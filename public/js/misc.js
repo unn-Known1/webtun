@@ -453,7 +453,7 @@ function renderCmdLib(filter) {
       <div id="cmd-lib-empty">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.4;margin-bottom:8px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <div>No matching commands found</div>
-        ${q ? `<button class="btn btn-sm" style="margin-top:12px" onclick="clearCmdSearch()">Clear Search</button>` : ''}
+        ${q ? `<button class="btn btn-sm" style="margin-top:12px" data-action="clear-cmd-search">Clear Search</button>` : ''}
       </div>
     `;
     return;
@@ -620,7 +620,7 @@ async function runCmdLib(cmd) {
     if (!ok) return;
   }
   const text = cmd + '\n';
-  sendWsInput(tab.ws, text);
+  sendTerminalInput(tab, text);
   tab.term?.focus();
   addToCmdHist(cmd);
   toast('Running: ' + (cmd.length > 30 ? cmd.slice(0, 30) + '…' : cmd), 'info');
@@ -817,15 +817,25 @@ async function addToCmdHist(cmd) {
   if (!cmd || !cmd.trim()) return;
   return _histEnqueue(async () => {
   // Strip all ANSI/VT escape sequences and control characters
-  const clean = cmd
+  let clean = cmd
     .replace(/\x1b[^a-zA-Z0-9]*[a-zA-Z0-9~]/g, '')       // CSI: ESC [ ... final
     .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')    // OSC: ESC ] ... BEL/ST
     .replace(/\x1b[OPP][^\x40-\x7e]*[\x40-\x7e]/g, '')    // SS3/DCS: ESC O/P ... final
     .replace(/\x1b./g, '')                                   // Any other ESC sequence
-    .replace(/[\x00-\x1f\x7f]/g, '')                        // All remaining control chars
-    .replace(/^[>][0-9;? ]+c(?=[a-zA-Z/\\~\-.])/, '')        // device-attr reply (e.g. >0;276;0c) before a command char
-    .replace(/^[>][0-9;? ]+c$/, '')                            // pure device-attr reply, no command at all
-    .trim();
+    .replace(/[\x00-\x1f\x7f]/g, '');                        // All remaining control chars
+  // Then peel VT replies that reached the buffer without their introducer
+  // (xterm.js answers DA/DSR/OSC colour queries through onData, and a
+  // reply split across chunks kept only its body). Repeat: a session start
+  // emits DA, DA2 and OSC 10/11 back to back. Narrow on purpose — "2to3" or
+  // "2;3" style commands must survive.
+  for (let guard = 0; guard < 8; guard++) {
+    const stripped = clean
+      .replace(/^[>?][0-9;]*c(?=[a-zA-Z/\\~.-]|$)/, '')
+      .replace(/^[0-9]{1,3};(?:[0-9]{1,3};)?rgb:[0-9a-fA-F/]{3,}/, '')
+      .trim();
+    if (stripped === clean) break;
+    clean = stripped;
+  }
   if (!clean) return;
   try {
     await fetch('/api/history', { method: 'POST', headers: histHeaders(), body: JSON.stringify({ cmd: clean, max: cmdHistMax }) });
@@ -964,7 +974,7 @@ async function renderCmdHist() {
       <div id="cmd-hist-empty">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.4;margin-bottom:8px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         <div>${q ? 'No matching commands in history' : 'No commands run yet'}</div>
-        ${q ? `<button class="btn btn-sm" style="margin-top:12px" onclick="clearCmdSearch()">Clear Search</button>` : ''}
+        ${q ? `<button class="btn btn-sm" style="margin-top:12px" data-action="clear-cmd-search">Clear Search</button>` : ''}
       </div>
     `;
     return;
@@ -1531,7 +1541,7 @@ function refreshVersion() {
 window.addEventListener('beforeunload', e => {
   const editorOpen = document.getElementById('editor-view').classList.contains('open');
   const currentContent = editor ? editor.getValue() : '';
-  const editorDirty = editorOpen && currentContent !== editorOriginalContent;
+  const editorDirty = editorOpen && currentContent !== panelState.original;
   // File tabs own their buffers (tab.cm vs tab.original); parked tabs hold a
   // crash-safety draft. The panel check alone missed all of them.
   let fileDirty = false;
@@ -1547,4 +1557,46 @@ window.addEventListener('beforeunload', e => {
     e.preventDefault();
     e.returnValue = '';
   }
+});
+
+// Declarative controls owned by this feature.
+uiActions.register("click", {
+  "open-system-stats": function (event) { return openSystemStats(); },
+  "open-finder": function (event) { return openFinder(); },
+  "toggle-bookmarks": function (event) { return toggleBookmarks(); },
+  "bookmark-current-dir": function (event) { return bookmarkCurrentDir(); },
+  "toggle-cmd-lib": function (event) { return toggleCmdLib(); },
+  "export-cmd-library": function (event) { return exportCmdLibrary(); },
+  "trigger-import-cmd-lib": function (event) { return triggerImportCmdLib(); },
+  "switch-cmd-tab-library": function (event) { return switchCmdTab('library'); },
+  "switch-cmd-tab-history": function (event) { return switchCmdTab('history'); },
+  "clear-cmd-search": function (event) { return clearCmdSearch(); },
+  "export-cmd-hist": function (event) { return exportCmdHist(); },
+  "confirm-clear-cmd-hist": function (event) { return confirmClearCmdHist(); },
+  "save-custom-cmd-from-form": function (event) { return saveCustomCmdFromForm(); },
+  "cancel-edit-custom-cmd": function (event) { return cancelEditCustomCmd(); },
+  "exit-app": function (event) { return exitApp(); },
+  "sort-sys-processes-pid": function (event) { return sortSysProcesses('pid'); },
+  "sort-sys-processes-user": function (event) { return sortSysProcesses('user'); },
+  "sort-sys-processes-cpu": function (event) { return sortSysProcesses('cpu'); },
+  "sort-sys-processes-mem": function (event) { return sortSysProcesses('mem'); },
+  "sort-sys-processes-cmd": function (event) { return sortSysProcesses('cmd'); },
+  "refresh-system-stats": function (event) { return refreshSystemStats(); },
+  "close-system-stats": function (event) { return closeSystemStats(); },
+  "dismiss-install": function (event) { return dismissInstall(); },
+  "install-pwa": function (event) { return installPWA(); },
+});
+uiActions.register("keydown", {
+  "toggle-bookmarks": function (event) { if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleBookmarks();}; },
+  "save-custom-cmd-from-form": function (event) { if(event.key==='Enter')saveCustomCmdFromForm(); },
+  "finder-keydown": function (event) { return finderKeydown(event); },
+});
+uiActions.register("change", {
+  "import-cmd-lib-file": function (event) { return importCmdLibFile(event); },
+  "update-hist-max": function (event) { return updateHistMax(+this.value); },
+});
+uiActions.register("input", {
+  "on-cmd-search-input": function (event) { return onCmdSearchInput(); },
+  "do-finder-search": function (event) { return doFinderSearch(); },
+  "filter-sys-processes": function (event) { return filterSysProcesses(); },
 });
