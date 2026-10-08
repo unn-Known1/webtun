@@ -140,7 +140,7 @@ function setListMessage(list, msg) {
   if (!list) return;
   list.textContent = '';
   const d = document.createElement('div');
-  d.style.cssText = 'font-size:11px;color:var(--fg3)';
+  d.className = 'settings-list-message';
   d.textContent = msg;
   list.appendChild(d);
 }
@@ -160,7 +160,7 @@ async function refreshSessions() {
   // Pending PIN rotation banner (approve here if the modal was dismissed)
   if (r.pending) {
     const banner = document.createElement('div');
-    banner.style.cssText = 'padding:8px;border:1px solid var(--amber, #e5a50a);border-radius:var(--radius);font-size:11px;margin-bottom:6px';
+    banner.className = 'settings-session-notice';
     const t = document.createElement('div');
     t.style.cssText = 'margin-bottom:6px';
     t.textContent = r.pending.mine
@@ -169,15 +169,13 @@ async function refreshSessions() {
     banner.appendChild(t);
     if (!r.pending.mine) {
       const row = document.createElement('div');
-      row.style.cssText = 'display:flex;gap:6px';
+      row.className = 'settings-actions';
       const ap = document.createElement('button');
       ap.className = 'btn btn-primary';
-      ap.style.cssText = 'height:26px;padding:0 10px;font-size:11px;flex:1';
       ap.textContent = 'Approve';
       ap.onclick = () => approvePinChange();
       const ve = document.createElement('button');
       ve.className = 'btn btn-ghost';
-      ve.style.cssText = 'height:26px;padding:0 10px;font-size:11px;flex:1';
       ve.textContent = 'Revert & kick';
       ve.onclick = () => vetoPinChange();
       row.appendChild(ap); row.appendChild(ve);
@@ -191,28 +189,26 @@ async function refreshSessions() {
   }
   for (const s of r.sessions) {
     const row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);font-size:11px';
+    row.className = 'settings-session';
     const info = document.createElement('div');
-    info.style.cssText = 'flex:1;min-width:0';
+    info.className = 'settings-session-info';
     const title = document.createElement('div');
-    title.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+    title.className = 'settings-session-title';
     title.textContent = (s.device || 'Unknown device') + (s.current ? ' · this device' : '') + (s.status === 'pending' ? ' · awaiting approval' : '');
     const sub = document.createElement('div');
-    sub.style.cssText = 'color:var(--fg3)';
+    sub.className = 'settings-session-meta';
     sub.textContent = `${s.ip || 'unknown IP'} · ${s.status === 'pending' ? 'requested ' + timeAgo(s.createdAt) : 'active ' + timeAgo(s.lastSeen || s.createdAt)}`;
     info.appendChild(title); info.appendChild(sub);
     row.appendChild(info);
     if (s.status === 'pending' && !s.current) {
       const ap = document.createElement('button');
       ap.className = 'btn btn-primary';
-      ap.style.cssText = 'height:24px;padding:0 10px;font-size:11px;flex-shrink:0';
       ap.textContent = 'Approve';
       ap.setAttribute('aria-label', 'Approve session ' + (s.device || s.ip || ''));
       ap.onclick = () => approveSession(s.id);
       row.appendChild(ap);
       const dn = document.createElement('button');
       dn.className = 'btn btn-ghost';
-      dn.style.cssText = 'height:24px;padding:0 10px;font-size:11px;flex-shrink:0';
       dn.textContent = 'Deny';
       dn.setAttribute('aria-label', 'Deny session ' + (s.device || s.ip || ''));
       dn.onclick = () => revokeSession(s.id);
@@ -220,7 +216,6 @@ async function refreshSessions() {
     } else if (!s.current) {
       const btn = document.createElement('button');
       btn.className = 'btn btn-ghost';
-      btn.style.cssText = 'height:24px;padding:0 10px;font-size:11px;flex-shrink:0';
       btn.textContent = 'Revoke';
       btn.setAttribute('aria-label', 'Revoke session ' + (s.device || s.ip || ''));
       btn.onclick = () => revokeSession(s.id);
@@ -385,8 +380,11 @@ function renderTunnels() {
   const list = document.getElementById('tunnel-list');
   if (!list) return;
   list.innerHTML = '';
-  if (tunnelList.length === 0) { list.style.display = 'none'; return; }
   list.style.display = 'block';
+  if (tunnelList.length === 0) {
+    setListMessage(list, 'No tunnels yet. Enter a local URL above to create one.');
+    return;
+  }
   tunnelList.forEach(t => {
     const row = document.createElement('div');
     row.className = 'tunnel-row';

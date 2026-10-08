@@ -287,6 +287,11 @@ function toggleCmdLib() {
     el.setAttribute('aria-expanded', String(!isOpen));
   });
   if (!isOpen) {
+    const composer = document.getElementById('cmd-lib-composer');
+    if (composer && !composer.dataset.initialized) {
+      composer.open = window.innerWidth > 768;
+      composer.dataset.initialized = 'true';
+    }
     loadHistMax();
     switchCmdTab('library');
     setCmdLibInert(true);
@@ -427,6 +432,7 @@ function renderCmdLib(filter) {
     chipsContainer.innerHTML = '';
     const allChip = document.createElement('button');
     allChip.className = 'cmd-cat-chip' + (_activeCmdCat === 'all' ? ' active' : '');
+    allChip.setAttribute('aria-pressed', String(_activeCmdCat === 'all'));
     allChip.innerHTML = `All <span class="chip-count">${all.length}</span>`;
     allChip.onclick = () => selectCmdCategory('all');
     chipsContainer.appendChild(allChip);
@@ -434,6 +440,7 @@ function renderCmdLib(filter) {
     Array.from(catList).sort().forEach(cat => {
       const chip = document.createElement('button');
       chip.className = 'cmd-cat-chip' + (_activeCmdCat === cat ? ' active' : '');
+      chip.setAttribute('aria-pressed', String(_activeCmdCat === cat));
       chip.innerHTML = `${escapeHtml(cat)} <span class="chip-count">${catCounts[cat] || 0}</span>`;
       chip.onclick = () => selectCmdCategory(cat);
       chipsContainer.appendChild(chip);
@@ -486,6 +493,7 @@ function renderCmdLib(filter) {
     cats[cat].forEach(c => {
       const item = document.createElement('div');
       item.className = 'cmd-lib-item' + (c.custom ? ' is-custom' : '');
+      item.setAttribute('role', 'listitem');
       item.title = `${c.name} — Click to paste into terminal`;
 
       const mainWrap = document.createElement('div');
@@ -509,6 +517,7 @@ function renderCmdLib(filter) {
       const catBadge = document.createElement('span');
       catBadge.className = 'cmd-badge-cat';
       catBadge.textContent = cat;
+      catBadge.title = cat;
       topRow.appendChild(catBadge);
 
       mainWrap.appendChild(topRow);
@@ -518,6 +527,7 @@ function renderCmdLib(filter) {
       const cmd = document.createElement('code');
       cmd.className = 'cmd-lib-cmd';
       cmd.textContent = c.cmd;
+      cmd.title = c.cmd;
       codeBox.appendChild(cmd);
       mainWrap.appendChild(codeBox);
 
@@ -533,6 +543,9 @@ function renderCmdLib(filter) {
       runBtn.title = 'Run in terminal';
       runBtn.setAttribute('aria-label', `Run ${c.name}`);
       runBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6,3 20,12 6,21"/></svg>';
+      const runLabel = document.createElement('span');
+      runLabel.textContent = 'Run';
+      runBtn.appendChild(runLabel);
       runBtn.addEventListener('click', e => {
         e.stopPropagation();
         runCmdLib(c.cmd);
@@ -635,10 +648,11 @@ function saveCustomCmdFromForm() {
   const cmd = (cmdInput?.value || '').trim();
 
   if (!cmd) {
-    toast('Please enter a command string', 'error');
+    showFieldError('cmd-lib-field-error', 'Enter a command to save.');
     cmdInput?.focus();
     return;
   }
+  clearFieldError('cmd-lib-field-error');
 
   let custom = getCmdLib();
 
@@ -671,6 +685,10 @@ function addCustomCmd() {
 }
 
 function editCustomCmd(c) {
+  clearFieldError('cmd-lib-field-error');
+  const composer = document.getElementById('cmd-lib-composer');
+  if (composer) composer.open = true;
+  document.getElementById('cmd-lib-composer-title').textContent = 'Edit command';
   _editingCmdOriginal = { name: c.name, cmd: c.cmd, cat: c.cat || 'My Commands' };
   const nameInput = document.getElementById('cmd-lib-name-input');
   const catInput = document.getElementById('cmd-lib-cat-input');
@@ -689,6 +707,8 @@ function editCustomCmd(c) {
 }
 
 function cancelEditCustomCmd() {
+  clearFieldError('cmd-lib-field-error');
+  document.getElementById('cmd-lib-composer-title').textContent = 'Save a command';
   _editingCmdOriginal = null;
   const nameInput = document.getElementById('cmd-lib-name-input');
   const catInput = document.getElementById('cmd-lib-cat-input');
@@ -931,6 +951,8 @@ function switchCmdTab(tab) {
   const clearBtn = document.getElementById('cmd-search-clear-btn');
 
   if (tab === 'library') {
+    libBtn.tabIndex = 0;
+    histBtn.tabIndex = -1;
     libBtn.classList.add('active'); libBtn.setAttribute('aria-selected','true');
     histBtn.classList.remove('active'); histBtn.setAttribute('aria-selected','false');
     libList.style.display = '';
@@ -938,10 +960,12 @@ function switchCmdTab(tab) {
     if (chipsContainer) chipsContainer.style.display = 'flex';
     histHeader.style.display = 'none';
     footer.style.display = '';
-    if (search) search.placeholder = 'Search commands by name, syntax, or category…';
+    if (search) search.placeholder = 'Search name, command or category…';
     renderCmdLib();
   } else {
     histBtn.classList.add('active'); histBtn.setAttribute('aria-selected','true');
+    histBtn.tabIndex = 0;
+    libBtn.tabIndex = -1;
     libBtn.classList.remove('active'); libBtn.setAttribute('aria-selected','false');
     histList.style.display = 'flex';
     histList.setAttribute('aria-live','polite');
@@ -984,6 +1008,7 @@ async function renderCmdHist() {
     const realIdx = q ? hist.indexOf(h) : i;
     const item = document.createElement('div');
     item.className = 'cmd-hist-item';
+    item.setAttribute('role', 'listitem');
     item.title = `${h.cmd}\nExecuted ${new Date(h.time).toLocaleString()}`;
 
     const mainWrap = document.createElement('div');
@@ -1025,6 +1050,9 @@ async function renderCmdHist() {
     runBtn.title = 'Run in terminal';
     runBtn.setAttribute('aria-label', `Run ${h.cmd}`);
     runBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6,3 20,12 6,21"/></svg>';
+    const runLabel = document.createElement('span');
+    runLabel.textContent = 'Run';
+    runBtn.appendChild(runLabel);
     runBtn.addEventListener('click', e => {
       e.stopPropagation();
       runCmdLib(h.cmd);
@@ -1087,6 +1115,21 @@ async function renderCmdHist() {
     list.appendChild(item);
   });
 }
+
+uiActions.register('input', {
+  'clear-command-form-error': function () { clearFieldError('cmd-lib-field-error'); },
+});
+uiActions.register('keydown', {
+  'navigate-command-tabs': function (event) {
+    if (!event.target.closest('[role="tab"]')) return;
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const current = event.target.id === 'cmd-tab-hist' ? 'history' : 'library';
+    const next = event.key === 'Home' ? 'library' : event.key === 'End' ? 'history' : current === 'library' ? 'history' : 'library';
+    switchCmdTab(next);
+    document.getElementById(next === 'library' ? 'cmd-tab-lib' : 'cmd-tab-hist').focus();
+  },
+});
 
 // ═══════════════════════════════════════════════════════
 // SYSTEM STATS

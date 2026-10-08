@@ -239,16 +239,6 @@ function openSettings() {
     // Tunnel ids change on auto-restart and dead rows otherwise linger until
     // reload — resync every time the panel opens, like sessions above.
     try { restoreTunnels(); } catch {}
-    // Staggered card entrance used to replay on every open, and `sec-anim` was
-    // never cleared, so the last card was still sliding 0.53s after the panel
-    // settled (D-17). Play it once, then drop it.
-    panel.classList.remove('sec-anim');
-    void panel.offsetWidth;
-    panel.classList.add('sec-anim');
-    panel.addEventListener('animationend', function once() {
-      panel.removeEventListener('animationend', once);
-      panel.classList.remove('sec-anim');
-    });
     panel.setAttribute('aria-modal', 'true');
     panel.setAttribute('role', 'dialog');
     // Defer inert + focus to next frame so panel transform can composite on GPU without reflowing sidebar/file-list
@@ -262,7 +252,6 @@ function openSettings() {
   } else {
     panel.classList.remove('open');
     panel.removeAttribute('aria-modal');
-    panel.classList.remove('sec-anim');
     setBackdropInert(false);
     setPanelInert('settings-panel', true);
     removeFocusTrap();
@@ -276,7 +265,6 @@ function closeSettings() {
   const panel = document.getElementById('settings-panel');
   panel.classList.remove('open');
   panel.removeAttribute('aria-modal');
-  panel.classList.remove('sec-anim');
   setBackdropInert(false);
   setPanelInert('settings-panel', true);
   removeFocusTrap();
@@ -307,6 +295,16 @@ const _secIcons = {
   reset: '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>',
   about: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>'
 };
+function paintSettingsSection(sec, open) {
+  sec.classList.toggle('open', open);
+  const heading = sec.querySelector('h3');
+  const body = sec.querySelector('.settings-section-body');
+  if (body) {
+    body.inert = !open;
+    body.setAttribute('aria-hidden', String(!open));
+    heading?.setAttribute('aria-expanded', String(open));
+  }
+}
 function setupSettingsSections() {
   if (_settingsSecsSetup) return;
   _settingsSecsSetup = true;
@@ -320,6 +318,8 @@ function setupSettingsSections() {
     // Wrap body rows (everything after h3) in grid-animated body > inner
     const body = document.createElement('div');
     body.className = 'settings-section-body';
+    body.id = 'settings-section-' + slug;
+    h3.setAttribute('aria-controls', body.id);
     const inner = document.createElement('div');
     inner.className = 'settings-section-inner';
     [...sec.childNodes].forEach(n => { if (n !== h3) inner.appendChild(n); });
@@ -344,8 +344,7 @@ function setupSettingsSections() {
     let open = false;
     try { open = safeStorage.getItem('wt-settings-sec-' + slug) === 'true'; } catch {}
     const paint = (v) => {
-      sec.classList.toggle('open', v);
-      h3.setAttribute('aria-expanded', String(v));
+      paintSettingsSection(sec, v);
     };
     const apply = () => paint(open);
     sec._secApply = apply;
@@ -399,6 +398,7 @@ function setupSettingsSections() {
 // so clearing must restore the exact prior states (not just persisted ones,
 // which miss hover-peeks).
 let _preSearchSectionStates = new Map();
+let _preSearchChildDisplay = new Map();
 function filterSettings(q) {
   q = (q || '').trim().toLowerCase();
   const secs = [...document.querySelectorAll('#settings-panel .settings-section')];
@@ -412,10 +412,11 @@ function filterSettings(q) {
       sec.style.display = '';
       const inner = sec.querySelector('.settings-section-inner');
       const kids = inner ? [...inner.children] : [...sec.children].filter(el => el.tagName !== 'H3');
-      kids.forEach(ch => ch.style.display = '');
+      kids.forEach(ch => {
+        if (_preSearchChildDisplay.has(ch)) ch.style.display = _preSearchChildDisplay.get(ch);
+      });
       if (_preSearchSectionStates.has(sec)) {
-        sec.classList.toggle('open', _preSearchSectionStates.get(sec));
-        if (h3) h3.setAttribute('aria-expanded', String(_preSearchSectionStates.get(sec)));
+        paintSettingsSection(sec, _preSearchSectionStates.get(sec));
       } else if (sec._secApply) sec._secApply();
       anyVisible = true;
       return;
@@ -425,16 +426,18 @@ function filterSettings(q) {
     const kids = inner ? [...inner.children] : [...sec.querySelectorAll(':scope > div:not(.settings-section-body)')];
     let show = !!titleHit;
     kids.forEach(ch => {
+      if (!_preSearchChildDisplay.has(ch)) _preSearchChildDisplay.set(ch, ch.style.display);
       const text = (ch.textContent || '').toLowerCase();
       const kw = ((ch.dataset && ch.dataset.keywords) || '').toLowerCase();
-      const hit = !!titleHit || text.includes(q) || (!!kw && kw.split(/\s+/).some(w => w && q.includes(w) || w.includes(q)));
-      ch.style.display = hit ? '' : 'none';
-      if (hit) show = true;
+      const hit = !!titleHit || text.includes(q) || (!!kw && kw.includes(q));
+      const eligible = _preSearchChildDisplay.get(ch) !== 'none';
+      ch.style.display = hit && eligible ? '' : 'none';
+      if (hit && eligible) show = true;
     });
-    if (show) { sec.style.display = ''; sec.classList.add('open'); if (h3) h3.setAttribute('aria-expanded', 'true'); anyVisible = true; }
+    if (show) { sec.style.display = ''; paintSettingsSection(sec, true); anyVisible = true; }
     else sec.style.display = 'none';
   });
-  if (!q) _preSearchSectionStates.clear();
+  if (!q) { _preSearchSectionStates.clear(); _preSearchChildDisplay.clear(); }
   document.getElementById('settings-no-match').style.display = anyVisible ? 'none' : '';
 }
 function applyTheme(theme, save = true) {

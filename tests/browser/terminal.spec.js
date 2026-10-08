@@ -28,6 +28,80 @@ async function cursorRow(page, index = 0) {
   return page.evaluate(index => tabs[index].term.buffer.active.cursorY, index);
 }
 
+test('mobile Tabs button keeps the switcher open and can switch, filter and dismiss tabs', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'Mobile navigation only');
+  await terminalPage(page);
+  await page.evaluate(() => newTab('Second shell'));
+  const button = page.locator('#mnav-tabs');
+  const menu = page.locator('#tab-list-menu');
+  await button.tap();
+  await expect(menu).toBeVisible();
+  await expect(button).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('#tab-list-items .tab-list-row')).toHaveCount(2);
+  await page.locator('#tab-list-search').fill('Second shell');
+  await expect(page.locator('#tab-list-items .tab-list-row')).toHaveCount(1);
+  await page.locator('#tab-list-items .tab-list-name').tap();
+  await expect(menu).not.toBeVisible();
+  await expect(button).toHaveAttribute('aria-expanded', 'false');
+  await button.tap();
+  await expect(menu).toBeVisible();
+  await page.locator('#drawer-backdrop').tap({ position: { x: 10, y: 10 } });
+  await expect(menu).not.toBeVisible();
+  await expect(button).toHaveAttribute('aria-expanded', 'false');
+  await button.tap();
+  await expect(menu).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(menu).not.toBeVisible();
+});
+
+test('tab bar shows overflow controls only when needed and keeps creation reachable', async ({ page }) => {
+  await terminalPage(page);
+  await expect(page.locator('#tab-scroll-left')).not.toBeVisible();
+  await expect(page.locator('#tab-scroll-right')).not.toBeVisible();
+  await page.evaluate(() => {
+    for (let i = 0; i < 9; i++) newTab('Long-running service ' + i);
+    updateTabOverflow();
+  });
+  await expect(page.locator('#tab-scroll-left')).toBeVisible();
+  const plus = page.locator('#new-tab-btn');
+  expect(await plus.evaluate(el => {
+    const r = el.getBoundingClientRect();
+    return r.left >= 0 && r.right <= innerWidth;
+  })).toBe(true);
+  await page.locator('#tab-scroll-left').click();
+  await expect(page.locator('#tab-scroll-right')).toBeVisible();
+  await plus.click();
+  await expect(page.locator('#tab-scroll .tab')).toHaveCount(11);
+  await expect.poll(() => page.locator('#tab-scroll .tab.active').evaluate(el => {
+    const tab = el.getBoundingClientRect();
+    const scroll = el.parentElement.getBoundingClientRect();
+    return tab.left >= scroll.left - 1 && tab.right <= scroll.right + 1;
+  })).toBe(true);
+  const first = await page.evaluate(() => {
+    const first = tabs[0];
+    first.pinned = true;
+    applyTabMeta(first);
+    activateTab(first.id);
+    return first.id;
+  });
+  const pinned = page.locator('.tab[data-id="' + first + '"]');
+  await expect(pinned).toHaveAttribute('aria-selected', 'true');
+  expect(await pinned.evaluate(el => getComputedStyle(el).boxShadow.split('inset').length - 1)).toBe(2);
+  await pinned.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(pinned).toHaveAttribute('aria-selected', 'false');
+  await page.evaluate(() => {
+    newFileTab(homeDir + '/alpha.txt');
+    newTab('SSH · production');
+  });
+  await expect.poll(() => page.locator('#tab-scroll .tab.active').evaluate(el => {
+    const tab = el.getBoundingClientRect();
+    const scroll = el.parentElement.getBoundingClientRect();
+    return tab.left >= scroll.left - 1 && tab.right <= scroll.right + 1;
+  })).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
 test('fresh terminal prompts move above blank startup rows and fit their pane', async ({ page }) => {
   const sockets = await terminalPage(page);
   // tmux uses the alternate screen and asks xterm for its cursor position.

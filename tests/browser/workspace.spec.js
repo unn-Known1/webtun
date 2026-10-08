@@ -134,6 +134,7 @@ test('settings and shortcuts can be opened and dismissed with the keyboard', asy
   await expect(page.locator('#shortcuts-overlay .btn').first()).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(page.locator('#shortcuts-overlay')).toBeHidden();
+  await page.locator('#settings-search').fill('appearance');
   await page.locator('#s-blink').focus();
   const previous = await page.locator('#s-blink').getAttribute('aria-checked');
   await page.keyboard.press('Space');

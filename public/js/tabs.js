@@ -325,7 +325,15 @@ function scrollActiveTabIntoView() {
     const tab = getTabById(activeTabId);
     tab?.el?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   } catch {}
-  setTimeout(updateTabOverflow, 60);
+  setTimeout(() => {
+    updateTabOverflow();
+    // Appearing overflow arrows reduce the scroller's width after the first
+    // reveal. Re-check the current tab against that final layout, not a tab
+    // captured before a rapid switch or restore.
+    const current = getTabById(activeTabId);
+    current?.el?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+    updateTabOverflow();
+  }, 60);
 }
 
 // ── Tab quick-switcher (overflow menu) ──────────────────────────────────
@@ -359,6 +367,8 @@ function toggleTabListMenu(e) {
       menu.style.left = left + 'px';
       menu.style.top = '44px';
     }
+    document.getElementById('tab-list-btn')?.setAttribute('aria-expanded', 'true');
+    document.getElementById('mnav-tabs')?.setAttribute('aria-expanded', 'true');
     const search = document.getElementById('tab-list-search');
     if (search) {
       search.value = '';
@@ -434,6 +444,7 @@ function hideTabMenus() {
     const m = document.getElementById('tab-list-menu');
     if (m) m.style.display = 'none';
     document.getElementById('tab-list-btn')?.setAttribute('aria-expanded', 'false');
+    document.getElementById('mnav-tabs')?.setAttribute('aria-expanded', 'false');
   } catch {}
   try { document.getElementById('tab-ctx-color-wrap')?.classList.remove('open'); } catch {}
   if (window.innerWidth <= 768) {
@@ -519,7 +530,9 @@ function setupTabCtxMenuItems() {
   // Dismiss on outside click / resize.
   document.addEventListener('click', e => {
     try {
-      if (!e.target.closest('#tab-ctx-menu') && !e.target.closest('#new-tab-menu') && !e.target.closest('#tab-list-menu') && !e.target.closest('#tab-list-btn')) hideTabMenus();
+      // Delegated actions and this listener both run on document, so stopping
+      // propagation in the opener does not prevent this listener from running.
+      if (!e.target.closest('#tab-ctx-menu,#new-tab-menu,#tab-list-menu,#tab-list-btn,#mnav-tabs')) hideTabMenus();
     } catch {}
   });
   window.addEventListener('resize', () => { hideTabMenus(); updateTabOverflow(); });
@@ -949,17 +962,19 @@ function connectToTerminalSession(sessionId, dir, title) {
 let _termSessionsPollTimer = null;
 let _cachedSessions = [];
 let _termSessionFilter = 'all';
+let _termSessionsRefreshing = false;
 
-function setTerminalSessionsFilter(filter) {
+function setTerminalSessionsFilter(filter, resetScroll = true) {
   _termSessionFilter = filter || 'all';
   const filterBtns = document.querySelectorAll('.term-sess-filter-btn');
   filterBtns.forEach(btn => {
     btn.classList.toggle('active', btn.getAttribute('data-filter') === _termSessionFilter);
+    btn.setAttribute('aria-pressed', String(btn.getAttribute('data-filter') === _termSessionFilter));
   });
-  filterTerminalSessionsList();
+  filterTerminalSessionsList(resetScroll);
 }
 
-function filterTerminalSessionsList() {
+function filterTerminalSessionsList(resetScroll = false) {
   const listEl = document.getElementById('term-sessions-list');
   const searchInput = document.getElementById('term-sessions-search');
   if (!listEl) return;
@@ -983,6 +998,8 @@ function filterTerminalSessionsList() {
     });
   }
 
+  if (resetScroll) listEl.scrollTop = 0;
+  document.getElementById('term-sess-result-count').textContent = `${filtered.length} of ${_cachedSessions.length} sessions`;
   renderFilteredSessions(filtered);
 }
 
@@ -991,15 +1008,20 @@ function renderFilteredSessions(sessions) {
   if (!listEl) return;
   if (!sessions.length) {
     listEl.innerHTML = `
-      <div style="padding:28px 12px;text-align:center;color:var(--fg3);font-size:13px">
-        No matching terminal sessions found.<br>
-        <button class="btn btn-primary" data-action="close-overlay-term-sessions-overlay" style="margin-top:12px;height:32px;padding:0 14px;font-size:12px">
-          + Start New Terminal
-        </button>
+      <div class="term-sess-empty" role="status">
+        <span>${_cachedSessions.length ? 'No sessions match these filters.' : 'No active terminal sessions.'}</span>
+        <div class="term-sess-empty-actions">
+          ${_cachedSessions.length ? '<button class="btn btn-ghost" data-action="clear-terminal-session-filters">Clear filters</button>' : ''}
+          <button class="btn btn-primary" data-action="close-overlay-term-sessions-overlay">New Terminal</button>
+        </div>
       </div>`;
     return;
   }
 
+  const scrollTop = listEl.scrollTop;
+  const focused = document.activeElement;
+  const focusedSession = focused?.closest('.term-sess-item')?.dataset.sessionId;
+  const focusedAction = focused?.dataset.sessionAction;
   listEl.innerHTML = '';
   // A "WebTun"/"External" source badge on every row repeats information the list
   // has already established (and the filter chips repeat it again). Only show
@@ -1015,6 +1037,8 @@ function renderFilteredSessions(sessions) {
 
     const item = document.createElement('div');
     item.className = 'term-sess-item';
+    item.dataset.sessionId = sess.id;
+    item.setAttribute('role', 'listitem');
 
     // Top row: info and badges
     const topRow = document.createElement('div');
@@ -1024,9 +1048,8 @@ function renderFilteredSessions(sessions) {
     nameGroup.className = 'term-sess-name-group';
 
     const ico = document.createElement('span');
-    ico.style.display = 'inline-flex';
-    ico.style.flexShrink = '0';
-    ico.style.color = isExt ? '#60a5fa' : 'var(--accent)';
+    ico.className = 'term-sess-icon';
+    ico.setAttribute('aria-hidden', 'true');
     ico.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>';
     nameGroup.appendChild(ico);
 
@@ -1034,7 +1057,6 @@ function renderFilteredSessions(sessions) {
     if (!displayName) {
       if (sess.external) {
         displayName = sess.name || sess.id;
-        if (displayName.length > 22) displayName = displayName.slice(0, 20) + '…';
       } else {
         displayName = folderName ? `Terminal (${folderName})` : `Terminal (${sess.id.slice(0, 8)})`;
       }
@@ -1042,15 +1064,6 @@ function renderFilteredSessions(sessions) {
 
     const titleSpan = document.createElement('span');
     titleSpan.className = 'term-sess-title';
-    titleSpan.style.fontFamily = 'var(--font)';
-    titleSpan.style.fontSize = '13px';
-    titleSpan.style.fontWeight = '600';
-    titleSpan.style.color = 'var(--fg)';
-    titleSpan.style.overflow = 'hidden';
-    titleSpan.style.textOverflow = 'ellipsis';
-    titleSpan.style.whiteSpace = 'nowrap';
-    titleSpan.style.minWidth = '0';
-    titleSpan.style.flex = '1';
     titleSpan.textContent = displayName;
     titleSpan.title = sess.label ? `${sess.label} (${sess.name || sess.id})` : (sess.name || sess.id);
     nameGroup.appendChild(titleSpan);
@@ -1100,29 +1113,24 @@ function renderFilteredSessions(sessions) {
     metaRow.className = 'term-sess-meta';
 
     const dirSpan = document.createElement('span');
-    dirSpan.style.display = 'inline-flex';
-    dirSpan.style.alignItems = 'center';
-    dirSpan.style.gap = '4px';
-    dirSpan.style.overflow = 'hidden';
-    dirSpan.style.textOverflow = 'ellipsis';
-    dirSpan.style.whiteSpace = 'nowrap';
-    dirSpan.style.minWidth = '0';
-    dirSpan.style.maxWidth = '100%';
-    dirSpan.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1">' + (sess.cwd ? escapeHtml(sess.cwd) : 'Default Directory') + '</span>';
+    dirSpan.className = 'term-sess-detail';
+    dirSpan.innerHTML = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+    const directory = document.createElement('span');
+    directory.className = 'term-sess-detail-value';
+    directory.textContent = sess.cwd || 'Default Directory';
+    directory.title = directory.textContent;
+    dirSpan.appendChild(directory);
     metaRow.appendChild(dirSpan);
 
     if (sess.command) {
       const cmdSpan = document.createElement('span');
-      cmdSpan.style.display = 'inline-flex';
-      cmdSpan.style.alignItems = 'center';
-      cmdSpan.style.gap = '4px';
-      cmdSpan.style.overflow = 'hidden';
-      cmdSpan.style.textOverflow = 'ellipsis';
-      cmdSpan.style.whiteSpace = 'nowrap';
-      cmdSpan.style.minWidth = '0';
-      cmdSpan.style.maxWidth = '100%';
-      cmdSpan.style.flexShrink = '1';
-      cmdSpan.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> <code style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:100%;flex:1">' + escapeHtml(sess.command) + '</code>';
+      cmdSpan.className = 'term-sess-detail';
+      cmdSpan.innerHTML = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>';
+      const command = document.createElement('code');
+      command.className = 'term-sess-detail-value';
+      command.textContent = sess.command;
+      command.title = sess.command;
+      cmdSpan.appendChild(command);
       metaRow.appendChild(cmdSpan);
     }
     item.appendChild(metaRow);
@@ -1134,9 +1142,11 @@ function renderFilteredSessions(sessions) {
     // Label button (for naming or organizing sessions)
     const labelBtn = document.createElement('button');
     labelBtn.className = 'btn btn-ghost';
+    labelBtn.dataset.sessionAction = 'label';
+    labelBtn.setAttribute('aria-label', 'Label session ' + displayName);
     labelBtn.title = 'Set custom label for this session';
     labelBtn.style.flexShrink = '0';
-    labelBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>';
+    labelBtn.innerHTML = '<svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>Label';
     labelBtn.onclick = (e) => {
       e.stopPropagation();
       editSessionLabel(sess.id, sess.label || '');
@@ -1146,10 +1156,8 @@ function renderFilteredSessions(sessions) {
     // Connect button
     const connBtn = document.createElement('button');
     connBtn.className = 'btn btn-primary';
-    connBtn.style.overflow = 'hidden';
-    connBtn.style.textOverflow = 'ellipsis';
-    connBtn.style.whiteSpace = 'nowrap';
-    connBtn.style.minWidth = '0';
+    connBtn.dataset.sessionAction = 'connect';
+    connBtn.setAttribute('aria-label', (openTab ? 'Switch to tab for ' : isProc ? 'Open shell for ' : 'Connect to ') + displayName);
     connBtn.innerHTML = openTab 
       ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><polyline points="9 18 15 12 9 6"/></svg> Switch to Tab' 
       : (isProc 
@@ -1164,11 +1172,12 @@ function renderFilteredSessions(sessions) {
 
     // Terminate button
     const killBtn = document.createElement('button');
-    killBtn.className = 'btn btn-ghost';
-    killBtn.style.color = 'var(--red)';
+    killBtn.className = 'btn btn-ghost term-sess-terminate';
+    killBtn.dataset.sessionAction = 'terminate';
+    killBtn.setAttribute('aria-label', 'Terminate session ' + displayName);
     killBtn.style.flexShrink = '0';
     killBtn.title = 'Terminate session';
-    killBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    killBtn.innerHTML = '<svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>Terminate';
     killBtn.onclick = async (e) => {
       e.stopPropagation();
       const killDisplayName = sess.label || sess.name || sess.id;
@@ -1196,6 +1205,11 @@ function renderFilteredSessions(sessions) {
     item.appendChild(actionsRow);
     listEl.appendChild(item);
   }
+  listEl.scrollTop = scrollTop;
+  if (focusedSession && focusedAction) {
+    const row = [...listEl.children].find(el => el.dataset.sessionId === focusedSession);
+    row?.querySelector('[data-session-action="' + focusedAction + '"]')?.focus({ preventScroll: true });
+  }
 }
 
 async function openTerminalSessionsModal() {
@@ -1219,13 +1233,20 @@ async function refreshTerminalSessionsModal(silent = false) {
   const allCountEl = document.getElementById('sess-filter-all-count');
   const webtunCountEl = document.getElementById('sess-filter-webtun-count');
   const extCountEl = document.getElementById('sess-filter-ext-count');
-  if (!listEl) return;
+  if (!listEl || _termSessionsRefreshing) return;
+  _termSessionsRefreshing = true;
+  const refreshBtn = document.getElementById('term-sessions-refresh-btn');
+  const status = document.getElementById('term-sess-update-status');
+  listEl.setAttribute('aria-busy', 'true');
   if (!silent) {
-    listEl.innerHTML = '<div style="padding:16px;text-align:center;color:var(--fg3);font-size:12px">Loading active terminal sessions…</div>';
+    setBtnBusy(refreshBtn, true);
+    status.textContent = 'Refreshing sessions…';
+    if (!_cachedSessions.length) listEl.innerHTML = '<div class="term-sess-empty" role="status">Loading active terminal sessions…</div>';
   }
   try {
     const res = await api('/api/sessions');
-    const sessions = (res && Array.isArray(res.sessions)) ? res.sessions : [];
+    if (!res || !Array.isArray(res.sessions)) throw new Error('Sessions unavailable');
+    const sessions = res.sessions;
     _cachedSessions = sessions;
     
     const webtunCount = sessions.filter(s => !s.external).length;
@@ -1251,11 +1272,20 @@ async function refreshTerminalSessionsModal(silent = false) {
       const dead = webtunCount === 0;
       webtunChip.disabled = dead;
       webtunChip.setAttribute('aria-disabled', String(dead));
+      if (dead && _termSessionFilter === 'webtun') _termSessionFilter = 'all';
     }
 
-    filterTerminalSessionsList();
+    setTerminalSessionsFilter(_termSessionFilter, false);
+    status.textContent = 'Updates every 4 seconds';
   } catch (err) {
-    if (listEl && !silent) listEl.innerHTML = '<div style="padding:16px;color:var(--red);font-size:12px;text-align:center">Failed to load terminal sessions</div>';
+    status.textContent = 'Update failed · Try Refresh';
+    if (!silent && !_cachedSessions.length) {
+      listEl.innerHTML = '<div class="term-sess-empty" role="alert"><span>Could not load terminal sessions.</span><button class="btn btn-ghost" data-action="refresh-terminal-sessions-modal">Try again</button></div>';
+    }
+  } finally {
+    _termSessionsRefreshing = false;
+    listEl.setAttribute('aria-busy', 'false');
+    if (!silent) setBtnBusy(refreshBtn, false);
   }
 }
 
@@ -1532,7 +1562,12 @@ uiActions.register("click", {
   "set-terminal-sessions-filter-all": function (event) { return setTerminalSessionsFilter('all'); },
   "set-terminal-sessions-filter-webtun": function (event) { return setTerminalSessionsFilter('webtun'); },
   "set-terminal-sessions-filter-external": function (event) { return setTerminalSessionsFilter('external'); },
+  "clear-terminal-session-filters": function () {
+    document.getElementById('term-sessions-search').value = '';
+    setTerminalSessionsFilter('all');
+    document.getElementById('term-sessions-search').focus();
+  },
 });
 uiActions.register("input", {
-  "filter-terminal-sessions-list": function (event) { return filterTerminalSessionsList(); },
+  "filter-terminal-sessions-list": function (event) { return filterTerminalSessionsList(true); },
 });
