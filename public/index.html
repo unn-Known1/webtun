@@ -1126,8 +1126,15 @@
 <!-- System Stats Modal -->
 <div class="overlay" id="sys-overlay" role="dialog" aria-modal="true" aria-label="System Stats">
   <div class="modal">
-    <h2><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>System Stats</h2>
-    <div id="sys-loading" style="text-align:center;padding:20px;color:var(--fg2);display:none">Loading…</div>
+    <div class="sys-header">
+      <div>
+        <h2><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>System Stats</h2>
+        <p class="sys-description">Resource usage and running processes</p>
+      </div>
+      <button class="icon-btn" aria-label="Close System Stats" title="Close" data-action="close-system-stats"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 6 12 12M6 18 18 6"/></svg></button>
+    </div>
+    <div class="sys-body">
+    <div id="sys-loading" role="status" style="display:none">Loading system stats…</div>
     <div id="sys-content">
       <div class="sys-grid">
         <div class="sys-card">
@@ -1155,32 +1162,35 @@
         </div>
         <div id="sys-gpu-container"></div>
       </div>
-      <div class="settings-section">
-        <div class="sys-proc-header" style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px">
-          <h3 style="margin:0">Processes</h3>
-          <div class="sys-proc-search-wrap" style="position:relative;display:flex;align-items:center">
-            <svg style="position:absolute;left:8px;color:var(--fg3);pointer-events:none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input id="sys-proc-filter" type="text" aria-label="Filter processes" placeholder="Filter processes (e.g. node, ssh)..." autocomplete="off" data-input-action="filter-sys-processes" style="padding-left:26px;height:26px;font-size:11.5px;width:220px;border-radius:6px">
+      <section class="sys-processes" aria-labelledby="sys-process-title">
+        <div class="sys-proc-header">
+          <h3 id="sys-process-title">Processes <span id="sys-proc-count"></span></h3>
+          <div class="sys-proc-search-wrap">
+            <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input id="sys-proc-filter" type="search" aria-label="Filter processes" placeholder="Filter by PID, user or command" autocomplete="off" data-input-action="filter-sys-processes">
           </div>
         </div>
-        <div class="sys-table-wrap">
+        <p class="sys-scroll-hint" id="sys-scroll-hint">Scroll horizontally to see all process details and actions.</p>
+        <div class="sys-table-wrap" tabindex="0" role="region" aria-label="Running processes" aria-describedby="sys-scroll-hint">
           <table class="sys-table" id="sys-proc-table">
             <thead>
               <tr>
-                <th class="sort-label" data-action="sort-sys-processes-pid" title="Sort by PID">PID <span class="sort-caret" id="sort-pid"></span></th>
-                <th class="sort-label" data-action="sort-sys-processes-user" title="Sort by User">User <span class="sort-caret" id="sort-user"></span></th>
-                <th class="sort-label" data-action="sort-sys-processes-cpu" title="Sort by CPU%">CPU% <span class="sort-caret" id="sort-cpu">▼</span></th>
-                <th class="sort-label" data-action="sort-sys-processes-mem" title="Sort by Mem%">Mem% <span class="sort-caret" id="sort-mem"></span></th>
-                <th class="sort-label" data-action="sort-sys-processes-cmd" title="Sort by Command">Command <span class="sort-caret" id="sort-cmd"></span></th>
-                <th style="width:78px;text-align:center">Action</th>
+                <th scope="col"><button class="sys-sort" data-action="sort-sys-processes-pid" title="Sort by PID">PID <span class="sort-caret" id="sort-pid"></span></button></th>
+                <th scope="col"><button class="sys-sort" data-action="sort-sys-processes-user" title="Sort by User">User <span class="sort-caret" id="sort-user"></span></button></th>
+                <th scope="col" aria-sort="descending"><button class="sys-sort" data-action="sort-sys-processes-cpu" title="Sort by CPU%">CPU% <span class="sort-caret" id="sort-cpu">▼</span></button></th>
+                <th scope="col"><button class="sys-sort" data-action="sort-sys-processes-mem" title="Sort by Mem%">Mem% <span class="sort-caret" id="sort-mem"></span></button></th>
+                <th scope="col"><button class="sys-sort" data-action="sort-sys-processes-cmd" title="Sort by Command">Command <span class="sort-caret" id="sort-cmd"></span></button></th>
+                <th scope="col" class="sys-action-col">Action</th>
               </tr>
             </thead>
             <tbody id="sys-proc-body"></tbody>
           </table>
         </div>
-      </div>
+      </section>
     </div>
-    <div class="modal-actions">
+    </div>
+    <div class="modal-actions sys-footer">
+      <span id="sys-update-status" role="status">Updates every 5 seconds</span>
       <button class="btn btn-primary" data-action="refresh-system-stats">Refresh</button>
       <button class="btn btn-ghost" data-action="close-system-stats">Close</button>
     </div>

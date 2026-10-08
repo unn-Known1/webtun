@@ -410,6 +410,7 @@ footer a{color:var(--mut)}
       <div class="grp">Get going</div>
       <a href="#tour"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>60-second tour</a>
       <a href="#run"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><path d="M6 6.5h.01M6 17.5h.01"/></svg>Run the server</a>
+      <a href="#system-stats"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>System Stats</a>
       <a href="#home"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>Home base</a>
       <div class="grp">Daily driver</div>
       <a href="#terminal"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg>Terminal</a>
@@ -501,7 +502,7 @@ footer a{color:var(--mut)}
       </section>
 
       <!-- ── RUN ── -->
-      <section id="run" data-title="Run server install setup CLI flags env port pin">
+      <section id="run" data-title="Run server install setup CLI flags env port pin System Stats CPU memory disk uptime GPU processes filter sort refresh mobile">
         <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--am)" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><path d="M6 6.5h.01M6 17.5h.01"/></svg></span>
           <div><h2>Run the server <a class="hash" href="#run" aria-label="Link to this section">#</a></h2></div>
         </div>
@@ -534,8 +535,8 @@ WORKSPACE_ROOT=~/projects">Copy</button><pre>PORT=3000
 HOST=127.0.0.1        # bind locally only
 PIN=pick-a-strong-one # empty = no auth (don't)
 WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
-        <h3>Watch the host <a class="hash" href="#run" aria-label="Link to this section">#</a></h3>
-        <p class="body rv">The overflow menu → <b>System Stats</b> opens a live dashboard: CPU, memory, disk, uptime — and GPU cards with VRAM, utilization and temperature where detectors exist — plus the top processes by CPU, with a <b>Kill button</b> per row for runaways. It polls every few seconds and politely pauses when the tab is hidden or Data Saver is on.</p>
+        <h3 id="system-stats">Watch the host <a class="hash" href="#system-stats" aria-label="Link to System Stats">#</a></h3>
+        <p class="body rv">The overflow menu → <b>System Stats</b> opens a live dashboard: CPU, memory, disk, uptime — and GPU cards with VRAM, utilization and temperature where detectors exist — plus the top processes by CPU, with a <b>Kill button</b> per row for runaways. Filter processes by PID, user or command, and select a column heading to sort in either direction. On phones, swipe the process table horizontally to reach every column and the Kill controls; the metric cards stay in a compact two-column layout. The footer shows the last update, with <b>Refresh</b> for an immediate update. It polls every five seconds and politely pauses when the tab is hidden or Data Saver is on.</p>
       </section>
 
       <!-- ── HOME / LAUNCHPAD ── -->
@@ -566,7 +567,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
           <li><b>Right-click any tab</b> for the full menu: Rename, Duplicate, a 7-color tag (green for the API server, red for prod-ssh…), Pin, Clear Buffer, Restart Session, Close, Close Others, Close Tabs to the Right. Colors and pins survive reloads; pinned tabs keep their titles (with a pin marker and amber underline), group left, are skipped by bulk-close, and ask first before any single close (×, middle-click, <kbd>Ctrl</kbd>+<kbd>W</kbd> included) — pin with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>, and a reopened pinned tab comes back pinned. Right-click the <b>+</b> button (or empty tab-bar space) for New Terminal / Duplicate / New Preview / Tile View.</li>
           <li><b>Background tabs speak up.</b> Output in a tab you're not looking at raises a green activity dot, a terminal bell raises an amber badge, and an exited process dims the tab with a red marker — all cleared the moment you visit. When the strip overflows, arrow buttons scroll it and the <b>⌄ switcher</b> lists every tab with a live filter.</li>
           <li><b>New shells start at the top.</b> If shell startup leaves only empty rows above the first prompt, WebTun asks the shell to redraw it at the top. Startup messages and restored sessions keep their position, and typing cancels the startup redraw.</li>
-          <li><b>Connection recovery is bounded.</b> Network failures retry with increasing delays. If reattachment keeps failing, WebTun tries one fresh session, then stops automatic retries and offers <b>Reconnect</b>. A refused or revoked login stops retries immediately; sign in again when prompted.</li>
+          <li><b>Connection recovery is bounded.</b> Network failures retry with increasing delays. If reattachment keeps failing, WebTun tries one fresh session, then stops automatic retries and offers <b>Reconnect</b>. If the terminal's native connection becomes unavailable, WebTun closes the broken connection and uses the same recovery flow; an in-memory shell that has stopped cannot retain its running commands. A refused or revoked login stops retries immediately; sign in again when prompted.</li>
           <li><b>Sessions survive accidents.</b> Refresh the page, close the laptop, drop Wi-Fi — your shells keep running server-side (via tmux when available) and reattach exactly where you left them. <b>List &amp; connect to all terminal sessions</b> — both WebTun tabs and <b>external terminal sessions</b> (tmux sessions started via SSH, scripts, or CLI) — directly from the Launchpad, the <b>Sessions</b> button (<kbd>Alt</kbd>+<kbd>S</kbd>), Quick Search (<kbd>⌘K</kbd>), or the header menu. Filter by All, WebTun, or External, search live across session names and directories, customize session labels, attach seamlessly into live interactive tabs, and manage them on both desktop and mobile with touch-optimized responsive controls.</li>
           <li><b>Tile view</b> lays every terminal out in a grid at once — and every open code file with it, so you can watch two logs and edit three files in one screen. Find it in the overflow menu when you're juggling.</li>
           <li><b>Search inside output</b> with <kbd>Ctrl</kbd>+<kbd>F</kbd> (match highlighting, optional case-sensitivity), and <b>click file paths &amp; URLs</b> printed by your tools to jump straight there.</li>

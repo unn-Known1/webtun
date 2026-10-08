@@ -1190,15 +1190,28 @@ function _sysVisibilityHandler() {
 function closeSystemStats() {
   clearInterval(sysStatsTimer);
   sysStatsTimer = null;
+  Object.keys(_sysKillConfirmTimers).forEach(pid => {
+    clearTimeout(_sysKillConfirmTimers[pid]);
+    delete _sysKillConfirmTimers[pid];
+  });
   document.removeEventListener('visibilitychange', _sysVisibilityHandler);
   closeOverlay('sys-overlay');
 }
 
 async function refreshSystemStats(showLoading) {
-  if (settings.datasaver) return;
+  const status = document.getElementById('sys-update-status');
+  if (settings.datasaver) {
+    document.getElementById('sys-loading').style.display = 'block';
+    document.getElementById('sys-loading').textContent = 'System stats are paused. Turn off Data Saver in Settings to resume.';
+    document.getElementById('sys-content').style.display = 'none';
+    status.textContent = 'Paused · Data Saver is on';
+    return;
+  }
   if (showLoading) {
     document.getElementById('sys-loading').style.display = 'block';
+    document.getElementById('sys-loading').textContent = 'Loading system stats…';
     document.getElementById('sys-content').style.display = 'none';
+    status.textContent = 'Fetching latest stats…';
   }
   // A manual open should not wait on the shared memo.
   const data = await fetchSystemStats(!!showLoading);
@@ -1206,7 +1219,17 @@ async function refreshSystemStats(showLoading) {
     document.getElementById('sys-loading').style.display = 'none';
     document.getElementById('sys-content').style.display = '';
   }
-  if (!data || !data.cpu) { toast('Failed to load system stats', 'error'); return; }
+  if (!data || !data.cpu) {
+    status.textContent = 'Update failed · Try Refresh';
+    if (showLoading) {
+      document.getElementById('sys-loading').style.display = 'block';
+      document.getElementById('sys-loading').textContent = 'Could not load system stats. Select Refresh to try again.';
+      document.getElementById('sys-content').style.display = 'none';
+    }
+    toast('Failed to load system stats', 'error');
+    return;
+  }
+  status.textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' · Every 5s';
 
   const fmtUptime = (s) => { const d = Math.floor(s / 86400); const h = Math.floor((s % 86400) / 3600); const m = Math.floor((s % 3600) / 60); return `${d}d ${h}h ${m}m`; };
 
@@ -1230,6 +1253,10 @@ async function refreshSystemStats(showLoading) {
     document.getElementById('sys-disk-sub').textContent = `${d.used} / ${d.size}`;
     document.getElementById('sys-disk-bar').style.width = Math.min(pct, 100) + '%';
     document.getElementById('sys-disk-bar').className = 'sys-bar-fill' + (pct > 80 ? ' danger' : pct > 50 ? ' warn' : '');
+  } else {
+    document.getElementById('sys-disk-val').textContent = '—';
+    document.getElementById('sys-disk-sub').textContent = 'Not available';
+    document.getElementById('sys-disk-bar').style.width = '0%';
   }
 
   document.getElementById('sys-uptime-val').textContent = fmtUptime(data.uptime);
@@ -1260,6 +1287,12 @@ async function refreshSystemStats(showLoading) {
     });
   }
 
+  _sysProcList = data.processes || [];
+  updateSortCarets();
+  // Do not replace a Kill button between the first tap and confirmation.
+  if (!Object.keys(_sysKillConfirmTimers).length) renderSysProcessTable();
+}
+
 let _sysProcList = [];
 let _sysProcSortCol = 'cpu';
 let _sysProcSortAsc = false;
@@ -1280,6 +1313,7 @@ function updateSortCarets() {
   ['pid', 'user', 'cpu', 'mem', 'cmd'].forEach(c => {
     const el = document.getElementById('sort-' + c);
     if (!el) return;
+    el.closest('th').setAttribute('aria-sort', _sysProcSortCol === c ? (_sysProcSortAsc ? 'ascending' : 'descending') : 'none');
     if (_sysProcSortCol === c) {
       el.textContent = _sysProcSortAsc ? '▲' : '▼';
     } else {
@@ -1307,6 +1341,7 @@ function renderSysProcessTable() {
       String(p.cmd || '').toLowerCase().includes(q)
     );
   }
+  document.getElementById('sys-proc-count').textContent = q ? `${list.length} / ${_sysProcList.length}` : String(list.length);
 
   list.sort((a, b) => {
     let va = a[_sysProcSortCol];
@@ -1352,13 +1387,14 @@ function renderSysProcessTable() {
     addTd(p.user, 'sys-cell-user');
     addTd(p.cpu, 'sys-cell-mono sys-cell-num');
     addTd(p.mem, 'sys-cell-mono sys-cell-num');
-    addTd(p.cmd, 'sys-cell-cmd', 'max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap');
+    addTd(p.cmd, 'sys-cell-cmd');
+    tr.lastElementChild.title = String(p.cmd || '');
+    tr.children[1].title = String(p.user || '');
 
     const killTd = document.createElement('td');
     killTd.style.textAlign = 'center';
     const killBtn = document.createElement('button');
     killBtn.className = 'btn btn-danger btn-kill-proc';
-    killBtn.style.cssText = 'height:22px;padding:0 8px;font-size:11px;min-width:52px;border-radius:4px';
     killBtn.textContent = 'Kill';
     killBtn.setAttribute('aria-label', 'Kill process ' + p.pid);
     killBtn.title = 'Kill PID ' + p.pid;
@@ -1386,6 +1422,7 @@ function renderSysProcessTable() {
         killBtn.style.background = 'var(--red)';
         killBtn.style.color = '#fff';
         _sysKillConfirmTimers[p.pid] = setTimeout(() => {
+          delete _sysKillConfirmTimers[p.pid];
           killBtn.dataset.confirming = 'false';
           killBtn.textContent = 'Kill';
           killBtn.style.background = '';
@@ -1397,11 +1434,6 @@ function renderSysProcessTable() {
     tr.appendChild(killTd);
     tbody.appendChild(tr);
   });
-}
-
-  _sysProcList = data.processes || [];
-  updateSortCarets();
-  renderSysProcessTable();
 }
 
 async function killProcess(pid, cmd) {
@@ -1581,7 +1613,7 @@ uiActions.register("click", {
   "sort-sys-processes-cpu": function (event) { return sortSysProcesses('cpu'); },
   "sort-sys-processes-mem": function (event) { return sortSysProcesses('mem'); },
   "sort-sys-processes-cmd": function (event) { return sortSysProcesses('cmd'); },
-  "refresh-system-stats": function (event) { return refreshSystemStats(); },
+  "refresh-system-stats": function (event) { return refreshSystemStats(true); },
   "close-system-stats": function (event) { return closeSystemStats(); },
   "dismiss-install": function (event) { return dismissInstall(); },
   "install-pwa": function (event) { return installPWA(); },

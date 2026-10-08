@@ -53,8 +53,8 @@ async function createWorkspaceServer(options = {}) {
   }
   terminal = createTerminalService({
     app, wss, auth, paths, port: 65530, dataDir, shell: '/bin/sh', workspaceRoot: workspace,
-    getPreviewClients: () => [], tmux: null,
-    pty: { spawn: () => { const shell = new TestPty(); shells.push(shell); return shell; } },
+    getPreviewClients: () => [], tmux: options.tmux !== undefined ? options.tmux : null,
+    pty: { spawn: (executable, args, options) => { const shell = new TestPty(); shell.executable = executable; shell.args = args; shell.options = options; shells.push(shell); return shell; } },
   });
   registerFileRoutes({ app, checkPin: auth.checkPin, rateLimiter: pass, auth, paths, workspaceRoot: workspace, allowFullFs: false });
   registerGitRoutes({ app, checkPin: auth.checkPin, rateLimiter: pass, paths, workspaceRoot: workspace, allowFullFs: false });

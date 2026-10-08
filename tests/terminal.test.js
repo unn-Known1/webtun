@@ -3,6 +3,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { once } = require('events');
 const WebSocket = require('ws');
+const fs = require('fs/promises');
+const path = require('path');
+const os = require('os');
 const { createRetryPolicy } = require('../public/js/terminal-connection');
 const { createWorkspaceServer } = require('./helpers/workspace-server');
 
@@ -73,4 +76,46 @@ test('pending sessions cannot start a PTY; revocation kicks an approved socket',
   const kicked=once(approved,'close');
   await f.request('/api/auth/sessions/'+b.token,{ method:'DELETE',token:a.token });
   assert.equal((await kicked)[0],1008);
+});
+
+test('an invalid PTY descriptor closes once and reconnect never reuses the broken PTY', async t => {
+  const f=await createWorkspaceServer(); t.after(()=>f.close());
+  const ws=await openSocket(f,{ session:'broken' });
+  let resizeCalls=0;
+  f.shells[0].resize=()=>{ resizeCalls++; throw new Error('ioctl(2) failed, EBADF'); };
+  const messages=[]; ws.on('message',data=>messages.push(data));
+  const closed=once(ws,'close');
+  const resize=Buffer.alloc(5); resize[0]=1; resize.writeUInt16LE(100,1); resize.writeUInt16LE(30,3);
+  for(let i=0;i<5;i++) ws.send(resize);
+  assert.equal((await closed)[0],1011);
+  assert.equal(resizeCalls,1);
+  assert.equal(f.shells[0].killed,true);
+  assert.equal(messages[0][0],2);
+  assert.equal(messages.length,1);
+  assert.match(messages[0].subarray(1).toString(),/Reconnect/);
+  const next=await openSocket(f,{ session:'broken' });
+  assert.equal(f.shells.length,2);
+  const echoed=once(next,'message'); next.send(Buffer.from([0,...Buffer.from('recovered')]));
+  await echoed;
+  assert.deepEqual(f.shells[1].inputs,['recovered']);
+  const end=once(next,'close'); next.close(); await end;
+});
+
+test('tmux reattachment uses compatible flags and sets the session environment', { skip: process.platform === 'win32' }, async t => {
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'webtun-tmux-test-'));
+  t.after(()=>fs.rm(root,{ recursive:true, force:true }));
+  const tmux=path.join(root,'tmux');
+  const log=path.join(root,'calls.jsonl');
+  // A fake executable isolates this regression from the host's real sessions.
+  await fs.writeFile(tmux, '#!'+process.execPath+'\n'+
+    'require("fs").appendFileSync('+JSON.stringify(log)+',JSON.stringify(process.argv.slice(2))+"\\n");\n'+
+    'if(process.argv[2]==="has-session") process.exit(process.argv[4]==="wt-webtun-65530-resume"?0:1);\n', { mode:0o700 });
+  const f=await createWorkspaceServer({ tmux });
+  t.after(()=>f.close());
+  const ws=await openSocket(f,{ session:'resume' });
+  assert.deepEqual(f.shells[0].args,['attach-session','-t','wt-webtun-65530-resume']);
+  assert.equal(f.shells[0].options.env.DISABLE_SCREEN,'1');
+  const calls=(await fs.readFile(log,'utf8')).trim().split('\n').map(line=>JSON.parse(line));
+  assert.ok(calls.some(args=>JSON.stringify(args)===JSON.stringify(['set-environment','-t','wt-webtun-65530-resume','DISABLE_SCREEN','1'])));
+  const closed=once(ws,'close'); ws.close(); await closed;
 });
