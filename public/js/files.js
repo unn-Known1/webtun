@@ -10,6 +10,7 @@ let fileListLoadingTimer = null;
 function setFileListLoading(on) {
   const wrap = document.getElementById('file-list-wrap');
   if (!wrap) return;
+  wrap.setAttribute('aria-busy', String(on));
   clearTimeout(fileListLoadingTimer);
   if (on) {
     fileListLoadingTimer = setTimeout(() => {
@@ -78,10 +79,11 @@ async function _loadFilesInner(dir) {
     if (e.name === 'AbortError') { setFileListLoading(false); return false; }
     setFileListLoading(false);
     const errorDiv = document.createElement('div');
-    errorDiv.style.cssText = 'padding:16px;text-align:center;';
-    errorDiv.innerHTML = '<div style="color:var(--red);margin-bottom:8px">Failed to load directory</div>' +
-      '<div style="color:var(--fg2);font-size:11px;margin-bottom:8px;word-break:break-all">' + escHtml(e.message || 'Unknown error') + '</div>' +
-      '<button class="btn btn-primary" style="height:28px;padding:0 12px;font-size:11px">Retry</button>';
+    errorDiv.className = 'file-list-empty file-list-error';
+    errorDiv.setAttribute('role', 'alert');
+    errorDiv.innerHTML = '<span class="empty-title">Failed to load directory</span>' +
+      '<span class="empty-detail">' + escHtml(e.message || 'Unknown error') + '</span>' +
+      '<div class="empty-actions"><button class="btn btn-ghost">Retry</button></div>';
     list.innerHTML = '';
     list.appendChild(errorDiv);
     errorDiv.querySelector('button').addEventListener('click', () => loadFiles(dir));
@@ -96,9 +98,10 @@ async function _loadFilesInner(dir) {
     // Revert optimistic path — don't save failed dir
     // Show error instead of silent bounce
     const errorDiv = document.createElement('div');
-    errorDiv.style.cssText = 'padding:16px;text-align:center;';
-    errorDiv.innerHTML = '<div style="color:var(--red);margin-bottom:8px">' + escHtml(msg) + '</div>' +
-      '<button class="btn btn-primary" style="height:28px;padding:0 12px;font-size:11px">Retry</button>';
+    errorDiv.className = 'file-list-empty file-list-error';
+    errorDiv.setAttribute('role', 'alert');
+    errorDiv.innerHTML = '<span class="empty-title">' + escHtml(msg) + '</span>' +
+      '<div class="empty-actions"><button class="btn btn-ghost">Retry</button></div>';
     list.innerHTML = '';
     list.appendChild(errorDiv);
     errorDiv.querySelector('button').addEventListener('click', () => loadFiles(dir));
@@ -107,11 +110,11 @@ async function _loadFilesInner(dir) {
     if (dir !== homeDir && prevPath !== homeDir) {
       // keep currentPath as prevPath, don't update breadcrumb to failed dir
       document.getElementById('path-input').value = prevPath;
-      renderBreadcrumb(prevPath);
+      renderExplorerPath(prevPath);
     } else {
       // we are already at home or prevPath is home — update UI to reflect attempted dir for debugging
       document.getElementById('path-input').value = dir;
-      renderBreadcrumb(dir);
+      renderExplorerPath(dir);
     }
     return false;
   }
@@ -128,7 +131,7 @@ async function _loadFilesInner(dir) {
 
   currentPath = data.path || dir;
   document.getElementById('path-input').value = currentPath;
-  renderBreadcrumb(currentPath);
+  renderExplorerPath(currentPath);
   saveCurrentPath();
   refreshGitPanel(currentPath);
 
@@ -306,7 +309,7 @@ async function _loadFilesInner(dir) {
     }
   }
 
-  if (list.children.length === 0) {
+  if (data.files.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'file-list-empty';
     empty.innerHTML = '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg><span class="empty-title">Empty directory</span>' +
@@ -468,22 +471,24 @@ function dropThumbUrl(img) {
   if (img) img._blobUrl = null;
 }
 
-// Long names truncate in the MIDDLE (head…tail) so the file extension — the
-// most identifying part — stays visible. The raw name rides on data-raw:
-// never read .file-name textContent for logic (it contains the … marker).
-const FIT_HEAD = 22, FIT_TAIL = 18;
+// CSS truncates the head while reserving the tail, preserving extensions even
+// in narrow drawers. Both spans retain every character for selected/focused
+// rows; data-raw remains the source of truth for file operations.
+const FIT_TAIL = 18;
 function fitFileName(name) {
   const n = String(name == null ? '' : name);
-  if (n.length <= FIT_HEAD + FIT_TAIL + 1) return escHtml(n);
+  if (n.length <= 12) return escHtml(n);
   const dot = n.lastIndexOf('.');
+  const tailLength = Math.min(FIT_TAIL, Math.max(4, Math.floor(n.length / 3)));
   let tail;
   if (dot > 0 && n.length - dot <= 12) {
     const stem = n.slice(0, dot);
-    tail = stem.slice(-Math.max(0, FIT_TAIL - (n.length - dot))) + n.slice(dot);
+    const stemTailLength = Math.max(0, tailLength - (n.length - dot));
+    tail = (stemTailLength ? stem.slice(-stemTailLength) : '') + n.slice(dot);
   } else {
-    tail = n.slice(-FIT_TAIL);
+    tail = n.slice(-tailLength);
   }
-  return escHtml(n.slice(0, FIT_HEAD)) + '<span class="fn-ellipsis" aria-hidden="true">…</span>' + escHtml(tail);
+  return '<span class="fn-head">' + escHtml(n.slice(0, n.length - tail.length)) + '</span><span class="fn-tail">' + escHtml(tail) + '</span>';
 }
 function fileRowName(row, fallbackPath) {
   try {
@@ -497,6 +502,7 @@ function fileRowName(row, fallbackPath) {
 function paintFileName(nameEl, name, isDir) {
   nameEl.innerHTML = fitFileName(name);
   nameEl.dataset.raw = String(name);
+  nameEl.setAttribute('aria-label', String(name));
   nameEl.className = 'file-name' + (isDir ? ' file-dir' : '');
 }
 function makeFileItem(name, isDir, fullPath, o) {
@@ -512,7 +518,7 @@ function makeFileItem(name, isDir, fullPath, o) {
     <span class="file-select-check" data-path="${escHtml(fullPath)}"></span>
     <span class="file-icon k-${o.kind || 'file'}">${o.icon || ''}${o.thumb ? `<img class="file-thumb" data-src="${escHtml(o.thumb)}" alt="" onload="this.classList.add('ld')" onerror="this.remove()">` : ''}</span>
     <span class="file-text">
-      <span class="file-name ${isDir ? 'file-dir' : ''}" data-raw="${escHtml(name)}" title="${escHtml(fullPath)}">${fitFileName(name)}</span>
+      <span class="file-name ${isDir ? 'file-dir' : ''}" data-raw="${escHtml(name)}" aria-label="${escHtml(name)}" title="${escHtml(fullPath)}">${fitFileName(name)}</span>
       ${o.meta ? `<span class="file-meta">${escHtml(o.meta)}</span>` : ''}
     </span>
     ${o.download ? `<button class="file-quick" tabindex="-1" aria-label="Download ${escHtml(name)}" title="Download"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>` : ''}
@@ -724,8 +730,8 @@ async function goToTerminalDir() {
 function updateBackBtn() {
   const back = document.getElementById('back-btn');
   const fwd = document.getElementById('fwd-btn');
-  if (back) back.style.opacity = navHistory.length > 0 ? '1' : '0.3';
-  if (fwd) fwd.style.opacity = navForwardHistory.length > 0 ? '1' : '0.3';
+  if (back) back.disabled = navHistory.length === 0;
+  if (fwd) fwd.disabled = navForwardHistory.length === 0;
 }
 
 let fileWatchTimer = null;
@@ -780,87 +786,22 @@ function formatSize(bytes) {
   return (bytes / 1073741824).toFixed(1) + ' GB';
 }
 
-function renderBreadcrumb(fullPath) {
-  const el = document.getElementById('path-segments');
-  if (!el) return;
-  const isWin = /\\/.test(fullPath) || /^[A-Za-z]:/.test(fullPath);
-  const sep = isWin ? '\\' : '/';
-  let html = '';
-
-  if (isWin) {
-    // e.g. C:\Users\name or \\server\share\path
-    const normalized = fullPath.replace(/\//g, '\\');
-    const unc = normalized.startsWith('\\\\');
-    let rest = normalized;
-    let accumulated = '';
-    const segments = [];
-
-    if (unc) {
-      const m = normalized.match(/^\\\\[^\\]+\\[^\\]+/);
-      if (m) {
-        segments.push({ label: m[0], path: m[0] });
-        rest = normalized.slice(m[0].length).replace(/^\\+/, '');
-        accumulated = m[0];
-      }
-    } else {
-      const driveMatch = normalized.match(/^([A-Za-z]:)(.*)$/);
-      if (driveMatch) {
-        const root = driveMatch[1] + '\\';
-        segments.push({ label: driveMatch[1], path: root });
-        rest = (driveMatch[2] || '').replace(/^\\+/, '');
-        accumulated = root;
-      }
-    }
-
-    const parts = rest.split('\\').filter(Boolean);
-    for (let i = 0; i < parts.length; i++) {
-      accumulated = accumulated.endsWith('\\') ? accumulated + parts[i] : accumulated + '\\' + parts[i];
-      segments.push({ label: parts[i], path: accumulated });
-    }
-
-    if (!segments.length) {
-      html = `<span style="color:var(--fg2)">\\</span><span style="color:var(--fg2);font-size:11px;margin-left:3px">(root)</span>`;
-    } else {
-      html = segments.map((seg, i) => {
-        const isLast = i === segments.length - 1;
-        if (isLast) return `<button type="button" class="path-current" data-edit="1" title="${escHtml(seg.label)} — click to edit" aria-current="page">${escHtml(seg.label)}</button>`;
-        return `<a href="#" data-path="${escHtml(seg.path)}" >${escHtml(seg.label)}</a>` +
-          `<span style="color:var(--fg2);margin:0 2px;display:inline-flex;align-items:center">\\</span>`;
-      }).join('');
-    }
-  } else {
-    const parts = fullPath.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
-    let accumulated = '';
-    for (const part of parts) {
-      accumulated += '/' + part;
-      const isLast = part === parts[parts.length - 1];
-      if (isLast) {
-        html += `<button type="button" class="path-current" data-edit="1" title="${escHtml(part)} — click to edit" aria-current="page">${escHtml(part)}</button>`;
-      } else {
-        html += `<a href="#" data-path="${escHtml(accumulated)}" >${escHtml(part)}</a>`;
-        html += `<span style="color:var(--fg2);margin:0 2px;display:inline-flex;align-items:center">/</span>`;
-      }
-    }
-    if (!parts.length) {
-      html = `<span style="color:var(--fg2)">/</span><span style="color:var(--fg2);font-size:11px;margin-left:6px">(root)</span>`;
-    }
-  }
-
-  el.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--fg2);flex-shrink:0;vertical-align:middle"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>' + html;
-  // Deep paths overflow: keep the current (rightmost) end in view.
-  try { el.scrollLeft = el.scrollWidth; } catch {}
-
-  if (!el.dataset.delegated) {
-    el.addEventListener('click', e => {
-      if (e.target.closest('[data-edit]')) { enterPathEdit(); return; }
-      const a = e.target.closest('a[data-path]');
-      if (a) { e.preventDefault(); navigateTo(a.dataset.path); }
-    });
-    el.dataset.delegated = '1';
+const EXPLORER_PATH_DISPLAY_MAX = 120;
+function renderExplorerPath(fullPath) {
+  const summary = document.getElementById('explorer-full-path');
+  if (summary) {
+    const characters = Array.from(fullPath);
+    const headLength = 40;
+    const tailLength = EXPLORER_PATH_DISPLAY_MAX - headLength - 1;
+    summary.textContent = characters.length <= EXPLORER_PATH_DISPLAY_MAX
+      ? fullPath
+      : characters.slice(0, headLength).join('') + '…' + characters.slice(-tailLength).join('');
+    summary.title = fullPath;
+    summary.setAttribute('aria-label', 'Edit directory path: ' + fullPath);
   }
 }
 
-// Unified path bar: segments view ↔ editable input (replaces separate breadcrumb div).
+// Unified path bar: wrapped path display ↔ editable input.
 // The #path-input keeps its id so existing currentPath sync keeps working.
 function enterPathEdit() {
   const bar = document.getElementById('path-bar');
@@ -1956,15 +1897,26 @@ function joinPath(parent, child) {
 let selectMode = false;
 let selectedFiles = [];
 
+function updateFileSelectionUI() {
+  const count = selectedFiles.length;
+  document.getElementById('select-count').textContent = count + ' selected';
+  document.getElementById('select-actions').style.display = selectMode || count > 0 ? 'flex' : 'none';
+  const toggle = document.getElementById('file-select-toggle');
+  toggle?.classList.toggle('active', selectMode);
+  toggle?.setAttribute('aria-pressed', String(selectMode));
+  for (const id of ['select-delete-btn', 'select-download-btn']) {
+    const button = document.getElementById(id);
+    if (button) button.disabled = count === 0;
+  }
+}
+
 function toggleSelectMode() {
   selectMode = !selectMode;
   selectedFiles = [];
-  document.getElementById('select-actions').style.display = selectMode ? 'flex' : 'none';
   document.getElementById('sidebar').dataset.selectMode = selectMode ? 'true' : '';
   const flw = document.getElementById('file-list-wrap');
   if (flw) flw.setAttribute('aria-multiselectable', String(selectMode));
-  document.getElementById('select-count').textContent = '0 selected';
-  document.getElementById('file-select-toggle')?.classList.toggle('active', selectMode);
+  updateFileSelectionUI();
   refreshFiles();
 }
 
@@ -1984,8 +1936,7 @@ function toggleFileSelection(path, el) {
     el.querySelector('.file-select-check').classList.add('on');
   }
   const count = selectedFiles.length;
-  document.getElementById('select-count').textContent = count + ' selected';
-  document.getElementById('select-actions').style.display = count > 0 ? 'flex' : 'none';
+  updateFileSelectionUI();
   const totalItems = [...document.querySelectorAll('.file-item')].filter(el => el.dataset.path !== currentParent).length;
   document.getElementById('select-all-btn').textContent = count === totalItems ? 'Deselect All' : 'Select All';
 }
@@ -2007,9 +1958,7 @@ function selectAllFiles() {
     const check = el.querySelector('.file-select-check');
     if (check) check.classList.add('on');
   });
-  const count = selectedFiles.length;
-  document.getElementById('select-count').textContent = count + ' selected';
-  document.getElementById('select-actions').style.display = count > 0 ? 'flex' : 'none';
+  updateFileSelectionUI();
   document.getElementById('select-all-btn').textContent = 'Deselect All';
 }
 
@@ -2017,11 +1966,11 @@ function clearSelection() {
   selectedFiles = [];
   document.querySelectorAll('.file-item.selected').forEach(el => {
     el.classList.remove('selected');
+    el.setAttribute('aria-selected', 'false');
     const check = el.querySelector('.file-select-check');
     if (check) check.classList.remove('on');
   });
-  document.getElementById('select-count').textContent = '0 selected';
-  document.getElementById('select-actions').style.display = 'none';
+  updateFileSelectionUI();
   document.getElementById('select-all-btn').textContent = 'Select All';
 }
 
@@ -2034,6 +1983,7 @@ function exitSelectMode() {
   try {
     document.getElementById('sidebar').dataset.selectMode = '';
     document.getElementById('file-select-toggle')?.classList.remove('active');
+    document.getElementById('file-list-wrap')?.setAttribute('aria-multiselectable', 'false');
   } catch {}
 }
 
@@ -2294,6 +2244,10 @@ uiActions.register("click", {
   "delete-selected": function (event) { return deleteSelected(); },
   "download-selected": function (event) { return downloadSelected(); },
   "clear-selection": function (event) { return clearSelection(); },
+  "exit-file-select-mode": function () {
+    exitSelectMode();
+    document.getElementById('file-select-toggle')?.focus();
+  },
   "upload-files": function (event) { return uploadFiles(); },
   "new-folder": function (event) { return newFolder(); },
   "new-file": function (event) { return newFile(); },

@@ -643,7 +643,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
         <p>Unexpected action failures show an error toast and stay in the Notification center.</p>
       </section>
 
-      <section id="files" data-title="File manager upload download zip rename move copy search transfers progress speed content search properties permissions clipboard folder hierarchy bookmarks bookmark favorites places">
+      <section id="files" data-title="File manager explorer sidebar mobile compact navigation full path sorting select mode upload download zip rename move copy search transfers progress speed content search properties permissions clipboard folder hierarchy bookmarks bookmark favorites places">
         <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--gn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
           <div><h2>File manager <a class="hash" href="#files" aria-label="Link to this section">#</a></h2></div>
         </div>
@@ -655,10 +655,12 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
            <div><h3>Instant search</h3><p>Find files by name from the search box — capped for speed on giant trees.</p></div>
         </div>
         <ul class="tight rv">
-          <li><b>Click the breadcrumb</b> trail to hop up through parent folders — faster than hammering "back". Deep paths auto-scroll to the current folder. Type-ahead, arrow keys and select-all all work in the list.</li>
+          <li><b>A compact explorer on every screen.</b> Navigation, content search, Select mode and Refresh share one toolbar, with Refresh beside Select mode. Toggle the explorer from the sidebar button or with <kbd>Ctrl+B</kbd>. The current path and bottom file-action toolbar stay available while the explorer body scrolls on short screens. On phones, a wider drawer and compact file rows leave more room for names, with download and more-actions controls always visible. On narrow desktop sidebars, the toolbar scrolls horizontally instead of clipping its tools.</li>
+          <li><b>Navigate folders</b> with Back, Forward and Go up, or enter a path directly. Type-ahead, arrow keys and select-all all work in the list.</li>
+          <li><b>See your full directory path.</b> A single path display wraps across the explorer width and shows up to <b>120 characters</b> in full. Longer paths truncate in the middle, keeping the beginning and end visible. Hover to see the complete path, or click it or the pencil to open the editable field with the entire path selected for copying or navigation.</li>
           <li><b>Bookmark favorite folders.</b> Star the current directory and it joins the bookmarks list under the explorer: hover to peek, click (or <kbd>Enter</kbd>) to pin it open, and jump back any time with one click. The count badge and open/closed state survive reloads.</li>
-          <li><b>Long names truncate in the middle</b> so the extension stays visible (<code class="inl">very-long-file…name.js</code>); click a row to select it and the full name unwraps.</li>
-          <li><b>Batch with Select mode.</b> Flip the select toggle and checkboxes appear — tick a dozen files, then delete, download, zip, cut or copy them in one move.</li>
+          <li><b>Long names truncate in the middle</b> so the extension stays visible (<code class="inl">very-long-file…name.js</code>); select a row or focus it with the arrow keys to reveal the complete name.</li>
+          <li><b>Batch with Select mode.</b> Flip the select toggle and checkboxes appear — tick a dozen files, then delete, download, zip, cut or copy them in one move. The selection toolbar stays available even with nothing selected; Delete and Download become available after selecting items. <b>Cancel</b> exits Select mode.</li>
           <li><b>Right-click → Folder Size</b> reveals what's eating your disk before you reach for <code class="inl">du</code>.</li>
           <li><b>Search inside files</b> with the magnifier in the explorer header: literal or regex full-text search across the current folder (depth-capped, binaries skipped) — click a hit to open it.</li>
           <li><b>Right-click → Properties</b> shows size, dates, owner and permissions, and lets you <code class="inl">chmod</code> real files and folders (octal, e.g. 755).</li>

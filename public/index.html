@@ -152,7 +152,7 @@
   <div id="main">
     <!-- Sidebar -->
     <div id="sidebar" role="navigation" aria-label="File explorer">
-      <div id="sidebar-header">
+      <div id="sidebar-header" role="toolbar" aria-label="Explorer navigation and tools">
         <div class="hdr-seg" role="group" aria-label="History navigation">
           <button class="icon-btn" aria-label="Back" title="Back" data-action="navigate-back" id="back-btn">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
@@ -168,37 +168,37 @@
         <button class="icon-btn" aria-label="Go up" title="Go up" data-action="navigate-up">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
         </button>
-        <button class="icon-btn" aria-label="Refresh" title="Refresh" data-action="refresh-files" id="refresh-btn">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-        </button>
         <button class="icon-btn" aria-label="Search file contents" title="Search file contents" data-action="open-content-search">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M8 11h6M11 8v6"/></svg>
         </button>
-        <span class="hdr-sep" aria-hidden="true"></span>
-        <button id="file-select-toggle" class="icon-btn" aria-label="Toggle select mode" title="Toggle select mode" data-action="toggle-select-mode">
+        <button id="file-select-toggle" class="icon-btn" aria-label="Toggle select mode" title="Toggle select mode" aria-pressed="false" data-action="toggle-select-mode">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><polyline points="9 12 11 14 15 10"/></svg>
+        </button>
+        <button class="icon-btn" aria-label="Refresh files" title="Refresh files" data-action="refresh-files" id="refresh-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
         </button>
       </div>
       <div id="path-bar">
-        <div id="path-segments" role="navigation" aria-label="Breadcrumb">/</div>
-        <input id="path-input" type="text" placeholder="Path…" aria-label="File path" style="display:none">
-        <button class="icon-btn" id="path-edit-btn" style="width:28px;height:28px;min-width:28px;min-height:28px;flex-shrink:0" aria-label="Edit path" title="Edit path (type any path, Enter to go)" data-action="enter-path-edit">
+        <button id="explorer-full-path" type="button" aria-label="Edit directory path" title="Edit directory path" data-action="enter-path-edit">/</button>
+        <input id="path-input" type="text" placeholder="Path…" aria-label="File path" spellcheck="false" autocapitalize="off" autocomplete="off" style="display:none">
+        <button class="icon-btn" id="path-edit-btn" aria-label="Edit path" title="Edit path (type any path, Enter to go)" data-action="enter-path-edit">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>
         </button>
       </div>
-      <div id="file-list-wrap">
+      <div id="explorer-body">
+      <div id="file-list-wrap" aria-busy="false">
         <div id="ptr-indicator" aria-hidden="true">
           <span class="ptr-arrow"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></span>
           <span class="ptr-text">Pull to refresh</span>
         </div>
         <div id="file-list"></div>
       </div>
-      <div id="select-actions" style="display:none;padding:6px 8px;border-top:1px solid var(--border);background:var(--bg2);gap:3px;flex-wrap:wrap">
-        <span id="select-count" style="font-size:11px;color:var(--fg2);line-height:28px;flex:1"></span>
+      <div id="select-actions" role="group" aria-label="Selected file actions" style="display:none">
+        <span id="select-count" role="status" aria-live="polite"></span>
         <button class="sidebar-action-btn" id="select-all-btn" data-action="select-all-files">Select All</button>
-        <button class="sidebar-action-btn" data-action="delete-selected">Delete</button>
-        <button class="sidebar-action-btn" data-action="download-selected">Download</button>
-        <button class="sidebar-action-btn" data-action="clear-selection">Cancel</button>
+        <button class="sidebar-action-btn" id="select-delete-btn" data-action="delete-selected" disabled>Delete</button>
+        <button class="sidebar-action-btn" id="select-download-btn" data-action="download-selected" disabled>Download</button>
+        <button class="sidebar-action-btn" data-action="exit-file-select-mode">Cancel</button>
       </div>
       <div id="bookmarks-header" role="button" tabindex="0" title="Hover to peek • click to pin" aria-expanded="true" aria-controls="bookmarks-list" data-action="toggle-bookmarks" data-keydown-action="toggle-bookmarks"><span class="bm-head-ico" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></span>Bookmarks <span id="bm-count"></span><span class="bm-chev" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></span></div>
       <div id="bookmarks-list"><div class="bm-inner" id="bookmarks-inner"></div></div>
@@ -268,6 +268,7 @@
           </div>
         </div>
       </div>
+      </div><!-- explorer-body -->
       <div id="sidebar-footer" role="toolbar" aria-label="File actions">
         <button class="icon-btn" data-action="bookmark-current-dir" title="Bookmark current directory" aria-label="Bookmark current directory">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>

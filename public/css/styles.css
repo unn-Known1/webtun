@@ -290,7 +290,6 @@ svg { display: block; }
 /* Code/path surfaces stay monospace while the chrome uses the UI font */
 .file-name,
 #path-bar,
-#path-segments,
 #path-input,
 #editor-filename,
 .tunnel-url,
@@ -1434,32 +1433,34 @@ body.datasaver #transfers-btn.has-active .tx-up, body.datasaver #transfers-btn.h
 /* ═══════════════════════════════════════════════════════
    SIDEBAR / FILE EXPLORER
    ═══════════════════════════════════════════════════════ */
-/* Single rule (was two, which hid the wrap that caused D-02/D-03 — X-07). */
-#sidebar-header { display: flex; align-items: center; gap: 3px; padding: 6px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0; min-height: var(--tab-h); background: var(--bg2); }
+/* Scroll rather than clip tools when the explorer is resized very narrow. */
+#sidebar-header { display: flex; align-items: center; gap: 3px; padding: 0 8px 6px; border-bottom: 1px solid var(--border); flex-shrink: 0; min-height: 34px; background: var(--bg2); overflow-x: auto; scrollbar-width: thin; }
+#sidebar-header > .icon-btn { flex-shrink: 0; }
+#sidebar-header svg { width: 14px; height: 14px; }
+#sidebar-header .icon-btn:disabled { opacity: 0.4; cursor: default; }
+#file-select-toggle.active { background: color-mix(in srgb, var(--accent) 12%, var(--bg2)); color: var(--accent); }
+#explorer-body { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--fg3) var(--bg2); }
 /* Flat toolbar groups — same chrome as #sidebar-footer */
 .hdr-seg { display: flex; align-items: center; gap: 4px; background: none; border: none; border-radius: 0; padding: 0; flex-shrink: 0; }
 .hdr-seg .icon-btn { border-radius: var(--radius); }
-/* Toolbar density is the fix for D-02, not hiding controls: at 32px the seven
-   icons plus separators and gaps need ~286px, more than the 280px sidebar, so
-   the row wrapped onto a second line. 28px icons with a 3px gap fit the
-   default width with room to spare and still leave every control reachable. */
-#sidebar-header .icon-btn { width: 28px; height: 28px; min-width: 28px; min-height: 28px; }
+#sidebar-header .icon-btn { width: 32px; height: 32px; min-width: 32px; min-height: 32px; }
 .hdr-sep { width: 1px; height: 18px; background: var(--border); margin: 0 3px; flex-shrink: 0; }
 /* Refresh spins while the list loads */
 #refresh-btn.spinning { color: var(--accent); pointer-events: none; }
 #refresh-btn.spinning svg { transform-box: fill-box; transform-origin: center; animation: hdrSpin 0.9s linear infinite; }
 @keyframes hdrSpin { to { transform: rotate(360deg); } }
 #path-bar { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-bottom: 1px solid color-mix(in srgb, var(--border) 85%, transparent); flex-shrink: 0; min-height: 38px; background: color-mix(in srgb, var(--bg2) 95%, var(--bg3)); transition: background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast); }
-#path-bar.editing { background: var(--bg2); border-bottom-color: var(--accent); box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 15%, transparent); }
-#path-segments { flex: 1; min-width: 0; display: flex; align-items: center; gap: 3px; white-space: nowrap; overflow-x: auto; line-height: 1; scrollbar-width: none; font-size: var(--fs-ui); font-family: var(--font); color: var(--fg2); letter-spacing: 0.1px; }
-#path-segments::-webkit-scrollbar { display: none; }
-#path-segments > svg { color: var(--accent) !important; margin-right: 4px; flex-shrink: 0; filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--accent) 25%, transparent)); }
-#path-bar input { flex: 1; min-width: 40px; height: 28px; font-size: var(--fs-ui); font-family: var(--font); background: var(--bg); border: 1px solid var(--accent); border-radius: var(--radius-sm); padding: 0 10px; color: var(--fg); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); outline: none; transition: all var(--transition-fast); }
+#explorer-full-path { flex: 1; min-width: 0; max-width: 100%; padding: 4px 2px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--fg2); font-family: var(--font); font-size: var(--fs-ui); line-height: 1.6; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; }
+#explorer-full-path:hover { color: var(--fg); background: var(--bg3); }
+#explorer-full-path:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#path-bar.editing #explorer-full-path { display: none; }
+#path-bar.editing { background: var(--bg2); border-bottom-color: var(--accent); }
+#path-bar input { flex: 1; min-width: 0; height: 28px; font-size: var(--fs-ui); font-family: var(--font); background: var(--bg); border: 1px solid var(--accent); border-radius: var(--radius-sm); padding: 0 8px; color: var(--fg); caret-color: var(--accent); outline: none; }
 /* min-height:0 was the only `flex:1` child of #sidebar, so with the git panel
    and bookmarks expanded on a short window it collapsed to zero — no files, no
    scrollbar, no message. Bookmarks and the git panel have flex-shrink:0 and
    refuse to give way first (D-11). */
-#file-list-wrap { flex: 1 1 0; overflow-y: auto; min-height: 96px; touch-action: pan-y; -webkit-overflow-scrolling: touch; position: relative; overscroll-behavior: contain; }
+#file-list-wrap { flex: 1 1 0; overflow-y: auto; overflow-x: hidden; min-height: 96px; touch-action: pan-y; -webkit-overflow-scrolling: touch; position: relative; padding: 4px 0 8px; scrollbar-width: thin; scrollbar-color: var(--fg3) var(--bg2); }
 #ptr-indicator { position: absolute; top: -40px; left: 0; right: 0; height: 36px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: var(--fs-meta); color: var(--fg2); opacity: 0; pointer-events: none; }
 #ptr-indicator .ptr-arrow { display: inline-flex; }
 #ptr-indicator .ptr-arrow svg { transition: transform 0.2s ease; }
@@ -1473,32 +1474,20 @@ body.datasaver #transfers-btn.has-active .tx-up, body.datasaver #transfers-btn.h
 .file-list-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 38px 16px; color: var(--fg2); font-size: var(--fs-body); text-align: center; gap: 8px; }
 .file-list-empty svg { opacity: 0.5; width: 42px; height: 42px; }
 .file-list-empty .empty-title { color: var(--fg); font-weight: 600; font-size: var(--fs-body); }
+.file-list-error .empty-title { color: var(--red); }
+.file-list-error .empty-detail { max-width: 100%; overflow-wrap: anywhere; font-size: var(--fs-ui); line-height: 1.6; }
 .empty-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
 .empty-actions .btn { font-size: var(--fs-ui); padding: 4px 12px; }
-#path-bar.editing #path-segments, #path-bar.editing #path-edit-btn { display: none; }
-/* Ancestors used to be rendered with an inline accent colour from files.js,
-   which beat this rule and made every parent look identical to the
-   accent-tinted .path-current. Presentation lives here now (X-04); the
-   !important qualifiers are no longer needed and are gone. */
-#path-segments a { color: var(--fg2); transition: all var(--transition-fast); border-radius: var(--radius-sm); padding: 2px 7px; display: inline-flex; align-items: center; height: 26px; line-height: 1; font-weight: 500; text-decoration: none; }
-#path-segments a:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
-/* JS scrolls this row to the far right so the current directory stays visible,
-   pushing ancestors off with no scrollbar and no fade (X-05). */
-#path-segments { mask-image: linear-gradient(to right, transparent 0, black 16px, black calc(100% - 16px), transparent 100%); -webkit-mask-image: linear-gradient(to right, transparent 0, black 16px, black calc(100% - 16px), transparent 100%); }
-#path-segments .path-current { color: var(--fg); font-weight: 600; font-family: var(--font); font-size: var(--fs-ui); display: inline-flex; align-items: center; height: 26px; padding: 2px 10px; background: color-mix(in srgb, var(--accent) 10%, var(--bg3)); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border)); cursor: text; border-radius: var(--radius-sm); white-space: nowrap; flex-shrink: 0; box-shadow: 0 1px 3px rgba(0,0,0,0.04); transition: all var(--transition-fast); }
-#path-segments .path-current:hover { background: color-mix(in srgb, var(--accent) 18%, var(--bg3)); border-color: var(--accent); color: var(--accent); }
-#path-edit-btn { transition: all var(--transition-fast); }
+#path-bar.editing #path-edit-btn { display: none; }
+#path-edit-btn { width: 28px; height: 28px; min-width: 28px; min-height: 28px; flex-shrink: 0; transition: background var(--transition-fast), color var(--transition-fast); }
 #path-edit-btn:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
-@media (pointer: coarse) {
-  #path-segments .path-current { font-size: var(--fs-body); }
-  #path-segments a { padding: 6px 8px !important; }
-}
-.file-item { display: flex; align-items: center; gap: 9px; padding: 5px 8px 5px 10px; margin: 1px 4px; border-radius: var(--radius); cursor: pointer; font-size: var(--fs-ui); position: relative; user-select: none; white-space: nowrap; flex-wrap: nowrap; transition: background var(--transition-fast); }
+.file-item { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 4px 6px 4px 8px; margin: 1px 6px; border-radius: var(--radius-sm); cursor: pointer; font-size: var(--fs-ui); position: relative; user-select: none; white-space: nowrap; flex-wrap: nowrap; transition: background var(--transition-fast); }
 .file-item:hover { background: var(--bg3); }
 .file-item.selected { background: color-mix(in srgb, var(--accent) 13%, transparent); box-shadow: inset 2px 0 0 var(--accent); }
 .file-item.focused { background: var(--bg3); outline: 1px solid var(--accent); outline-offset: -1px; }
-.file-item .file-ellipsis { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; min-width: 28px; min-height: 28px; border-radius: var(--radius-sm); color: var(--fg2); opacity: 0.45; flex-shrink: 0; }
+.file-item .file-ellipsis { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; min-width: 28px; min-height: 28px; border-radius: var(--radius-sm); color: var(--fg2); opacity: 0.7; flex-shrink: 0; }
 .file-item:hover .file-ellipsis { opacity: 1; }
+.file-item .file-ellipsis:hover, .file-item .file-ellipsis:focus-visible { background: var(--bg4); color: var(--fg); opacity: 1; }
 .file-icon { width: 28px; height: 28px; min-width: 28px; min-height: 28px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: 8px; position: relative; overflow: hidden; }
 .file-thumb { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity var(--transition-normal); }
 .file-thumb.ld { opacity: 1; }
@@ -1510,23 +1499,23 @@ body.datasaver #transfers-btn.has-active .tx-up, body.datasaver #transfers-btn.h
 .file-icon.k-zip { color: var(--fg); background: var(--bg4); }
 .file-icon.k-file { color: var(--fg2); background: var(--bg4); }
 .file-text { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; line-height: 1.35; }
-.file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; -webkit-user-select: text; }
-.fn-ellipsis { color: var(--fg3); }
-/* Selected / keyboard-focused row unwraps the full name (middle-truncation
-   already rendered every character, so wrapping reveals all of it). */
-.file-item.selected .file-name, .file-item.focused .file-name { white-space: normal; word-break: break-all; }
-.file-meta { font-size: var(--fs-micro); color: var(--fg3); font-family: var(--font-ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.file-dir { color: var(--accent); }
-.file-item .file-quick { display: none; align-items: center; justify-content: center; width: 26px; height: 26px; min-width: 26px; border-radius: var(--radius-sm); color: var(--fg2); background: none; border: none; cursor: pointer; flex-shrink: 0; }
-.file-item:hover .file-quick { display: flex; }
+.file-name { display: flex; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; -webkit-user-select: text; }
+.fn-head { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.fn-tail { flex-shrink: 0; max-width: 50%; overflow: hidden; text-overflow: ellipsis; }
+/* Selected / keyboard-focused rows reveal the complete, untruncated name. */
+.file-item.selected .file-name, .file-item.focused .file-name { display: block; white-space: normal; overflow-wrap: anywhere; }
+.file-item:is(.selected, .focused) :is(.fn-head, .fn-tail) { display: inline; max-width: none; overflow: visible; }
+.file-meta { font-size: var(--fs-meta); color: var(--fg2); font-family: var(--font-ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.file-dir { color: var(--fg); }
+.file-item .file-quick { display: flex; opacity: 0; pointer-events: none; align-items: center; justify-content: center; width: 26px; height: 28px; min-width: 26px; border-radius: var(--radius-sm); color: var(--fg2); background: none; border: none; cursor: pointer; flex-shrink: 0; }
+.file-item:hover .file-quick, .file-item:focus-within .file-quick { opacity: 1; pointer-events: auto; }
 .file-item .file-quick:hover { background: var(--bg4); color: var(--fg); }
 /* Sticky group dividers */
-.file-group { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 7px; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: 0.6px; color: var(--fg3); font-family: var(--font-ui); padding: 9px 12px 4px; background: var(--bg2); }
-.file-group::after { content: ''; flex: 1; height: 1px; background: var(--border); }
-.file-group .fg-count { color: var(--fg2); }
+.file-group { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 6px; min-height: 28px; font-size: var(--fs-meta); font-weight: 500; color: var(--fg2); font-family: var(--font-ui); padding: 6px 14px; background: var(--bg2); }
+.file-group .fg-count { color: var(--fg2); font-variant-numeric: tabular-nums; }
 .file-group[role="button"] { cursor: pointer; }
 .file-group[role="button"]:hover { color: var(--fg); }
-.file-group .fg-sort { color: var(--accent); }
+.file-group .fg-sort { color: var(--fg2); font-weight: 400; margin-left: auto; }
 /* Skeleton shimmer for first load */
 .file-skel { display: flex; align-items: center; gap: 9px; padding: 5px 8px 5px 10px; margin: 1px 4px; }
 .file-skel .sk-ico { width: 28px; height: 28px; min-width: 28px; border-radius: 8px; }
@@ -1538,15 +1527,21 @@ body.datasaver #transfers-btn.has-active .tx-up, body.datasaver #transfers-btn.h
 .file-skel .sk-ico, .file-skel .sk-l1, .file-skel .sk-l2 { background: linear-gradient(90deg, var(--bg3) 25%, var(--bg4) 50%, var(--bg3) 75%); background-size: 200% 100%; animation: skShimmer 1.2s ease-in-out infinite; }
 @keyframes skShimmer { to { background-position: -200% 0; } }
 @media (hover: none) and (pointer: coarse) {
-  .file-item .file-quick { display: flex; }
+  .file-item .file-quick { opacity: 1; pointer-events: auto; }
   .file-item:hover { background: var(--bg3); }
   }
-.file-select-check { display: none; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--fg2); flex-shrink: 0; align-items: center; justify-content: center; font-size: var(--fs-micro); color: var(--bg2); cursor: pointer; }
+.file-select-check { display: none; width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--fg2); flex-shrink: 0; align-items: center; justify-content: center; font-size: var(--fs-micro); color: var(--bg2); cursor: pointer; }
 .file-select-check.on { background: var(--accent); border-color: var(--accent); }
+.file-select-check.on::before { content: ''; width: 9px; height: 5px; border-left: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-1px) rotate(-45deg); }
 #sidebar[data-select-mode="true"] .file-select-check { display: flex; }
 #sidebar[data-select-mode="true"] .file-item.is-parent .file-select-check { display: none; }
 #sidebar[data-select-mode="true"] .file-item { padding-left: 6px; }
-#sidebar-footer { padding: 6px 8px; border-top: 1px solid var(--border); display: flex; gap: 4px; flex-shrink: 0; background: var(--bg2); }
+#select-actions { padding: 10px 12px; border-top: 1px solid var(--border); background: var(--bg2); gap: 6px; flex-wrap: wrap; align-items: center; flex-shrink: 0; }
+#select-count { flex: 1 0 100%; font-size: var(--fs-ui); color: var(--fg2); line-height: 1.5; font-variant-numeric: tabular-nums; }
+#select-actions .sidebar-action-btn { flex: 1 1 calc(50% - 6px); min-width: 0; min-height: 32px; padding: 0 8px; font-size: var(--fs-ui); }
+#select-delete-btn { color: var(--red); }
+#select-actions .sidebar-action-btn:disabled { color: var(--fg2); opacity: 0.5; cursor: default; }
+#sidebar-footer { padding: 8px; border-top: 1px solid var(--border); display: flex; justify-content: space-around; gap: 4px; flex-shrink: 0; background: var(--bg2); overflow-x: auto; }
 #sidebar-footer .icon-btn { width: 32px; height: 32px; min-width: 32px; min-height: 32px; }
 .sidebar-action-btn { flex: 1; min-width: 60px; height: 28px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); color: var(--fg2); font-size: var(--fs-meta); display: flex; align-items: center; justify-content: center; gap: 4px; transition: all var(--transition-fast); }
 .sidebar-action-btn:hover { background: var(--bg4); color: var(--fg); border-color: var(--accent); }
@@ -1567,7 +1562,7 @@ body.datasaver #transfers-btn.has-active .tx-up, body.datasaver #transfers-btn.h
 #sidebar.narrow #sidebar-header { overflow-x: auto; flex-wrap: nowrap; white-space: nowrap; }
 #sidebar.narrow #sidebar-header::-webkit-scrollbar { height: 2px; }
 #sidebar.narrow #path-bar { min-width: 30px; }
-#sidebar.narrow #sidebar-footer { overflow-x: auto; flex-wrap: nowrap; }
+#sidebar.narrow #sidebar-footer { overflow-x: auto; flex-wrap: nowrap; justify-content: flex-start; }
 #sidebar.narrow #sidebar-footer::-webkit-scrollbar { height: 2px; }
 
 /* ═══════════════════════════════════════════════════════
@@ -2210,9 +2205,10 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
    BOOKMARKS
    ═══════════════════════════════════════════════════════ */
 #bookmarks-header {
-  display: flex; align-items: center; gap: 3px;
-  padding: 2px 6px; font-size: var(--fs-micro); color: var(--fg2);
-  text-transform: uppercase; letter-spacing: 0.3px; font-family: var(--font-ui);
+  display: flex; align-items: center; gap: 8px; min-height: 32px;
+  padding: 6px 12px; font-size: var(--fs-ui); font-weight: 500; color: var(--fg2);
+  font-family: var(--font-ui);
+  border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0; cursor: pointer; user-select: none;
 }
@@ -2220,13 +2216,13 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 #bookmarks-header:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: var(--radius); }
 #bookmarks-header .bm-head-ico { display: inline-flex; align-items: center; justify-content: center; color: inherit; background: none; width: auto; height: auto; min-width: 0; flex-shrink: 0; }
 #bookmarks-header:hover .bm-head-ico { color: inherit; }
-#bm-count { font-size: var(--fs-micro); color: var(--fg3); }
+#bm-count { font-size: var(--fs-meta); color: var(--fg2); font-variant-numeric: tabular-nums; }
 #bm-count:empty { display: none; }
 #bookmarks-header .bm-chev { margin-left: auto; display: inline-flex; color: var(--fg3); transition: transform var(--transition-fast); flex-shrink: 0; }
 #bookmarks-header[aria-expanded="true"] .bm-chev { transform: rotate(90deg); }
 #bookmarks-list { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--transition-normal); flex-shrink: 0; }
 #bookmarks-list.open { grid-template-rows: 1fr; }
-#bookmarks-list .bm-inner { overflow: hidden; min-height: 0; }
+#bookmarks-list .bm-inner { overflow: auto; min-height: 0; max-height: min(200px, 24dvh); scrollbar-width: thin; }
 .bookmark-item {
   display: flex; align-items: center; gap: 8px;
   padding: 4px 8px 4px 10px; margin: 1px 4px; font-size: var(--fs-meta); cursor: pointer;
@@ -2236,8 +2232,8 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 .bookmark-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
 .bookmark-item .bm-ico { width: 22px; height: 22px; min-width: 22px; border-radius: 7px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); }
 .bookmark-item .bm-text { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.35; }
-.bookmark-item .bm-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); }
-.bookmark-item .bm-path { font-size: var(--fs-micro); color: var(--fg3); font-family: var(--font-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bookmark-item .bm-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+.bookmark-item .bm-path { font-size: var(--fs-meta); color: var(--fg2); font-family: var(--font); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bookmark-item .bm-remove { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; min-width: 24px; border-radius: var(--radius-sm); color: var(--fg3); background: none; border: none; cursor: pointer; opacity: 0; flex-shrink: 0; }
 .bookmark-item:hover .bm-remove, .bookmark-item:focus-within .bm-remove { opacity: 0.8; }
 .bookmark-item .bm-remove:hover { opacity: 1; color: var(--red); background: var(--bg4); }
@@ -2252,9 +2248,8 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
    change count vanished at the 200px tablet width. Wrapping plus a shrinkable
    select keeps them visible (D-12). */
 #git-header {
-  display: flex; align-items: center; gap: 3px; flex-wrap: wrap;
-  padding: 2px 6px; font-size: var(--fs-micro); color: var(--fg2);
-  text-transform: uppercase; letter-spacing: 0.3px;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-height: 32px;
+  padding: 6px 12px; font-size: var(--fs-ui); font-weight: 500; color: var(--fg2);
   border-bottom: 1px solid var(--border); flex-shrink: 0; cursor: pointer;
 }
 #git-header:hover { color: var(--fg); }
@@ -3256,9 +3251,9 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
     background: var(--bg4);
   }
 
-  #sidebar { position: fixed; left: 0; top: 0; bottom: 0; z-index: var(--z-sidebar); width: 85vw; max-width: 340px; transform: translateX(-100%); transition: transform var(--transition-normal) var(--ease-out); box-shadow: 4px 0 24px var(--shadow-color); padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  #sidebar { position: fixed; left: 0; top: 0; bottom: 0; z-index: var(--z-sidebar); width: 92vw; max-width: 360px; transform: translateX(-100%); transition: transform var(--transition-normal) var(--ease-out); box-shadow: 4px 0 24px var(--shadow-color); padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
   #sidebar.mobile-open { transform: translateX(0); }
-  #sidebar.hidden { transform: translateX(-100%); width: 85vw; }
+  #sidebar.hidden { transform: translateX(-100%); width: 92vw; }
   #settings-panel { position: fixed; right: 0; top: 0; bottom: 0; z-index: var(--z-sidebar); width: calc(100vw - 16px); max-width: 420px; border-left: 1px solid var(--border); transform: translateX(100%); transition: transform var(--transition-normal) var(--ease-out); box-shadow: -4px 0 24px var(--shadow-color); padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
   #settings-panel.open { transform: translateX(0); }
   .modal {
@@ -3417,16 +3412,16 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 
   /* File item expanded touch targets */
   .file-item {
-    min-height: 48px;
-    padding: 8px 10px;
-    gap: 12px;
+    min-height: 52px;
+    padding: 4px 6px 4px 8px;
+    gap: 8px;
   }
   .file-icon {
-    width: 34px;
-    height: 34px;
-    min-width: 34px;
-    min-height: 34px;
-    border-radius: 9px;
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    min-height: 28px;
+    border-radius: var(--radius);
   }
   .file-name {
     font-size: var(--fs-body);
@@ -3435,22 +3430,33 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
     font-size: var(--fs-meta);
   }
   .file-item .file-ellipsis {
-    width: 44px;
+    width: 36px;
     height: 44px;
-    min-width: 44px;
+    min-width: 36px;
     min-height: 44px;
     opacity: 0.85;
   }
   .file-item .file-quick {
-    width: 40px;
-    height: 40px;
-    min-width: 40px;
-    min-height: 40px;
+    width: 36px;
+    height: 44px;
+    min-width: 36px;
+    min-height: 44px;
+    opacity: 1;
+    pointer-events: auto;
   }
+  #sidebar-header { padding: 0 8px 4px; min-height: 44px; gap: 3px; }
+  #sidebar-header .hdr-seg { gap: 3px; }
+  #sidebar-header .hdr-sep { margin: 0 2px; }
   #path-bar {
-    min-height: 42px;
-    padding: 6px 8px;
+    min-height: 44px;
+    padding: 2px 8px;
   }
+  #path-edit-btn { width: 36px; height: 40px; min-width: 36px; min-height: 40px; }
+  #path-bar input { height: 36px; font-size: 16px; }
+  #bookmarks-header, #git-header { min-height: 40px; }
+  .bookmark-item { min-height: 44px; padding: 4px 6px 4px 8px; }
+  .bookmark-item .bm-remove { width: 36px; height: 40px; min-width: 36px; opacity: 0.8; }
+  #sidebar-footer { padding: 6px 8px; }
   #sidebar-header .icon-btn {
     width: 40px;
     height: 40px;
@@ -3470,13 +3476,13 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
     position: relative;
     border-top: 1px solid var(--border);
     background: var(--bg2);
-    padding: 8px 10px;
+    padding: 8px 12px;
     gap: 6px;
     flex-wrap: wrap;
     align-items: center;
   }
   #select-actions .sidebar-action-btn {
-    min-height: 36px;
+    min-height: 40px;
     padding: 0 10px;
     border-radius: var(--radius-sm);
     font-size: var(--fs-ui);
@@ -3560,7 +3566,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
   body { background: #fff !important; color: #000 !important; }
   #sidebar, #header, #tab-bar, #toast-container, #mobile-keys, .overlay, #drop-overlay, #settings-panel { display: none !important; }
   #editor-view { position: static !important; z-index: auto !important; }
-  #path-segments, #file-list-wrap { overflow: visible !important; }
+  #file-list-wrap { overflow: visible !important; }
 }
 @supports (width: env(titlebar-area-width, 100%)) {
   #header { padding-left: env(titlebar-area-x, 0px); width: env(titlebar-area-width, 100%); }
