@@ -438,7 +438,7 @@ function filterSettings(q) {
     else sec.style.display = 'none';
   });
   if (!q) { _preSearchSectionStates.clear(); _preSearchChildDisplay.clear(); }
-  document.getElementById('settings-no-match').style.display = anyVisible ? 'none' : '';
+  document.getElementById('settings-no-match').style.display = anyVisible ? 'none' : 'block';
 }
 function applyTheme(theme, save = true) {
   let resolved = theme;

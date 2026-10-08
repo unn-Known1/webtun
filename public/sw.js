@@ -1,4 +1,4 @@
-const CACHE = 'webtun-v44';
+const CACHE = 'webtun-v45';
 const PRECACHE = [
   '/',
   '/index.html',

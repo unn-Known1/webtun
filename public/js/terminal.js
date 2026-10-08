@@ -1169,6 +1169,9 @@ function initTerminal(tab) {
 
     if (totalDy > 6 && totalDy > totalDx * 0.7) {
       _isDraggingTouch = true;
+      // A swipe is not the first tap of a double-tap selection gesture.
+      _lastTapTime = 0;
+      _lastTapPos = null;
       e.preventDefault();
 
       const usesTuiWheel = term.buffer.active.type !== 'normal' || xtermMouseTracking(term);
