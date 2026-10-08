@@ -890,7 +890,12 @@ function newTab(title, sessionId, dir, opts = {}) {
   const id = ++tabCounter;
   const sid = sessionId || uuid();
   const tab = { id, type: 'term', sessionId: sid, title: title || `Term ${nextTermNumber()}`, term: null, fitAddon: null, ws: null, el: null, wrapper: null, closed: false, dataDisposable: null, resizeDisposable: null, resizeObserver: null, cwd: dir || currentPath, color: (opts && opts.color) || '', pinned: !!(opts && opts.pinned) };
-  tab._initialPromptPending = !sessionId;
+  // Run the gap repair on restored sessions too: when a reattached tmux pane
+  // was left with blank rows above the prompt, the pane keeps them and the
+  // normal screen path never gets a "fresh" prompt to fix. The check bails
+  // safely on any real content above the cursor, so an active pane is left
+  // alone. On a true network reconnect it is suppressed (isReconnect path).
+  tab._initialPromptPending = true;
   tabs.push(tab);
   createTabButton(tab);
   createTerminalWrapper(tab);

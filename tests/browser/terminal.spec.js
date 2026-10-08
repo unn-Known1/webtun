@@ -94,8 +94,9 @@ test('restored and reconnected sessions retain their cursor position', async ({ 
   await page.evaluate(() => newTab('Restored', 'existing-session', homeDir));
   await page.waitForFunction(() => tabs[1]?.term && tabs[1].ws?.readyState === WebSocket.OPEN);
   sockets[1].output('\r\n'.repeat(12) + prompt);
-  await expect.poll(() => cursorRow(page, 1)).toBe(12);
-  expect(sockets[1].inputs).not.toContain('\x0c');
+  // A reattached session whose pane kept the blank-rows glitch is repaired now.
+  await expect.poll(() => cursorRow(page, 1)).toBe(0);
+  expect(sockets[1].inputs).toContain('\x0c');
 
   await page.evaluate(() => connectWebSocket(tabs[0], true));
   await expect.poll(() => sockets.length).toBe(3);
