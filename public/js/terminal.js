@@ -1693,7 +1693,7 @@ function setupKeyboardShortcuts() {
         const tabMenu = document.getElementById('tab-ctx-menu');
         const newMenu = document.getElementById('new-tab-menu');
         const listMenu = document.getElementById('tab-list-menu');
-        if ((tabMenu && tabMenu.style.display === 'block') || (newMenu && newMenu.style.display === 'block') || (listMenu && listMenu.style.display === 'block')) {
+        if ((tabMenu && tabMenu.style.display === 'block') || (newMenu && newMenu.style.display === 'block') || (listMenu && (listMenu.style.display === 'block' || listMenu.style.display === 'flex'))) {
           if (typeof hideTabMenus === 'function') hideTabMenus();
           return;
         }
