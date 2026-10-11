@@ -208,9 +208,16 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(__dirname, 'public')));
 
 // In-app user guide — single static page (public/docs.html, also published to GitHub Pages),
-// served like index.html, reachable at /docs
-app.get('/docs', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'docs.html'));
+// served like index.html, reachable at /docs.
+// `dotfiles: 'allow'` is required: sendFile() rejects (404) any absolute path
+// with a dot-prefixed segment, so an install living under a dot-directory
+// (a dot-prefixed $XDG_DATA_HOME, a checkout inside a dot-folder) served /docs
+// as Not Found while /docs.html still worked. Surfaces the real error instead
+// of leaving the response hanging.
+app.get('/docs', (req, res, next) => {
+  res.sendFile(path.join(__dirname, 'public', 'docs.html'), { dotfiles: 'allow' }, err => {
+    if (err) next(err);
+  });
 });
 
 // Handle malformed JSON gracefully. Registered after express.json (the only

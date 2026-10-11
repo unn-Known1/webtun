@@ -2096,7 +2096,7 @@ function toggleCtrlRow() {
 }
 
 let _viewportHandlerInstalled = false;
-let _viewportDebounce = null;
+let _viewportFrame = null;
 let _kbFitTimer = null;
 let _ctrlRowOpen = false;
 const MIN_TERM_H = 96; // ~4-5 terminal rows we refuse to give up
@@ -2189,6 +2189,7 @@ function applyMobileKeyBarState(opts) {
     } else {
       mk.classList.remove('keyboard-docked');
       mk.style.bottom = '';
+      mk.style.top = '';
       mk.style.display = allowed ? 'flex' : 'none';
     }
   }
@@ -2207,9 +2208,31 @@ function applyMobileKeyBarState(opts) {
 function applyViewportState() {
   // Mobile/tablet only. A desktop visual viewport smaller than the layout
   // viewport (OSK, occluded window) must not resize the workspace (M-25).
-  if (window.innerWidth > 768) return;
+  if (window.innerWidth > 768) {
+    document.documentElement.style.removeProperty('--app-height');
+    return;
+  }
   const vv = window.visualViewport;
   if (vv && (vv.scale || 1) !== 1) return; // pinch-zoom is not a keyboard
+
+  // Use the browser's live layout height, not a cached CSS viewport unit.
+  // Keep keyboard occlusion separate: visualViewport supplies the visible
+  // bottom below, and the split area reserves that overlap exactly once.
+  // Using vv.height here too would deduct the keyboard twice.
+  let layoutHeight = window.innerHeight;
+  // iOS Home Screen apps with a translucent status bar can report a layout
+  // height excluding that bar while painting from the physical screen top.
+  // In full-screen standalone mode, cover the screen; safe-area padding on
+  // the header/nav keeps controls inside its rounded edges. Matching the
+  // screen width avoids expanding a split-screen/windowed app to full screen.
+  if (navigator.standalone === true) {
+    if (Math.abs(window.innerWidth - screen.width) <= 1) {
+      layoutHeight = Math.max(layoutHeight, screen.height);
+    } else if (Math.abs(window.innerWidth - screen.height) <= 1) {
+      layoutHeight = Math.max(layoutHeight, screen.width);
+    }
+  }
+  document.documentElement.style.setProperty('--app-height', layoutHeight + 'px');
 
   const splitArea = document.getElementById('editor-split-area');
   const terminals = document.getElementById('terminals');
@@ -2222,7 +2245,10 @@ function applyViewportState() {
   const isMobile = window.innerWidth <= 768;
   const keysAllowed = isMobile && settings.mobilekeys !== false;
   const overlap = keyboardOverlap();
-  const anyKeyboard = keyboardInputFocused() && overlap > 60;
+  const visibleBottom = vv ? vv.offsetTop + vv.height : document.documentElement.clientHeight;
+  // The standalone screen extension is usable space, not a keyboard inset.
+  const keyboardInset = Math.max(0, window.innerHeight - visibleBottom);
+  const anyKeyboard = keyboardInputFocused() && keyboardInset > 60;
   const termKeyboard = anyKeyboard && terminalKeyboardFocused();
   const keysVisible = mobileKeys && getComputedStyle(mobileKeys).display !== 'none';
   const keysOffset = (termKeyboard && keysAllowed && keysVisible) ? (mobileKeys.offsetHeight || 44) : 0;
@@ -2234,21 +2260,23 @@ function applyViewportState() {
     // Applying it to the child as well is what collapsed the terminal to a few
     // pixels (M-00) and the editor panel with it (M-15).
     const cap = Math.max(0, terminalAvailableHeight() - MIN_TERM_H);
-    const dockAt = Math.min(overlap, cap);
     splitArea.style.marginBottom = Math.min(overlap + keysOffset, cap) + 'px';
     // Publish the raw overlap so fixed surfaces (toasts, sheets, context menus)
     // can clear the keyboard. They are position:fixed and were rendering behind
     // it because nothing told them how tall it is (M-22).
-    document.documentElement.style.setProperty('--kb-inset', overlap + 'px');
+    const fixedInset = Math.max(0, document.documentElement.clientHeight - visibleBottom);
+    document.documentElement.style.setProperty('--kb-inset', fixedInset + 'px');
     terminals.style.marginBottom = '';
     if (termKeyboard) {
       if (mnav) mnav.style.display = 'none';
       if (keysAllowed && mobileKeys) {
         mobileKeys.classList.add('keyboard-docked');
-        mobileKeys.style.bottom = dockAt + 'px';
+        mobileKeys.style.bottom = 'auto';
+        mobileKeys.style.top = Math.max(0, visibleBottom - mobileKeys.offsetHeight) + 'px';
       }
       if (ctrlRow && ctrlRow.classList.contains('keyboard-docked')) {
-        ctrlRow.style.bottom = (dockAt + keysOffset) + 'px';
+        ctrlRow.style.bottom = 'auto';
+        ctrlRow.style.top = Math.max(0, visibleBottom - keysOffset - ctrlRow.offsetHeight) + 'px';
       }
       // Optional rows sit in normal flow, so they end up under the keyboard.
       if (selRow) selRow.style.display = 'none';
@@ -2257,7 +2285,7 @@ function applyViewportState() {
     splitArea.style.marginBottom = '0px';
     terminals.style.marginBottom = '';
     document.documentElement.style.setProperty('--kb-inset', '0px');
-    if (ctrlRow) { ctrlRow.classList.remove('keyboard-docked'); ctrlRow.style.bottom = ''; }
+    if (ctrlRow) { ctrlRow.classList.remove('keyboard-docked'); ctrlRow.style.bottom = ''; ctrlRow.style.top = ''; }
     if (mnav && isMobile) mnav.style.display = 'flex';
     // Keyboard closed: re-derive all three rows from state rather than clearing
     // the flags by hand (M-21).
@@ -2270,8 +2298,11 @@ function setupVisualViewport() {
   if (_viewportHandlerInstalled) return;
   _viewportHandlerInstalled = true;
   const handler = () => {
-    clearTimeout(_viewportDebounce);
-    _viewportDebounce = setTimeout(applyViewportState, 100);
+    if (_viewportFrame !== null) return;
+    _viewportFrame = requestAnimationFrame(() => {
+      _viewportFrame = null;
+      applyViewportState();
+    });
   };
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', handler);
@@ -2280,6 +2311,10 @@ function setupVisualViewport() {
   // Fallback for browsers without visualViewport, plus rotation (M-28).
   window.addEventListener('resize', handler);
   window.addEventListener('orientationchange', handler);
+  window.addEventListener('pageshow', handler);
+  window.addEventListener('focus', handler);
+  document.addEventListener('focusin', handler);
+  document.addEventListener('focusout', handler);
   window._cleanups?.push(() => {
     if (window.visualViewport) {
       window.visualViewport.removeEventListener('resize', handler);
@@ -2287,10 +2322,15 @@ function setupVisualViewport() {
     }
     window.removeEventListener('resize', handler);
     window.removeEventListener('orientationchange', handler);
+    window.removeEventListener('pageshow', handler);
+    window.removeEventListener('focus', handler);
+    document.removeEventListener('focusin', handler);
+    document.removeEventListener('focusout', handler);
     // Re-armable: a bfcache restore used to leave this latched, killing
     // keyboard handling for the rest of the page's life (M-17).
     _viewportHandlerInstalled = false;
-    clearTimeout(_viewportDebounce);
+    cancelAnimationFrame(_viewportFrame);
+    _viewportFrame = null;
     clearTimeout(_kbFitTimer);
   });
   applyViewportState();
@@ -2315,9 +2355,9 @@ function setupMobileKeys() {
   if (window.innerWidth > 768) {
     const mnav = document.getElementById('mobile-nav-bar');
     if (mnav) mnav.style.display = '';
-    if (mk) { mk.classList.remove('keyboard-docked'); mk.style.bottom = ''; }
+    if (mk) { mk.classList.remove('keyboard-docked'); mk.style.bottom = ''; mk.style.top = ''; }
     const ctrlRow = document.getElementById('mkey-ctrl-row');
-    if (ctrlRow) { ctrlRow.classList.remove('keyboard-docked'); ctrlRow.style.bottom = ''; }
+    if (ctrlRow) { ctrlRow.classList.remove('keyboard-docked'); ctrlRow.style.bottom = ''; ctrlRow.style.top = ''; }
     const selRow = document.getElementById('mkey-sel-row');
     if (selRow) selRow.style.display = 'none';
     const splitArea = document.getElementById('editor-split-area');

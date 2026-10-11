@@ -186,8 +186,10 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body {
   height: 100%;
-  height: 100dvh;
   height: -webkit-fill-available;
+  /* CSS is the startup fallback; mobile viewport events publish the live
+     layout height so standalone Safari cannot leave a stale bottom gap. */
+  height: var(--app-height, 100dvh);
   margin: 0;
   padding: 0;
   overflow: hidden;
@@ -316,8 +318,8 @@ svg { display: block; }
   inset: 0;
   width: 100%;
   height: 100%;
-  height: 100dvh;
   height: -webkit-fill-available;
+  height: var(--app-height, 100dvh);
   overflow: hidden;
 }
 #header {
@@ -901,17 +903,17 @@ body.editor-docked #editor-resize-handle { display: none; }
 }
 .settings-panel-header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 20px; border-bottom: 1px solid var(--border); gap: 16px;
+  padding: 12px 14px; border-bottom: 1px solid var(--border); gap: 10px;
   flex-shrink: 0; position: sticky; top: 0; z-index: 2;
   /* Opaque: these headers sit on an opaque drawer, so the previous blur had
      nothing to sample and only cost compositing (X-06). */
   background: var(--bg2);
 }
 .settings-panel-header h2 { font-size: var(--fs-title); font-weight: 600; color: var(--fg); margin: 0; }
-.settings-intro { font-size: var(--fs-ui); color: var(--fg2); margin: 5px 0 0; }
+.settings-intro { font-size: var(--fs-ui); color: var(--fg2); margin: 3px 0 0; }
 .settings-panel-header .icon-btn { flex-shrink: 0; }
-.settings-panel-tools { padding: 16px 20px 12px; flex-shrink: 0; background: var(--bg2); }
-.settings-panel-body { padding: 0 20px 24px; overflow-y: auto; flex: 1; min-height: 0; overscroll-behavior: contain; scrollbar-color: var(--fg3) var(--bg2); }
+.settings-panel-tools { padding: 8px 14px; flex-shrink: 0; background: var(--bg2); }
+.settings-panel-body { padding: 0 14px 16px; overflow-y: auto; flex: 1; min-height: 0; overscroll-behavior: contain; scrollbar-color: var(--fg3) var(--bg2); }
 @media (hover: hover) {
   .settings-panel-body select,
   .settings-panel-body input[type="number"],
@@ -1215,6 +1217,12 @@ body.datasaver #transfers-btn.has-active .tx-up, body.datasaver #transfers-btn.h
   background: var(--green);
   box-shadow: 0 0 6px var(--green);
   flex-shrink: 0;
+}
+#hostname-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 #hostname-badge:hover {
   background: var(--bg3);
@@ -2006,63 +2014,63 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 }
 
 /* Settings drawer: one consistent rhythm for forms, switches and actions. */
-#settings-panel .settings-section { margin-bottom: 12px; background: var(--bg2); border-radius: var(--radius); }
-#settings-panel .settings-section h3 { min-height: 48px; padding: 12px 14px; font-size: var(--fs-body); font-weight: 600; color: var(--fg); text-transform: none; letter-spacing: 0; gap: 10px; }
+#settings-panel .settings-section { margin-bottom: 8px; background: var(--bg2); border-radius: var(--radius); }
+#settings-panel .settings-section h3 { min-height: 44px; padding: 8px 12px; font-size: var(--fs-body); font-weight: 600; color: var(--fg); text-transform: none; letter-spacing: 0; gap: 8px; }
 #settings-panel .settings-section.open h3 { background: var(--bg3); }
 #settings-panel .settings-section h3 .sec-ico { color: var(--fg2); }
 #settings-panel .sec-ico svg { width: 16px; height: 16px; }
 #settings-panel .settings-section.open h3 .sec-ico { color: var(--accent); }
-#settings-panel .settings-section-inner { padding: 0 14px; }
-#settings-panel .settings-section.open .settings-section-inner { padding-bottom: 14px; }
-#settings-panel .setting-row { min-height: 48px; margin: 0; padding: 10px 0; gap: 16px; border-radius: 0; }
+#settings-panel .settings-section-inner { padding: 0 12px; }
+#settings-panel .settings-section.open .settings-section-inner { padding-bottom: 8px; }
+#settings-panel .setting-row { min-height: 44px; margin: 0; padding: 6px 0; gap: 10px; border-radius: 0; }
 #settings-panel .setting-row:hover { background: transparent; }
 #settings-panel .setting-row > :is(label, div, h4) { min-width: 0; }
 #settings-panel .setting-row label { color: var(--fg); line-height: 1.5; }
 #settings-panel .setting-row select, #settings-panel .setting-row input:not([type="checkbox"]):not([type="range"]) { width: 180px; min-width: 0; max-width: 100%; min-height: 36px; }
 #settings-panel .setting-row > div:has(> label) { flex: 1; }
-#settings-panel .settings-help { display: block; margin: 4px 0 12px; color: var(--fg2); font-size: var(--fs-ui); line-height: 1.6; overflow-wrap: anywhere; }
+#settings-panel .settings-help { display: block; margin: 2px 0 8px; color: var(--fg2); font-size: var(--fs-ui); line-height: 1.5; overflow-wrap: anywhere; }
 #settings-panel .setting-row .settings-help { margin-bottom: 0; }
-#settings-panel .settings-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+#settings-panel .settings-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 #settings-panel .settings-actions .btn { flex: 1 1 100px; min-width: 0; white-space: normal; }
 #settings-panel .btn { height: auto; min-height: 36px; padding: 8px 10px; font-size: var(--fs-ui); line-height: 1.4; }
 #settings-panel .setting-row .btn { flex-shrink: 0; }
-#settings-panel .settings-subheading { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border); }
+#settings-panel .settings-subheading { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--border); }
 #settings-panel .settings-subheading h4 { margin: 0; font-size: var(--fs-body); font-weight: 600; flex: 1; line-height: 1.5; }
 #lic-plan, #sess-count { font-size: var(--fs-ui); color: var(--fg2); font-weight: 400; }
 #settings-panel .sec-status { font-size: var(--fs-meta); letter-spacing: 0; border-radius: 4px; padding: 2px 6px; }
 #settings-panel .toggle.on { box-shadow: none; }
-#settings-panel .settings-tunnel-field { flex-direction: column; align-items: stretch; gap: 8px; }
+#settings-panel .settings-tunnel-field { flex-direction: column; align-items: stretch; gap: 6px; }
 .settings-input-action { display: flex; align-items: center; gap: 8px; min-width: 0; }
 #settings-panel .settings-input-action input { flex: 1; }
 #settings-panel .settings-input-action .btn { flex-shrink: 0; }
 #settings-panel .field-error { padding: 0; line-height: 1.5; }
-#sessions-list { display: flex; flex-direction: column; gap: 8px; }
-.settings-session { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--border); font-size: var(--fs-ui); }
+#sessions-list { display: flex; flex-direction: column; gap: 6px; }
+.settings-session { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: var(--fs-ui); }
 .settings-session-info { flex: 1 0 100%; min-width: 0; }
 .settings-session-title { color: var(--fg); line-height: 1.5; overflow-wrap: anywhere; }
 .settings-session-meta { color: var(--fg2); line-height: 1.6; overflow-wrap: anywhere; }
 .settings-session .btn { flex: 1; }
 .settings-session-notice { padding: 12px; border: 1px solid var(--amber); border-radius: var(--radius); font-size: var(--fs-ui); line-height: 1.6; }
 .settings-list-message { padding: 12px 0; color: var(--fg2); font-size: var(--fs-ui); line-height: 1.6; }
-#settings-panel .tunnel-row { padding: 12px 0; }
-#settings-panel .tunnel-label { font-size: var(--fs-ui); margin-bottom: 8px; }
+#settings-panel .tunnel-row { padding: 8px 0; }
+#settings-panel .tunnel-label { font-size: var(--fs-ui); margin-bottom: 6px; }
 #settings-panel .tunnel-inner { flex-wrap: wrap; gap: 8px; }
 #settings-panel .tunnel-url { flex: 1 0 100%; font-size: var(--fs-ui); line-height: 1.5; overflow-wrap: anywhere; }
 #settings-panel .tunnel-btn { width: 32px; height: 32px; min-width: 32px; min-height: 32px; }
-#settings-panel .settings-section[data-static] { margin-top: 24px; background: transparent; border-color: transparent; }
+#settings-panel .settings-section[data-static] { margin-top: 12px; background: transparent; border-color: transparent; }
 #settings-panel .settings-section[data-static] h3 { padding-left: 0; }
 #settings-panel .about-list { padding: 0; }
-#settings-panel .about-row { padding: 8px 0; line-height: 1.6; }
+#settings-panel .about-row { padding: 6px 0; line-height: 1.5; }
 #settings-panel .about-ver { border-radius: 4px; font-size: var(--fs-meta); }
 
 @media (max-width: 768px) {
-  .settings-panel-header { padding: 18px 16px; }
+  .settings-panel-header { padding: 10px 12px; }
   .settings-panel-header .icon-btn { width: 44px; height: 44px; }
-  .settings-panel-tools { padding: 12px 16px; }
-  .settings-panel-body { padding: 0 16px 24px; }
+  .settings-panel-tools { padding: 8px 12px; }
+  .settings-panel-body { padding: 0 12px 16px; }
   #settings-search-wrap { height: 44px; }
   #settings-search { font-size: 16px; }
-  #settings-panel .setting-row:has(> input:not([type="checkbox"]), > select) { flex-direction: column; align-items: stretch; gap: 8px; }
+  #settings-panel .setting-row:has(> input:not([type="checkbox"]), > select) { flex-direction: column; align-items: stretch; gap: 6px; }
   #settings-panel .setting-row select, #settings-panel .setting-row input:not([type="checkbox"]):not([type="range"]) { width: 100%; min-height: 44px; font-size: 16px; }
   #settings-panel .btn { min-height: 44px; }
   #settings-panel .tunnel-btn { width: 40px; height: 40px; min-width: 40px; min-height: 40px; }
@@ -2772,10 +2780,10 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
   z-index: calc(var(--z-overlay) - 1) !important;
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.25);
   background: color-mix(in srgb, var(--bg2) 94%, transparent) !important;
-  /* Devices that keep a non-zero bottom inset while the keyboard is up
-     (iPhone landscape, iPad, Android gesture nav) would otherwise put ESC/TAB
-     under the system gesture area (M-27). Harmless when the inset is 0. */
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  /* The bar sits above the keyboard, which already covers the gesture area.
+     A retained iPhone safe-area inset would consume this fixed-height row
+     and clip its buttons. The bottom navigation owns the inset when closed. */
+  padding-bottom: 0;
 }
 .mkey.mkey-hide-kb {
   background: color-mix(in srgb, var(--accent) 15%, var(--bg3));
@@ -2892,7 +2900,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
   :root { --mobilekey-h: 36px; }
   /* M-01: chrome height is charged directly against the terminal. The header
      carries fewer controls now (D-01/M-05), so it can be 40px instead of 44px
-     with nothing lost — and the nav bar drops from 54px to 50px. */
+     with nothing lost. The bottom nav uses a compact 44px control row. */
   #header {
     height: calc(40px + env(safe-area-inset-top, 0px));
     min-height: calc(40px + env(safe-area-inset-top, 0px));
@@ -2956,6 +2964,15 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
     background: var(--bg2);
     border-bottom: 1px solid var(--border);
   }
+  /* Use whole tab slots instead of stopping halfway through a session name.
+     Narrow strips show one tab; wider strips show two. Native snapping keeps
+     touch scrolling and arrow navigation aligned with those slots. */
+  #tab-scroll {
+    flex: 1 1 0;
+    container-type: inline-size;
+    scroll-snap-type: x mandatory;
+  }
+  #tab-scroll.can-scroll-right { mask-image: none; -webkit-mask-image: none; }
   .tab {
     height: 44px;
     min-height: 44px;
@@ -2963,13 +2980,16 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
     border-radius: 7px 7px 0 0;
     font-size: var(--fs-ui);
     font-weight: 500;
-    /* Reserve the fixed tools, both overflow arrows and the close-hit gutter,
-       so even a long active tab can fit completely on a narrow phone. */
-    min-width: min(100px, calc(100vw - 244px));
-    max-width: min(200px, calc(100vw - 244px));
+    flex: 0 0 100%;
+    min-width: 0;
+    max-width: none;
+    scroll-snap-align: start;
     background: transparent;
     gap: 8px;
     transition: background var(--transition-fast), color var(--transition-fast);
+  }
+  @container (min-width: 200px) {
+    .tab { flex-basis: calc((100% - 3px) / 2); }
   }
   .tab.active {
     background: var(--bg);
@@ -3018,7 +3038,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
     display: flex;
     align-items: center;
     justify-content: space-around;
-    height: calc(50px + env(safe-area-inset-bottom, 0px));
+    height: calc(45px + env(safe-area-inset-bottom, 0px));
     padding-bottom: env(safe-area-inset-bottom, 0px);
     background: color-mix(in srgb, var(--bg2) 84%, transparent);
     backdrop-filter: none;
@@ -3038,8 +3058,8 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
     justify-content: center;
     flex: 1;
     height: 100%;
-    min-height: 48px;
-    gap: 3px;
+    min-height: 44px;
+    gap: 2px;
     color: var(--fg3);
     font-size: var(--fs-micro);
     font-weight: 600;
@@ -3069,9 +3089,9 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
   .mnav-btn.mnav-fab {
     position: relative;
     top: 0;
-    flex: 0 0 48px;
-    width: 48px;
-    height: 48px;
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
     background: var(--accent);
     color: var(--bg);
@@ -3548,11 +3568,10 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
   #sidebar { width: 50vw; max-width: 320px; top: 0; }
   /* min-height must follow height, or the 44px floor silently cancelled this
      whole rule and the promised saving never happened (M-09). */
-  #header { height: 32px; min-height: calc(32px + env(safe-area-inset-top, 0px)); }
-  /* The nav was 44px while its buttons had a 48px minimum, so the contents
-     overflowed the shortened container (M-09). */
-  #mobile-nav-bar { height: calc(48px + env(safe-area-inset-bottom, 0px)); }
-  .mnav-btn { min-height: 48px; }
+   #header { height: 32px; min-height: calc(32px + env(safe-area-inset-top, 0px)); }
+   /* Keep the compact control row and its border consistent in landscape. */
+   #mobile-nav-bar { height: calc(45px + env(safe-area-inset-bottom, 0px)); }
+   .mnav-btn { min-height: 44px; }
   #mobile-keys, #mkey-ctrl-row, #mkey-sel-row { height: 36px; min-height: calc(36px + env(safe-area-inset-bottom, 0px)); }
   .mkey { height: 28px; min-width: 32px; font-size: var(--fs-ui); }
   .tab { height: 32px; font-size: var(--fs-meta); }

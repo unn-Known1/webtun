@@ -233,187 +233,143 @@ See [the architecture guide](docs/SYSTEM_ARCHITECTURE_AND_DESIGN_PRINCIPLES.md) 
 
 ## Changelog
 
+### v2.3.5
+- **Mobile keyboard and viewport** — the ESC/TAB/CTRL bar is no longer clipped when the iPhone keyboard opens, and the workspace fills the screen edge-to-edge in Home Screen mode instead of leaving a dead strip under the bottom navigation.
+- **Mobile tab strip and hostname** — tabs snap to whole slots instead of scrolling mid-name, and a long hostname truncates with an ellipsis (full name in the tooltip).
+- **Compact mobile chrome** — a shorter bottom navigation row and tighter Settings panel spacing, with touch targets unchanged.
+
 ### v2.3.4
-- **About card rebuilt** — the settings panel's About card is no longer hand-styled inline markup: rows are aligned flex rows with a consistent icon gutter, the card sits at the same inset as the other seven sections, and the version is a themed pill instead of loose grey text (hidden until the server answers). The repo URL is monospace and wraps instead of overflowing the drawer, and the repo/docs rows are full-width tap targets.
-- **App icon at the app title** — the header wordmark and the About brand row now use the app's own terminal-window icon (matching the PIN screen and the favicon/PWA icon) instead of an abstract prompt glyph that was hard to read at 16px, and the About row no longer borrows GitHub's logo for the product name.
-- **Web fonts actually load** — the CSP never allowed `fonts.googleapis.com` in `style-src`, so the IBM Plex Sans / JetBrains Mono stylesheet was refused on every request and the whole app silently rendered in fallback system fonts (`font-src` already allowed gstatic, so only the sheet was missing).
-- **Document viewers work offline from the service worker** — `connect-src` omitted `cdn.jsdelivr.net`, so once the service worker claimed the page its proxied lazy loads of pdf.js, JSZip, mammoth, xlsx and epub.js were CSP-blocked and the worker answered with its 503 "Offline" page: PDF/EPUB/DOCX/XLSX previews were broken for every PWA session. The worker now ignores cross-origin requests outright and lets the browser apply `script-src`/`style-src`.
-- **Clean command history** — the keystroke tracker treated any `ESC` + printable as an Alt-modified key, so `ESC [`/`ESC O`/`ESC ]` sequence introducers were eaten as "Alt+[" and the sequence *body* was recorded as typed text. One arrow key, or the device-attribute/colour reply burst every session starts with, was prepended to the next command saved in history (e.g. `?1;2c>0;276;0c10;rgb:…export PS1=…`). Sequences are now recognised before the Meta branch, and the history sanitizer peels introducer-less VT replies.
+- **Fonts and offline previews fixed** — the CSP blocked `fonts.googleapis.com`, so the app silently rendered in fallback fonts; it also blocked the CDN asset loads the service worker proxied, breaking every PDF/EPUB/DOCX/XLSX preview in an installed PWA.
+- **About card rebuilt** — aligned rows with the app's own icon, a themed version pill, and a monospace repo URL that wraps instead of overflowing.
+- **Clean command history** — terminal escape-sequence introducers were recorded as typed text, so stray device-reply bytes ended up prepended to saved commands.
 
 ### v2.3.3
-- **File previews** — Markdown and HTML preview libraries are bundled for offline use; the split-panel Preview button now targets its own editor when file tabs are open and works with the textarea fallback when CodeMirror is unavailable.
-- **Accessibility and polish** — dialog and documentation-palette focus handling, named controls and keyboard-accessible connection status, improved light-theme contrast, mobile touch targets, and clearer billing and documentation states.
-- **Startup and motion** — deferred editor/preview assets and reduced persistent rendering effects while preserving useful interaction feedback.
+- **Offline file previews** — Markdown and HTML preview libraries bundled; the Preview button targets the right editor when file tabs are open.
+- **Accessibility and polish** — dialog focus handling, named controls, better light-theme contrast, larger mobile touch targets.
+- **Startup and motion** — deferred editor/preview assets and fewer persistent effects, without losing interaction feedback.
 
 ### v2.3.2
-- **Mobile keyboard correctness** — the software-keyboard inset is now applied to a single layout owner instead of both the terminal and its parent, which was collapsing the visible terminal to a few pixels while keystrokes still reached the shell. Detection now measures the app's own rendered bottom against the visible viewport, so nothing is re-reserved on browsers that already resize above the keyboard.
-- **Desktop toolbar & stacking** — the editor toolbar no longer clips its **Save** button at the default panel width (progressive disclosure below 420px); the fullscreen editor no longer paints over the Settings/Notification drawers (which had focus-locked you into an invisible panel); Keyboard Shortcuts and Listening Ports are reachable again on desktop (the overflow menu that opens them was permanently hidden).
-- **Sidebar & tab-strip integrity** — the file explorer can no longer collapse to zero height under the git panel, the toolbar fits the default sidebar width, the git header no longer clips at tablet width, an inline sidebar width no longer overrides the tablet layout, and the tab-strip create buttons no longer jump position on overflow.
-- **Touch targets** — the tab close button keeps its compact appearance but gains a full-size hit area, and eleven inline row actions plus the sidebar resize handle get 44px/30px hit areas without changing how they look.
-- **Theming & accessibility** — per-theme `--amber` (was a Tokyo-Night-only literal that measured 1.63–2.07:1 in all three light themes), a real `prefers-reduced-motion` that stops perpetual animations instead of restarting them, focus rings on 19 previously ringless controls including every settings switch, closed drawers removed from the tab order, live regions for connection state, and a `forced-colors` block for Windows High Contrast.
-- **Design-system consolidation** — a single type scale (23 font sizes → 10 tokens), an icon scale (13 SVG widths → 6), a unified count-badge component, one key-bar state reconciler, and a consolidated bottom-sheet rule.
-- **Reachable OLED theme** — Midnight OLED was defined in CSS but missing from the theme picker and the persisted-settings allowlist, so a stored value silently reset. Both fixed.
+- **Mobile keyboard correctness** — the keyboard inset is applied to one layout owner instead of two, which was collapsing the terminal to a few pixels while keystrokes still reached the shell.
+- **Desktop toolbar & stacking** — the editor's Save button no longer clips at the default panel width, the fullscreen editor no longer paints over the drawers, and Keyboard Shortcuts / Listening Ports are reachable on desktop again.
+- **Layout integrity** — the file explorer no longer collapses under the git panel, the git header no longer clips at tablet width, and tab-strip buttons no longer jump on overflow.
+- **Touch targets** — the tab close button and inline row actions gained full-size hit areas without changing their look.
+- **Theming & accessibility** — per-theme amber (three light themes measured 1.63–2.07:1), real `prefers-reduced-motion`, focus rings on 19 ringless controls, and Windows High Contrast support.
+- **Design system** — one type scale (23 sizes → 10 tokens), one icon scale, a unified count badge, and a single key-bar state reconciler.
+- **Reachable OLED theme** — Midnight OLED existed in CSS but not in the picker or the settings allowlist, so a stored value silently reset.
 
 ### v2.3.1
-- **Background Terminal Session Management** — Dedicated Terminal Sessions manager (`#term-sessions-overlay`, `Alt+S`/`Ctrl+Shift+S`), 1-click attach/connect directly into terminal tabs, persistent custom session labeling (`POST /api/sessions/:id/label`), and real-time WebSocket session state synchronization across windows.
-- **Listening Ports Dashboard** — Interactive Listening Ports Modal (`#ports-overlay`) scanning local TCP servers (`/api/ports`), listing process names/PIDs, and offering 1-click in-app preview tab launching.
+- **Terminal Sessions manager** — list, attach and label sessions from one place (`Alt+S`), with live state synced across windows.
+- **Listening Ports dashboard** — scan local TCP servers, see process names and PIDs, and launch a preview tab in one click.
 
 ### v2.3.0
-- **Context-Scoped Keyboard Routing Engine** — Focus-bound keyboard shortcut routing distinguishing Terminal, File Explorer, Editor, and Launchpad/Idle scopes; 100% pass-through for TUI applications (`tmux` `Ctrl+B`, `vim` window navigation `Ctrl+W`, `fzf`/history `Ctrl+P`, `bash` `Ctrl+T`, `Escape` to Normal Mode); dedicated non-conflicting chords (`Ctrl+Shift+W` to close tab from within terminal, `Ctrl+K`/`Cmd+K` universal command palette, `Alt+1..9` tab switching); explorer-specific keyboard controls (`↑`/`↓` navigation, `→` expand/enter, `←`/`Backspace` ascend, `F2` rename, `Del` delete, `Ctrl+N` new file).
-- **Executive Identity & UI/UX Elevation** — Precision vector mark, interactive hostname badge with network state dot, ambient connection jewel, unboxed Warp-grade Launchpad dashboard with real-time system metrics, sortable & filterable Process Inspector table with two-step kill confirmation, Termius 1-click SSH config generator, and OLED Midnight theme.
+- **Context-scoped keyboard routing** — shortcuts route by focus (terminal, explorer, editor, launchpad) with full pass-through for TUI apps (`tmux`, `vim`, `fzf`) and explorer-native keys for navigation, rename and delete.
+- **Identity and UI polish** — new vector mark, hostname badge with network state, live system metrics on the Launchpad, a filterable process table with two-step kill confirmation, 1-click SSH config, and the OLED Midnight theme.
 
 ### v2.2.8
-- **New Light UI Themes** — introduced two modern, clean light themes: **Catppuccin Latte** (`catppuccin-latte`) with soft pastel surfaces and crisp indigo text, and **Nord Light** (`nord-light`) with an arctic slate background and sky blue highlights; full WCAG-AA contrast compliance
-- **Theme Engine Reliability & Alignment** — fixed dataset theme initialization and synchronous boot synchronization across `document.documentElement` and `document.body`; added `tokyo-night` alias support; updated xterm.js theme options and WebGL texture atlas refresh to immediately re-render terminals on palette change
+- **Two new light themes** — Catppuccin Latte and Nord Light, both WCAG-AA compliant.
+- **Theme engine fixes** — theme state is applied consistently on boot, with a `tokyo-night` alias and immediate terminal re-render on palette change.
 
 ### v2.2.7
-- **Desktop Engine & Audit Remediation (Desktop Readiness Score 96.8/100 Grade A+)** — implemented single-instance application lock (`app.requestSingleInstanceLock()`) in Electron; attached xterm key event handler (`term.attachCustomKeyEventHandler`) to route global hotkeys (`Ctrl+B`, `Ctrl+P`) directly to application handlers; dynamic submenu flyout edge clamping; empty-space context menu in file explorer; scoped drag overlay to prevent text selection interference; window focus auto-refresh for Git status panel; Solarized Dark theme contrast adjustments for WCAG AA compliance; Ultrawide display Launchpad layout scaling
-- **Mobile UI Terminal Tabs & CodeMirror Resilience** — aligned terminal tab bar on mobile UI to match desktop UI tab chrome (rectangular rounded-top tabs, active top accent indicator line `inset 0 2px 0 var(--accent)`, direct `+` new tab creation button); introduced `ensureCodeMirrorLoaded()` guard with native `<textarea>` fallback for offline or CDN script failure resilience; enhanced file explorer path bar (`#path-bar`) segment styling and focus states
+- **Desktop readiness** — single-instance lock, global hotkeys routed through xterm, submenu edge clamping, focus refresh for the Git panel, and Solarized Dark contrast fixes.
+- **Mobile tabs and editor resilience** — mobile tab chrome aligned with desktop, and a native `<textarea>` fallback when CodeMirror cannot load.
 
 ### v2.2.6
-- **Mobile UX & Ergonomics overhaul (Mobile Readiness Score 94+/100)** — resolved involuntary keyboard popups during terminal scrolling with touch-drag gesture disambiguation; decoupled terminal PTY viewport resize (`SIGWINCH`) during software keyboard animation; docked the mobile key accessory ribbon (`#mobile-keys`) above the virtual keyboard via the Visual Viewport API so essential keys (`ESC`, `TAB`, `Ctrl`, arrows, `Hide KB`) remain accessible while typing; introduced an ergonomic thumb-zone Bottom Navigation Bar (`#mobile-nav-bar`) with large $\ge 48\text{px}$ targets and haptic feedback; transformed mobile context menus into native slide-up Bottom Action Sheets; resolved OS edge-swipe navigation conflicts with backdrop-scrim drawer controls; floating multi-select action capsule
+- **Mobile ergonomics** — stopped the keyboard popping up while scrolling, stopped PTY resize churn during keyboard animation, docked the key ribbon above the keyboard, added a thumb-zone bottom bar with haptics, and turned context menus into bottom sheets.
 
 ### v2.2.5
-- **SSH access (opt-in)** — on-demand key-only ed25519 credentials from a header popup for Termius/mobile/`ssh` clients: status stat-trio with port pill, one-click Easy Setup checks (sshd, firewall, Tailscale userspace serve, built-in managed sshd) with per-check fix buttons, copy-ready Tailscale/LAN recipes (Docker-bridge addresses filtered), session single-use private keys; Features toggle is server-enforced (default off) and kills managed sshd + WebTun-started Tailnet on disable
-- **Login** — Enter-to-unlock now works on every showing of the PIN screen (plus input-level fallback), not just fresh boot
-- **File properties** — permissions info button with live octal/symbolic decode
+- **SSH access (opt-in)** — one-time ed25519 keys for Termius/mobile/`ssh`, one-click setup checks with per-check fixes, and copy-ready LAN/Tailscale recipes. Server-enforced toggle, off by default.
+- **Login and file properties** — Enter-to-unlock works on every PIN screen, and file permissions gained a live octal/symbolic decode.
 
 ### v2.2.4
-- **Security hardening (full-codebase grill-review fixes)** — reflected-XSS escape in preview errors, fail-closed raw-PIN path, PIN rotation persist-first with pending-clearance, preview sockets reaped on rotate/revoke, per-UID 0600 tmux claim file
-- **Backend** — tunnel/upload SSRF closed (all-address DNS vetting, non-canonical IP deny), CWD `cloudflared` candidates removed, upload depth caps + no silent overwrite, zip running-total cap with fd-based writes, git route guards (`--` separators, root-diff reject, credential scrubbing), search walk capped + sandboxed, `JSON_LIMIT`/`JSON_LIMIT_LARGE` env knobs, merge rollback now restores overwritten files
-- **Frontend** — terminal titles forwarded, streaming decode + cross-frame OSC, paste/history tracking, forced re-login on revoke/rotation, tab active-state + viewer-position persistence, panel A→B write race fixed, WCAG-AA theme contrast, folder-size auth, AVIF support, docs corrected and synced
-- **CLI/infra** — setup PIN round-trip fix, `npm ci`, systemd double-start guard, `=` flags, host-aware healthcheck, tunnel-fail teardown, SIGKILL escalation, strict version/tag/README gate
+- **Security hardening** — reflected XSS escaped in preview errors, raw-PIN path fails closed, PIN rotation persists before applying, and preview sockets are reaped on rotate/revoke.
+- **Backend** — tunnel and upload SSRF closed, upload depth caps, zip bomb caps, git route guards, capped/sandboxed search, and new JSON body limits.
+- **Frontend** — terminal title forwarding, streaming decode, paste/history fixes, forced re-login on revoke, tab state persistence, and WCAG-AA theme contrast.
+- **CLI/infra** — `npm ci`, a systemd double-start guard, `=`-style flags, host-aware healthcheck, and a strict version/tag/README release gate.
 
 ### v2.2.3
-- **Tab features** — tab-bar overhaul (pin protection, context menus, middle-click / right-click handling, keyboard reachability)
-- **File explorer fixes** — audit pass over listing, selection and rows, plus zip/unzip jobs in the Transfer Center
-- **Settings & titlebar fixes** — settings audit corrections and terminal context-menu work
-- **System stats & docs** — stats panel additions, user-guide updates and launchpad screenshots
+- **Tabs** — pin protection, context menus, middle-click and right-click handling, and keyboard reachability.
+- **File explorer** — audit pass over listing, selection and rows, plus zip/unzip jobs in the Transfer Center.
+- **Settings, stats and docs** — settings audit corrections, terminal context-menu work, stats panel additions, and updated guides/screenshots.
 
 ### v2.2.2
-- **Terminal directory follows `cd`** — the file explorer's "Go to terminal directory" button (and new-tab / copy-path / bookmark from the terminal menu) now resolves the session's live directory on demand via `GET /api/sessions/:id/cwd` (tmux `pane_current_path`, `/proc` on Linux, `lsof` on macOS) instead of the stale launch dir that OSC 7 rarely updated
-- **Open files track external changes** — text buffers snapshot `mtime`/`size` from `/api/files/read` and are re-statted every 10s and on refocus: clean buffers auto-reload (`Updated from disk`), dirty buffers keep your edits and raise a persistent cyan `Changed on disk` indicator (click to reload, Save to overwrite); deleted files are flagged the same way
-- **Dependency bumps** — `electron-builder` 26.16.1, `actions/checkout` v7.0.1, `actions/setup-node` v7.0.0 (Dependabot #4, #5, #6)
+- **Terminal directory follows `cd`** — "Go to terminal directory" resolves the session's live path via `/api/sessions/:id/cwd` instead of the stale launch directory.
+- **Open files track external changes** — buffers re-stat every 10s: clean files auto-reload, dirty files keep your edits and raise a "Changed on disk" marker.
+- **Dependency bumps** — `electron-builder`, `actions/checkout` and `actions/setup-node`.
 
 ### v2.2.1
-- **Express 5** — `express` 4 → 5.2.1; the app-preview wildcard route migrated to the new `{*splat}` syntax (handler unchanged, it slices `originalUrl`); smoke-tested (`/`, `/docs`, file/git/system APIs, preview proxy)
-- **Latest dependencies** — `node-pty` 1.1.0, `ws` 8.21.3 (spec + override), `debug` 4.4.3 via the new tree; `npm audit` clean
-- **Automation** — weekly Dependabot (npm + GitHub Actions), a PR check workflow running the CI `verify` steps on every pull request, and a CodeRabbit review config with repo-specific instructions for `server.js`, `docs.html` and `app.js`
+- **Express 5** — upgraded with the new wildcard-route syntax; `/`, `/docs`, file/git/system APIs and the preview proxy smoke-tested.
+- **Dependencies and automation** — current `node-pty`/`ws`, a clean `npm audit`, weekly Dependabot, a PR check workflow, and a CodeRabbit review config.
 
 ### v2.2.0
-> Never tagged or published — the tree described here first shipped as v2.2.1; section kept for history (same convention as the v2.1.x sections below).
+> Never tagged or published — this tree first shipped as v2.2.1; kept for history (as with the v2.1.x sections below).
 
-> Everything since v2.0.4 as of this tree (v2.1.0–v2.1.2 were bumped and documented but never tagged or published either; the v2.1.x sections below are kept as-is for history). New since the 2.1.2 tree:
-
-- **Frontend split** — the 10,491-line `public/js/app.js` is now 15 concern-sized scripts (`core`, `ui`, `tabs`, `terminal`, `files`, `transfers`, `editor-panel`, `file-tabs`, `preview`, `viewers`, `launchpad`, `settings`, `security`, `git`, `misc`), moved byte-verbatim with zero behavior change; Service Worker cache bumped to `webtun-v8`
-- **tmux ownership tracking** — shutdown kills exactly the sessions this process created (recorded, never inferred from the name); a box-shared claim file arbitrates the orphan sweeps between live same-namespace siblings; the startup sweep runs only after the port binds
-- **Long filenames stay readable** — file rows truncate in the middle so the extension is always visible; selecting a row unwraps the full name; the breadcrumb auto-scrolls to the current folder with no width cap
-- **Per-tab previews, un-scoped theme** — markdown/HTML preview state is per file tab; the editor theme no longer leaks across tabs
-- **Dependency slimming** — `archiver` and `yauzl` replaced with stdlib zip code (4 prod deps left); express/multer/electron bumped; `typedarray` override pruned; `npm audit` clean
-- **Fixes** — stuck tunnel rows (id kept across restarts, idempotent stop, panel resync); build config moved to `electron-builder.yml`; ignore files trimmed; stale `hasInstallScript` dropped from the lockfile
+- **Frontend split** — the single 10.5k-line `app.js` became 15 concern-sized scripts, moved verbatim with no behavior change.
+- **tmux ownership tracking** — shutdown kills exactly the sessions this process created; a claim file arbitrates orphan sweeps between live siblings.
+- **Readable long filenames** — rows truncate in the middle so the extension stays visible; selection reveals the full name.
+- **Per-tab previews** — preview state is per file tab and the editor theme no longer leaks across tabs.
+- **Dependency slimming and fixes** — stdlib zip code replaced two packages, stuck tunnel rows fixed, and build config moved to `electron-builder.yml`.
 
 ### v2.1.2
-- **Zero install scripts** — the `postinstall` hook is gone (manual `npm run rebuild:pty`, repo-only, out of the tarball); the dead Yarn-only `resolutions` block is out of `package.json`; 17 files ship with nothing executable at install time
-- **App preview hardening** — the `?token=` bearer is stripped (selectively, so apps with their own token logins keep working) before anything reaches your app; preview auth matches the main gate (raw-PIN approval, pending sessions); cookies are port-scoped, `Secure`-aware and shorter-lived; upstream dials die with the client; docs no longer claim proxied WebSocket hot-reload
-- **Previewing WebTun itself is refused up front** — the terminal watcher, New Preview prompt and navigation compare against the server's real port (tunnel-safe), instead of serving a raw JSON frame
-- **Per-instance tmux sessions** — `wt-webtun-<port>-<id>` so a repo checkout and a global/npx server never adopt or kill each other's sessions (crafted ids can't escape the namespace); closed terminals (SIGHUP) now run exit cleanup instead of orphaning tunnels
-- **Fixes** — command library panel was inert (it sits inside `#content`, which it inertted); HTML preview renders through blob URLs with `<script>` bodies exempt from URL rewriting; root-absolute assets resolve against the file's folder; Git panel `Show more` / `Show advanced…` share one row; default command set trimmed to project entries
+- **Zero install scripts** — the `postinstall` hook is gone (rebuild `node-pty` manually, repo-only); nothing executes at install time.
+- **App preview hardening** — the `?token=` bearer is stripped before reaching your app, preview auth matches the main gate, cookies are port-scoped, and docs no longer claim proxied WebSocket hot-reload.
+- **Per-instance tmux sessions** — `wt-webtun-<port>-<id>` so separate installs never adopt or kill each other's sessions.
+- **Fixes** — the command library panel was inert, HTML preview renders through blob URLs, and Git panel actions share one row.
 
 ### v2.1.1
-- **Transfer Center** — new up/down icon next to the coffee cup with live uploads, downloads and copy/move jobs: real bytes, speed and ETA, per-job Stop/Dismiss, hover-to-peek / click-to-pin panel with running-stripe bars. Single-file downloads report `Content-Length` for a true percent; copy/move pause while a conflict dialog waits and stop after the current file; zip/unzip and delete stay as toasts
-- **Full HTML preview** — the editor HTML preview gains a **Full** mode next to Safe: the file renders verbatim with its own scripts running inside the same isolated opaque-origin frame (no app access, storage, popups or navigation); relative and root-absolute asset URLs resolve against the file's folder; works without the sanitizer CDN; the isolation notice shows once
-- **Preview robustness** — URL rewriting no longer touches `<script>` bodies; a failed render explains itself in the pane instead of a silent blank; single-file server ops show activity + elapsed instead of a stuck 0%
+- **Transfer Center** — live uploads, downloads and copy/move jobs with real bytes, speed, ETA and per-job Stop/Dismiss.
+- **Full HTML preview** — a Full mode beside Safe that renders files verbatim in an isolated opaque-origin frame with no app access.
+- **Preview robustness** — URL rewriting skips `<script>` bodies, and a failed render explains itself instead of going blank.
 
 ### v2.1.0
-> **First release since v2.0.4.** The 2.0.5 working tree was never tagged or published, so its changes ship here too — nothing was released under 2.0.5, so this upgrade path skips nothing.
+> **First release since v2.0.4.** The 2.0.5 tree was never tagged or published, so its changes ship here — nothing was ever released under 2.0.5.
 
-- **Full audit remediation** — every actionable finding from the 2026-09-14 code review landed (113 fixed, 25 deliberately-kept behaviours left alone, including empty-PIN-is-open and full-filesystem-by-default)
-- **Security** — concurrent logins can no longer both become active without approval; revoked or PIN-rotated sessions have their WebSocket connections actively closed (not merely asked to go away) with a 60s re-validation sweep; each rate limiter owns its own window; clipboard state is keyed per session with a TTL; tar entries that are links are refused and the extracted binary is containment-checked; error responses no longer leak absolute paths
-- **App preview** — served on an opaque origin under a sandbox policy with the upstream CSP never merged, so a previewed app cannot reach your session token or files; proxy errors are normalized so it can no longer be used to probe which local ports are open; new `PREVIEW_PORTS` allow-list narrows which ports are previewable
-- **Terminal** — clipboard *reads* (OSC 52 paste) are opt-in via Settings; pasting never splits multi-byte characters; docs hero and search work is unchanged in behaviour but far cheaper; pinch-zoom changes the size for the session only and no longer rewrites your saved font size
-- **Editor & docs** — reopening a file offers to restore an unsaved draft (cleared on save or discard); EPUB previews are sandboxed; the tab strip is keyboard-reachable and modal panels make the rest of the page inert
-- **File tabs** — open a file in its own tab next to your terminals (editor-header button or right-click → **Open in Tab**); **every code file gets its own live editor**, so **Tile view shows several files side by side** with independent cursors, scroll and undo history, plus a per-tab Save/Reload toolbar and a **Panel** button that hands the buffer to the split editor; PDF/EPUB/Office tabs share one live viewer instead, so several large documents stay open without the memory cost (parked tabs remember page, zoom, sheet and scroll); drafts, unsaved-changes guards and the two surfaces' buffers never diverge, and the tab layout is restored on reload
-- **Reliability** — dead tunnels restart with backoff and give up cleanly instead of churning, and a recycled process ID can't pass as a live tunnel; the history cap survives restarts; staging a hunk is pinned to the hunk you clicked (it asks you to refresh rather than stage the wrong lines); the legacy state-file migration no longer runs on `require()`; a dead preview or search request can't hang the server
-- **Performance** — system stats are cached and shared between the launchpad pulse, header icon and stats panel instead of each polling separately; live preview renders on edit rather than polling every second; upload progress updates once per frame; PDF scrolling no longer walks every page per frame
-- **Packaging & scripts** — a version/lockfile/tag guard now gates CI and refuses a stale `npm publish`; `setup.sh` fetches and sanity-checks the NodeSource script instead of piping it into root bash; `install.sh` pre-checks its tools and refuses a dirty tree; `stop.sh` verifies the pidfile before signalling; `nodemon.json` keeps dev restarts off runtime state files
-- **Config** — new `ALLOWED_ORIGINS` and `PREVIEW_PORTS`; JSON bodies are capped at 2 MB (12 MB for file writes) instead of a blanket 50 MB; a missing `git` binary returns 501 instead of 400
-- **Docs** — in-app user guide at `/docs` (Settings → About → **User guide & docs**) covering terminal, editor, files, git, tunnels, sessions, shortcuts and troubleshooting, also published to GitHub Pages; keeping it current is now part of the agent workflow, so user-facing changes update `/docs` in the same change
+- **Full audit remediation** — all 113 actionable findings from the 2026-09-14 code review landed (25 deliberate behaviours, like empty-PIN-is-open, were left alone).
+- **Security** — concurrent logins need approval, revoked sessions have their WebSockets actively closed, per-session rate limiters, archive-link refusal, and errors no longer leak absolute paths.
+- **App preview** — served on an opaque origin under a sandbox policy, with normalized proxy errors and a new `PREVIEW_PORTS` allow-list.
+- **File tabs** — open any file in its own live tab (Tile view shows several side by side); heavy viewers share one viewer; drafts and unsaved guards never diverge.
+- **Editor & docs** — unsaved-draft restore on reopen, sandboxed EPUB previews, a keyboard-reachable tab strip, and the in-app guide at `/docs`.
+- **Reliability & performance** — dead tunnels back off and give up, the history cap survives restarts, stats are cached and shared, and previews render on edit instead of polling.
+- **Packaging, config and gates** — a version/lockfile/tag guard blocks stale publishes, safer setup/install/stop scripts, `ALLOWED_ORIGINS` and `PREVIEW_PORTS`, and JSON bodies capped at 2 MB.
 
 ### v2.0.0
-- Launchpad home dashboard — zero-tab hero, recent commands with one-click or `1–6` keypress launch-and-run, places, live system pulse with sparkline, Today strip, optional screensaver
-- Home button pinned left of the tab bar, always visible; dashboard pauses explorer auto-reload while shown
-- Number-key runs work regardless of focus; inline syntax-checked, no new dependencies
-- Hardening — first-PIN setup on open instances is loopback-only, process-kill requires PIN protection, WS handshake brute-force throttle, preview iframe is opaque-origin + refused without sanitizer, reconnect auto-retry stops at 10, unzip extracts to temp dir (no rollback wipe), recursive delete refuses roots, upload/download/image/spawn output caps, no `x-powered-by`, `/api/version` requires auth
-- Sessions — revocable per-device login tokens with trusted-device resume; new logins start **pending** and can do nothing until a different active session approves them (correct PIN alone opens nothing); active-sessions list with per-device revoke, persistent header warning triangle + live count on the keep-awake cup, instant new-login / approval / PIN-change alerts with remote kick; fresh-session PIN rotations need a second session's approval (60s, deny-by-default)
-- PDF viewer — selectable text layer over each page; EPUB/PDF fixes as before
-- Packaging — runtime state (`PIN`, history, tunnels) moves to `~/.config/webtun` for global/npx installs, PWA update flow, Electron single-instance + sandbox + no prod DevTools, Windows `npm.cmd` postinstall fix, release assets fail loudly on missing files
-- npm jumps `1.5.6` → `2.0.0` (`v1.5.7` was GitHub-only); ships under PolyForm Noncommercial 1.0.0 (≤v1.5.6 stays MIT)
+- Launchpad home dashboard — zero-tab hero, recent commands launchable by number key, places, live system pulse, optional screensaver.
+- Sessions — revocable per-device login tokens where a new login stays pending until an active session approves it, plus device revoke and PIN-rotation approval.
+- Hardening — loopback-only first PIN setup, PIN required to kill processes, WebSocket brute-force throttle, opaque-origin previews, bounded retries, and output caps across uploads/downloads.
+- Packaging — runtime state moved to `~/.config/webtun`, PWA update flow, Electron single-instance and sandbox, and license change to PolyForm Noncommercial (≤v1.5.6 stays MIT).
 
 ### v1.5.7
-- Explorer overhaul — unified path bar, rich rows (type-tinted icons, photo thumbnails, dates), sortable sticky groups, skeleton loading, quick download, hover-peek bookmarks, segmented nav header; large folders load much faster
-- Git mini-panel — branch switching/creation, stash, discard, repo init, colorized diffs, commit, push/pull with ahead/behind + stash badges
-- Settings control deck — collapsible card groups (closed by default) with live search, staggered entrance, plus runtime PIN set/change/disable saved to `.env`
-- Lock screen redesign, animated keep-awake indicator, spinning refresh state
-- PDF viewer — duplicate-page fix, lazy rendering for big documents, download progress
-- Security — dependency audit clean (0 vulnerabilities); source-available license from this version (PolyForm Noncommercial, ≤v1.5.6 stays MIT)
+- Explorer overhaul — unified path bar, rich rows with thumbnails and dates, sortable sticky groups, skeleton loading, quick download and hover-peek bookmarks.
+- Git mini-panel — branch, stash, discard, diffs, commit and push/pull with ahead/behind badges.
+- Settings control deck — collapsible groups with live search and runtime PIN set/change/disable.
+- Lock screen redesign, animated keep-awake indicator, PDF lazy rendering and download progress; dependency audit clean.
 
 ### v1.5.6
-- Explorer: fixed preview for unsupported file types, fixed HTML preview
-- PDF/EPUB preview: PDF/EPUB preview with optional CDN loader, vertical scroll, instant setup, fixed EPUB stuck and PDF page numbers sorted
+- Fixed preview for unsupported file types and for HTML; PDF/EPUB preview with vertical scroll, instant setup, and EPUB/PDF paging fixes.
 
 ### v1.5.5
-- Explorer: full filesystem access by default (`ALLOW_FULL_FS=true` unless `ALLOW_FULL_FS=false`), symlink dirs now navigable (`stat` `isDirectory`), fixed silent `403` bounce on `..` (now `toast` + error div), `parent` hidden at workspace root, `history`/`breadcrumb` desync fixed (deferred to success), stale closures on reused file items fixed (`dataset` live), drag overlay stuck fixed (`relatedTarget`/`dragend`/`blur`), relative `path-input` now `joinPath(currentPath)`, `rename` dialog no longer closes on error
-- Settings: drawer flicker fixed (`#main:isolation`, `#sidebar`/`#settings-panel` `will-change`/`backface-visibility`, `#file-list-wrap` `content-visibility` removed, `inert`/`focusTrap` deferred via `rAF` + `preventScroll`, `fileWatcher` skips when drawer/overlay open)
-- Editor: `F11` fullscreen now `absolute` inside terminal area only (`#editor-split-area` `relative`), never covers file explorer/sidebar or header, removed `requestFullscreen` browser overlay, `CodeMirror` height `100%`
-- Terminal: removed `Shift+F11` fullscreen button and `#terminals.fullscreen`/`#content.terminal-fullscreen` per request
-- UI: `#conn-status` `margin-left:6px` before dot
+- Explorer — full filesystem access by default, navigable symlinks, fixed 403 bounce on `..`, fixed breadcrumb/history desync and stale-closure bugs, rename dialog no longer closes on error.
+- Settings — drawer flicker fixed via isolation hints and deferred `inert`/focus traps.
+- Editor — `F11` fullscreen contained inside the terminal area instead of covering the sidebar or header.
+- Terminal — removed the `Shift+F11` fullscreen mode.
 
 ### v1.5.4
-- Security hardening: path sandbox `ALLOW_FULL_FS` (default `~`), symlink containment, null-byte/array guards, `rename` traversal block, `delete` uses `lstat`, batch caps 100, zip 1GB/unzip bomb guards, `download` header sanitization, `image` no-store, `write` 10MB cap, tunnel SSRF (localhost-only) + URL validation
-- Auth & transport: `checkPin` array guard, length-leak free `constantTimeEqual`, rate limiter uses `req.ip` with `trust proxy` + Map cap 10k, `--pin` arg consumption fix, WS `cols/rows` clamp 2-500, Origin check + `constantTimeEqual` token, `sessionId` length 1-64, per-IP `clipboard`, `history` max 1k & `cmdhist.json` 0600 atomic writes, `ptySessions` TTL 30m + cap 100, `TMUX_PREFIX=wt-webtun-`
-- Build: predictable `tmp` via `mkdtemp`, tar-slip `tzf` validation, heredoc `printf` no-expansion, `.env` parser first-`=` fix, `pkill $SCRIPT_DIR` + `kill -0` race, `electron` `parseInt PORT` + `autostart` filter, `ws ^8.17.1`
-- UI/UX: touch 32-36px, `aria-pressed`/`aria-expanded`/`aria-modal`/`inert` (siblings), focus-trap fix, `confirmDialog` queue, `skip-link`, `pan-y` + `contain`, `visualViewport` Samsung+scale, `pull-to-refresh`, `safe-area`, `cmd-lib` trap, `tiles min(300px,100%)`, `upload 6px+cancel`, `paste 60KB`, `WebGL<4`, `iframe allow-scripts`, `autosave draft 2s` + `jsx:true`
-- Explorer: `new-tab` next to last tab (sticky), `sidebar-header`/`breadcrumb` unified `30px` `3px 6px gap3`, `file-item 2→1px` `breadcrumb 1px sep`, `sidebar-footer/bookmarks` compact, folder icon + path one line `flex gap2`
-- Editor: `F11` fullscreen (`fixed inset0`) + `horizontal/vertical` split toggle stays usable, `Esc` to exit, `requestFullscreen` fallback, `closeEditor` clears
-- Terminal: `Shift+F11` fullscreen (`#content.terminal-fullscreen` + `#terminals.fullscreen`), header button, `fitTerm` refit
-- System Stats: **Kill** `POST /api/system/kill` per-row button (refuse `1/self/cloudflared`)
-- PWA: `sw.js` no immediate `skipWaiting`, `token`/`/ws` bypass, stale-while-revalidate, `manifest` `?newTerm=1` + `titlebar-area` CSS
+- Security — path sandbox, symlink containment, traversal blocks, zip/unzip bomb guards, header sanitization, tunnel SSRF protection, and constant-time PIN comparison with per-IP rate limits.
+- UI/UX — touch target sizing, ARIA roles and focus traps, pull-to-refresh, safe-area handling, and autosaved editor drafts.
+- Explorer and editor — compact unified headers, middle-truncating file rows, and contained editor fullscreen with split support.
+- System stats — per-row process kill with self/cloudflared protection; PWA stale-while-revalidate caching.
 
 ### v1.5.3
-- Terminal session persistence without tmux (in-memory PTY on Windows + Linux)
-- Session IDs always generated; tabs now survive page reload on all platforms
+- Terminal session persistence without tmux (in-memory PTY on Windows and Linux); tabs survive reload on all platforms.
 
 ### v1.5.2
-- UI/UX audit fixes: theme-aware xterm selection color, `--fg3` across all 6 themes
-- Replaced native `confirm()` with a theme-aware, focus-trapped dialog
-- File explorer keyboard navigation (arrows, type-ahead, select-all) + loading state
-- Mobile header overflow (more) menu; compact hostname restored on mobile
-- Context menu keyboard navigation and `aria-expanded` on submenus
-- SVG-ified remaining text glyphs; aria-labels on JS-generated icon buttons
-- Single-line scrollable breadcrumb; tab-bar mask no longer clips new-tab
-- Removed infinite keep-awake bounce; light-theme contrast bump
-- `term.paste()` replaces deprecated `execCommand('insertText')`
-- Pull-to-refresh indicator; tunnel rows use CSS classes
-- JetBrains Mono web font + CSP `font-src`; PWA screenshots
-- Fixed addon-webgl 404 (0.18.1 → 0.18.0); removed MiMo CLI default command
-- Explicit Tokyo Night theme block + `color-scheme` for all 6 themes
-- IBM Plex Sans UI font paired with JetBrains Mono (chrome vs code surfaces)
-- Keyboard Shortcuts dialog in overflow menu; dialog `role`/`aria-modal` semantics
-- Busy-spinner buttons + inline field errors (rename/new file/new folder/tunnel/save)
-- Toast type icons and max 4 visible; editor unsaved-changes dot + Discard dialog
-- Deferred CDN scripts for faster first paint; icon stroke-width normalized to 2
-- Empty-directory quick actions; Reset settings button; skip-link + landmark roles
-- Terminal connecting spinner; install banner clears mobile key bar
-- Search button touch targets on coarse pointers; subtle hover on plain buttons
+- Replaced native `confirm()` with a focus-trapped dialog; added explorer keyboard navigation, context-menu keyboard support, and a pull-to-refresh indicator.
+- Typography — JetBrains Mono for code surfaces paired with IBM Plex Sans for chrome, plus an explicit Tokyo Night theme and `color-scheme` for all six.
+- Accessibility — dialog semantics, toast icons, busy-spinner buttons, inline field errors, unsaved-changes indicators, skip link and landmark roles.
+- Deferred CDN scripts for faster first paint; fixed the CodeMirror mode and addon-webgl load errors.
 
 ### v1.5.1
-- Fixed command history saving terminal garbage instead of actual commands
-- Fixed history 401 errors on Cloudflare tunnel URLs
-- Fixed VT/ANSI parameter sequences leaking into history
-- Fixed CodeMirror `defineSimpleMode` error
-- Fixed console accessibility warnings (labels, form fields)
-- Added safe `localStorage` wrapper for Tracking Prevention compatibility
-- New terminal icon matching in-app logo
+- Fixed command history saving terminal garbage and VT/ANSI reply bytes, and 401s on Cloudflare tunnel URLs.
+- Fixed a CodeMirror `defineSimpleMode` error and console accessibility warnings; added a safe `localStorage` wrapper for Tracking Prevention.
 
 ### v1.5.0
 - Initial release

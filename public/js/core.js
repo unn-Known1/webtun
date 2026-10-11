@@ -514,7 +514,9 @@ async function unlockApp() {
   const info = await api('/api/home');
   homeDir = info.home;
   serverPlatform = info.platform || '';
-  document.getElementById('hostname-badge').textContent = info.hostname || '—';
+  const hostname = info.hostname || '—';
+  document.getElementById('hostname-label').textContent = hostname;
+  document.getElementById('hostname-badge').title = hostname + ' — manage SSH & connections';
 
   // Restore last visited path
   const savedPath = loadCurrentPath();

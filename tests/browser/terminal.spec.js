@@ -102,6 +102,109 @@ test('tab bar shows overflow controls only when needed and keeps creation reacha
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
+test('phone layout fills the viewport and keeps docked keys above a retained safe area', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'Mobile layout only');
+  // Chromium does not expose an iPhone home-indicator inset. Retain 34px even
+  // while the simulated keyboard is open, as in the physical-device report.
+  await page.route('**/css/styles.css', async route => {
+    const response = await route.fetch();
+    const css = (await response.text())
+      .replace(/env\(safe-area-inset-bottom(?:,\s*0px)?\)/g, '34px')
+      // Reproduce a CSS viewport height shorter than the live browser height.
+      .replaceAll('var(--app-height, 100dvh)', 'var(--app-height, calc(100dvh - 56px))');
+    await route.fulfill({ response, body: css });
+  });
+  await page.route('**/api/home', async route => {
+    const response = await route.fetch();
+    await route.fulfill({ response, json: { ...await response.json(), hostname: 'ip-10-192-27-102' } });
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await terminalPage(page);
+  expect(await page.locator('#app').evaluate(el => Math.abs(el.getBoundingClientRect().bottom - innerHeight))).toBeLessThanOrEqual(1);
+  expect(await page.locator('#mobile-nav-bar').evaluate(el => Math.abs(el.getBoundingClientRect().bottom - innerHeight))).toBeLessThanOrEqual(1);
+  await expect(page.locator('#hostname-badge')).toHaveAttribute('title', /ip-10-192-27-102/);
+  expect(await page.locator('#hostname-label').evaluate(el => {
+    const label = el.getBoundingClientRect();
+    const badge = el.parentElement.getBoundingClientRect();
+    return label.right <= badge.right && el.scrollWidth > el.clientWidth && getComputedStyle(el).textOverflow === 'ellipsis';
+  })).toBe(true);
+  await page.evaluate(() => {
+    tabs[0].term.focus();
+    // Keep the real viewport event source/listeners; only mock its measurement.
+    window._testKeyboardHeight = 300;
+    Object.defineProperty(window.visualViewport, 'height', {
+      configurable: true, get: () => innerHeight - window._testKeyboardHeight,
+    });
+    window.visualViewport.dispatchEvent(new Event('resize'));
+  });
+  await expect(page.locator('#mobile-nav-bar')).not.toBeVisible();
+  await expect(page.locator('#mobile-keys')).toHaveClass(/keyboard-docked/);
+  expect(await page.locator('#mobile-keys').evaluate(el => {
+    const row = el.getBoundingClientRect();
+    const buttons = [...el.querySelectorAll('.mkey')];
+    return Math.abs(row.bottom - (innerHeight - 300)) <= 1 && buttons.every(button => {
+      const rect = button.getBoundingClientRect();
+      return rect.top >= row.top && rect.bottom <= row.bottom;
+    });
+  })).toBe(true);
+  await page.evaluate(() => {
+    window._testKeyboardHeight = 0;
+    tabs[0].term.blur();
+    window.visualViewport.dispatchEvent(new Event('resize'));
+  });
+  await expect(page.locator('#mobile-nav-bar')).toBeVisible();
+  await expect(page.locator('#mobile-keys')).not.toHaveClass(/keyboard-docked/);
+  await page.setViewportSize({ width: 690, height: 390 });
+  await expect.poll(() => page.locator('#mobile-nav-bar').evaluate(el =>
+    Math.abs(el.getBoundingClientRect().bottom - innerHeight))).toBeLessThanOrEqual(1);
+  await page.setViewportSize({ width: 900, height: 600 });
+  await expect.poll(() => page.evaluate(() =>
+    document.documentElement.style.getPropertyValue('--app-height'))).toBe('');
+});
+
+test('iPhone standalone fills the screen while controls clear the curved bottom edge', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'Mobile layout only');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'standalone', { configurable: true, value: true });
+    Object.defineProperty(screen, 'width', { configurable: true, get: () => innerWidth });
+    Object.defineProperty(screen, 'height', { configurable: true, get: () => document.documentElement.clientHeight });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, get: () => document.documentElement.clientHeight - 56 });
+    window._testKeyboardHeight = 0;
+    Object.defineProperty(window.visualViewport, 'height', {
+      configurable: true, get: () => innerHeight - window._testKeyboardHeight,
+    });
+  });
+  await page.route('**/css/styles.css', async route => {
+    const response = await route.fetch();
+    const css = (await response.text()).replace(/env\(safe-area-inset-bottom(?:,\s*0px)?\)/g, '34px');
+    await route.fulfill({ response, body: css });
+  });
+  await terminalPage(page);
+  const nav = page.locator('#mobile-nav-bar');
+  await page.evaluate(() => tabs[0].term.focus());
+  await expect(nav).toBeVisible();
+  expect(await nav.evaluate(el => {
+    const edge = screen.height;
+    return Math.abs(el.getBoundingClientRect().bottom - edge) <= 1 &&
+      [...el.querySelectorAll('button')].every(button => button.getBoundingClientRect().bottom <= edge - 34 + 1);
+  })).toBe(true);
+  await page.evaluate(() => {
+    window._testKeyboardHeight = 300;
+    visualViewport.dispatchEvent(new Event('resize'));
+  });
+  await expect(nav).not.toBeVisible();
+  await expect.poll(() => page.locator('#mobile-keys').evaluate(el =>
+    Math.abs(el.getBoundingClientRect().bottom - (visualViewport.offsetTop + visualViewport.height)))).toBeLessThanOrEqual(1);
+  await page.evaluate(() => {
+    window._testKeyboardHeight = 0;
+    visualViewport.dispatchEvent(new Event('resize'));
+  });
+  await expect(nav).toBeVisible();
+  await expect.poll(() => nav.evaluate(el =>
+    Math.abs(el.getBoundingClientRect().bottom - screen.height))).toBeLessThanOrEqual(1);
+});
+
 test('fresh terminal prompts move above blank startup rows and fit their pane', async ({ page }) => {
   const sockets = await terminalPage(page);
   // tmux uses the alternate screen and asks xterm for its cursor position.
