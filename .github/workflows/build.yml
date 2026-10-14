@@ -48,7 +48,7 @@ jobs:
 
       - name: Browser failure evidence
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: browser-test-results
           path: test-results/
@@ -148,7 +148,7 @@ jobs:
             if ($_.Length -gt $cap) { throw "$($_.Name) exceeds size budget" }
           }
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: success()
         with:
           name: webtun-windows
@@ -223,7 +223,7 @@ jobs:
           check 'dist/*.deb' 130
           check 'dist/*.AppImage' 160
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: success()
         with:
           name: webtun-linux
@@ -298,7 +298,7 @@ jobs:
           check 'dist/*.dmg' 165
           check 'dist/*.zip' 160
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: success()
         with:
           name: webtun-mac
