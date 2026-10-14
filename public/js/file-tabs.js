@@ -318,7 +318,7 @@ async function mountFileTab(tab) {
   tab.mountedOnce = true;
   // Disk revision for the open-file watcher (doc tabs are flag-only).
   try {
-    const st = await api(`/api/files/stat?path=${encodeURIComponent(tab.path)}`);
+    const st = await api(`/api/files/stat?path=${encodeURIComponent(tab.path)}&follow=1`);
     if (st && !st.error && st.mtime !== undefined) {
       tab.document.diskMtime = String(st.mtime);
       tab.document.diskSize = st.size;
@@ -341,7 +341,7 @@ async function mountFileTab(tab) {
   }
 }
 
-function releaseFileTabResources(tab) {
+function releaseFileTabResources(tab, { discard = tab?.closed } = {}) {
   if (!tab) return;
   // Destroy heavy viewer docs when this tab owned them.
   if (_dockedFileTabId === tab.id) { tab.mountedOnce = false; try { cleanupDocViewers(); } catch (_) {} }
@@ -351,7 +351,9 @@ function releaseFileTabResources(tab) {
   try { if (tab.previewDocUrl) { URL.revokeObjectURL(tab.previewDocUrl); tab.previewDocUrl = null; } } catch (_) {}
   // Drop the CodeMirror instance along with the tab; removing the wrapper disposes of
   // its DOM, and this releases our last reference to the view.
-  tab.document.clear({ discard: tab.closed });
+  tab.document.buffer?.setContent(tab.cm ? tab.cm.getValue() : tab.document.buffer.content);
+  tab.document.clear({ discard });
+  tab.previewGeneration = (tab.previewGeneration || 0) + 1;
   tab.cm = null;
   tab.editorReady = null;
   tab.viewState = null;
@@ -577,7 +579,7 @@ function flashTabStatus(tab, text) {
 async function refreshTabDiskSnapshot(tab) {
   if (!tab?.path) return;
   try {
-    const s = await api(`/api/files/stat?path=${encodeURIComponent(tab.path)}`);
+    const s = await api(`/api/files/stat?path=${encodeURIComponent(tab.path)}&follow=1`);
     if (s && !s.error && s.mtime !== undefined) {
       tab.document.diskMtime = String(s.mtime);
       tab.document.diskSize = s.size;
@@ -731,6 +733,11 @@ async function renderTabPreview(tab) {
   const kind = tabPreviewKind(tab);
   if (!kind) return;
   const raw = tab.cm.getValue();
+  const generation = tab.previewGeneration = (tab.previewGeneration || 0) + 1;
+  const path = tab.path;
+  const buffer = tab.document?.buffer;
+  const full = tab.htmlFull;
+  const current = () => !tab.closed && tab.previewOn && tab.cm && tab.path === path && tab.document?.buffer === buffer && tab.previewGeneration === generation && tab.cm.getValue() === raw && tab.htmlFull === full;
   const baseDir = tabBaseDir(tab.path);
   const isDark = tabIsDark();
   // Like the panel: frame-readable preview DOM carries a scoped preview token,
@@ -739,6 +746,7 @@ async function renderTabPreview(tab) {
   try {
     ptok = await mintPreviewFileToken(tab.path);
   } catch (e) {
+    if (!current()) return;
     try { toast('Preview unavailable: ' + ((e && e.message) || 'unknown error'), 'error'); } catch {}
     if (kind === 'md') {
       try { if (tab.fteMd) tab.fteMd.innerHTML = '<p style="padding:16px">Preview unavailable — could not authorize file assets (' + escHtml((e && e.message) || 'unknown error') + ').</p>'; } catch {}
@@ -747,10 +755,12 @@ async function renderTabPreview(tab) {
     }
     return;
   }
+  if (!current()) return;
   if (kind === 'md') {
     const md = tab.fteMd;
     if (!md) return;
     if (typeof ensurePreviewLibs === 'function') await ensurePreviewLibs(['marked', 'DOMPurify']);
+    if (!current()) return;
     if (typeof DOMPurify === 'undefined' || typeof marked === 'undefined') {
       md.innerHTML = '<p style="padding:16px">Preview unavailable — preview libraries failed to load (offline, and no cached copy).</p>';
       return;
@@ -793,6 +803,7 @@ async function renderTabPreview(tab) {
       return;
     }
     if (typeof ensurePreviewLibs === 'function') await ensurePreviewLibs('DOMPurify');
+    if (!current()) return;
     if (typeof DOMPurify === 'undefined') {
       setTabPreviewDoc(tab, frame, '<p style="font-family:sans-serif;padding:16px">Preview unavailable — sanitizer failed to load (offline, and no cached copy).</p>');
       toast('Preview unavailable: sanitizer failed to load', 'warning');
@@ -813,6 +824,7 @@ async function renderTabPreview(tab) {
     }
     setTabPreviewDoc(tab, frame, doc);
   } catch (e) {
+    if (!current()) return;
     console.warn('Tab HTML preview failed:', e);
     try { setTabPreviewDoc(tab, frame, '<p style="font-family:sans-serif;padding:16px">Preview failed: ' + escHtml((e && e.message) || 'unknown error') + '</p>'); } catch {}
   }

@@ -215,8 +215,6 @@ function cancelTransfer(id) {
 })();
 
 let _uploadProgressTimeout = null;
-let _currentUploadXhr = null;
-let _uploadCancelled = false;
 // Legacy shims: the old header bar is retired (hidden); progress lives in the
 // Transfer Center. Kept so any missed caller degrades to a toast, not a crash.
 function setUploadProgress(pct, status, text) {
@@ -224,12 +222,9 @@ function setUploadProgress(pct, status, text) {
 }
 function clearUploadProgress(delay = 1500) { clearTimeout(_uploadProgressTimeout); }
 function cancelUpload() {
-  _uploadCancelled = true;
   for (const j of Transfers.jobs.values()) {
     if (j.type === 'upload' && j.status === 'active') { cancelTransfer(j.id); break; }
   }
-  try { if (_currentUploadXhr) _currentUploadXhr.abort(); } catch {}
-  _currentUploadXhr = null;
   toast('Upload cancelled', 'warning');
 }
 
@@ -238,51 +233,34 @@ async function uploadFileList(items) {
   const files = items.map(item => ({ file: item.file || item, name: item.path || item.webkitRelativePath || item.name }));
   const total = files.length;
   if (!total) return;
-  // Preserve dragged folder hierarchy: the multipart filename carries
-  // `dir/sub/f.txt`, so mkdir the parent dirs first instead of flattening.
-  try {
-    const dirs = new Set();
-    for (const f of files) {
-      const parts = String(f.name || '').split('/');
-      if (parts.length > 1) {
-        let acc = '';
-        for (let i = 0; i < parts.length - 1; i++) {
-          acc += (acc ? '/' : '') + parts[i];
-          dirs.add(acc);
-        }
-      }
-    }
-    const ordered = [...dirs].sort((a, b) => a.length - b.length);
-    for (const rel of ordered) {
-      if (_uploadCancelled) break;
-      try {
-        await api('/api/files/mkdir', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: currentPath.replace(/\/+$/, '') + '/' + rel }),
-        });
-      } catch {}
-    }
-  } catch {}
+  // The server creates validated parent directories from preserved multipart
+  // filenames. Pre-mkdir requests used the wrong live path and spent the same
+  // rate-limit budget as uploads.
   const totalBytes = files.reduce((n, f) => n + ((f.file && f.file.size) || 0), 0);
   const job = txCreate('upload', total === 1 ? 'Upload ' + files[0].name : 'Upload ' + total + ' files', { total: totalBytes, filesTotal: total });
   let completed = 0;
   let failedItems = [];
   let baseLoaded = 0;
-  _uploadCancelled = false;
-  job.abort = () => { _uploadCancelled = true; try { if (_currentUploadXhr) _currentUploadXhr.abort(); } catch {} };
+  let cancelled = false, currentXhr = null, waitTimer = null, finishWait = null;
+  job.abort = () => {
+    cancelled = true;
+    currentXhr?.abort();
+    clearTimeout(waitTimer);
+    finishWait?.();
+  };
   
   for (const item of files) {
-    if (_uploadCancelled || job.stopAfterCurrent) break;
+    if (cancelled || job.stopAfterCurrent) break;
     const file = item.file;
     const fileName = item.name;
     const formData = new FormData();
     formData.append('files', file, fileName);
     
+    for (let attempt = 0; attempt < 5; attempt++) {
     try {
       await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        _currentUploadXhr = xhr;
+        currentXhr = xhr;
         xhr.open('POST', `/api/files/upload?path=${path}`);
         xhr.setRequestHeader('x-pin-token', authToken);
         
@@ -298,7 +276,7 @@ async function uploadFileList(items) {
         });
         
         xhr.onload = () => {
-          _currentUploadXhr = null;
+          currentXhr = null;
           if (xhr.status >= 200 && xhr.status < 300) {
             try {
               const resp = JSON.parse(xhr.responseText);
@@ -310,7 +288,6 @@ async function uploadFileList(items) {
                 txTick(job, baseLoaded);
                 resolve();
               } else {
-                failedItems.push(fileName);
                 reject(new Error(resp.error || 'Upload failed'));
               }
             } catch(e) {
@@ -318,36 +295,47 @@ async function uploadFileList(items) {
               // did not confirm the write. Count it as failed so the batch
               // summary and retry path see it.
               console.warn('Upload XHR response parse error:', e);
-              failedItems.push(fileName);
               reject(new Error('Upload failed (bad server response)'));
             }
           } else {
-            failedItems.push(fileName);
-            reject(new Error(`HTTP ${xhr.status}`));
+            const error = new Error(`HTTP ${xhr.status}`);
+            if (xhr.status === 429) error.retryAfter = Math.min(60, Math.max(1, Number(xhr.getResponseHeader('Retry-After')) || 10));
+            reject(error);
           }
         };
         
         xhr.onerror = () => {
-          _currentUploadXhr = null;
-          if (_uploadCancelled) { reject(new Error('Cancelled')); return; }
-          failedItems.push(fileName);
+          currentXhr = null;
+          if (cancelled) { reject(new Error('Cancelled')); return; }
           reject(new Error('Network error'));
         };
         xhr.onabort = () => {
-          _currentUploadXhr = null;
+          currentXhr = null;
           reject(new Error('Cancelled'));
         };
         xhr.send(formData);
       });
+      break;
     } catch (e) {
-      if (_uploadCancelled || job.stopAfterCurrent) break;
+      if (cancelled || job.stopAfterCurrent) break;
+      if (e.retryAfter && attempt < 4) {
+        job.sub = 'Waiting for upload budget — retrying ' + fileName;
+        txTick(job, baseLoaded);
+        await new Promise(resolve => { finishWait = resolve; waitTimer = setTimeout(resolve, e.retryAfter * 1000); });
+        finishWait = null;
+        if (cancelled) break;
+        continue;
+      }
+      failedItems.push(fileName);
       console.warn('Upload item failed:', e);
+      break;
+    }
     }
   }
   
-  _currentUploadXhr = null;
+  currentXhr = null;
   job.abort = null;
-  if (_uploadCancelled || job.stopAfterCurrent) {
+  if (cancelled || job.stopAfterCurrent) {
     txFinish(job, 'cancelled', completed ? completed + '/' + total + ' uploaded' : '');
     toast('Upload stopped', 'warning');
     refreshFiles();

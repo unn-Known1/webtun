@@ -233,6 +233,13 @@ See [the architecture guide](docs/SYSTEM_ARCHITECTURE_AND_DESIGN_PRINCIPLES.md) 
 
 ## Changelog
 
+### v2.3.6
+- **Billing correctness** — checkout/renewal claim IDs, verified plan/seat/period entitlements, and webhook idempotency, plus plan/term/seat purchase and renewal activation UI.
+- **File safety** — shared copy/move guards against self-paste and descendant overwrites, conflict accounting, occupied-rename refusal, complete merge rollback, symlink-accurate metadata, aligned ZIP limits, byte-range downloads, preserved folder uploads, and rate-limit-aware upload retries.
+- **Preview isolation and transport** — session-bound port capabilities replacing IP leases, WebTun credential stripping on HTTP and HMR WebSocket targets, and original request-body forwarding.
+- **Terminal and editor integrity** — per-connection PTY subscriptions, exit tombstones with explicit restart, cross-chunk history parsing, fallback PTY resize, descendant-aware renames, generation-guarded previews, draft-preserving lock teardown, and working viewer downloads.
+- **Git, SSH, and coverage** — branch creation/deletion/merge/continue/abort, NUL-delimited Unicode paths, paginated history and bounded blame; OpenSSH-compatible key export without signaling foreign PIDs; worker-isolated regex search, rotation-aware log tail, native PTY tests, and remediation browser specs.
+
 ### v2.3.5
 - **Mobile keyboard and viewport** — the ESC/TAB/CTRL bar is no longer clipped when the iPhone keyboard opens, and the workspace fills the screen edge-to-edge in Home Screen mode instead of leaving a dead strip under the bottom navigation.
 - **Mobile tab strip and hostname** — tabs snap to whole slots instead of scrolling mid-name, and a long hostname truncates with an ellipsis (full name in the tooltip).

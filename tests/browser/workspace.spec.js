@@ -36,7 +36,7 @@ test('workspace boots without script errors and fits the viewport', async ({ pag
     return missing;
   });
   expect(unknown).toEqual([]);
-  await page.screenshot({ path:'test-results/current-'+test.info().project.name+'.png',fullPage:true,animations:'disabled' });
+  await page.screenshot({ path:(process.env.WEBTUN_TEST_RESULTS || 'test-results')+'/current-'+test.info().project.name+'.png',fullPage:true,animations:'disabled' });
 });
 
 test('panel to tab and back preserves edits and undo history', async ({ page }) => {

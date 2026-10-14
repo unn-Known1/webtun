@@ -170,7 +170,7 @@ async function readTextForEditor(path) {
   // revision the watcher compares (chars-vs-bytes mismatches phantom-flagged).
   let statSize = null, statMtime = null;
   try {
-    const st = await api(`/api/files/stat?path=${encodeURIComponent(path)}`);
+    const st = await api(`/api/files/stat?path=${encodeURIComponent(path)}&follow=1`);
     if (st && !st.error && typeof st.size === 'number') {
       statSize = st.size;
       statMtime = st.mtime != null ? String(st.mtime) : null;
@@ -405,7 +405,7 @@ async function refreshEditorDiskSnapshot(buffer) {
   if (!buffer || buffer.released) return;
   const path = buffer.path;
   try {
-    const stat = await api('/api/files/stat?path=' + encodeURIComponent(path));
+    const stat = await api('/api/files/stat?path=' + encodeURIComponent(path) + '&follow=1');
     if (!buffer.released && buffer.path === path && stat && !stat.error && stat.mtime !== undefined) {
       buffer.mtime = String(stat.mtime);
       buffer.size = stat.size;
@@ -630,7 +630,7 @@ async function checkOpenFiles() {
 async function checkOneOpenFile(target) {
   let st = null;
   try {
-    const r = await api(`/api/files/stat?path=${encodeURIComponent(target.path)}`);
+    const r = await api(`/api/files/stat?path=${encodeURIComponent(target.path)}&follow=1`);
     if (r && !r.error && r.mtime !== undefined) st = r;
     else if (r && r.error && /not found/i.test(r.error)) { markOpenFileMissing(target); return; }
     else return; // transient error — retry next round, never flag

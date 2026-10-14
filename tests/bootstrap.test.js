@@ -6,6 +6,7 @@ const path = require('path');
 const os = require('os');
 const { spawn } = require('child_process');
 const net = require('net');
+const crypto = require('crypto');
 
 test('the composed server starts, serves the workspace, and shuts down cleanly', { timeout: 20000 }, async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(),'webtun-boot-'));
@@ -21,6 +22,10 @@ test('the composed server starts, serves the workspace, and shuts down cleanly',
   }
   await fs.symlink(path.join(repo,'node_modules'),path.join(checkout,'node_modules'),process.platform === 'win32' ? 'junction' : 'dir');
   await fs.writeFile(path.join(workspace,'boot.txt'),'composed service\n');
+  const signing = crypto.generateKeyPairSync('ed25519');
+  const licenseKey = require('../lib/license').signLicense({ v: 1, plan: 'pro', seats: 1, iat: Date.now(), exp: Date.now() + 86400000 }, signing.privateKey);
+  await fs.writeFile(path.join(checkout, 'license.json'), JSON.stringify({ key: licenseKey }));
+  await fs.writeFile(path.join(checkout, '.env'), 'PREVIEW_PORTS=*\n');
   const probe = net.createServer();
   await new Promise(resolve => probe.listen(0,'127.0.0.1',resolve));
   const port = probe.address().port;
@@ -29,7 +34,7 @@ test('the composed server starts, serves the workspace, and shuts down cleanly',
   const child = spawn(process.execPath,['-e', "require('./server.js').startServer({host:'127.0.0.1'}).then(server=>process.send({port:server.address().port}))"],{
     cwd: checkout,
     env: { ...process.env, PATH: emptyPath, XDG_CONFIG_HOME: path.join(root,'config'), WORKSPACE_ROOT: workspace,
-      ALLOW_FULL_FS: 'false', PIN: '', PORT: String(port), WEBTUN_LICENSE_PUBLIC_KEY: '', STRIPE_SECRET_KEY: '', STRIPE_WEBHOOK_SECRET: '' },
+      ALLOW_FULL_FS: 'false', PIN: '', PORT: String(port), PREVIEW_PORTS: '5173', WEBTUN_LICENSE_PUBLIC_KEY: signing.publicKey.export({ type: 'spki', format: 'pem' }), STRIPE_SECRET_KEY: '', STRIPE_WEBHOOK_SECRET: '' },
     stdio: ['ignore','pipe','pipe','ipc'],
   });
   child.stdout.on('data',chunk => { log += chunk; });
@@ -55,6 +60,9 @@ test('the composed server starts, serves the workspace, and shuts down cleanly',
   }
   assert.equal((await json('/api/auth/required')).required,false);
   assert.equal((await json('/api/version')).version,require('../package.json').version);
+  assert.equal((await json('/api/license/status')).plan, 'pro');
+  const home = await json('/api/home'); assert.equal(home.workspace, workspace); assert.equal(home.defaultDirectory, workspace); assert.equal(home.fullFilesystem, false);
+  assert.deepEqual((await json('/api/ports')).allowedPorts, [5173]);
   assert.equal((await json('/api/files/read?path='+encodeURIComponent(path.join(workspace,'boot.txt')))).content,'composed service\n');
   assert.deepEqual((await json('/api/tunnel')).tunnels,[]);
   assert.equal((await fetch(base+'/api/git/status?path='+encodeURIComponent(workspace))).status,501);

@@ -592,7 +592,6 @@ async function openEpubViewer(path) {
     if (!arrayBuffer || arrayBuffer.byteLength < 100) throw new Error('Empty or invalid EPUB file (size ' + (arrayBuffer ? arrayBuffer.byteLength : 0) + ')');
     const header = new Uint8Array(arrayBuffer.slice(0, 4));
     const isZip = header[0] === 0x50 && header[1] === 0x4B;
-    console.log('EPUB fetch OK', path, 'bytes', arrayBuffer.byteLength, 'isZip', isZip, 'header', Array.from(header));
     if (!isZip) throw new Error('Not a valid EPUB (missing PK header, got ' + Array.from(header).join(',') + ')');
     _epubPath = path;
     const book = window.ePub(arrayBuffer, { openAs: 'binary', encoding: 'binary', store: false });
@@ -1090,11 +1089,8 @@ function toPreviewApiUrl(rel, baseDir, ptok) {
   if (!pathPart) return rel;
   const abs = joinPath(baseDir || '', pathPart);
   let api = `/api/files/image?path=${encodeURIComponent(abs)}`;
-  // Scoped preview token (ptoken) when the renderer minted one; legacy session
-  // token only as a fallback so open-mode/older flows keep working. Frame-
-  // delivered documents must always pass ptok — never the session.
+   // File previews carry only scoped asset authority, never the live session.
   if (ptok) api += `&ptoken=${encodeURIComponent(ptok)}`;
-  else if (authToken) api += `&token=${encodeURIComponent(authToken)}`;
   if (query) api += (query.startsWith('?') ? `&${query.slice(1)}` : query);
   if (hash) api += hash;
   return api;
@@ -1182,9 +1178,18 @@ function clearPreviewDoc(iframe) {
   try { iframe.removeAttribute('srcdoc'); iframe.src = 'about:blank'; } catch {}
   iframe.style.display = 'none';
 }
+let panelPreviewGeneration = 0;
+function capturePanelPreview() {
+  const generation = ++panelPreviewGeneration;
+  const path = panelState.path, buffer = panelState.buffer, raw = panelContent(), full = htmlFullPreview;
+  const panelGeneration = _panelGen;
+  return { path, raw, current: () => generation === panelPreviewGeneration && _panelGen === panelGeneration && panelState.path === path && panelState.buffer === buffer && panelContent() === raw && htmlFullPreview === full };
+}
 async function renderHtmlPreview() {
-  try { await renderHtmlPreviewInner(); }
+  const snapshot = capturePanelPreview();
+  try { await renderHtmlPreviewInner(snapshot); }
   catch (e) {
+    if (!snapshot.current()) return;
     // A preview must never die as a silent blank pane: surface the reason
     // inside the frame (works over tunnel too — no console needed to see it).
     console.warn('HTML preview failed:', e);
@@ -1195,10 +1200,10 @@ async function renderHtmlPreview() {
     try { toast('Preview failed: ' + ((e && e.message) || 'unknown error'), 'error'); } catch {}
   }
 }
-async function renderHtmlPreviewInner() {
+async function renderHtmlPreviewInner(snapshot = capturePanelPreview()) {
   const iframe = document.getElementById('editor-preview-iframe');
   const mdContent = document.getElementById('md-preview-content');
-  const raw = editor ? editor.getValue() : document.getElementById('editor-textarea')?.value || '';
+  const raw = snapshot.raw;
   if (!iframe) return;
   if (!panelState.path || !raw) {
     setPreviewDoc(iframe, '<p style="font-family:sans-serif;padding:16px">' + (!panelState.path ? 'Nothing to preview — open a file first.' : 'Nothing to preview — the file is empty.') + '</p>');
@@ -1211,12 +1216,14 @@ async function renderHtmlPreviewInner() {
   // when authed but minting fails.
   let ptok = null;
   try {
-    ptok = await mintPreviewFileToken(panelState.path);
+    ptok = await mintPreviewFileToken(snapshot.path);
   } catch (e) {
+    if (!snapshot.current()) return;
     setPreviewDoc(iframe, '<p style="font-family:sans-serif;padding:16px">Preview unavailable — could not authorize file assets (' + escHtml((e && e.message) || 'unknown error') + ').</p>');
     try { toast('Preview unavailable: ' + ((e && e.message) || 'unknown error'), 'error'); } catch {}
     return;
   }
+  if (!snapshot.current()) return;
   const baseDir = getHtmlBaseDir();
   const s = getComputedStyle(document.documentElement);
   const isDark = !['#f9f9fb', '#ffffff', 'rgb(249, 249, 251)', 'rgb(255, 255, 255)'].includes(s.getPropertyValue('--bg').trim());
@@ -1247,6 +1254,7 @@ async function renderHtmlPreviewInner() {
   // Never render unsanitized HTML: without DOMPurify the preview stays off
   // (scripts in the file could otherwise reach the app).
   if (typeof ensurePreviewLibs === 'function') await ensurePreviewLibs('DOMPurify');
+  if (!snapshot.current()) return;
   if (typeof DOMPurify === 'undefined') {
     setPreviewDoc(iframe, '<p style="font-family:sans-serif;padding:16px">Preview unavailable — sanitizer failed to load (offline, and no cached copy).</p>');
     toast('Preview unavailable: sanitizer failed to load', 'warning');
@@ -1324,15 +1332,17 @@ async function renderHtmlPreviewInner() {
 }
 
 async function renderMdPreview() {
+  const snapshot = capturePanelPreview();
   const preview = document.getElementById('editor-preview');
   const mdContent = document.getElementById('md-preview-content');
   const iframe = document.getElementById('editor-preview-iframe');
-  const raw = editor ? editor.getValue() : document.getElementById('editor-textarea')?.value || '';
+  const raw = snapshot.raw;
   if (!preview || !mdContent) return;
   if (iframe) iframe.style.display = 'none';
   mdContent.style.display = 'block';
   try {
     if (typeof ensurePreviewLibs === 'function') await ensurePreviewLibs(['marked', 'DOMPurify']);
+    if (!snapshot.current()) return;
     if (typeof DOMPurify === 'undefined' || typeof marked === 'undefined') {
       mdContent.innerHTML = '<p style="padding:16px">Preview unavailable — preview libraries failed to load (offline, and no cached copy).</p>';
       return;
@@ -1342,12 +1352,10 @@ async function renderMdPreview() {
     // Mirror the tab preview: route relative assets through the authed image
     // endpoint and open links out of the app (a relative click used to
     // navigate the whole app away).
-    try {
-      const mdBase = (typeof getHtmlBaseDir === 'function') ? getHtmlBaseDir() : '';
-      let mdTok = null;
-      try { mdTok = await mintPreviewFileToken(panelState.path); } catch {}
-      sanitized = rewriteHtmlRelativeUrls(sanitized, mdBase, mdTok);
-    } catch {}
+    const mdBase = getHtmlBaseDir();
+    const mdTok = await mintPreviewFileToken(snapshot.path);
+    if (!snapshot.current()) return;
+    sanitized = rewriteHtmlRelativeUrls(sanitized, mdBase, mdTok);
     try {
       sanitized = sanitized.replace(/<a\b(?![^>]*\btarget=)[^>]*>/gi, m => m.replace(/<a\b/i, '<a target="_blank" rel="noopener"'));
     } catch {}
@@ -1385,8 +1393,9 @@ async function renderMdPreview() {
       </style>
       <div class="md-rendered">${sanitized}</div>`;
   } catch (e) {
+    if (!snapshot.current()) return;
     console.warn('Markdown preview error:', e);
-    mdContent.textContent = 'Error rendering markdown preview';
+    mdContent.textContent = 'Preview unavailable — could not authorize or render file assets. Try Refresh.';
   }
 }
 
@@ -1415,6 +1424,7 @@ function startPreviewLiveReload() {
   clearPreviewLiveReload();
 }
 function clearPreviewLiveReload() {
+  ++panelPreviewGeneration;
   if (_previewLiveReloadTimer) { clearTimeout(_previewLiveReloadTimer); _previewLiveReloadTimer = null; }
 }
 

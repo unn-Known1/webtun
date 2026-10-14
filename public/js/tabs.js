@@ -760,13 +760,19 @@ function setupTabSwipeGesture(tabEl, id) {
   let swipeStartX = 0, swipeStartY = 0;
   let swipeStartScroll = 0;
   let isVerticalSwipe = false;
+  const reset = () => {
+    tabEl.style.transform = tabEl.style.opacity = tabEl.style.background = '';
+    swipeStartX = 0; swipeStartY = 0; isVerticalSwipe = false;
+  };
   tabEl.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1) { reset(); return; }
     swipeStartX = e.touches[0].clientX;
     swipeStartY = e.touches[0].clientY;
     swipeStartScroll = tabEl.parentElement ? tabEl.parentElement.scrollLeft : 0;
     isVerticalSwipe = false;
   }, { passive: true });
   tabEl.addEventListener('touchmove', e => {
+    if (e.touches.length !== 1) { reset(); return; }
     if (swipeStartX === 0) return;
     const dx = e.touches[0].clientX - swipeStartX;
     const dy = e.touches[0].clientY - swipeStartY;
@@ -791,8 +797,9 @@ function setupTabSwipeGesture(tabEl, id) {
     if (isVerticalSwipe && dy < -50 && Math.abs(dy) > Math.abs(dx) * 1.5) {
       closeTab({ stopPropagation() {} }, id);
     }
-    swipeStartX = 0; swipeStartY = 0; isVerticalSwipe = false;
+    reset();
   }, { passive: true });
+  tabEl.addEventListener('touchcancel', reset, { passive: true });
 }
 
 function createTabButton(tab) {

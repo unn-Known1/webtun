@@ -255,6 +255,30 @@
             <button class="sidebar-action-btn" data-action="git-reset" title="Reset to ref">Reset</button>
           </div>
           <div class="field-error" id="git-reset-error" role="alert" style="padding:0 8px"></div>
+          <div class="git-workflow git-rare">
+            <label for="git-manage-branch">Branch to merge or delete</label>
+            <input id="git-manage-branch" type="text" maxlength="100" placeholder="feature/name" autocomplete="off" spellcheck="false">
+            <label class="git-force-label"><input id="git-delete-force" type="checkbox"> Allow deleting an unmerged branch</label>
+            <div class="git-workflow-actions">
+              <button class="sidebar-action-btn" data-action="git-merge">Merge into current</button>
+              <button class="sidebar-action-btn danger" data-action="git-delete-branch">Delete branch</button>
+            </div>
+            <div id="git-operation-row" hidden>
+              <span id="git-operation-status" role="status"></span>
+              <div class="git-workflow-actions">
+                <button class="sidebar-action-btn" data-action="git-continue">Continue</button>
+                <button class="sidebar-action-btn danger" data-action="git-abort">Abort</button>
+              </div>
+            </div>
+            <label for="git-blame-file">Blame file (relative to repository)</label>
+            <input id="git-blame-file" type="text" placeholder="src/file.js" autocomplete="off" spellcheck="false">
+            <label for="git-blame-start">First line</label>
+            <div class="git-workflow-actions">
+              <input id="git-blame-start" type="number" min="1" value="1">
+              <button class="sidebar-action-btn" data-action="git-blame">View 200 lines</button>
+            </div>
+            <div class="field-error" id="git-workflow-error" role="alert"></div>
+          </div>
           <div id="git-tags-row" class="git-rare">
             <input id="git-tag-input" type="text" placeholder="v1.0.0" aria-label="New tag name" maxlength="200">
             <input id="git-tag-msg" type="text" placeholder="message (optional)" aria-label="Tag message" maxlength="500">
@@ -643,9 +667,29 @@
           <div class="settings-actions">
             <button class="btn btn-primary flex-fill" id="lic-save-btn" data-action="save-license-key">Activate</button>
             <button class="btn btn-ghost flex-fill" data-action="remove-license-key">Remove</button>
-            <button class="btn btn-ghost flex-fill" data-action="start-checkout-pro" title="Buy Pro">Upgrade</button>
           </div>
           <div class="settings-help">Keys work offline. Expiry gives a 7 day grace — the terminal itself is never locked.</div>
+          <details class="billing-controls">
+            <summary>Purchase or renew a license</summary>
+            <div class="setting-row">
+              <label for="billing-plan">Plan</label>
+              <select id="billing-plan" data-change-action="sync-billing-seats"><option value="pro">Pro</option><option value="team">Team</option></select>
+            </div>
+            <div class="setting-row">
+              <label for="billing-term">Term</label>
+              <select id="billing-term"><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select>
+            </div>
+            <div class="setting-row" id="billing-seats-row" hidden>
+              <label for="billing-seats">Team seats</label>
+              <input id="billing-seats" type="number" min="3" max="10" step="1" value="3" aria-describedby="billing-help">
+            </div>
+            <p id="billing-help" class="settings-help">Team needs 3–10 seats, billed per seat. The checkout page confirms your total. Billing must be configured by the server owner.</p>
+            <div class="field-error" id="billing-error" role="alert"></div>
+            <div class="settings-actions"><button id="billing-checkout-btn" class="btn btn-primary" data-action="start-checkout">Open secure checkout</button></div>
+            <a id="billing-checkout-link" class="settings-help" target="_blank" rel="noopener noreferrer" hidden>Open your checkout (pop-up was blocked)</a>
+            <div class="setting-row settings-subheading"><h4>Available renewals</h4><button class="btn btn-ghost" data-action="refresh-renewals">Refresh</button></div>
+            <div id="billing-renewals" role="status" class="settings-help">Refresh to check for paid renewals.</div>
+          </details>
           <div class="setting-row settings-subheading">
             <h4>Active sessions <span id="sess-count"></span></h4>
             <button class="btn btn-ghost" data-action="refresh-sessions" title="Refresh session list" aria-label="Refresh session list">Refresh</button>

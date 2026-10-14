@@ -199,113 +199,7 @@ function connectWebSocket(tab, isReconnect = false) {
   // inside the line can't be modeled without cursor state, so mid-line
   // edits may still diverge; the buffer is capped to the tail.
   function trackTermKeystrokes(tab, data) {
-    // Update the keystroke buffer — skip all escape sequences and control characters
-    for (let i = 0; i < data.length; i++) {
-      const ch = data.charCodeAt(i);
-      if (ch === 13 || ch === 10) { // Enter (handled above)
-        continue;
-      } else if (ch === 127 || ch === 8) { // Backspace / Delete
-        if (tab._currentInput) tab._currentInput = tab._currentInput.slice(0, -1);
-      } else if (ch === 21) { // ^U — clear line
-        tab._currentInput = '';
-      } else if (ch === 3 || ch === 4) { // ^C / ^D — line killed, abandon buffer
-        tab._currentInput = '';
-        tab._lastPasteText = null;
-      } else if (ch === 23) { // ^W — delete word
-        if (tab._currentInput) tab._currentInput = tab._currentInput.replace(/\S+\s*$/, '');
-      } else if (ch === 11) { // ^K — kill to end of line
-        tab._yank = tab._currentInput || '';
-        tab._currentInput = '';
-      } else if (ch === 25) { // ^Y — yank back
-        if (tab._yank) tab._currentInput = (tab._currentInput || '') + tab._yank;
-      } else if (ch === 1 || ch === 5) { // ^A / ^E — cursor jump only
-      } else if (ch === 27) { // ESC — escape sequence, or an Alt-modified key
-        // Order matters: the introducers below are checked BEFORE the Meta
-        // branch. ESC + a printable-looking byte is usually a sequence, not
-        // Alt: arrow keys (ESC [ A), SS3 (ESC O A) and the device-attribute /
-        // colour replies xterm.js answers on the PTY's behalf (ESC [ ? 1;2 c,
-        // ESC ] 11;rgb:… ESC \) all start with ESC + a byte in 0x5B/0x4F/0x5D.
-        // The Meta check used to win, consumed the introducer as "Alt+[" and
-        // appended the sequence *body* as typed text — so a single arrow key,
-        // or the reply burst every session start produces, was prepended to
-        // the next command saved in history.
-        const next = data.charCodeAt(i + 1);
-        const after = data.charCodeAt(i + 2);
-        const isParamOrIntermediate = c => c >= 0x20 && c <= 0x3f; // CSI params/mid
-        const isFinalByte = c => c >= 0x40 && c <= 0x7e;
-        const isSsh3Final = c => 'ABCDHFMPQRS'.indexOf(String.fromCharCode(c)) >= 0;
-        // CSI: '[' + param/intermediate. An '[' at the very end of a chunk is
-        // treated as CSI too — the rest arrives in the next chunk and is
-        // dropped as a body, which is safer than recording it as typed text.
-        if (next === 0x5b && (after === undefined || isParamOrIntermediate(after))) {
-          i += 2;
-          while (i < data.length && !isFinalByte(data.charCodeAt(i))) i++;
-          continue;
-        }
-        // SS3: 'O' + a cursor/function final (Alt-O is readline open-line).
-        if (next === 0x4f && after !== undefined && isSsh3Final(after)) { i += 2; continue; }
-        // OSC / DCS / SOS / PM / APC — ']', 'P', 'X', '^', '_'
-        if (next === 0x5d || next === 0x50 || next === 0x58 || next === 0x5e || next === 0x5f) {
-          i++;
-          if (data[i] === ']') { // OSC — skip to BEL or ESC-backslash (title text isn't input)
-            i++;
-            while (i < data.length) {
-              if (data.charCodeAt(i) === 7) { i++; break; }
-              if (data[i] === '\x1b' && data[i+1] === '\\') { i += 2; break; }
-              i++;
-            }
-            i--; // compensate for-loop increment (already past terminator)
-          } else { // DCS and friends — skip to ESC-backslash
-            i++;
-            while (i < data.length) {
-              if (data[i] === '\x1b' && data[i+1] === '\\') { i += 2; break; }
-              i++;
-            }
-            i--;
-          }
-          continue;
-        }
-        // Alt-letter (Meta): ESC followed by a printable is a readline word
-        // command, not a terminal sequence. Alt-F/B jump (no buffer change);
-        // Alt-D kills the word forward (approximate as trailing-word kill).
-        if (next >= 32 && next < 127) {
-          const meta = data[i + 1].toLowerCase();
-          if (meta === 'd') {
-            if (tab._currentInput) tab._currentInput = tab._currentInput.replace(/\S+\s*$/, '');
-          }
-          i++; // consume the Alt-modified char
-          continue;
-        }
-        i++;
-        if (data[i] === ']') { // OSC — skip to BEL or ESC-backslash (title text isn't input)
-          i++;
-          while (i < data.length) {
-            if (data.charCodeAt(i) === 7) { i++; break; }
-            if (data[i] === '\x1b' && data[i+1] === '\\') { i += 2; break; }
-            i++;
-          }
-          i--; // compensate for-loop increment (already past terminator)
-        } else if (data[i] === 'P') { // DCS — skip to ESC-backslash
-          i++;
-          while (i < data.length) {
-            if (data[i] === '\x1b' && data[i+1] === '\\') { i += 2; break; }
-            i++;
-          }
-          i--;
-        } else { // CSI / SS3 / single-ESC — skip to final char (for-loop moves past it)
-          while (i < data.length) {
-            const c = data.charCodeAt(i);
-            if (c >= 0x40 && c <= 0x7E) break;
-            i++;
-          }
-        }
-      } else if (ch >= 32 && ch !== 127) { // Printable (incl. unicode), not DEL
-        tab._currentInput = (tab._currentInput || '') + data[i];
-        // Cap buffer on long-lived tabs (history only needs the tail)
-        if (tab._currentInput.length > 4096) tab._currentInput = tab._currentInput.slice(-4096);
-      }
-      // All other control chars (0x00-0x1F except 0x0D/0x0A) are silently dropped
-    }
+    WebTunTerminalConnection.trackInput(tab, data);
   };
   const sendResize = (cols, rows) => {
     if (ws.readyState !== WebSocket.OPEN) return;
@@ -317,6 +211,7 @@ function connectWebSocket(tab, isReconnect = false) {
   ws.onopen = () => {
     try { if (tab._openTimer) { clearTimeout(tab._openTimer); tab._openTimer = null; } } catch {}
     terminalRetryPolicy(tab).reset();
+    tab.processExited = false;
     hideTermLoading(tab);
     try { if (typeof clearTabExited === 'function') clearTabExited(tab); } catch {}
     try { if (typeof refreshConnStatus === 'function') refreshConnStatus(); else updateConnStatus(true); } catch {}
@@ -498,7 +393,7 @@ function connectWebSocket(tab, isReconnect = false) {
     if (!buf.length) return;
     const type = buf[0], payload = buf.slice(1);
     if (type === 0x00) processTerminalOutput(payload);
-    else if (type === 0x01) { tab.term.writeln('\r\n\x1b[31m[Process exited]\x1b[0m'); try { if (typeof notifyTabExited === 'function') notifyTabExited(tab); } catch {} }
+    else if (type === 0x01) { tab.processExited = true; tab.term.writeln('\r\n\x1b[31m[Process exited — use Restart to start a new shell]\x1b[0m'); try { if (typeof notifyTabExited === 'function') notifyTabExited(tab); } catch {} }
     else if (type === 0x02) tab.term.writeln('\r\n\x1b[31m' + new TextDecoder().decode(payload) + '\x1b[0m');
     else if (type === 0x03) handleClientEvent(payload);
   };
@@ -615,7 +510,7 @@ function handleClientEvent(payload) {
     if (tab.ws && tab.ws !== ws) return;
     cleanupWebSocket(tab);
     const policy = terminalRetryPolicy(tab);
-    const retry = policy.next({ closed: tab.closed, code: event?.code, reason: event?.reason, sessionId: tab.sessionId });
+    const retry = policy.next({ closed: tab.closed, exited: tab.processExited, code: event?.code, reason: event?.reason, sessionId: tab.sessionId });
     if (tab.closed) return;
     if (retry.action === 'auth') {
       hideTermLoading(tab);
@@ -1039,6 +934,11 @@ function initTerminal(tab) {
     }, 1200);
   }
 
+  term.element.addEventListener('touchcancel', () => {
+    clearTimeout(_longPressTimer);
+    _pinchStartDist = 0; _isDraggingTouch = false; _isSelectingDrag = false;
+    _selAnchor = null; _touchAccumY = 0;
+  }, { passive: true });
   term.element.addEventListener('touchstart', e => {
     if (e.touches.length === 1) e.stopImmediatePropagation();
     if (e.touches.length === 2) {
@@ -1103,7 +1003,7 @@ function initTerminal(tab) {
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       const dist = Math.hypot(dx, dy);
       const scale = dist / _pinchStartDist;
-      const newSize = Math.max(9, Math.min(24, Math.round(_pinchStartFontSize * scale)));
+      const newSize = Math.max(10, Math.min(28, Math.round(_pinchStartFontSize * scale)));
       if (newSize !== term.options.fontSize) {
         term.options.fontSize = newSize;
         showZoomHud(newSize);
@@ -1201,10 +1101,7 @@ function initTerminal(tab) {
     clearTimeout(_longPressTimer);
     if (_pinchStartDist > 0 && e.touches.length < 2) {
       _pinchStartDist = 0;
-      if (term.options.fontSize) {
-        settings.fontSize = term.options.fontSize;
-        try { saveSettings(); } catch {}
-      }
+      // Pinch is per-terminal and transient; Settings owns the saved default.
       return;
     }
     if (_isSelectingDrag) {
@@ -1263,39 +1160,6 @@ function initTerminal(tab) {
     if (!tab.closed) connectWebSocket(tab, false);
   });
 
-  // Pinch-to-zoom on mobile
-  let lastPinchDist = 0;
-  tab.wrapper.addEventListener('touchstart', e => {
-    if (e.touches.length === 2) {
-      lastPinchDist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-    }
-  }, { passive: true });
-  tab.wrapper.addEventListener('touchmove', e => {
-    if (e.touches.length === 2) {
-      e.preventDefault();
-      const dist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      const delta = dist - lastPinchDist;
-      if (Math.abs(delta) > 10) {
-        const curSize = tab.term.options.fontSize || 14;
-        const newSize = Math.max(10, Math.min(28, curSize + (delta > 0 ? 1 : -1)));
-        tab.term.options.fontSize = newSize;
-        if (tab.fitAddon) tab.fitAddon.fit();
-        // Deliberately NOT persisted: a pinch gesture is transient, and writing it into
-        // wt-settings silently changed the user's saved default for every future tab.
-        // Font size is set deliberately from Settings → Appearance.
-        lastPinchDist = dist;
-      }
-    }
-  }, { passive: false });
-  tab.wrapper.addEventListener('touchend', e => {
-    if (e.touches.length < 2) lastPinchDist = 0;
-  }, { passive: true });
 }
 
 function getActiveTab() { return tabs.find(t => t.id === activeTabId); }

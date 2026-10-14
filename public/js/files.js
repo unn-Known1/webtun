@@ -460,7 +460,7 @@ function loadThumbImg(img, url) {
   fetch(url, { headers: authToken ? { 'x-pin-token': authToken } : {}, signal: ctrl.signal })
     .then(r => { if (!r.ok) throw new Error('thumb ' + r.status); return r.blob(); })
     .then(b => {
-      if (!img.isConnected) { try { URL.revokeObjectURL(URL.createObjectURL(b)); } catch {} return; }
+      if (!img.isConnected) return;
       img._blobUrl = URL.createObjectURL(b); img.src = img._blobUrl;
     })
     .catch(() => { try { if (img.isConnected) img.remove(); } catch {} })
@@ -1362,7 +1362,7 @@ async function pasteFile(destDir, conflictMode, resumeFrom) {
       try {
         let bytes = 0, ok = true;
         for (const f of allFiles) {
-          const st = await api(`/api/files/stat?path=${encodeURIComponent(f.path)}`);
+          const st = await api(`/api/files/stat?path=${encodeURIComponent(f.path)}&follow=1`);
           if (st && typeof st.size === 'number' && !st.isDirectory && !st.error) { f._size = st.size; bytes += st.size; }
           else if (st && st.isDirectory && !st.error) {
             const z = await api(`/api/files/size?path=${encodeURIComponent(f.path)}`);
@@ -1709,48 +1709,55 @@ function startRename(path, name) {
 }
 
 async function confirmRename() {
-  if (editorBuffers.find(renamePath)?.saving) { toast('Wait for this file to finish saving', 'info'); return; }
   const newName = document.getElementById('rename-input').value.trim();
   if (!newName) { showFieldError('rename-error', 'Enter a new name'); return; }
+  const oldPath = renamePath;
+  const sep = oldPath.includes('\\') ? '\\' : '/';
+  const destination = oldPath.slice(0, oldPath.lastIndexOf(sep) + 1) + newName;
+  let transaction;
+  try { transaction = editorBuffers.beginRename(oldPath, destination); }
+  catch (e) { showFieldError('rename-error', e.message); return; }
   clearFieldError('rename-error');
   setBtnBusy(document.getElementById('rename-ok-btn'), true);
+  try {
   const r = await api('/api/files/rename', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ oldPath: renamePath, newName })
+    body: JSON.stringify({ oldPath, newName })
   });
-  setBtnBusy(document.getElementById('rename-ok-btn'), false);
   if (r.success) {
     // Keep open surfaces on the renamed path: otherwise the panel/tab still
     // point at oldPath and the next Ctrl+S recreates the old file, while the
     // crash-safety draft is orphaned under wt-draft:<oldPath>.
     try {
-      const oldPath = renamePath;
-      const newPath = (r.newPath && typeof r.newPath === 'string') ? r.newPath : joinPath(currentPath, newName);
-      editorBuffers.renamePath(oldPath, newPath);
-      if (panelState.path === oldPath || panelState.path === newPath) {
-        if (!panelState.buffer) panelState.path = newPath;
-        try { document.getElementById('editor-filename').textContent = newName; } catch {}
+      const newPath = r.newPath || destination;
+      const remap = path => WebTunEditorBuffers.remapPath(path, oldPath, newPath);
+      const panelPath = remap(panelState.path);
+      transaction.commit(newPath);
+      if (panelPath && (panelPath !== panelState.path || WebTunEditorBuffers.remapPath(panelPath, newPath, oldPath) !== panelPath)) {
+        if (!panelState.buffer) panelState.path = panelPath;
+        document.getElementById('editor-filename').textContent = panelPath.split(/[\\/]/).pop();
       }
       try {
         tabs.forEach(t => {
-          if (t && t.type === 'file' && t.path === oldPath) {
-            t.path = newPath; t.title = newName;
-            try { t.el.querySelector('.tab-title').textContent = newName; } catch {}
+          if (t && t.type === 'file' && remap(t.path) !== t.path) {
+            t.path = remap(t.path); t.title = t.path.split(/[\\/]/).pop();
+            if (!t.document.buffer) t.document.path = t.path;
+            try { t.el.querySelector('.tab-title').textContent = t.title; } catch {}
             try { if (typeof applyTabMeta === 'function') applyTabMeta(t); } catch {}
-            try { if (t.fteName) t.fteName.textContent = newName; } catch {}
+            try { if (t.fteName) t.fteName.textContent = t.title; } catch {}
+            t.previewGeneration = (t.previewGeneration || 0) + 1;
           }
         });
       } catch {}
-      try {
-        const draft = safeStorage.getItem('wt-draft:' + oldPath);
-        if (draft != null) { safeStorage.setItem('wt-draft:' + newPath, draft); safeStorage.removeItem('wt-draft:' + oldPath); }
-      } catch {}
+      currentPath = remap(currentPath);
+      if (panelPath) clearPreviewLiveReload();
       try { if (typeof saveTabState === 'function') saveTabState(); } catch {}
-    } catch (e) { console.warn('rename sync failed:', e); }
+    } catch (e) { showFieldError('rename-error', 'Renamed on disk, but editor paths could not be updated. Keep your draft and reopen the file.'); console.warn('rename sync failed:', e); refreshFiles(); return; }
     toast('Renamed', 'success'); refreshFiles(); closeOverlay('rename-overlay');
   }
   else showFieldError('rename-error', r.error || 'Rename failed');
+  } finally { transaction.release(); setBtnBusy(document.getElementById('rename-ok-btn'), false); }
 }
 
 async function deleteFile(file) {
@@ -1785,7 +1792,7 @@ async function downloadFile(filePath) {
       // proxy/tunnel may strip it anyway. stat() reports the same file size,
       // so % / ETA still work. Directory zips stay indeterminate (no total).
       try {
-        const st = await api(`/api/files/stat?path=${encodeURIComponent(filePath)}`);
+        const st = await api(`/api/files/stat?path=${encodeURIComponent(filePath)}&follow=1`);
         if (st && !st.error && !st.isDirectory && typeof st.size === 'number' && st.size > 0) len = st.size;
       } catch {}
     }
@@ -2252,7 +2259,19 @@ uiActions.register("click", {
   "new-folder": function (event) { return newFolder(); },
   "new-file": function (event) { return newFile(); },
   "paste-from-clipboard": function (event) { return pasteFromClipboard(currentPath); },
-  "download-file": function (event) { return downloadFile(editorPath); },
+  "download-file": function () {
+    let p = null;
+    try {
+      if (typeof _dockedFileTabId !== 'undefined' && _dockedFileTabId != null && typeof tabs !== 'undefined') {
+        const docked = tabs.find(t => t.id === _dockedFileTabId);
+        if (docked && docked.path) p = docked.path;
+      }
+    } catch {}
+    if (!p) { try { if (typeof panelState !== 'undefined' && panelState.path) p = panelState.path; } catch {} }
+    if (!p) { try { p = (typeof _pdfPath !== 'undefined' && _pdfPath) || (typeof _epubPath !== 'undefined' && _epubPath) || (typeof _officePath !== 'undefined' && _officePath) || null; } catch {} }
+    if (p) return downloadFile(p);
+    toast('Open a document before downloading', 'info');
+  },
   "confirm-rename": function (event) { return confirmRename(); },
   "confirm-new-folder": function (event) { return confirmNewFolder(); },
   "confirm-new-file": function (event) { return confirmNewFile(); },

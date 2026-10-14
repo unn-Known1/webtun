@@ -349,11 +349,12 @@ function playNotifSound(type) {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) return;
     const ctx = new AudioCtx();
-    if (ctx.state === 'suspended') ctx.resume();
+    if (ctx.state === 'suspended') ctx.resume().catch(() => ctx.close().catch(() => {}));
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);
     gain.connect(ctx.destination);
+    osc.onended = () => { osc.disconnect(); gain.disconnect(); ctx.close().catch(() => {}); };
 
     if (type === 'error') {
       osc.type = 'sawtooth';
@@ -1031,11 +1032,28 @@ function setupFileListTouch() {
 }
 
 function showPinScreen() {
+  if (!window._appUnlocked && !tabs.length) return; // late 401 must not erase a typed PIN
+  window._appUnlocked = false;
+  lastFocusedElement = null;
+  for (const pending of _confirmQueue.splice(0)) pending.resolve(false);
+  if (_confirmState) { const state = _confirmState; state.cleanup(); state.resolve(false); }
+  closeSystemStats();
+  stopSysIconPulse();
+  stopLpPulse();
+  clearInterval(_termSessionsPollTimer); _termSessionsPollTimer = null;
+  _sysStatsFetch = { at: 0, promise: null };
+  ++_gitReq;
+  clearTimeout(finderTimer);
+  finderAbort?.abort();
+  document.querySelectorAll('.overlay.open').forEach(o => closeOverlay(o.id));
+  closeAllDrawers();
+  if (document.getElementById('cmd-lib-panel')?.classList.contains('open')) toggleCmdLib();
+  removeFocusTrap();
+  releaseWakeLock();
   document.getElementById('app').style.display = 'none';
   document.getElementById('pin-screen').classList.remove('hidden');
   document.getElementById('pin-input').value = '';
   document.getElementById('pin-error').textContent = '';
-  window._appUnlocked = false;
   // A docked file tab owns #editor-view: hand the panel back before the wrappers
   // are removed, or the panel (and every opener that finds it by id) is destroyed.
   if (_dockedFileTabId != null) { try { undockEditor(false); } catch {} }
@@ -1043,6 +1061,8 @@ function showPinScreen() {
   // Close all active WebSocket connections + tear down tab DOM/xterm and
   // backing server sessions, or re-login stacks duplicates on leaked nodes.
   tabs.forEach(t => {
+    t.closed = true;
+    if (t.type === 'file') { try { releaseFileTabResources(t, { discard: false }); } catch (e) { console.warn(e); } }
     try { if (t.imgUrl) URL.revokeObjectURL(t.imgUrl); } catch {}
     try { clearTimeout(t.reconnectTimer); } catch {}
     try { cleanupWebSocket(t); } catch {}
@@ -1051,8 +1071,9 @@ function showPinScreen() {
     try { t.term?.dispose(); } catch {}
     try { t.el?.remove(); } catch {}
     try { t.wrapper?.remove(); } catch {}
-    if (t.sessionId) api(`/api/sessions/${t.sessionId}`, { method: 'DELETE' });
   });
+  panelState.buffer?.setContent(panelContent());
+  releasePanelSurface();
   tabs = [];
   activeTabId = null;
   // The named key action works on every showing of the PIN screen.

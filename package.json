@@ -30,6 +30,7 @@
     "test:unit": "node scripts/test.js",
     "test:smoke": "node -e \"require('./server.js'); console.log('smoke ok')\"",
     "test:e2e": "playwright test",
+    "test:native": "node scripts/test-native.js",
     "test:all": "npm test && npm run test:e2e",
     "dev": "nodemon server.js",
     "electron": "electron .",

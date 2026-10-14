@@ -54,7 +54,10 @@
           keyEl.textContent = d.key;
           keyEl.style.display = 'block';
           copyBtn.style.display = 'inline-block';
-        } else if (tries < 6) {
+         } else if (d && d.error) {
+           status.textContent = d.error;
+           retryBtn.style.display = 'inline-block';
+         } else if (tries < 6) {
           status.textContent = 'Waiting for payment confirmation… (' + tries + '/6)';
           setTimeout(fetchKey, 5000);
         } else {

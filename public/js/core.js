@@ -512,7 +512,8 @@ async function unlockApp() {
   } catch {}
 
   const info = await api('/api/home');
-  homeDir = info.home;
+  if (!window._appUnlocked || info.error) return;
+  homeDir = info.defaultDirectory || info.workspace || info.home;
   serverPlatform = info.platform || '';
   const hostname = info.hostname || '—';
   document.getElementById('hostname-label').textContent = hostname;
@@ -520,7 +521,8 @@ async function unlockApp() {
 
   // Restore last visited path
   const savedPath = loadCurrentPath();
-  if (savedPath) {
+  const withinWorkspace = info.fullFilesystem !== false || !savedPath || savedPath === homeDir || savedPath.startsWith(homeDir.replace(/[\\/]+$/, '') + (homeDir.includes('\\') ? '\\' : '/'));
+  if (savedPath && withinWorkspace) {
     try {
       // Validate saved path is within workspace or full fs is allowed
       currentPath = savedPath;
@@ -683,6 +685,7 @@ async function unlockApp() {
 // API HELPER
 // ═══════════════════════════════════════════════════════
 async function api(url, opts = {}) {
+  const requestToken = authToken;
   opts.headers = opts.headers || {};
   opts.headers['x-pin-token'] = authToken;
   const timeoutMs = opts.timeout || (typeof url === 'string' && url.includes('/api/git/') ? 65000 : 30000);
@@ -702,14 +705,9 @@ async function api(url, opts = {}) {
     // (rotated/revoked): clear it and stop the sockets so tabs don't
     // reconnect-loop behind the lock screen.
     if (!r.ok && r.status === 401) {
+      if (requestToken !== authToken) return { error: 'Unauthorized' };
       storeSessionToken('');
       authToken = '';
-      try {
-        (tabs || []).forEach(t => {
-          try { clearTimeout(t.reconnectTimer); } catch {}
-          try { cleanupWebSocket(t); } catch {}
-        });
-      } catch {}
       showPinScreen();
       return { error: 'Unauthorized' };
     }

@@ -59,7 +59,8 @@ async function createWorkspaceServer(options = {}) {
   registerFileRoutes({ app, checkPin: auth.checkPin, rateLimiter: pass, auth, paths, workspaceRoot: workspace, allowFullFs: false });
   registerGitRoutes({ app, checkPin: auth.checkPin, rateLimiter: pass, paths, workspaceRoot: workspace, allowFullFs: false });
   const tunnels = createTunnelService({ app, checkPin: auth.checkPin, dataDir, allowFullFs: false, licenseStatus });
-  app.get('/api/home',auth.checkPin,(req,res) => res.json({ home: workspace, hostname: 'test-workspace', platform: process.platform }));
+  app.get('/api/home',auth.checkPin,(req,res) => res.json({ home: workspace, workspace, defaultDirectory: workspace, fullFilesystem: false, hostname: 'test-workspace', platform: process.platform }));
+  app.get('/api/billing/renewals',auth.checkPin,(req,res) => res.json({ renewals: [] }));
   app.get('/api/license/status',auth.checkPin,(req,res) => res.json({ configured: false, enforce: false, plan: 'community', limits: {} }));
   app.get('/api/history',auth.checkPin,(req,res) => res.json({ items: [], max: 50 }));
   app.get('/api/system',auth.checkPin,(req,res) => res.json({

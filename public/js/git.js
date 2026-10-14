@@ -77,6 +77,10 @@ async function _refreshGitPanelInner(section, dir, manual) {
     return;
   }
   gitRepo = true; gitRoot = st.root;
+  const operationRow = document.getElementById('git-operation-row');
+  if (operationRow) operationRow.hidden = !st.operation;
+  const operationStatus = document.getElementById('git-operation-status');
+  if (operationStatus) operationStatus.textContent = st.operation ? st.operation + ' in progress — resolve and stage conflicts before Continue.' : '';
   section.style.display = '';
   document.getElementById('git-panel').style.display = '';
   document.getElementById('git-init-row').style.display = 'none';
@@ -164,6 +168,38 @@ async function gitInit() {
   toast(r.already ? 'Already a repository' : 'Repository created', 'success');
   gitUnsupported = false;
   refreshGitPanel(currentPath, true);
+}
+async function gitWorkflow(action, button) {
+  if (!gitRoot) return;
+  const root = gitRoot;
+  const branch = document.getElementById('git-manage-branch').value.trim();
+  const force = document.getElementById('git-delete-force').checked;
+  clearFieldError('git-workflow-error');
+  if ((action === 'merge' || action === 'branch/delete') && !branch) { showFieldError('git-workflow-error', 'Enter a branch name'); return; }
+  if (action === 'branch/delete' || action === 'abort' || action === 'merge') {
+    const ok = await confirmDialog({ title: action === 'abort' ? 'Abort Git operation?' : action === 'merge' ? 'Merge branch?' : 'Delete branch?', message: action === 'abort' ? 'Return to the state before the merge or rebase. Conflict-resolution edits will be discarded.' : action === 'merge' ? 'Merge "' + branch + '" into the current branch. Conflicts may need manual resolution.' : 'Delete "' + branch + '" locally?' + (force ? ' Unmerged commits may become unreachable.' : ' Git will refuse unmerged branches.'), okText: action === 'merge' ? 'Merge' : action === 'abort' ? 'Abort' : 'Delete', danger: action !== 'merge' });
+    if (!ok || root !== gitRoot) return;
+  }
+  setBtnBusy(button, true);
+  try {
+    const r = await api('/api/git/' + action, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: root, branch, name: branch, force }) });
+    if (r?.error) showFieldError('git-workflow-error', r.error);
+    else toast('Git operation completed', 'success');
+    await refreshGitPanel(currentPath, true);
+  } finally { setBtnBusy(button, false); }
+}
+async function gitBlame(button) {
+  if (!gitRoot) return;
+  const file = document.getElementById('git-blame-file').value.trim();
+  const start = Number(document.getElementById('git-blame-start').value);
+  if (!file || !Number.isSafeInteger(start) || start < 1) { showFieldError('git-workflow-error', 'Enter a file path and a positive first line'); return; }
+  clearFieldError('git-workflow-error'); setBtnBusy(button, true);
+  try {
+    const r = await api(`/api/git/blame?path=${encodeURIComponent(gitRoot)}&file=${encodeURIComponent(file)}&start=${start}&count=200`);
+    if (r?.error) { showFieldError('git-workflow-error', r.error); return; }
+    await openGitReadonly(file + ' (blame)', r.blame + (r.truncated ? '\n…output truncated' : ''), 'read-only • git blame • next line ' + r.next);
+    document.getElementById('git-blame-start').value = r.next;
+  } finally { setBtnBusy(button, false); }
 }
 async function gitStash() {
   if (!gitRoot) return;
@@ -639,15 +675,20 @@ async function hunkOp(file, index, cached, expected) {
   refreshGitPanel(currentPath);
 }
 let gitLogFull = false;
-async function refreshGitLog(myReq) {
+let gitLogOffset = 0;
+let gitLogRequest = 0;
+async function refreshGitLog(myReq, offset = 0) {
   const box = document.getElementById('git-log');
   if (!box || !gitRoot) return;
   const n = gitLogFull ? 20 : 5;
-  const r = await api(`/api/git/log?path=${encodeURIComponent(gitRoot)}&n=${n}`);
+  const request = ++gitLogRequest, root = gitRoot;
+  const r = await api(`/api/git/log?path=${encodeURIComponent(root)}&n=${n}&skip=${offset}`);
+  if (request !== gitLogRequest || root !== gitRoot) return;
   if (myReq !== undefined && myReq !== _gitReq) return;
+  gitLogOffset = offset;
   box.innerHTML = '';
   const foot = document.getElementById('git-foot-row');
-  if (foot) foot.querySelector('#git-log-more')?.remove();
+  if (foot) foot.querySelectorAll('.git-log-page').forEach(b => b.remove());
   if (!r || !r.commits || !r.commits.length) { updateGitFootRow(); return; }
   for (const c of r.commits) {
     const d = document.createElement('div');
@@ -672,14 +713,15 @@ async function refreshGitLog(myReq) {
     d.appendChild(meta);
     box.appendChild(d);
   }
-  if (!gitLogFull && r.commits.length >= 5) {
+  const pageButton = (label, nextOffset) => {
     const more = document.createElement('button');
-    more.className = 'sidebar-action-btn';
-    more.id = 'git-log-more';
-    more.textContent = 'Show more';
-    more.addEventListener('click', () => { gitLogFull = true; refreshGitLog(); });
+    more.className = 'sidebar-action-btn git-log-page';
+    more.textContent = label;
+    more.addEventListener('click', () => { gitLogFull = true; refreshGitLog(undefined, nextOffset); });
     (document.getElementById('git-foot-row') || box).appendChild(more);
-  }
+  };
+  if (gitLogOffset) pageButton('Newer commits', Math.max(0, gitLogOffset - 20));
+  if (r.hasMore) pageButton('Older commits', r.next);
   updateGitFootRow();
 }
 async function openGitShow(hash) {
@@ -700,6 +742,8 @@ async function openGitDiff(file, cached, head) {
   await openGitReadonly(name + (cached ? ' (staged diff)' : head ? ' (conflict diff)' : ' (diff)') + '  /  ' + gitRoot, content, r.binary ? 'binary file' : 'read-only • git diff');
 }
 async function openGitReadonly(title, content, status) {
+  if (panelState.buffer?.dirty && !await confirmDialog({ title: 'Open Git view?', message: 'Your unsaved file draft will be kept. Open this read-only view?', okText: 'Open view' })) return;
+  if (_dockedFileTabId != null) undockEditor();
   cleanupDocViewers();
   panelState.path = '';
   panelState.original = content;
@@ -771,6 +815,11 @@ uiActions.register("click", {
   "refresh-git-panel": function (event) { return refreshGitPanel(currentPath, true); },
   "git-reset": function (event) { return gitReset(); },
   "git-tag-create": function (event) { return gitTagCreate(); },
+  "git-merge": function () { return gitWorkflow('merge', this); },
+  "git-delete-branch": function () { return gitWorkflow('branch/delete', this); },
+  "git-continue": function () { return gitWorkflow('continue', this); },
+  "git-abort": function () { return gitWorkflow('abort', this); },
+  "git-blame": function () { return gitBlame(this); },
 });
 uiActions.register("keydown", {
   "toggle-git-panel": function (event) { if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleGitPanel();}; },

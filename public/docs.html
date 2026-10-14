@@ -416,6 +416,7 @@ footer a{color:var(--mut)}
       <a href="#terminal"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg>Terminal</a>
       <a href="#editor"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>Editor &amp; previews</a>
       <a href="#editing-safely"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Keep edits safe</a>
+      <a href="#reliability">Recovery &amp; operation limits</a>
       <a href="#files"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>File manager</a>
       <a href="#git"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>Git panel</a>
       <a href="#commands"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>History &amp; commands</a>
@@ -532,10 +533,14 @@ footer a{color:var(--mut)}
         <div class="code rv"><span class="lang">env</span><button class="copy" data-copy="PORT=3000
 HOST=127.0.0.1
 PIN=pick-a-strong-one
-WORKSPACE_ROOT=~/projects">Copy</button><pre>PORT=3000
-HOST=127.0.0.1        # bind locally only
-PIN=pick-a-strong-one # empty = no auth (don't)
-WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
+WORKSPACE_ROOT=/home/you/projects">Copy</button><pre>PORT=3000
+# Bind locally only. Put comments on separate lines.
+HOST=127.0.0.1
+# Empty PIN disables protection; use a strong PIN for remote access.
+PIN=pick-a-strong-one
+# Use an absolute path; .env does not expand ~ or shell variables.
+WORKSPACE_ROOT=/home/you/projects</pre></div>
+        <p class="body rv">The file browser starts at <code class="inl">WORKSPACE_ROOT</code>. Explicit environment values take priority over both .env locations, including <code class="inl">PREVIEW_PORTS</code>. Set <code class="inl">ALLOW_FULL_FS=false</code> to confine the File API; terminal shells remain unconfined.</p>
         <h3 id="system-stats">Watch the host <a class="hash" href="#system-stats" aria-label="Link to System Stats">#</a></h3>
         <p class="body rv">The overflow menu → <b>System Stats</b> opens a live dashboard: CPU, memory, disk, uptime — and GPU cards with VRAM, utilization and temperature where detectors exist — plus the top processes by CPU, with a <b>Kill button</b> per row for runaways. Filter processes by PID, user or command, and select a column heading to sort in either direction. On phones, swipe the process table horizontally to reach every column and the Kill controls; the metric cards stay in a compact two-column layout. The footer shows the last update, with <b>Refresh</b> for an immediate update. It polls every five seconds and politely pauses when the tab is hidden or Data Saver is on.</p>
       </section>
@@ -584,7 +589,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
       </section>
 
       <!-- ── EDITOR ── -->
-      <section id="editor" data-title="Editor code preview markdown html office docx xlsx save sandbox draft restore preview ports PREVIEW_PORTS dev server localhost file tabs open in a tab tile view multiple files split panel external disk change changed auto reload updated">
+      <section id="editor" data-title="Editor code preview markdown html office docx xlsx PDF EPUB download save sandbox asset authorization draft restore preview ports PREVIEW_PORTS dev server localhost Back Forward revocation file tabs open in a tab tile view multiple files split panel external disk change changed auto reload updated">
         <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--vi)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></span>
           <div><h2>Editor &amp; previews <a class="hash" href="#editor" aria-label="Link to this section">#</a></h2></div>
         </div>
@@ -616,7 +621,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
           <li><b>Actionable errors:</b> a dead preview names the cause (bad port, allow-list block, nothing listening, slow start) with the <code class="inl">curl 127.0.0.1:PORT</code> check and a Retry button.</li>
         </ul>
         <div class="call warn rv"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" style="stroke:var(--ye)" stroke-width="2" stroke-linecap="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><p><b>Copied preview links carry your access token.</b> Anyone opening one browses as you — share them like passwords, never publicly.</p></div>
-        <div class="call info rv"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" style="stroke:var(--tl)" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><p><b>The token authenticates the first hit only.</b> After that a short-lived, port-scoped cookie takes over for subresources — your token is stripped before anything reaches your app (a <code class="inl">?token=</code> of the app's own, e.g. Jupyter logins, passes through untouched), and raw-PIN access follows the same approval gate as everywhere else.</p></div>
+        <div class="call info rv"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" style="stroke:var(--tl)" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><p><b>Preview access belongs to a device, not its IP.</b> The first navigation exchanges your login for a short-lived, single-port capability and HttpOnly cookie. Each request rechecks the issuing session; sign-out/revocation invalidates it. WebTun credentials are removed from both HTTP and HMR WebSocket upstream URLs, while app-owned <code class="inl">?token=</code> values pass through. Raw-PIN access keeps the normal approval gate. Back/Forward buttons use frame-side history commands without weakening the sandbox.</p></div>
         <div class="call info rv"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" style="stroke:var(--tl)" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><p><b>Server admins can narrow previews</b> to specific ports with <code class="inl">PREVIEW_PORTS=5173,8080</code> in <code class="inl">.env</code> — useful when the box runs databases or admin panels whose ports you would rather not expose through your session. Unset (the default) allows any port except WebTun's own.</p></div>
         <div class="call info rv"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" style="stroke:var(--tl)" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><p><b>Two honest limits:</b> previewed pages run storage-less by design (<code class="inl">localStorage</code>/JS cookies unavailable, so token-based logins won't stick), and apps that hardcode absolute <code class="inl">localhost</code> URLs or OAuth callbacks may misbehave — especially over a remote tunnel. The sandbox is enforced by the server, not just by the frame, so a previewed app can never reach your session token or files — even if you open its preview URL directly in a new tab.</p></div>
         <figure class="fig rv">
@@ -643,6 +648,21 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
         <p>Unexpected action failures show an error toast and stay in the Notification center.</p>
       </section>
 
+      <section id="reliability" data-title="Recovery limits exit Restart pinch wake lock Data Saver sign out revocation rename directory descendants occupied destination draft preview stale authorization PDF EPUB Office download upload Stop Retry-After ZIP archive 50000 merge rollback range symlink regex worker SSE tail rotation">
+        <div class="sec-head rv"><div><h2>Recovery &amp; operation limits <a class="hash" href="#reliability" aria-label="Link to recovery and operation limits">#</a></h2></div></div>
+        <ul class="tight rv">
+          <li><b>Exit means exit.</b> A normally ended shell stays ended. Use the tab menu → <b>Restart Session</b> for a new shell. Automatic recovery is for network/native-connection failures, not an intentional <code class="inl">exit</code>.</li>
+          <li><b>Pinch stays local.</b> Touch zoom changes the current terminal between 10–28 px without changing saved settings for new tabs. Interrupted gestures reset. The optional Python PTY fallback forwards window-size changes; the pipe-only fallback has reduced interactive/TUI support.</li>
+          <li><b>Signing out keeps drafts.</b> Revocation closes dialogs, polling and editors, releases file ownership and returns to the PIN screen. Reopen after sign-in to restore unsaved text. Late unauthorized responses do not erase a PIN you are typing.</li>
+          <li><b>Folder renames follow open descendants.</b> Editor paths and drafts move together. Renames wait for saves and refuse occupied destinations; saving cannot run halfway through a rename.</li>
+          <li><b>Previews show the latest completed revision.</b> Late HTML/Markdown rendering cannot replace newer content. Failed file-asset authorization shows an unavailable message rather than substituting your session secret. PDF, EPUB and Office toolbar downloads use the displayed file in either panel or tab.</li>
+          <li><b>Every upload owns its Stop control.</b> Stopping one job leaves another alone. Small-file batches wait and retry the server's rate-limit budget. The server creates validated subdirectories from multipart filenames, up to 10 folder levels.</li>
+          <li><b>ZIP limits match in both directions.</b> Create/extract up to 50,000 entries and 1 GB; encrypted and ZIP64 archives remain unsupported. Corrupt streams reject promptly. Failed merges restore entire backed-up subtrees; if the filesystem also refuses rollback, the server log identifies a retained recovery backup.</li>
+          <li><b>Link metadata and file contents are separate.</b> Properties describe the selected symlink, including broken links; editors watch the resolved file. Single-file download APIs support byte-range responses (206/416). Generated directory ZIP streams are not resumable.</li>
+          <li><b>Background work is bounded.</b> Data Saver and hidden-page checks pause automatic system polling in the header, stats and Launchpad. Keep-awake fallback streams and notification audio resources are released when inactive/complete. Regex search runs in a time-limited worker; simplify a timed-out pattern or use literal search. The log-tail API emits reset events on rotation/truncation.</li>
+          <li><b>Persistence is not a transaction guarantee.</b> Runtime configuration/labels use atomic state writes. Editor document saves are ordinary filesystem writes, not crash-proof atomic replacements; keep backups for valuable files.</li>
+        </ul>
+      </section>
       <section id="files" data-title="File manager explorer sidebar mobile compact navigation full path sorting select mode upload download zip rename move copy search transfers progress speed content search properties permissions clipboard folder hierarchy bookmarks bookmark favorites places">
         <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--gn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
           <div><h2>File manager <a class="hash" href="#files" aria-label="Link to this section">#</a></h2></div>
@@ -684,7 +704,7 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
       </section>
 
       <!-- ── GIT ── -->
-      <section id="git" data-title="Git status diff stage hunk commit push pull branches stash">
+      <section id="git" data-title="Git status diff stage unstage hunk commit push pull branches create delete merge abort continue rebase blame history pagination Unicode filenames stash">
         <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--gn)" stroke-width="2" stroke-linecap="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg></span>
           <div><h2>Git panel <a class="hash" href="#git" aria-label="Link to this section">#</a></h2></div>
         </div>
@@ -697,6 +717,8 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
           <li><b>Simple mode for a calm panel</b> (on by default): the Git panel hides its rarely-used actions (amend, fetch, refresh, stash, reset, tags) — a <i>Show advanced…</i> button at the panel bottom reveals them in place. Prefer everything visible? Switch it off in Settings → Features.</li>
           <li><b>Escape hatches included:</b> amend the last commit, soft/mixed/hard reset to any commit, discard files, init a fresh repo.</li>
           <li><b>Conflicted files can be finished here.</b> Unmerged paths offer Diff (against HEAD), <b>Stage</b> once you've resolved the markers in the editor, and per-file <b>Hunks</b> — no terminal detour needed.</li>
+          <li><b>Advanced branch workflows.</b> In <b>Show advanced…</b>, enter a local branch to merge into the current one or delete. Deletion refuses unmerged work unless you explicitly allow it and confirm. Active merges/rebases expose <b>Continue</b> after resolving/staging, or <b>Abort</b> with a discard warning.</li>
+          <li><b>Read older history and blame.</b> Older/Newer commits page through bounded history lists. Blame shows 200 lines at a time for a repository-relative text file up to 2 MB; the next-line field advances after each view. Unicode names, quoted names and rename pairs retain their actual paths.</li>
         </ul>
         <figure class="fig rv">
           <div class="fig-bar">server.js — 2 hunks <span class="sp">+18 −4</span></div>
@@ -747,10 +769,10 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
         <p class="sec-sub rv">Love the browser — but sometimes you need <b>Termius on your phone, VS&nbsp;Code on your laptop, or rsync in a script.</b> SSH Access mints key-only credentials on demand. Nothing exists until you ask.</p>
         <div class="steps">
           <div class="step rv" data-n="1"><p><b>Set a PIN first.</b> Key generation is refused on unprotected instances — shell access must never be one click away for anyone on the network.</p></div>
-          <div class="step rv" data-n="2"><p><b>Enable SSH in Settings → Features.</b> The feature ships off; the header SSH button stays dimmed and its panel locked until you flip this toggle. Flipping it back off is a real kill switch: the built-in SSH server stops, a WebTun-started Tailnet disconnects, and no new keys can be made (revoking still works — off is never a trap).</p></div>
+          <div class="step rv" data-n="2"><p><b>Enable SSH in Settings → Features.</b> The feature ships off. Turning it off stops this process's built-in server, disconnects a WebTun-started Tailnet, and prevents new keys. <b>Installed keys are retained</b>, and a system SSH server can still accept them: use Revoke to remove individual keys. A persisted PID alone never authorizes WebTun to kill a daemon; a surviving listener after an abnormal shutdown needs owner inspection.</p></div>
           <div class="step rv" data-n="3"><p><b>Easy setup does the homework.</b> The top of the SSH panel checks the server, the listener, the firewall and Tailscale — tap <b>Fix it</b> on any red row and the app runs the repair itself (passwordless sudo only; otherwise it shows the exact command). No system sshd? <b>Start</b> the built-in SSH — zero privilege needed. For the phone path, <b>Connect</b> on the Tailscale row (paste an auth key for headless, or tap the sign-in link).</p></div>
           <div class="step rv" data-n="4"><p><b>Label + Generate.</b> Name the credential after the device ("Termius on iPhone"). The app creates an ed25519 key and installs the public half for the server user — the same identity your web terminals already use, so files and permissions match.</p></div>
-          <div class="step rv" data-n="5"><p><b>Copy the private key now.</b> It's shown exactly once, never stored, never re-displayable. Save it as <code class="inl">~/.ssh/webtun-key</code> (<code class="inl">chmod 600</code>) or paste it into Termius via Keychain → + → New Key, then pick it under SSH Key for the host. Verify the host fingerprint on first connect — the panel shows it.</p></div>
+          <div class="step rv" data-n="5"><p><b>Copy the OpenSSH-format private key now.</b> It is shown once and not retained in WebTun state. Native generation stays in memory; the exceptional ssh-keygen fallback uses a short-lived temporary file which is cleaned up. Save it as <code class="inl">~/.ssh/webtun-key</code> (<code class="inl">chmod 600</code>) or import it into your SSH client. Verify the host fingerprint on first connect.</p></div>
           <div class="step rv" data-n="6"><p><b>Revoke any time.</b> Each key has its own Revoke button; only WebTun-tagged entries are removed, your other keys are untouched. Up to 32 keys.</p></div>
         </div>
         <div class="call info rv"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" style="stroke:var(--tl)" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><p><b>Key-only, no passwords.</b> SSH here is the same user as your terminals, reachable over LAN, Tailscale, or a Cloudflare TCP route — the panel shows the right address for each. If sshd isn't listening yet, it prints the one-time setup commands for your OS (run them yourself; WebTun never edits system SSH config). If your sshd uses a non-default port, set the same <b>Expected SSH port</b> so the recipes match; and if the panel ever reports orphaned entries (keys without records), one click removes them.</p></div>
@@ -769,14 +791,14 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
           <li><b>Review every login.</b> The triangle badge in the header collects unreviewed sign-ins — open the security review to see what, where, and when.</li>
           <li><b>Revoke in one click.</b> The sessions list shows every active device; kicking one drops its connections instantly — or <b>sign out all other devices</b> at once and keep only this one.</li>
           <li><b>The coffee cup watches the fort.</b> The header cup keeps your screen awake during long jobs (Wake Lock), and the number on it is your live session count — a glance tells you if someone else is in. Click the number to open the security review.</li>
-          <li><b>Changing the PIN is a ceremony.</b> It needs approval from a different trusted session and wipes all sessions — so a stolen laptop can't lock you out of your own server.</li>
+          <li><b>Fresh-device PIN changes need another trusted session.</b> A session under 10 minutes old must wait for a different active device to approve, unless it is the sole session or first setup. Older trusted sessions can change immediately. Rotation revokes old tokens; an approving device receives a replacement token.</li>
           <li><b>Rate-limited auth</b> slows brute-force guessing, and destructive actions like remote shutdown require PIN protection to be on.</li>
         </ul>
         <div class="call info rv"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" style="stroke:var(--tl)" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><p><b>Trusted devices</b> remember you via a session token in the browser. Use them on personal machines; approve-and-forget on shared ones.</p></div>
       </section>
 
       <!-- ── LICENSE ── -->
-      <section id="license" data-title="Plans license Pro Team pricing key activate billing upgrade free limits">
+      <section id="license" data-title="Plans license Pro Team pricing monthly yearly annual seats key activate billing checkout one-time claim renewals upgrade free limits">
         <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--gn)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
           <div><h2>Plans &amp; license <a class="hash" href="#license" aria-label="Link to this section">#</a></h2></div>
         </div>
@@ -784,10 +806,12 @@ WORKSPACE_ROOT=~/projects  # where the file browser starts</pre></div>
         <ul class="tight rv">
           <li><b>Community (free):</b> noncommercial use, 2 concurrent tunnels, 3 trusted devices, 200 history entries. File tabs stay at 10 on every plan.</li>
           <li><b>Pro ($12/server/month, $115/year):</b> commercial use, unlimited tunnels, 5 devices, SSH keys for Termius and VS Code, 1,000 history entries.</li>
-          <li><b>Team ($19/admin/month, $182/year, 3 minimum):</b> everything in Pro for up to 10 admins, shared libraries, audit export, policy UI.</li>
+          <li><b>Team ($19/seat/month, $182/seat/year, 3 minimum):</b> commercial use, unlimited tunnels, 3–10 trusted-device seats and 5,000 history entries. Shared command libraries, audit export and per-admin policy controls are not shipped features; custom snippets remain browser-local.</li>
           <li><b>Activate in Settings → Security → License.</b> Paste the key once — the server checks its signature locally and stores it at 0600. No account, no call home per request.</li>
           <li><b>Expiry is gentle.</b> Paid keys get a 7 day grace period with a banner; afterwards SSH provisioning and extra tunnels pause. The local terminal never locks.</li>
-          <li><b>Current installs are grandfathered.</b> Caps only switch on once billing is configured on the server, and existing boxes keep current behavior for 6 months with 60 days notice before any cap.</li>
+          <li><b>Buy or renew in Settings → Security → License.</b> Open <b>Purchase or renew a license</b>, choose Pro/Team, Monthly/Yearly and Team seats, then open secure checkout. The provider's checkout confirms the configured price. After payment, copy the one-time key and activate it. Available paid renewals can be activated from the same section.</li>
+          <li><b>Paid periods, not approximations.</b> Keys retain the verified plan/seats and expire at the paid subscription/invoice period end. Duplicate webhook deliveries reuse one entitlement and cannot resurrect a claimed key. A renewal older than the active key is kept but cannot downgrade it.</li>
+          <li><b>Unconfigured Community installs keep their existing behavior.</b> Caps remain dormant until <code class="inl">WEBTUN_LICENSE_PUBLIC_KEY</code> is set. Checkout also needs Stripe credentials, matching monthly/yearly price IDs and a signing key on the trusted billing host. No automatic six-month migration timer is implemented.</li>
         </ul>
       </section>
 

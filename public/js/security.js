@@ -529,6 +529,7 @@ async function refreshLicense() {
   if (!r || r.error) { statusEl.textContent = 'License status unavailable.'; return; }
   const plan = r.plan || 'free';
   const exp = r.expiry ? new Date(r.expiry).toLocaleDateString() : '';
+  statusEl.style.color = '';
   planEl.textContent = plan === 'free' ? '— Free' : '— ' + plan.charAt(0).toUpperCase() + plan.slice(1);
   if (!r.enforce) {
     statusEl.textContent = plan === 'free'
@@ -537,14 +538,15 @@ async function refreshLicense() {
   } else if (plan === 'free') {
     statusEl.textContent = r.expired
       ? 'Expired — Free limits apply (2 tunnels, 3 devices). Renew to lift them.'
-      : 'Free plan — 2 tunnels, 3 devices, 200 history. Pro lifts all three.';
+      : 'Free plan — 2 tunnels, 3 devices, 200 history. Pro allows unlimited tunnels, 5 devices and 1,000 history.';
   } else if (r.grace) {
-    statusEl.textContent = 'Active (' + plan + ') — grace until ' + exp + '. Renew soon.';
+    statusEl.textContent = 'Active (' + plan + ') — grace until ' + new Date(r.expiry + 7 * 86400000).toLocaleDateString() + '. Renew soon.';
     try { statusEl.style.color = 'var(--amber, #e5a50a)'; } catch {}
   } else {
     try { statusEl.style.color = ''; } catch {}
     statusEl.textContent = 'Active (' + plan + (exp ? ', renews ' + exp : '') + ').';
   }
+  refreshRenewals();
 }
 async function saveLicenseKey() {
   const input = document.getElementById('lic-key');
@@ -576,9 +578,46 @@ async function removeLicenseKey() {
   else toast((r && r.error) || 'Failed to remove license', 'error');
 }
 async function startCheckout(plan) {
-  const r = await api('/api/billing/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plan: plan || 'pro' }) });
-  if (r && r.url) { window.open(r.url, '_blank', 'noopener'); }
-  else toast((r && r.error) || 'Checkout unavailable', 'error');
+  plan = plan || document.getElementById('billing-plan').value;
+  const annual = document.getElementById('billing-term').value === 'yearly';
+  const seats = plan === 'team' ? Number(document.getElementById('billing-seats').value) : 1;
+  if (!Number.isInteger(seats) || seats < (plan === 'team' ? 3 : 1) || seats > 10) { showFieldError('billing-error', 'Choose 3–10 Team seats'); return; }
+  const button = document.getElementById('billing-checkout-btn');
+  if (button.disabled) return;
+  clearFieldError('billing-error'); setBtnBusy(button, true);
+  const checkoutWindow = window.open('about:blank', '_blank');
+  if (checkoutWindow) checkoutWindow.opener = null;
+  try {
+    const r = await api('/api/billing/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plan, annual, seats }) });
+    if (!r?.url) { checkoutWindow?.close(); showFieldError('billing-error', r?.error || 'Checkout unavailable — try again'); return; }
+    if (checkoutWindow && !checkoutWindow.closed) checkoutWindow.location.href = r.url;
+    else { const link = document.getElementById('billing-checkout-link'); link.href = r.url; link.hidden = false; }
+  } finally { setBtnBusy(button, false); }
+}
+function syncBillingSeats() { document.getElementById('billing-seats-row').hidden = document.getElementById('billing-plan').value !== 'team'; }
+let renewalRequest = 0;
+async function refreshRenewals() {
+  const request = ++renewalRequest, box = document.getElementById('billing-renewals');
+  if (!box || !window._appUnlocked) return;
+  const r = await api('/api/billing/renewals');
+  if (request !== renewalRequest || !window._appUnlocked) return;
+  box.textContent = r?.error || (!r?.renewals?.length ? 'No unclaimed paid renewals.' : '');
+  for (const renewal of (r?.renewals || []).slice(0, 50)) {
+    const row = document.createElement('div'); row.className = 'billing-renewal';
+    const label = document.createElement('span');
+    label.textContent = `${renewal.plan} · ${renewal.seats} seat${renewal.seats === 1 ? '' : 's'} · expires ${new Date(renewal.expiry).toLocaleDateString()}`;
+    const button = document.createElement('button'); button.className = 'btn btn-ghost'; button.textContent = 'Activate';
+    button.dataset.action = 'claim-renewal'; button.dataset.renewalId = renewal.id;
+    row.append(label, button); box.appendChild(row);
+  }
+}
+async function claimRenewal(button) {
+  setBtnBusy(button, true); clearFieldError('billing-error');
+  try {
+    const r = await api('/api/billing/renewals/claim', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: button.dataset.renewalId }) });
+    if (r?.error) { showFieldError('billing-error', r.error); return; }
+    toast('Renewal activated', 'success'); await refreshLicense();
+  } finally { setBtnBusy(button, false); }
 }
 
 
@@ -590,6 +629,9 @@ uiActions.register("click", {
   "save-license-key": function (event) { return saveLicenseKey(); },
   "remove-license-key": function (event) { return removeLicenseKey(); },
   "start-checkout-pro": function (event) { return startCheckout('pro'); },
+  "start-checkout": function () { return startCheckout(); },
+  "refresh-renewals": function () { return refreshRenewals(); },
+  "claim-renewal": function () { return claimRenewal(this); },
   "refresh-sessions": function (event) { return refreshSessions(); },
   "revoke-other-sessions": function (event) { return revokeOtherSessions(); },
   "create-tunnel": function (event) { return createTunnel(); },
@@ -599,3 +641,4 @@ uiActions.register("keydown", {
   "create-tunnel": function (event) { if(event.key==='Enter'){event.preventDefault();return createTunnel();} },
   "copy-text-ssh-once-cmd": function (event) { if(event.key==='Enter'||event.key===' '){event.preventDefault();copyText(document.getElementById('ssh-once-cmd').textContent)}; },
 });
+uiActions.register('change', { 'sync-billing-seats': function () { return syncBillingSeats(); } });

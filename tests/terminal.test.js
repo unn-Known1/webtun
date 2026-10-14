@@ -8,6 +8,37 @@ const path = require('path');
 const os = require('os');
 const { createRetryPolicy } = require('../public/js/terminal-connection');
 const { createWorkspaceServer } = require('./helpers/workspace-server');
+const { trackInput } = require('../public/js/terminal-connection');
+
+test('history parser skips complete and chunk-split CSI, SS3, OSC and DCS sequences', () => {
+  for (const chunks of [['\x1b[A'], ['\x1b[', 'A'], ['\x1b', 'O', 'A'], ['\x1b]', '11;rgb:123/', '\x1b', '\\'], ['\x1bP', 'data', '\x1b', '\\']]) {
+    const tab = { _currentInput: 'ls' };
+    for (const c of chunks) trackInput(tab, c);
+    trackInput(tab, ' 报告'); assert.equal(tab._currentInput, 'ls 报告');
+  }
+  const tab = { _currentInput: 'one two' }; trackInput(tab, '\x17'); assert.equal(tab._currentInput, 'one ');
+});
+test('normal shell exits stop the retry policy until explicit reset', () => {
+  const policy = createRetryPolicy(); assert.equal(policy.next({ exited: true }).action, 'stop');
+  assert.equal(policy.next().action, 'stop'); policy.reset(); assert.equal(policy.next().action, 'retry');
+});
+test('closing an older socket does not remove a newer terminal subscription', async t => {
+  const f = await createWorkspaceServer(); t.after(() => f.close());
+  const url = f.base.replace('http', 'ws') + '/ws?session=shared';
+  const a = new WebSocket(url); await once(a, 'open');
+  const b = new WebSocket(url); await once(b, 'open');
+  const endA = once(a, 'close'); a.close(); await endA;
+  const data = once(b, 'message'); b.send(Buffer.from([0, ...Buffer.from('still live')]));
+  assert.equal((await data)[0].subarray(1).toString(), 'still live');
+  const endB = once(b, 'close'); b.close(); await endB;
+});
+test('normal exit reconnect uses its tombstone and does not spawn a new PTY', async t => {
+  const f = await createWorkspaceServer(); t.after(() => f.close());
+  const url = f.base.replace('http', 'ws') + '/ws?session=exited';
+  const a = new WebSocket(url); await once(a, 'open'); const ended = once(a, 'close'); f.shells[0].kill(); await ended;
+  const b = new WebSocket(url); const end = once(b, 'close'); await once(b, 'open'); await end;
+  assert.equal(f.shells.length, 1);
+});
 
 test('network retries back off, allow one fresh session, and then stop', () => {
   const policy = createRetryPolicy({ maxAttempts: 3, random: () => 0 });

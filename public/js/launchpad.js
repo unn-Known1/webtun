@@ -119,11 +119,12 @@ function fmtUptime(s) {
   return m + 'm';
 }
 async function tickLpPulse() {
+  if (!window._appUnlocked || settings.datasaver || document.hidden) return;
   const el = document.getElementById('lp-pulse');
   if (!el || !document.getElementById('launchpad')?.classList.contains('show')) return;
   try {
     const s = await fetchSystemStats();
-    if (!s || !document.getElementById('launchpad')?.classList.contains('show')) return;
+    if (!s || !window._appUnlocked || settings.datasaver || document.hidden || !document.getElementById('launchpad')?.classList.contains('show')) return;
     const load = s.cpu && s.cpu.loadAvg ? Number(s.cpu.loadAvg[0]).toFixed(2) : '–';
     const cpu = s.cpu && s.cpu.usage !== undefined ? s.cpu.usage + '%' : '–';
     const mem = s.memory && s.memory.percent !== undefined ? s.memory.percent + '%' : '–';
@@ -146,6 +147,7 @@ async function tickLpPulse() {
 }
 function startLpPulse() {
   stopLpPulse();
+  if (settings.datasaver || !window._appUnlocked) return;
   tickLpPulse();
   lpPulseTimer = setInterval(tickLpPulse, 5000);
 }

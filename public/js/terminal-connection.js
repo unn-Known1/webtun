@@ -12,8 +12,8 @@
       maxAttempts,
       get stopped() { return stopped; },
       reset() { attempts = 0; delay = 1000; freshRetried = stopped = false; },
-      next({ closed = false, code, reason = '', sessionId } = {}) {
-        if (closed || code === 1008) {
+      next({ closed = false, exited = false, code, reason = '', sessionId } = {}) {
+        if (closed || exited || reason === 'Process exited' || code === 1008) {
           stopped = true;
           return { action: code === 1008 && /unauthorized|revoked|pin changed|session no longer valid/i.test(reason) ? 'auth' : 'stop', reason };
         }
@@ -32,5 +32,41 @@
       },
     };
   }
-  return { createRetryPolicy };
+  // Streaming escape parser used only for history approximation, never input
+  // transport. Keep state across chunks, with no unbounded sequence buffer.
+  function trackInput(tab, data) {
+    let state = tab._inputEscape || '';
+    for (const char of data) {
+      const c = char.codePointAt(0);
+      if (state === 'csi' || state === 'ss3') {
+        if (c >= 0x40 && c <= 0x7e) state = '';
+        else if (c === 27) state = 'esc';
+        continue;
+      }
+      if (state === 'osc' || state === 'string') {
+        if (c === 7 && state === 'osc') state = '';
+        else if (c === 27) state += '-esc';
+        continue;
+      }
+      if (state === 'osc-esc' || state === 'string-esc') {
+        state = char === '\\' ? '' : state.replace('-esc', '');
+        continue;
+      }
+      if (state === 'esc') {
+        state = char === '[' ? 'csi' : char === 'O' ? 'ss3' : char === ']' ? 'osc' : 'PX^_'.includes(char) ? 'string' : '';
+        if (!state && char.toLowerCase() === 'd') tab._currentInput = (tab._currentInput || '').replace(/\S+\s*$/, '');
+        continue;
+      }
+      if (c === 27) { state = 'esc'; continue; }
+      if (c === 0x9b) { state = 'csi'; continue; }
+      if (c === 127 || c === 8) tab._currentInput = (tab._currentInput || '').slice(0, -1);
+      else if (c === 21 || c === 3 || c === 4) { tab._currentInput = ''; if (c !== 21) tab._lastPasteText = null; }
+      else if (c === 23) tab._currentInput = (tab._currentInput || '').replace(/\S+\s*$/, '');
+      else if (c === 11) { tab._yank = tab._currentInput || ''; tab._currentInput = ''; }
+      else if (c === 25 && tab._yank) tab._currentInput = ((tab._currentInput || '') + tab._yank).slice(-4096);
+      else if (c >= 32 && c !== 127 && !(c >= 0x80 && c <= 0x9f)) tab._currentInput = ((tab._currentInput || '') + char).slice(-4096);
+    }
+    tab._inputEscape = state;
+  }
+  return { createRetryPolicy, trackInput };
 });

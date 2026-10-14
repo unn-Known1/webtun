@@ -2,7 +2,8 @@
   const safeStorage = {
     getItem(k) { try { return localStorage.getItem(k); } catch(e) { return null; } },
     setItem(k, v) { try { localStorage.setItem(k, v); } catch(e) {} },
-    removeItem(k) { try { localStorage.removeItem(k); } catch(e) {} }
+    removeItem(k) { try { localStorage.removeItem(k); } catch(e) {} },
+    keys() { try { return Object.keys(localStorage); } catch(e) { return []; } }
   };
   (function() {
     try {

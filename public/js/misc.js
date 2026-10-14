@@ -1218,15 +1218,9 @@ function openSystemStats() {
   clearInterval(sysStatsTimer);
   if (!settings.datasaver) {
     sysStatsTimer = setInterval(() => {
-      if (document.hidden) return;
+      if (document.hidden || !window._appUnlocked) return;
       refreshSystemStats(false);
     }, 5000);
-    document.addEventListener('visibilitychange', _sysVisibilityHandler);
-  }
-}
-function _sysVisibilityHandler() {
-  if (document.hidden && sysStatsTimer) {
-    // pause polling when hidden to save tunnel bandwidth (U93)
   }
 }
 
@@ -1237,7 +1231,6 @@ function closeSystemStats() {
     clearTimeout(_sysKillConfirmTimers[pid]);
     delete _sysKillConfirmTimers[pid];
   });
-  document.removeEventListener('visibilitychange', _sysVisibilityHandler);
   closeOverlay('sys-overlay');
 }
 

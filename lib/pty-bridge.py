@@ -1,4 +1,4 @@
-import pty, os, sys, fcntl, termios, struct, select
+import pty, os, sys, fcntl, termios, struct, select, signal
 
 if len(sys.argv) < 5:
     sys.exit(1)
@@ -31,6 +31,10 @@ except Exception:
 pid = os.fork()
 if pid == 0:
     os.close(master)
+    try:
+        os.close(3)
+    except OSError:
+        pass
     os.setsid()
     try:
         fcntl.ioctl(slave, termios.TIOCSCTTY, 0)
@@ -53,7 +57,21 @@ if pid == 0:
         sys.exit(127)
 else:
     os.close(slave)
-    for fd in [0, master]:
+    control = 3
+    control_buf = b''
+    try:
+        os.fstat(control)
+    except OSError:
+        control = None
+    def stop_bridge(_sig, _frame):
+        try:
+            os.killpg(pid, signal.SIGHUP)
+        except OSError:
+            pass
+        sys.exit(0)
+    signal.signal(signal.SIGTERM, stop_bridge)
+    signal.signal(signal.SIGHUP, stop_bridge)
+    for fd in [0, master] + ([control] if control is not None else []):
         try:
             fl = fcntl.fcntl(fd, fcntl.F_GETFL)
             fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
@@ -78,7 +96,7 @@ else:
             break
 
         try:
-            rlist, _, _ = select.select([0, master], [], [], 0.05)
+            rlist, _, _ = select.select([0, master] + ([control] if control is not None else []), [], [], 0.05)
         except (select.error, OSError):
             break
 
@@ -86,10 +104,29 @@ else:
             try:
                 data = os.read(0, 4096)
                 if not data:
+                    stop_bridge(0, None)
                     break
                 os.write(master, data)
             except OSError:
                 pass
+
+        if control is not None and control in rlist:
+            try:
+                data = os.read(control, 4096)
+                if not data:
+                    control = None
+                else:
+                    control_buf = (control_buf + data)[-8192:]
+                    while b'\n' in control_buf:
+                        line, control_buf = control_buf.split(b'\n', 1)
+                        try:
+                            c, r = map(int, line.split())
+                            if 2 <= c <= 500 and 2 <= r <= 500:
+                                fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack('HHHH', r, c, 0, 0))
+                        except (ValueError, OSError):
+                            pass
+            except OSError:
+                control = None
 
         if master in rlist:
             try:

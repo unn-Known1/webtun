@@ -110,8 +110,8 @@ function createPreviewWrapper(tab) {
   const go = () => previewNavigate(tab, tab.portInput.value, tab.pathInput.value);
   bar.querySelector('.preview-go').addEventListener('click', go);
   bar.querySelector('.preview-reload').addEventListener('click', () => previewReload(tab));
-  bar.querySelector('.preview-back').addEventListener('click', () => { try { tab.iframe.contentWindow.history.back(); } catch {} });
-  bar.querySelector('.preview-fwd').addEventListener('click', () => { try { tab.iframe.contentWindow.history.forward(); } catch {} });
+  bar.querySelector('.preview-back').addEventListener('click', () => tab.iframe.contentWindow?.postMessage({ wtPreviewHistory: true, delta: -1 }, '*'));
+  bar.querySelector('.preview-fwd').addEventListener('click', () => tab.iframe.contentWindow?.postMessage({ wtPreviewHistory: true, delta: 1 }, '*'));
   bar.querySelector('.preview-open').addEventListener('click', () => {
     try { window.open(location.origin + previewBuildUrl(tab.port, tab.previewPath || '/'), '_blank', 'noopener'); } catch { toast('Open failed', 'error'); }
   });

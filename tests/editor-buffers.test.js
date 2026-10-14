@@ -22,6 +22,22 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
+test('folder rename moves descendant buffers and blocks saving/opening during its transaction', async () => {
+  const f = fixture(); const a = f.panel.open('/folder/a', { content: 'disk' }); a.setContent('draft'); a.flushDraft();
+  const b = f.tab.open('/folder/b', { content: 'other' });
+  const transaction = f.store.beginRename('/folder', '/renamed');
+  await assert.rejects(a.save(async () => ({ success: true })), /rename/);
+  assert.throws(() => f.store.createSurface('other').open('/renamed/new', { content: '' }), /rename/);
+  transaction.commit(); transaction.release();
+  assert.equal(a.path, '/renamed/a'); assert.equal(b.path, '/renamed/b');
+  assert.equal(f.drafts.get('wt-draft:/renamed/a'), 'draft'); assert.equal(f.drafts.has('wt-draft:/folder/a'), false);
+});
+test('rename preflight rejects occupied descendant editors without modifying either buffer', () => {
+  const f = fixture(); f.panel.open('/a', { content: 'A' }); f.tab.open('/b/child', { content: 'B' });
+  assert.throws(() => f.store.beginRename('/a', '/b'), /destination/);
+  assert.equal(f.panel.path, '/a'); assert.equal(f.tab.path, '/b/child');
+});
+
 test('handover preserves one buffer, dirty state, disk revision, and draft', () => {
   const f = fixture();
   const buffer = f.panel.open('/a', { content: 'disk', mtime: '42', size: 4 });

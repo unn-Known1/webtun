@@ -108,8 +108,10 @@ function toggleSetting(k) {
     if (settings.datasaver) {
       if (sysStatsTimer) { clearInterval(sysStatsTimer); sysStatsTimer = null; }
       try { stopSysIconPulse(); resetSysIcon(); } catch {}
+      stopLpPulse();
     } else {
       try { startSysIconPulse(); } catch {}
+      if (document.getElementById('launchpad')?.classList.contains('show')) startLpPulse();
       if (document.getElementById('sys-overlay').classList.contains('open')) {
         refreshSystemStats(true);
       }
@@ -155,7 +157,7 @@ function updateGitFootRow() {
   if (!foot) return;
   let advShown = false;
   try { advShown = !!adv && getComputedStyle(adv).display !== 'none'; } catch {}
-  const moreShown = !!foot.querySelector('#git-log-more');
+  const moreShown = !!foot.querySelector('.git-log-page');
   foot.style.display = (advShown || moreShown) ? '' : 'none';
 }
 
@@ -901,15 +903,30 @@ function _fsEscHandler(e) {
 // toggleTerminalFullscreen and _termFsEscHandler intentionally removed
 let wakeLock = null;
 let wakeVideo = null;
+let wakePaintTimer = null;
+let wakeGeneration = 0;
+function cleanupWakeVideo() {
+  clearInterval(wakePaintTimer); wakePaintTimer = null;
+  if (wakeVideo) {
+    try { wakeVideo.pause(); } catch {}
+    try { wakeVideo.srcObject?.getTracks().forEach(track => track.stop()); } catch {}
+    wakeVideo.srcObject = null;
+    wakeVideo.remove(); wakeVideo = null;
+  }
+  window.wakeVideo = null;
+}
 window.wakeLock = null;
 const hasWakeLock = typeof navigator !== 'undefined' && 'wakeLock' in navigator;
 window.hasWakeLock = hasWakeLock;
 
 async function requestWakeLock() {
+  if (wakeLock) return true;
+  const generation = ++wakeGeneration;
   // 1. Primary: Native W3C Screen Wake Lock API
   if ('wakeLock' in navigator) {
     try {
       const lock = await navigator.wakeLock.request('screen');
+      if (generation !== wakeGeneration) { await lock.release(); return false; }
       wakeLock = lock;
       window.wakeLock = lock;
       lock.addEventListener('release', () => {
@@ -926,6 +943,7 @@ async function requestWakeLock() {
 
   // 2. Fallback: Hidden silent video loop (works in iframes, HTTP, WebViews, legacy browsers)
   try {
+    if (generation !== wakeGeneration) return false;
     if (!wakeVideo) {
       wakeVideo = document.createElement('video');
       wakeVideo.muted = true;
@@ -944,7 +962,7 @@ async function requestWakeLock() {
         if (ctx) {
           ctx.fillRect(0, 0, 1, 1);
           // Continuous micro-repaint keeps stream active across all browser engines
-          setInterval(() => { try { ctx.fillRect(0, 0, 1, 1); } catch {} }, 1000);
+          wakePaintTimer = setInterval(() => { try { ctx.fillRect(0, 0, 1, 1); } catch {} }, 1000);
         }
         wakeVideo.srcObject = canvas.captureStream(1);
       } else {
@@ -953,12 +971,15 @@ async function requestWakeLock() {
       document.body.appendChild(wakeVideo);
     }
     await wakeVideo.play();
+    if (generation !== wakeGeneration) return false;
     wakeLock = 'video-fallback';
     window.wakeLock = wakeLock;
     window.wakeVideo = wakeVideo;
     return true;
   } catch (err) {
+    if (generation !== wakeGeneration) return false;
     console.warn('Video fallback wake lock failed:', err);
+    cleanupWakeVideo();
     wakeLock = null;
     window.wakeLock = null;
     window.wakeVideo = null;
@@ -967,17 +988,11 @@ async function requestWakeLock() {
 }
 
 async function releaseWakeLock() {
-  if (wakeLock === 'video-fallback') {
-    if (wakeVideo) {
-      try { wakeVideo.pause(); } catch {}
-    }
-    wakeLock = null;
-    window.wakeLock = null;
-  } else if (wakeLock && typeof wakeLock.release === 'function') {
-    try { await wakeLock.release(); } catch {}
-    wakeLock = null;
-    window.wakeLock = null;
-  }
+  ++wakeGeneration;
+  const lock = wakeLock;
+  wakeLock = window.wakeLock = null;
+  cleanupWakeVideo();
+  if (lock && typeof lock.release === 'function') { try { await lock.release(); } catch {} }
 }
 
 async function toggleKeepAwake(enabled) {

@@ -78,8 +78,7 @@ ipcMain.handle('check-for-updates', async () => {
   try {
     if (!_autoUpdater) return 'updates unavailable in this build (portable/AppImage have no self-update — grab the next release from GitHub)';
     const r = await _autoUpdater.checkForUpdatesAndNotify();
-    if (r && r.updateInfo && r.updateInfo.version) return 'update available: ' + r.updateInfo.version;
-    return 'up to date';
+    return require('./update-status').updateStatus(r);
   } catch (e) {
     return 'update check failed: ' + ((e && e.message) || e);
   }
@@ -327,18 +326,6 @@ function createWindow() {
 // indistinguishable from "another instance is running". If the app quits
 // silently right after launch with no window and no dialog, check TMPDIR
 // writability (Linux) or a stale lock before assuming a crash.
-const gotLock = app.requestSingleInstanceLock();
-if (!gotLock) {
-  app.quit();
-} else {
-  app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
-  });
-}
-
 function isAddrInUse(err) {
   return /EADDRINUSE|address already in use/i.test(String(err && err.message || ''));
 }

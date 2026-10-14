@@ -7,14 +7,26 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
+  function remapPath(path, oldPath, newPath) {
+    if (typeof path !== 'string') return path;
+    const windows = /^[a-z]:[\\/]/i.test(oldPath);
+    const p = windows ? path.toLowerCase().replace(/\\/g, '/') : path;
+    const old = windows ? oldPath.toLowerCase().replace(/\\/g, '/') : oldPath;
+    if (p !== old && !p.startsWith(old + '/')) return path;
+    return newPath + path.slice(oldPath.length);
+  }
+
   function createStore({ storage, delay = 2000, schedule = setTimeout, cancel = clearTimeout }) {
     const buffers = new Map();
+    const reservations = new Set();
+    const reserved = path => [...reservations].some(r => remapPath(path, r.oldPath, '') !== path || remapPath(path, r.newPath, '') !== path);
     const key = path => 'wt-draft:' + path;
     function readDraft(path) { try { return storage.getItem(key(path)); } catch { return null; } }
     function removeDraft(path) { try { storage.removeItem(key(path)); } catch {} }
 
     function createBuffer(path, seed, owner) {
       if (buffers.has(path)) throw new Error('This file already has an editor');
+      if (reserved(path)) throw new Error('Wait for the folder or file rename to finish');
       let draftTimer = null;
       let saveQueue = Promise.resolve();
       const listeners = new Set();
@@ -48,6 +60,7 @@
           if (!this.released) draftTimer = schedule(() => this.flushDraft(), delay);
         },
         save(write) {
+          if (reserved(this.path)) return Promise.reject(new Error('Wait for the rename to finish before saving'));
           const snapshot = { path: this.path, content: this.content };
           this.saving++;
           this.notify();
@@ -142,21 +155,37 @@
       return surface;
     }
 
+    function checkRename(oldPath, newPath) {
+      const affected = [...buffers.values()].filter(b => remapPath(b.path, oldPath, newPath) !== b.path);
+      for (const b of affected) if (b.saving) throw new Error('Wait for files in this folder to finish saving');
+      for (const b of buffers.values()) {
+        if (!affected.includes(b) && remapPath(b.path, newPath, oldPath) !== b.path) throw new Error('The destination already has an editor; close it before renaming');
+      }
+      return affected;
+    }
     function renamePath(oldPath, newPath) {
-      const buffer = buffers.get(oldPath);
-      if (!buffer || oldPath === newPath) return;
-      if (buffer.saving) throw new Error('Wait for this file to finish saving');
-      if (buffers.has(newPath)) throw new Error('The destination already has an editor');
-      buffer.cancelDraft();
-      removeDraft(oldPath);
-      buffers.delete(oldPath);
-      buffer.path = newPath;
-      buffers.set(newPath, buffer);
-      buffer.flushDraft();
-      buffer.notify();
+      if (oldPath === newPath) return;
+      const affected = checkRename(oldPath, newPath);
+      const drafts = new Map();
+      for (const k of storage.keys ? storage.keys() : [key(oldPath), ...affected.map(b => key(b.path))]) {
+        if (!k.startsWith('wt-draft:')) continue;
+        const path = k.slice(9), target = remapPath(path, oldPath, newPath);
+        if (path !== target) { const value = readDraft(path); if (value != null) drafts.set(target, value); removeDraft(path); }
+      }
+      for (const b of affected) { b.cancelDraft(); buffers.delete(b.path); }
+      for (const b of affected) { b.path = remapPath(b.path, oldPath, newPath); buffers.set(b.path, b); }
+      for (const [path, value] of drafts) storage.setItem(key(path), value);
+      for (const b of affected) { b.flushDraft(); b.notify(); }
+    }
+    function beginRename(oldPath, newPath) {
+      checkRename(oldPath, newPath);
+      if (reserved(oldPath) || reserved(newPath)) throw new Error('Another rename is in progress');
+      const r = { oldPath, newPath };
+      reservations.add(r);
+      return { commit: actual => renamePath(oldPath, actual || newPath), release: () => reservations.delete(r) };
     }
 
-    return { createSurface, readDraft, removeDraft, renamePath, find: path => buffers.get(path) || null };
+    return { createSurface, readDraft, removeDraft, renamePath, checkRename, beginRename, find: path => buffers.get(path) || null };
   }
-  return { createStore };
+  return { createStore, remapPath };
 });

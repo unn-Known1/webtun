@@ -18,7 +18,7 @@ function loadEnvFile(envPath) {
       if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
         val = val.slice(1, -1);
       }
-      if (!(key in process.env) || key === 'PREVIEW_PORTS') process.env[key] = val;
+      if (!(key in process.env)) process.env[key] = val;
     });
   } catch {}
 }
@@ -202,6 +202,8 @@ const LARGE_JSON_ROUTES = new Set(['/api/files/write']);
 app.use((req, res, next) => {
   // Trailing-slash tolerant: /api/files/write/ gets the large budget too.
   const p = typeof req.path === 'string' ? req.path.replace(/\/+$/, '') || '/' : req.path;
+  // The proxy must see the original stream, not a globally parsed JSON body.
+  if (/^\/api\/preview\/[^/]+(?:\/|$)/.test(p) || (!p.startsWith('/api/') && /\/api\/preview\/\d+\//.test(String(req.headers.referer || '')))) return next();
   const limit = LARGE_JSON_ROUTES.has(p) ? JSON_LIMIT_LARGE : JSON_LIMIT_BASE;
   return express.json({ limit })(req, res, next);
 });
@@ -387,147 +389,12 @@ app.delete('/api/license', authRateLimiter, checkPin, (req, res) => {
 // key and stores a one-time claim token — the success page claims it, so no
 // mailer is needed for the MVP. Subscription renewals land in
 // GET /api/billing/renewals (authed) for the admin to paste.
-function billingConfigured() {
-  return !!(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET);
-}
-function stripePriceId(plan, annual) {
-  const key = 'STRIPE_PRICE_' + String(plan || '').toUpperCase() + '_' + (annual ? 'YEARLY' : 'MONTHLY');
-  return process.env[key] || '';
-}
-
-app.post('/api/billing/checkout', authRateLimiter, checkPin, async (req, res) => {
-  try {
-    if (!billingConfigured()) return res.status(501).json({ error: 'Billing not configured — set STRIPE_SECRET_KEY plus price ids (see docs)' });
-    const body = req.body || {};
-    const plan = String(body.plan || '').toLowerCase();
-    if (plan !== 'pro' && plan !== 'team') return res.status(400).json({ error: 'plan must be pro or team' });
-    let seats = plan === 'pro' ? 1 : 3;
-    if (body.seats !== undefined) {
-      seats = parseInt(body.seats, 10);
-      if (!Number.isInteger(seats) || seats < (plan === 'pro' ? 1 : 3) || seats > 10) {
-        return res.status(400).json({ error: 'seats must be 1-10 (team minimum 3)' });
-      }
-    }
-    const annual = !!body.annual;
-    const price = stripePriceId(plan, annual);
-    if (!price) return res.status(501).json({ error: 'Price id missing for this plan — set STRIPE_PRICE_* (see docs)' });
-    const base = (req.protocol + '://' + req.get('host')).replace(/\/+$/, '');
-    const params = new URLSearchParams();
-    params.append('mode', 'subscription');
-    params.append('success_url', base + '/billing-success.html?session={CHECKOUT_SESSION_ID}');
-    params.append('cancel_url', base + '/');
-    params.append('line_items[0][price]', price);
-    params.append('line_items[0][quantity]', '1');
-    params.append('subscription_data[metadata][plan]', plan);
-    params.append('subscription_data[metadata][seats]', String(seats));
-    params.append('metadata[plan]', plan);
-    params.append('metadata[seats]', String(seats));
-    const r = await fetch('https://api.stripe.com/v1/checkout/sessions', {
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer ' + process.env.STRIPE_SECRET_KEY,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: params.toString(),
-    });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok || !data.url) return res.status(502).json({ error: (data && data.error && data.error.message) || 'Stripe checkout failed' });
-    res.json({ success: true, url: data.url });
-  } catch (e) { sendErr(res, e, 500); }
-});
-
-// One-time key claim after checkout. The session id is unguessable, so this
-// stays public (the buyer may not have a WebTun session yet); rate-limited.
-app.get('/api/billing/claim', rateLimiter, (req, res) => {
-  try {
-    const sid = typeof req.query.session === 'string' ? req.query.session : '';
-    if (!sid || !/^cs_(test|live)_/.test(sid)) return res.status(400).json({ error: 'session required' });
-    const all = licenseLib.loadPending();
-    const entry = all[sid];
-    if (!entry || !entry.key) return res.json({ success: true, pending: true });
-    licenseLib.claimPending(sid);
-    res.json({ success: true, key: entry.key, plan: entry.plan, seats: entry.seats });
-  } catch (e) { sendErr(res, e, 500); }
-});
-
-// Renewal keys minted from invoice events, for the admin to paste.
-app.get('/api/billing/renewals', checkPin, (req, res) => {
-  try {
-    const all = licenseLib.loadPending();
-    const list = Object.keys(all)
-      .filter(k => k.indexOf('renew_') === 0)
-      .map(k => ({ id: k, email: all[k].email || '', plan: all[k].plan || '', seats: all[k].seats || 0, createdAt: all[k].createdAt || 0 }));
-    res.json({ success: true, renewals: list });
-  } catch (e) { sendErr(res, e, 500); }
-});
-
-app.post('/api/billing/renewals/claim', authRateLimiter, checkPin, (req, res) => {
-  try {
-    const id = req.body && req.body.id;
-    const entry = licenseLib.claimPending(typeof id === 'string' ? id : '');
-    if (!entry) return res.status(404).json({ error: 'renewal not found' });
-    licenseLib.saveLicenseKey(entry.key);
-    res.json(licenseStatusJson());
-  } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
-});
-
-function stripeSigOk(rawBody, header) {
-  try {
-    const secret = process.env.STRIPE_WEBHOOK_SECRET || '';
-    if (!secret || !header) return false;
-    const parts = {};
-    String(header).split(',').forEach(p => {
-      const i = p.indexOf('=');
-      if (i > 0) parts[p.slice(0, i).trim()] = p.slice(i + 1).trim();
-    });
-    const t = parseInt(parts.t, 10);
-    if (!t || Math.abs(Date.now() / 1000 - t) > 300) return false;
-    const expect = crypto.createHmac('sha256', secret).update(t + '.' + rawBody.toString('utf8')).digest('hex');
-    const got = Buffer.from(parts.v1 || '', 'utf8');
-    const want = Buffer.from(expect, 'utf8');
-    return got.length === want.length && crypto.timingSafeEqual(got, want);
-  } catch { return false; }
-}
-
-function mintKeyFor(plan, seats, days) {
-  const priv = (process.env.LICENSE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
-  if (!priv) { const e = new Error('LICENSE_PRIVATE_KEY not set — mint keys with scripts/mint-license.js'); e.status = 501; throw e; }
-  const now = Date.now();
-  return licenseLib.signLicense({ v: 1, plan, seats, exp: now + days * 24 * 3600 * 1000, iat: now }, priv);
-}
-
-async function billingWebhookHandler(req, res) {
-  const raw = req.body && Buffer.isBuffer(req.body) ? req.body : Buffer.from('');
-  if (!billingConfigured()) return res.status(501).json({ error: 'Billing not configured' });
-  if (!stripeSigOk(raw, req.headers['stripe-signature'])) return res.status(400).json({ error: 'bad signature' });
-  let event;
-  try { event = JSON.parse(raw.toString('utf8')); } catch { return res.status(400).json({ error: 'bad payload' }); }
-  try {
-    if (event.type === 'checkout.session.completed') {
-      const s = event.data && event.data.object ? event.data.object : {};
-      const plan = s.metadata && s.metadata.plan === 'team' ? 'team' : 'pro';
-      const seats = Math.max(plan === 'team' ? 3 : 1, Math.min(10, parseInt(s.metadata && s.metadata.seats, 10) || (plan === 'team' ? 3 : 1)));
-      const days = 35; // monthly-equivalent starter; annual handled below
-      const key = mintKeyFor(plan, seats, days);
-      licenseLib.storePending(typeof s.id === 'string' ? s.id : crypto.randomBytes(16).toString('hex'), {
-        key, plan, seats, email: (s.customer_details && s.customer_details.email) || '', createdAt: Date.now(),
-      });
-      try { console.log(`  Billing: key minted for ${plan} x${seats}`); } catch {}
-    } else if (event.type === 'invoice.payment_succeeded') {
-      const inv = event.data && event.data.object ? event.data.object : {};
-      // Annual vs monthly is distinguished by the subscription metadata the
-      // checkout route set; default to a 35 day extension when unknown.
-      const plan = 'pro';
-      const key = mintKeyFor(plan, 1, 35);
-      const rid = 'renew_' + crypto.randomBytes(8).toString('hex');
-      licenseLib.storePending(rid, {
-        key, plan, seats: 1, email: (inv.customer_email || ''), createdAt: Date.now(),
-      });
-      try { console.log(`  Billing: renewal key ready (${rid}) — paste from Settings → Security`); } catch {}
-    }
-    res.json({ received: true });
-  } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
-}
+const billing = require('./lib/server/billing').createBillingService({ license: licenseLib, statusJson: licenseStatusJson });
+app.post('/api/billing/checkout', authRateLimiter, checkPin, billing.checkout);
+app.get('/api/billing/claim', rateLimiter, billing.claim);
+app.get('/api/billing/renewals', checkPin, billing.renewals);
+app.post('/api/billing/renewals/claim', authRateLimiter, checkPin, billing.renewalClaim);
+function billingWebhookHandler(req, res) { return billing.webhook(req, res); }
 
 const { createTerminalService } = require('./lib/server/terminal');
 const terminal = createTerminalService({
@@ -538,7 +405,7 @@ const { getTMUX, tmuxKind, tmuxClaimPath, readTmuxClaim, writeTmuxClaim, release
 
 // ── System info ───────────────────────────────────────────────────────
 app.get('/api/home', checkPin, (req, res) => {
-  res.json({ home: os.homedir(), hostname: os.hostname(), platform: os.platform() });
+  res.json({ home: os.homedir(), workspace: WORKSPACE_ROOT, defaultDirectory: WORKSPACE_ROOT, fullFilesystem: ALLOW_FULL_FS, hostname: os.hostname(), platform: os.platform() });
 });
 
 const { registerFileRoutes } = require('./lib/server/files');
@@ -1080,58 +947,32 @@ function parsePreviewCookie(req) {
 // the short-lived preview cookie). In particular the raw PIN is trusted
 // remotely only when nobody else is signed in (loopback always trusted);
 // the old blanket bypass let a leaked PIN drive the proxy from anywhere.
-const activePreviewSessions = new Map();
-function recordActivePreview(ip, port) {
-  if (!ip || !port) return;
-  activePreviewSessions.set(`${ip}:${port}`, Date.now() + 3600000);
-  if (activePreviewSessions.size > 200) {
-    const now = Date.now();
-    for (const [k, exp] of activePreviewSessions) {
-      if (exp <= now) activePreviewSessions.delete(k);
-    }
-  }
-}
-function hasActivePreview(ip, port) {
-  const exp = activePreviewSessions.get(`${ip}:${port}`);
-  return !!(exp && exp > Date.now());
-}
+const previewAuth = require('./lib/server/preview-auth').createPreviewAuth(auth);
 
 function checkPreviewAuth(req, res, next) {
-  if (!auth.pin) return next();
-  const raw = req.headers['x-pin-token'] || (req.query && req.query.token) || parsePreviewCookie(req);
-  const token = typeof raw === 'string' ? raw.trim() : '';
-  const port = Number(req.params.port);
-  const clientIp = req.ip || req.socket?.remoteAddress || '127.0.0.1';
-
-  if (token) {
-    if (constantTimeEqual(token, auth.pin)) {
-      if (!rawPinAllowed(req)) {
-        return res.status(403).json({ error: 'Approval required — sign in from the app so an existing session can approve this device', approvalRequired: true });
-      }
-      req.authToken = token; req.authSession = null;
-      if (port) recordActivePreview(clientIp, port);
-      return next();
-    }
-    const s = getSession(token);
-    if (s && s.status === 'active') {
-      req.authToken = token; req.authSession = s;
-      if (port) recordActivePreview(clientIp, port);
-      return next();
-    }
-    return res.status(401).json({ error: 'Unauthorized' });
+  const url = new URL(req.originalUrl, 'http://x');
+  const params = url.searchParams;
+  const pathCapability = previewAuth.pathCapability(url.pathname);
+  if (pathCapability) params.set('ptoken', pathCapability);
+  const granted = previewAuth.authenticate(req, params, req.params.port);
+  if (!granted) return res.status(401).json({ error: 'Unauthorized' });
+  req.authToken = granted.owner;
+  req.previewCapability = granted.capability;
+  setPreviewCookie(req, res);
+  // A dev app must never see the live bearer in its own location. Bootstrap
+  // navigations exchange it for a revocable, single-port capability first.
+  if (req.method === 'GET' && granted.capability && params.getAll('token').includes(granted.owner)) {
+    const clean = new URL(previewAuth.stripQuery(req.originalUrl), 'http://x');
+    const prefix = '/api/preview/' + Number(req.params.port);
+    clean.pathname = prefix + '/_wt/' + granted.capability + (clean.pathname.slice(prefix.length) || '/');
+    return res.redirect(302, clean.pathname + clean.search);
   }
-
-  // Subresource authorization fallback for sandboxed/opaque iframes or partitioned cookies:
-  if (port && hasActivePreview(clientIp, port)) {
-    const ref = String(req.headers['referer'] || '');
-    const isSubresource = req.headers['sec-fetch-dest'] && req.headers['sec-fetch-dest'] !== 'document';
-    if (ref.includes(`/api/preview/${port}`) || isSubresource || req.headers['sec-fetch-mode'] === 'cors') {
-      req.authToken = auth.pin; req.authSession = null;
-      return next();
-    }
-  }
-
-  return res.status(401).json({ error: 'Unauthorized' });
+  return next();
+}
+function setPreviewCookie(req, res) {
+  if (!req.previewCapability) return;
+  const secure = req.secure || (process.env.TRUST_PROXY === 'true' && req.headers['x-forwarded-proto'] === 'https');
+  res.setHeader('Set-Cookie', `${PREVIEW_COOKIE}=${req.previewCapability}; Path=/api/preview/${Number(req.params.port)}/; Max-Age=3600; HttpOnly${secure ? '; Secure; SameSite=None; Partitioned' : '; SameSite=Lax'}`);
 }
 // Ports the preview proxy may dial. By default any port 1–65535, WebTun's own
 // included: connecting needs no privilege, the dial is always 127.0.0.1, and the caller
@@ -1195,6 +1036,7 @@ function handlePreviewProxy(req, res) {
     suffix = (u.pathname.startsWith(prefix) ? u.pathname.slice(prefix.length) : u.pathname) || '/';
     suffix += u.search || '';
   } catch { suffix = '/'; }
+  suffix = previewAuth.stripPath(suffix);
   if (suffix.includes('\0')) return res.status(400).json({ error: 'bad path' });
   // Strip only OUR bearer from the upstream query: a ?token= value that is a
   // live credential (the PIN or a known session token) is ours — it already
@@ -1204,36 +1046,11 @@ function handlePreviewProxy(req, res) {
   // login redirect loop ("too many redirects"). Note the values must be
   // classified individually: Express merges ?token=A&token=B into one array,
   // so "the query token" can't tell ours from foreign.
-  try {
-    const qm = suffix.indexOf('?');
-    if (qm !== -1) {
-      const params = new URLSearchParams(suffix.slice(qm + 1));
-      const vals = params.getAll('token');
-      if (vals.length) {
-        const foreign = vals.filter(v => !v || (!constantTimeEqual(v, auth.pin) && !getSession(v)));
-        if (foreign.length !== vals.length) {
-          params.delete('token');
-          for (const v of foreign) params.append('token', v);
-          const rest = params.toString();
-          suffix = suffix.slice(0, qm) + (rest ? '?' + rest : '');
-        }
-      }
-    }
-  } catch {}
+  suffix = previewAuth.stripQuery(suffix);
   // Mint preview cookie on first authed hit so subresources pass auth.
   // Port-scoped path (one port's cookie never authenticates another),
   // Secure when the request arrived over TLS, 12h cap on a stolen-URL window.
-  try {
-    const q = (req.query && req.query.token) || req.headers['x-pin-token'];
-    const trustProxyCookie = process.env.TRUST_PROXY === 'true';
-    const isSecure = (req.secure || (trustProxyCookie && req.headers['x-forwarded-proto'] === 'https') || req.headers['x-forwarded-proto'] === 'https');
-    const cookieFlags = isSecure ? '; Secure; SameSite=None; Partitioned' : '; SameSite=Lax';
-    if (auth.pin && typeof q === 'string' && q.trim()) {
-      res.setHeader('Set-Cookie', `${PREVIEW_COOKIE}=${encodeURIComponent(q.trim())}; Path=/api/preview/; Max-Age=43200; HttpOnly${cookieFlags}`);
-    } else if (!auth.pin) {
-      res.setHeader('Set-Cookie', `${PREVIEW_COOKIE}=open; Path=/api/preview/; Max-Age=43200; HttpOnly${cookieFlags}`);
-    }
-  } catch {}
+  setPreviewCookie(req, res);
   const fwd = {};
   for (const [k, v] of Object.entries(req.headers)) {
     const lk = k.toLowerCase();
@@ -1314,20 +1131,23 @@ function handlePreviewProxy(req, res) {
         // (or lose the injection past the old 2MB cliff). Byte-level surgery
         // with a latin1 needle (ASCII-safe) so multibyte text is never mangled.
         const HEAD_MAX = 512 * 1024;
-        const baseTag = Buffer.from(`<base href="/api/preview/${targetPort}/">`, 'latin1');
-        const navTag = Buffer.from(`<script>try{(function(){var s=function(){try{parent.postMessage({wtPreviewNav:location.pathname+location.search},'*')}catch(e){}};try{s()}catch(e){}try{addEventListener('popstate',s)}catch(e){}try{['pushState','replaceState'].forEach(function(k){try{var o=history[k];history[k]=function(){try{return o.apply(this,arguments)}finally{try{s()}catch(e){}}}}catch(e){})}catch(e){}try{setTimeout(s,800)}catch(e){}})()}catch(e){}</script>`, 'latin1');
+        const previewPrefix = `/api/preview/${targetPort}`;
+        const assetPrefix = previewPrefix + (req.previewCapability ? '/_wt/' + req.previewCapability : '');
+        const baseTag = Buffer.from(`<base href="${assetPrefix}/">`, 'latin1');
+        const navTag = Buffer.from(`<script>(function(){var cap=${JSON.stringify(req.previewCapability || '')},prefix=${JSON.stringify(previewPrefix)},assets=${JSON.stringify(assetPrefix)};var s=function(){parent.postMessage({wtPreviewNav:location.pathname.replace(assets,prefix)+location.search},'*')};addEventListener('message',function(e){if(e.source===parent&&e.data&&e.data.wtPreviewHistory===true&&(e.data.delta===-1||e.data.delta===1))history.go(e.data.delta)});function url(v){var u=new URL(v,location.href);if(u.host!==location.host)return v;if(!u.pathname.startsWith(assets+'/'))u.pathname=assets+(u.pathname.startsWith(prefix+'/')?u.pathname.slice(prefix.length):u.pathname);if(cap)u.searchParams.set('ptoken',cap);return u.href}var f=window.fetch;window.fetch=function(v,o){return f.call(this,typeof v==='string'||v instanceof URL?url(v):new Request(url(v.url),v),o)};var x=XMLHttpRequest.prototype.open;XMLHttpRequest.prototype.open=function(m,u){var a=Array.from(arguments);a[1]=url(u);return x.apply(this,a)};var w=window.WebSocket;window.WebSocket=function(u,p){return new w(url(u),p)};window.WebSocket.prototype=w.prototype;['CONNECTING','OPEN','CLOSING','CLOSED'].forEach(function(k){window.WebSocket[k]=w[k]});addEventListener('popstate',s);['pushState','replaceState'].forEach(function(k){var o=history[k];history[k]=function(){try{return o.apply(this,arguments)}finally{s()}}});s();setTimeout(s,800)})();</script>`, 'utf8');
         let buf = [], bytes = 0, headSent = false;
         const sendHead = (raw) => {
           headSent = true;
           let out = raw;
           try {
             const s = raw.toString('latin1');
-            if (!/<base[\s>]/i.test(s)) {
-              const m = /<head[^>]*>/i.exec(s);
-              if (m) {
-                const at = m.index + m[0].length;
-                out = Buffer.concat([raw.subarray(0, at), baseTag, navTag, raw.subarray(at)]);
-              }
+            const m = /<head[^>]*>/i.exec(s);
+            if (m) {
+              const at = m.index + m[0].length;
+                out = Buffer.concat([raw.subarray(0, at), ...(!/<base[\s>]/i.test(s) ? [baseTag] : []), navTag, raw.subarray(at)]);
+                // HTML resource attributes commonly use root-relative URLs.
+                // Prefix them with the port capability; do not edit script bodies.
+                out = Buffer.from(out.toString('latin1').replace(/\b(src|href|action)=(['"])\/(?!\/|api\/preview\/)([^'"]*)\2/gi, (_m, attr, quote, p) => `${attr}=${quote}${assetPrefix}/${p}${quote}`), 'latin1');
             }
           } catch {}
           try { res.removeHeader('Content-Length'); } catch {}
@@ -1374,11 +1194,10 @@ app.all('{*splat}', (req, res, next) => {
     const m = ref.match(/\/api\/preview\/(\d+)/);
     if (m) {
       const port = Number(m[1]);
-      const clientIp = req.ip || req.socket?.remoteAddress || '127.0.0.1';
-      if (validPreviewPort(port) && (!auth.pin || hasActivePreview(clientIp, port))) {
+      if (validPreviewPort(port)) {
         req.params = req.params || {};
         req.params.port = port;
-        return handlePreviewProxy(req, res);
+        return checkPreviewAuth(req, res, () => handlePreviewProxy(req, res));
       }
     }
   }
@@ -1441,23 +1260,12 @@ app.get('/api/ports', checkPin, (req, res) => {
 // WS proxy for HMR/live-reload: /api/preview/:port/<path> upgrade → ws://127.0.0.1:port/<path>
 const previewWSS = new WebSocket.Server({ noServer: true });
 function previewUpgradeAuth(req, params, port) {
-  if (!auth.pin) return true;
-  const t = typeof params.get('token') === 'string' ? params.get('token').trim() : parsePreviewCookie(req);
-  if (t) {
-    if (constantTimeEqual(t, auth.pin)) {
-      // Same gate as HTTP preview (checkPreviewAuth) and terminal WS: a remote
-      // raw PIN is trusted only when nobody else is signed in (loopback always
-      // trusted). Session tokens remain the normal path for iframe WS.
-      return rawPinAllowed({ socket: req.socket, headers: req.headers, get ip() { return req.socket.remoteAddress; } });
-    }
-    const s = getSession(t);
-    return !!(s && s.status === 'active');
-  }
-  const clientIp = req.socket?.remoteAddress;
-  if (port && hasActivePreview(clientIp, port)) {
-    return true;
-  }
-  return false;
+  const pathCapability = previewAuth.pathCapability(new URL(req.url, 'http://x').pathname);
+  if (pathCapability) params.set('ptoken', pathCapability);
+  const granted = previewAuth.authenticate(req, params, port);
+  if (!granted) return false;
+  req.authToken = granted.owner;
+  return true;
 }
 // Single upgrade dispatcher (wss is noServer so the terminal /ws handler
 // doesn't 400 preview upgrades — ws rejects non-matching paths first).
@@ -1488,12 +1296,12 @@ server.on('upgrade', (req, socket, head) => {
   if (!targetPort) { try { socket.destroy(); } catch {} return; }
   if (!validPreviewPort(targetPort)) { try { socket.destroy(); } catch {} return; }
   if (!previewUpgradeAuth(req, u.searchParams, targetPort)) { try { socket.destroy(); } catch {} return; }
+  targetPath = previewAuth.stripQuery(previewAuth.stripPath(targetPath));
   previewWSS.handleUpgrade(req, socket, head, clientWs => {
     // Attribute the credential so PIN rotation / session revoke (wsAuthSweep,
     // closeInvalidSockets, pushSessionRevoked) can reap preview sockets too.
     try {
-      const qt = u.searchParams.get('token');
-      clientWs._authToken = (typeof qt === 'string' && qt) ? qt.trim() : parsePreviewCookie(req);
+      clientWs._authToken = req.authToken;
     } catch {}
     let upstream;
     try {
@@ -1549,6 +1357,7 @@ function startServer(opts = {}) {
   const host = opts.host || HOST;
 
   migrateLegacyState();
+  licenseLib.loadLicense();
   if (!_historyLoaded) { _historyLoaded = true; loadCmdHistory(); }
   tunnelService.loadTunnels();
   // NOTE: no orphan sweep here — it runs after the port binds (below), so a
