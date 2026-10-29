@@ -441,6 +441,34 @@ async function refreshPortsModal() {
       const right = document.createElement('div');
       right.style.cssText = 'display:flex;align-items:center;gap:6px;flex-shrink:0;';
 
+      const tunBtn = document.createElement('button');
+      tunBtn.className = 'btn btn-ghost';
+      tunBtn.style.cssText = 'height:28px;padding:0 10px;font-size:11px;';
+      tunBtn.textContent = 'Tunnel';
+      tunBtn.title = `Expose :${pNum} via Cloudflare Quick Tunnel`;
+      tunBtn.onclick = async () => {
+        setBtnBusy(tunBtn, true);
+        try {
+          const r = await api('/api/tunnel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: `http://127.0.0.1:${pNum}` }),
+          });
+          if (r && r.url) {
+            try { await navigator.clipboard.writeText(r.url); } catch {}
+            toast(`Tunnel live (copied): ${r.url}`, 'success');
+            if (typeof loadTunnels === 'function') loadTunnels();
+          } else {
+            toast((r && r.error) || 'Failed to start tunnel', 'error');
+          }
+        } catch (e) {
+          toast((e && e.message) || 'Failed to start tunnel', 'error');
+        } finally {
+          setBtnBusy(tunBtn, false);
+        }
+      };
+      right.appendChild(tunBtn);
+
       const prevBtn = document.createElement('button');
       prevBtn.className = 'btn btn-primary';
       prevBtn.style.cssText = 'height:28px;padding:0 12px;font-size:11px;';

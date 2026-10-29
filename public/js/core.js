@@ -22,7 +22,7 @@ let hasTmux = false;
   theme: 'light', fontSize: 14, font: "'JetBrains Mono', 'SF Mono', 'Fira Code', Consolas, monospace",
   cursor: 'block', blink: true, scrollback: 5000, bell: false,
   mobilekeys: false, confirmclose: true, datasaver: false, autostart: false, keepAwake: false, termRightClick: true,
-  gitEnabled: true, gitSimple: true
+  gitEnabled: true, gitSimple: true, editorWrap: false, tabSize: 2
 };
 let serverPlatform = '';
 

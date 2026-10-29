@@ -928,7 +928,15 @@ function newTab(title, sessionId, dir, opts = {}) {
 }
 
 async function editSessionLabel(id, currentLabel) {
-  const newLabel = prompt('Enter custom label for terminal session:', currentLabel || '');
+  const newLabel = typeof promptDialog === 'function'
+    ? await promptDialog({
+        title: 'Label Terminal Session',
+        message: 'Enter a custom label for this persistent session (leave empty to clear):',
+        defaultValue: currentLabel || '',
+        placeholder: 'e.g. API Server, DB Tunnel',
+        okText: 'Save Label'
+      })
+    : prompt('Enter custom label for terminal session:', currentLabel || '');
   if (newLabel === null) return;
   try {
     await api(`/api/sessions/${encodeURIComponent(id)}/label`, {
@@ -1452,11 +1460,37 @@ function toggleTiles() {
     layoutTiles();
   } else {
     const termWrap = document.getElementById('terminals');
+    termWrap.classList.remove('has-tile-zoom');
+    termWrap.querySelectorAll('.term-wrapper.tile-zoomed').forEach(el => el.classList.remove('tile-zoomed'));
     termWrap.querySelectorAll('.term-tile-header').forEach(el => el.remove());
     // Every tile had tile geometry: refit all, not just the active tab, or
     // background terms keep tile sizes until visited.
     setTimeout(() => { tabs.forEach(tab => { try { fitTerm(tab); } catch(e) { console.warn(e); } }); }, 60);
   }
+}
+
+function toggleTileZoom(tabId) {
+  const termWrap = document.getElementById('terminals');
+  const tab = tabs.find(t => t.id === tabId);
+  if (!termWrap || !tab || !tab.wrapper) return;
+  const isZoomed = tab.wrapper.classList.contains('tile-zoomed');
+  termWrap.querySelectorAll('.term-wrapper.tile-zoomed').forEach(el => el.classList.remove('tile-zoomed'));
+  termWrap.querySelectorAll('.tth-zoom.active').forEach(el => {
+    el.classList.remove('active');
+    el.setAttribute('aria-pressed', 'false');
+  });
+  if (!isZoomed) {
+    tab.wrapper.classList.add('tile-zoomed');
+    termWrap.classList.add('has-tile-zoom');
+    const zBtn = tab.wrapper.querySelector('.tth-zoom');
+    if (zBtn) { zBtn.classList.add('active'); zBtn.setAttribute('aria-pressed', 'true'); }
+    activateTab(tab.id);
+  } else {
+    termWrap.classList.remove('has-tile-zoom');
+  }
+  setTimeout(() => {
+    tabs.forEach(t => { try { fitTerm(t); } catch {} try { if (t.cm) t.cm.refresh(); } catch {} });
+  }, 50);
 }
 
 function layoutTiles() {
@@ -1466,12 +1500,23 @@ function layoutTiles() {
     let hdr = tab.wrapper.querySelector('.term-tile-header');
     if (hdr) {
       hdr.querySelector('.tth-name').textContent = tab.title;
+      const dotEl = hdr.querySelector('.tth-dot');
+      if (dotEl) {
+        const isDisc = tab.type === 'term' && (!tab.ws || tab.ws.readyState !== WebSocket.OPEN);
+        dotEl.classList.toggle('disconnected', isDisc);
+        dotEl.classList.toggle('dirty', !!tab.dirty);
+      }
       return;
     }
     hdr = document.createElement('div');
     hdr.className = 'term-tile-header';
     hdr.setAttribute('role', 'group');
     hdr.setAttribute('aria-label', 'Tab ' + tab.title);
+    const tthDot = document.createElement('span');
+    tthDot.className = 'tth-dot';
+    if (tab.type === 'term' && (!tab.ws || tab.ws.readyState !== WebSocket.OPEN)) tthDot.classList.add('disconnected');
+    if (tab.dirty) tthDot.classList.add('dirty');
+    hdr.appendChild(tthDot);
     const tthName = document.createElement('span');
     tthName.className = 'tth-name';
     // The name span is the single button: the header is a group so the
@@ -1481,6 +1526,14 @@ function layoutTiles() {
     tthName.setAttribute('aria-label', 'Activate ' + tab.title);
     tthName.textContent = tab.title;
     hdr.appendChild(tthName);
+    const tthZoom = document.createElement('button');
+    tthZoom.className = 'tth-zoom';
+    tthZoom.type = 'button';
+    tthZoom.title = 'Maximize / Restore Tile';
+    tthZoom.setAttribute('aria-label', 'Maximize ' + tab.title);
+    tthZoom.setAttribute('aria-pressed', 'false');
+    tthZoom.textContent = '⤢';
+    hdr.appendChild(tthZoom);
     const tthClose = document.createElement('button');
     tthClose.className = 'tth-close';
     tthClose.setAttribute('aria-label', 'Close ' + tab.title);
@@ -1488,13 +1541,18 @@ function layoutTiles() {
     tthClose.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
     hdr.appendChild(tthClose);
     hdr.addEventListener('click', e => {
-      if (e.target.closest('.tth-close')) return;
+      if (e.target.closest('.tth-close') || e.target.closest('.tth-zoom')) return;
       activateTab(tab.id);
     });
     tthName.addEventListener('click', e => { e.stopPropagation(); activateTab(tab.id); });
+    tthName.addEventListener('dblclick', e => { e.stopPropagation(); toggleTileZoom(tab.id); });
     tthName.addEventListener('keydown', e => {
       // Enter/Space on the name activates and focuses the terminal.
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activateTab(tab.id); tab.term?.focus(); }
+    });
+    tthZoom.addEventListener('click', e => {
+      e.stopPropagation();
+      toggleTileZoom(tab.id);
     });
     hdr.querySelector('.tth-close').addEventListener('click', e => {
       e.stopPropagation();
