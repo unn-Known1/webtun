@@ -27,6 +27,8 @@ function loadSettings() {
       if (typeof s.passCtrlK === 'boolean') settings.passCtrlK = s.passCtrlK;
       if (typeof s.termRightClick === 'boolean') settings.termRightClick = s.termRightClick;
       if (typeof s.autostart === 'boolean') settings.autostart = s.autostart;
+      if (typeof s.editorWrap === 'boolean') settings.editorWrap = s.editorWrap;
+      if (typeof s.tabSize === 'number' && [2, 4, 8].includes(s.tabSize)) settings.tabSize = s.tabSize;
     }
   } catch(e) { console.warn(e); }
   document.getElementById('s-theme').value = settings.theme;
@@ -35,7 +37,11 @@ function loadSettings() {
   document.getElementById('s-scrollback').value = settings.scrollback;
   document.getElementById('s-font').value = settings.font;
   document.getElementById('s-cursor').value = settings.cursor;
-  syncToggle('blink'); syncToggle('bell'); syncToggle('clipboardRead'); syncToggle('passCtrlK'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver'); syncToggle('termRightClick'); syncToggle('screensaver'); syncToggle('gitEnabled'); syncToggle('gitSimple'); syncToggle('sshEnabled');
+  const tsEl = document.getElementById('s-tabsize');
+  if (tsEl) tsEl.value = String(settings.tabSize || 2);
+  syncToggle('blink'); syncToggle('bell'); syncToggle('clipboardRead'); syncToggle('passCtrlK'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver'); syncToggle('termRightClick'); syncToggle('screensaver'); syncToggle('gitEnabled'); syncToggle('gitSimple'); syncToggle('sshEnabled'); syncToggle('editorWrap');
+  try { if (typeof applyEditorWrap === 'function') applyEditorWrap(settings.editorWrap, false); } catch {}
+  try { if (typeof applyTabSize === 'function') applyTabSize(settings.tabSize || 2, false); } catch {}
   try { if (typeof applyGitEnabled === 'function') applyGitEnabled(); } catch {}
   try { if (typeof applyGitSimple === 'function') applyGitSimple(); } catch {}
   try { if (typeof applySshEnabled === 'function') applySshEnabled(); } catch {}
@@ -57,6 +63,7 @@ const DEFAULT_SETTINGS = {
   cursor: 'block', blink: true, scrollback: 5000, bell: false,
   mobilekeys: false, confirmclose: true, datasaver: false, autostart: false, keepAwake: false, termRightClick: true,
   screensaver: false, screensaverMin: 5, gitEnabled: true, gitSimple: true, sshEnabled: false,
+  editorWrap: false, tabSize: 2,
   clipboardRead: false, // off: OSC 52 GET (program reads your clipboard) needs consent
   passCtrlK: false // when true: Ctrl+K passes to terminal/TUI apps; Ctrl+Shift+K opens Finder
 };
@@ -127,6 +134,9 @@ function toggleSetting(k) {
     try { applySshEnabled(); } catch {}
     // Server-enforced master switch (teardown on OFF). Reverts on failure.
     try { if (typeof syncSshEnabledToServer === 'function') syncSshEnabledToServer(); } catch {}
+  }
+  if (k === 'editorWrap') {
+    try { if (typeof applyEditorWrap === 'function') applyEditorWrap(settings.editorWrap, false); } catch {}
   }
 }
 
@@ -1044,6 +1054,7 @@ uiActions.register("change", {
   "apply-font-size": function (event) { return applyFontSize(+this.value); },
   "apply-font": function (event) { return applyFont(this.value); },
   "apply-cursor": function (event) { return applyCursor(this.value); },
+  "apply-tab-size": function (event) { if (typeof applyTabSize === 'function') return applyTabSize(+this.value); },
   "apply-scrollback": function (event) { return applyScrollback(+this.value); },
   "apply-screensaver-min": function (event) { return applyScreensaverMin(+this.value); },
 });
@@ -1056,6 +1067,7 @@ uiActions.register("click", {
   "toggle-editor-fullscreen": function (event) { return toggleEditorFullscreen(); },
   "close-settings": function (event) { return closeSettings(); },
   "toggle-setting-blink": function (event) { return toggleSetting('blink'); },
+  "toggle-setting-editorwrap": function (event) { return toggleSetting('editorWrap'); },
   "toggle-setting-bell": function (event) { return toggleSetting('bell'); },
   "toggle-setting-clipboardread": function (event) { return toggleSetting('clipboardRead'); },
   "toggle-setting-termrightclick": function (event) { return toggleSetting('termRightClick'); },
@@ -1079,6 +1091,7 @@ uiActions.register("click", {
 });
 uiActions.register("keydown", {
   "toggle-setting-blink": function (event) { if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('blink')}; },
+  "toggle-setting-editorwrap": function (event) { if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('editorWrap')}; },
   "toggle-setting-bell": function (event) { if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('bell')}; },
   "toggle-setting-clipboardread": function (event) { if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('clipboardRead')}; },
   "toggle-setting-termrightclick": function (event) { if(event.key===' '||event.key==='Enter'){event.preventDefault();toggleSetting('termRightClick')}; },

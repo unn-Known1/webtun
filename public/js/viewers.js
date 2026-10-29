@@ -31,13 +31,19 @@ function canOpenInEditor(path) {
   return true;
 }
 
+const MEDIA_VIDEO_EXTS = new Set(['.mp4', '.webm', '.mov', '.m4v', '.ogv']);
+const MEDIA_AUDIO_EXTS = new Set(['.mp3', '.wav', '.ogg', '.oga', '.flac', '.m4a', '.aac']);
+function isVideoFile(path) { return MEDIA_VIDEO_EXTS.has(getFileExt(path)); }
+function isAudioFile(path) { return MEDIA_AUDIO_EXTS.has(getFileExt(path)); }
+function isMediaFile(path) { return isVideoFile(path) || isAudioFile(path); }
 function isPdfFile(path) { return /\.pdf$/i.test(path); }
 function isEpubFile(path) { return /\.epub$/i.test(path); }
 function isOfficeDocx(path) { return /\.docx$/i.test(path); }
 function isOfficeXlsx(path) { return /\.xlsx$/i.test(path); }
+function isCsvFile(path) { return /\.(csv|tsv)$/i.test(path); }
 function isOfficeFile(path) { return isOfficeDocx(path) || isOfficeXlsx(path); }
 function isLegacyOfficeFile(path) { return /\.(doc|dot|docm|dotm|xls|xlt|xlsm|xlsb|xlam|ppt|pot|pps|pptm|potm|ppsm|ppsx|odt|ods|odp|rtf)$/i.test(path); }
-function isDocFile(path) { return isPdfFile(path) || isEpubFile(path) || isOfficeFile(path); }
+function isDocFile(path) { return isPdfFile(path) || isEpubFile(path) || isOfficeFile(path) || isMediaFile(path); }
 
 // ── Doc preview dynamic loader ──
 function loadScript(src) {
@@ -682,7 +688,51 @@ function cleanupDocViewers() {
   if (officeViewer) officeViewer.classList.remove('active');
   const officeContent = document.getElementById('office-content');
   if (officeContent) officeContent.innerHTML = '';
+  // Media (Audio/Video)
+  const mediaViewer = document.getElementById('media-viewer');
+  if (mediaViewer) { mediaViewer.classList.remove('active'); mediaViewer.style.display = 'none'; }
+  const vid = document.getElementById('media-video');
+  if (vid) { try { vid.pause(); vid.removeAttribute('src'); vid.load(); } catch {} vid.style.display = 'none'; }
+  const aud = document.getElementById('media-audio');
+  if (aud) { try { aud.pause(); aud.removeAttribute('src'); aud.load(); } catch {} aud.style.display = 'none'; }
   document.getElementById('editor-save-btn').style.display = '';
+}
+
+async function openMediaViewer(path) {
+  cleanupDocViewers();
+  panelState.path = path;
+  panelState.original = '';
+  const fileName = path.split(/[\\/]/).pop() || path;
+  document.getElementById('editor-filename').textContent = fileName + '  /  ' + path;
+  document.getElementById('editor-status').textContent = '';
+  const cm = document.querySelector('#editor-area .CodeMirror');
+  if (cm) cm.style.display = 'none';
+  const ta = document.getElementById('editor-textarea');
+  if (ta) ta.style.display = 'none';
+  document.getElementById('editor-preview').classList.remove('active');
+  const mv = document.getElementById('media-viewer');
+  if (mv) { mv.classList.add('active'); mv.style.display = 'flex'; }
+  const titleEl = document.getElementById('media-title');
+  if (titleEl) titleEl.textContent = fileName;
+  const infoEl = document.getElementById('media-info');
+  if (infoEl) infoEl.textContent = isVideoFile(path) ? 'Video Player' : 'Audio Player';
+  document.getElementById('editor-save-btn').style.display = 'none';
+  document.getElementById('md-preview-toggle').style.display = 'none';
+  document.getElementById('preview-refresh-btn').style.display = 'none';
+  if (window.innerWidth > 768) {
+    document.getElementById('content')?.classList.add('editor-open');
+  }
+  document.getElementById('editor-view')?.classList.add('open');
+  const streamUrl = `/api/files/download?path=${encodeURIComponent(path)}` + (authToken ? `&token=${encodeURIComponent(authToken)}` : '');
+  const vid = document.getElementById('media-video');
+  const aud = document.getElementById('media-audio');
+  if (isVideoFile(path) && vid) {
+    vid.style.display = 'block';
+    vid.src = streamUrl;
+  } else if (aud) {
+    aud.style.display = 'block';
+    aud.src = streamUrl;
+  }
 }
 // ── Office doc preview (DOCX/XLSX, read-only) ──
 // Client-side only: mammoth (DOCX→HTML) + SheetJS (XLSX→table), lazy-loaded
@@ -765,12 +815,13 @@ async function openOfficeViewer(path) {
     if (!resp.ok) throw new Error('Failed to fetch file (' + resp.status + ')');
     const buf = await resp.arrayBuffer();
     if (myGen !== _officeGen) return;
-    if (!buf || buf.byteLength < 4) throw new Error('Empty file');
+    const isCsv = isCsvFile(path);
+    if (!buf || (!isCsv && buf.byteLength < 4)) throw new Error('Empty file');
     if (buf.byteLength > MAX_OFFICE_SIZE) throw new Error('File too large for preview (max 10MB) — use Download');
-    const head = new Uint8Array(buf.slice(0, 4));
-    if (!(head[0] === 0x50 && head[1] === 0x4B)) throw new Error('Not a valid Office file (missing ZIP header)');
+    const head = new Uint8Array(buf.slice(0, Math.min(4, buf.byteLength)));
+    if (!isCsv && !(head[0] === 0x50 && head[1] === 0x4B)) throw new Error('Not a valid Office file (missing ZIP header)');
     if (isDocx) await renderOfficeDocx(buf);
-    else renderOfficeXlsx(buf);
+    else renderOfficeXlsx(buf, isCsv);
   } catch (e) {
     if (myGen !== _officeGen) return;
     officeLoadError(e.message);
@@ -809,8 +860,10 @@ async function renderOfficeDocx(buf) {
   notes.push('Read-only');
   document.getElementById('office-info').textContent = notes.join(' • ');
 }
-function renderOfficeXlsx(buf) {
-  const wb = window.XLSX.read(buf, { type: 'array' });
+function renderOfficeXlsx(buf, isCsv = false) {
+  const wb = isCsv
+    ? window.XLSX.read(new TextDecoder('utf-8').decode(buf), { type: 'string', raw: false })
+    : window.XLSX.read(buf, { type: 'array' });
   const names = (wb && wb.SheetNames) || [];
   if (!names.length) throw new Error('No sheets found');
   _officeWb = wb;
@@ -894,7 +947,19 @@ function renderOfficeSheet(idx) {
   }
   notes.push('Read-only');
   buildOfficeSheetSelect(names, idx);
-  document.getElementById('office-content').innerHTML = html;
+  const contentEl = document.getElementById('office-content');
+  contentEl.innerHTML = '<div class="office-filter-bar"><input type="search" id="office-row-filter" placeholder="Filter rows…" aria-label="Filter spreadsheet rows"></div>' + html;
+  const filterIn = document.getElementById('office-row-filter');
+  if (filterIn) {
+    filterIn.addEventListener('input', () => {
+      const q = filterIn.value.trim().toLowerCase();
+      const rows = contentEl.querySelectorAll('.office-grid tbody tr');
+      rows.forEach((tr, rIdx) => {
+        if (rIdx === 0 && tr.querySelector('th')) return;
+        tr.style.display = (!q || tr.textContent.toLowerCase().includes(q)) ? '' : 'none';
+      });
+    });
+  }
   document.getElementById('office-info').textContent = notes.join(' • ');
 }
 function fmtOfficeCell(c) {

@@ -6,7 +6,33 @@
 function getBookmarks() {
   try { return JSON.parse(safeStorage.getItem('wt-bookmarks')) || []; } catch(e) { console.warn('Failed to parse bookmarks:', e); return []; }
 }
-function saveBookmarks(bm) { safeStorage.setItem('wt-bookmarks', JSON.stringify(bm)); renderBookmarks(); }
+function saveBookmarks(bm) {
+  safeStorage.setItem('wt-bookmarks', JSON.stringify(bm));
+  renderBookmarks();
+  if (window._appUnlocked && authToken) {
+    api('/api/bookmarks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookmarks: bm }) }).catch(() => {});
+  }
+}
+async function syncBookmarksFromServer() {
+  if (!window._appUnlocked || !authToken) return;
+  try {
+    const r = await api('/api/bookmarks');
+    if (!r || !Array.isArray(r.bookmarks)) return;
+    const local = getBookmarks();
+    if (r.bookmarks.length === 0 && local.length > 0) {
+      await api('/api/bookmarks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bookmarks: local }) }).catch(() => {});
+      return;
+    }
+    if (r.bookmarks.length > 0) {
+      const merged = [...r.bookmarks];
+      for (const b of local) {
+        if (b && b.path && !merged.some(m => m.path === b.path)) merged.push(b);
+      }
+      safeStorage.setItem('wt-bookmarks', JSON.stringify(merged));
+      renderBookmarks();
+    }
+  } catch {}
+}
 
 function renderBookmarks() {
   const list = document.getElementById('bookmarks-list');
@@ -257,6 +283,29 @@ function getCmdLib() {
 }
 function saveCmdLib(cmds) {
   safeStorage.setItem('wt-cmdlib', JSON.stringify(cmds));
+  if (window._appUnlocked && authToken) {
+    api('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ commands: cmds }) }).catch(() => {});
+  }
+}
+async function syncCmdLibFromServer() {
+  if (!window._appUnlocked || !authToken) return;
+  try {
+    const r = await api('/api/library');
+    if (!r || !Array.isArray(r.commands)) return;
+    const local = getCmdLib();
+    if (r.commands.length === 0 && local.length > 0) {
+      await api('/api/library', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ commands: local }) }).catch(() => {});
+      return;
+    }
+    if (r.commands.length > 0) {
+      const merged = [...r.commands];
+      for (const c of local) {
+        if (c && c.cmd && !merged.some(m => m.name === c.name && m.cmd === c.cmd)) merged.push(c);
+      }
+      safeStorage.setItem('wt-cmdlib', JSON.stringify(merged));
+      renderCmdLib();
+    }
+  } catch {}
 }
 
 // Backdrop for the Command Library: block the workspace behind the panel
@@ -293,6 +342,7 @@ function toggleCmdLib() {
       composer.dataset.initialized = 'true';
     }
     loadHistMax();
+    syncCmdLibFromServer();
     switchCmdTab('library');
     setCmdLibInert(true);
     installFocusTrap(panel);
@@ -383,15 +433,118 @@ function copyFallback(text) {
   document.body.removeChild(ta);
 }
 
-function pasteCmdToTerminal(cmd) {
+let _snippetParamContext = null;
+
+function parseSnippetPlaceholders(cmd) {
+  if (!cmd || typeof cmd !== 'string') return [];
+  const seen = new Set();
+  const list = [];
+  for (const m of cmd.matchAll(/\{\{\s*([a-zA-Z0-9_-]+)(?:=([^}]*))?\s*\}\}/g)) {
+    const name = m[1];
+    if (!seen.has(name)) {
+      seen.add(name);
+      list.push({ name, defaultValue: m[2] !== undefined ? m[2] : '' });
+    }
+  }
+  for (const m of cmd.matchAll(/<([a-zA-Z][a-zA-Z0-9_-]{0,24})>/g)) {
+    const name = m[1];
+    if (!seen.has(name)) {
+      seen.add(name);
+      list.push({ name, defaultValue: '' });
+    }
+  }
+  return list;
+}
+
+function applySnippetPlaceholders(cmd, values) {
+  let out = String(cmd || '');
+  out = out.replace(/\{\{\s*([a-zA-Z0-9_-]+)(?:=([^}]*))?\s*\}\}/g, (_, name, def) => {
+    return Object.prototype.hasOwnProperty.call(values, name) ? values[name] : (def || '');
+  });
+  out = out.replace(/<([a-zA-Z][a-zA-Z0-9_-]{0,24})>/g, (full, name) => {
+    return Object.prototype.hasOwnProperty.call(values, name) && values[name] !== '' ? values[name] : full;
+  });
+  return out;
+}
+
+function updateSnippetPreview() {
+  if (!_snippetParamContext) return;
+  const fieldsWrap = document.getElementById('snippet-params-fields');
+  const previewEl = document.getElementById('snippet-params-preview');
+  if (!fieldsWrap || !previewEl) return;
+  const values = {};
+  fieldsWrap.querySelectorAll('input[data-param]').forEach(inp => {
+    values[inp.dataset.param] = inp.value;
+  });
+  previewEl.textContent = applySnippetPlaceholders(_snippetParamContext.cmd, values);
+}
+
+function openSnippetParamsModal(cmd, mode) {
+  const params = parseSnippetPlaceholders(cmd);
+  if (!params.length) return false;
+  const fieldsWrap = document.getElementById('snippet-params-fields');
+  const okBtn = document.getElementById('snippet-params-ok-btn');
+  if (!fieldsWrap) return false;
+  _snippetParamContext = { cmd, mode, params };
+  fieldsWrap.innerHTML = '';
+  params.forEach(p => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;flex-direction:column;gap:4px';
+    const lbl = document.createElement('label');
+    lbl.style.cssText = 'font-size:11px;font-weight:600;color:var(--fg2)';
+    lbl.textContent = p.name;
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.dataset.param = p.name;
+    inp.value = p.defaultValue || '';
+    inp.placeholder = p.defaultValue || `Enter ${p.name}…`;
+    inp.addEventListener('input', updateSnippetPreview);
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); confirmSnippetParams(); }
+    });
+    row.appendChild(lbl);
+    row.appendChild(inp);
+    fieldsWrap.appendChild(row);
+  });
+  if (okBtn) okBtn.textContent = mode === 'run' ? 'Run' : 'Paste';
+  updateSnippetPreview();
+  openOverlay('snippet-params-overlay');
+  setTimeout(() => {
+    const first = fieldsWrap.querySelector('input');
+    if (first) { first.focus(); try { first.select(); } catch {} }
+  }, 60);
+  return true;
+}
+
+function confirmSnippetParams() {
+  if (!_snippetParamContext) return;
+  const fieldsWrap = document.getElementById('snippet-params-fields');
+  const values = {};
+  if (fieldsWrap) {
+    fieldsWrap.querySelectorAll('input[data-param]').forEach(inp => {
+      values[inp.dataset.param] = inp.value;
+    });
+  }
+  const resolved = applySnippetPlaceholders(_snippetParamContext.cmd, values);
+  const mode = _snippetParamContext.mode;
+  _snippetParamContext = null;
+  closeOverlay('snippet-params-overlay');
+  if (mode === 'run') runCmdLib(resolved, true);
+  else pasteCmdToTerminal(resolved, true);
+}
+
+function pasteCmdToTerminal(cmd, skipParamCheck = false) {
   const tab = getActiveTab();
   if (!tab || !tab.term) {
     toast('No active terminal to paste into', 'warning');
     return;
   }
+  if (!skipParamCheck && parseSnippetPlaceholders(cmd).length > 0) {
+    if (openSnippetParamsModal(cmd, 'paste')) return;
+  }
   tab.term.focus();
   tab.term.paste(cmd);
-  toggleCmdLib();
+  if (document.getElementById('cmd-lib-panel')?.classList.contains('open')) toggleCmdLib();
   toast('Command pasted into terminal', 'info');
 }
 
@@ -620,11 +773,14 @@ function filterCmdLib() {
   renderCmdLib();
 }
 
-async function runCmdLib(cmd) {
+async function runCmdLib(cmd, skipParamCheck = false) {
   const tab = getActiveTab();
   if (!tab || !tab.ws || tab.ws.readyState !== WebSocket.OPEN) {
     toast('No active terminal', 'error');
     return;
+  }
+  if (!skipParamCheck && parseSnippetPlaceholders(cmd).length > 0) {
+    if (openSnippetParamsModal(cmd, 'run')) return;
   }
   // RCE guard: curl | bash requires confirmation (U91)
   const needsConfirm = defaultCmds().some(c => c.cmd === cmd && c.requiresConfirm) || /\bcurl\b.*\|\s*bash/.test(cmd);
@@ -1281,18 +1437,40 @@ async function refreshSystemStats(showLoading) {
 
   // Overlay already paid for this payload — mirror it onto the header gauge for free
   try { paintSysIcon(data.cpu.usage, data.memory.percent); } catch {}
+  try { updateSysSparklines(data.cpu.usage, data.memory.percent); } catch {}
 
+  const disksListEl = document.getElementById('sys-disks-list');
+  if (disksListEl) disksListEl.innerHTML = '';
   if (data.disk && data.disk.length > 0) {
     const d = data.disk[0];
     const pct = parseInt(d.usePercent) || 0;
     document.getElementById('sys-disk-val').textContent = d.usePercent;
-    document.getElementById('sys-disk-sub').textContent = `${d.used} / ${d.size}`;
+    document.getElementById('sys-disk-sub').textContent = `${d.used} / ${d.size}${d.mount ? ' (' + d.mount + ')' : ''}`;
     document.getElementById('sys-disk-bar').style.width = Math.min(pct, 100) + '%';
     document.getElementById('sys-disk-bar').className = 'sys-bar-fill' + (pct > 80 ? ' danger' : pct > 50 ? ' warn' : '');
+    if (disksListEl && data.disk.length > 1) {
+      data.disk.slice(1, 6).forEach(extra => {
+        const row = document.createElement('div');
+        row.style.cssText = 'font-size:10px;color:var(--fg2);display:flex;justify-content:space-between;gap:6px';
+        const mountSpan = document.createElement('span');
+        mountSpan.style.cssText = 'font-family:var(--font);overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+        mountSpan.textContent = extra.mount || extra.fs || 'mount';
+        const valSpan = document.createElement('span');
+        valSpan.style.fontFamily = 'var(--font)';
+        valSpan.textContent = `${extra.used}/${extra.size} (${extra.usePercent})`;
+        row.appendChild(mountSpan);
+        row.appendChild(valSpan);
+        disksListEl.appendChild(row);
+      });
+    }
   } else {
     document.getElementById('sys-disk-val').textContent = '—';
     document.getElementById('sys-disk-sub').textContent = 'Not available';
     document.getElementById('sys-disk-bar').style.width = '0%';
+  }
+
+  if (showLoading) {
+    try { refreshSystemNetwork(); } catch {}
   }
 
   document.getElementById('sys-uptime-val').textContent = fmtUptime(data.uptime);
@@ -1333,6 +1511,70 @@ let _sysProcList = [];
 let _sysProcSortCol = 'cpu';
 let _sysProcSortAsc = false;
 let _sysKillConfirmTimers = {};
+let _sysCpuHistory = [];
+let _sysMemHistory = [];
+
+function renderSparklineSvg(el, values, color) {
+  if (!el) return;
+  const pts = values.slice(-24);
+  if (pts.length < 2) { el.innerHTML = ''; return; }
+  const w = 120, h = 18;
+  const coords = pts.map((v, idx) => {
+    const x = ((idx / (pts.length - 1)) * w).toFixed(1);
+    const y = (h - Math.max(1, Math.min(h - 1, (v / 100) * (h - 2)))).toFixed(1);
+    return `${x},${y}`;
+  }).join(' ');
+  el.innerHTML = `<svg width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="display:block;opacity:0.85"><polyline fill="none" stroke="${color}" stroke-width="1.5" points="${coords}"/></svg>`;
+}
+
+function updateSysSparklines(cpuPct, memPct) {
+  _sysCpuHistory.push(Math.max(0, Math.min(100, Number(cpuPct) || 0)));
+  _sysMemHistory.push(Math.max(0, Math.min(100, Number(memPct) || 0)));
+  if (_sysCpuHistory.length > 24) _sysCpuHistory.shift();
+  if (_sysMemHistory.length > 24) _sysMemHistory.shift();
+  renderSparklineSvg(document.getElementById('sys-cpu-sparkline'), _sysCpuHistory, 'var(--accent)');
+  renderSparklineSvg(document.getElementById('sys-mem-sparkline'), _sysMemHistory, 'var(--cyan)');
+}
+
+async function refreshSystemNetwork() {
+  const summaryEl = document.getElementById('sys-net-summary');
+  const listEl = document.getElementById('sys-net-interfaces');
+  if (!summaryEl || !listEl) return;
+  try {
+    const r = await api('/api/system/network');
+    if (!r || r.error) {
+      summaryEl.textContent = (r && r.error) || 'Network telemetry unavailable';
+      return;
+    }
+    const ifaces = Array.isArray(r.interfaces) ? r.interfaces : [];
+    const stats = Array.isArray(r.stats) ? r.stats : [];
+    const ports = Array.isArray(r.listeningPorts) ? r.listeningPorts : [];
+    summaryEl.textContent = `${ifaces.length} interface${ifaces.length === 1 ? '' : 's'} · ${ports.length} listening port${ports.length === 1 ? '' : 's'}`;
+    listEl.innerHTML = '';
+    ifaces.forEach(iface => {
+      const st = stats.find(s => s.iface === iface.name);
+      const card = document.createElement('div');
+      card.style.cssText = 'padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);font-size:11px;background:var(--bg2)';
+      const title = document.createElement('div');
+      title.style.cssText = 'font-weight:600;font-family:var(--font);color:var(--fg)';
+      title.textContent = iface.name;
+      const addrs = document.createElement('div');
+      addrs.style.cssText = 'color:var(--fg2);font-family:var(--font);font-size:10px;margin-top:2px';
+      addrs.textContent = (iface.addresses || []).map(a => a.address).join(', ') || 'No IP';
+      card.appendChild(title);
+      card.appendChild(addrs);
+      if (st) {
+        const rxTx = document.createElement('div');
+        rxTx.style.cssText = 'color:var(--fg3);font-family:var(--font);font-size:10px;margin-top:2px';
+        rxTx.textContent = `↓ ${formatSize(st.rxBytes || 0)} · ↑ ${formatSize(st.txBytes || 0)}`;
+        card.appendChild(rxTx);
+      }
+      listEl.appendChild(card);
+    });
+  } catch {
+    summaryEl.textContent = 'Could not load network interfaces';
+  }
+}
 
 function sortSysProcesses(col) {
   if (_sysProcSortCol === col) {
@@ -1603,6 +1845,8 @@ function refreshVersion() {
     if (el && d && d.version) el.textContent = 'v' + d.version;
     if (d && Number.isInteger(d.port)) serverPort = d.port;
   }).catch(() => {});
+  try { syncBookmarksFromServer(); } catch {}
+  try { syncCmdLibFromServer(); } catch {}
 }
 
 // Warn before closing if there are unsaved changes or active terminals
@@ -1650,9 +1894,12 @@ uiActions.register("click", {
   "sort-sys-processes-mem": function (event) { return sortSysProcesses('mem'); },
   "sort-sys-processes-cmd": function (event) { return sortSysProcesses('cmd'); },
   "refresh-system-stats": function (event) { return refreshSystemStats(true); },
+  "refresh-sys-network": function (event) { return refreshSystemNetwork(); },
   "close-system-stats": function (event) { return closeSystemStats(); },
   "dismiss-install": function (event) { return dismissInstall(); },
   "install-pwa": function (event) { return installPWA(); },
+  "confirm-snippet-params": function () { return confirmSnippetParams(); },
+  "close-overlay-snippet-params-overlay": function () { _snippetParamContext = null; return closeOverlay('snippet-params-overlay'); },
 });
 uiActions.register("keydown", {
   "toggle-bookmarks": function (event) { if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleBookmarks();}; },

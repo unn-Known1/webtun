@@ -120,3 +120,30 @@ test('SSE tail emits reset events for rotation and truncation instead of silentl
   const rotated = await event(); assert.equal(rotated.type, 'reset'); assert.equal(rotated.reason, 'rotated'); assert.ok(rotated.lines.includes('rotated!'));
   await fs.writeFile(file, 'short\n'); const truncated = await event(); assert.equal(truncated.type, 'reset'); assert.ok(truncated.lines.includes('short'));
 });
+test('tar.gz creation and extraction round-trip and audit/sync endpoints persist state', async t => {
+  const f = await fixture(t), dir = path.join(f.workspace, 'tar-src'); await fs.mkdir(dir);
+  await fs.writeFile(path.join(dir, 'hello.txt'), 'tar-content\n');
+  const created = await f.request('/api/files/zip', { method: 'POST', body: { path: dir, format: 'tar.gz' } });
+  assert.equal(created.body.success, true);
+  assert.match(created.body.path, /\.tar\.gz$/);
+  const extracted = await f.request('/api/files/extract', { method: 'POST', body: { path: created.body.path, destName: 'tar-out' } });
+  assert.equal(extracted.body.success, true);
+  assert.equal(await fs.readFile(path.join(extracted.body.dir, 'tar-src', 'hello.txt'), 'utf8'), 'tar-content\n');
+
+  const libSave = await f.request('/api/library', { method: 'POST', body: { commands: [{ name: 'List', cmd: 'ls -la', cat: 'Shell' }] } });
+  assert.equal(libSave.body.success, true);
+  assert.equal((await f.request('/api/library')).body.commands.length, 1);
+
+  const bmSave = await f.request('/api/bookmarks', { method: 'POST', body: { bookmarks: [{ name: 'work', path: f.workspace }] } });
+  assert.equal(bmSave.body.success, true);
+  assert.equal((await f.request('/api/bookmarks')).body.bookmarks.length, 1);
+
+  const polSave = await f.request('/api/policy', { method: 'POST', body: { allowedOrigins: 'https://dev.example.com', previewPorts: '3000, 8080' } });
+  assert.equal(polSave.body.success, true);
+  assert.equal(polSave.body.previewPorts, '3000,8080');
+
+  const auditRes = await f.request('/api/audit');
+  assert.ok(Array.isArray(auditRes.body.entries));
+  assert.ok(auditRes.body.entries.length >= 1);
+});
+

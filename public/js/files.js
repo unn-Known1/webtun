@@ -999,6 +999,31 @@ document.getElementById('term-ctx-clear').addEventListener('click', () => {
   if (t?.term) t.term.clear();
   hideTermCtxMenu();
 });
+document.getElementById('term-ctx-copy-output')?.addEventListener('click', () => {
+  const t = (typeof getTermCtxTarget === 'function' ? getTermCtxTarget() : null) || getActiveTab();
+  hideTermCtxMenu();
+  if (typeof copyLastCommandOutput === 'function') copyLastCommandOutput(t);
+});
+document.getElementById('term-ctx-prev-cmd')?.addEventListener('click', () => {
+  const t = (typeof getTermCtxTarget === 'function' ? getTermCtxTarget() : null) || getActiveTab();
+  hideTermCtxMenu();
+  if (typeof jumpTermCommand === 'function') jumpTermCommand(-1, t);
+});
+document.getElementById('term-ctx-next-cmd')?.addEventListener('click', () => {
+  const t = (typeof getTermCtxTarget === 'function' ? getTermCtxTarget() : null) || getActiveTab();
+  hideTermCtxMenu();
+  if (typeof jumpTermCommand === 'function') jumpTermCommand(1, t);
+});
+document.getElementById('term-ctx-export')?.addEventListener('click', () => {
+  const t = (typeof getTermCtxTarget === 'function' ? getTermCtxTarget() : null) || getActiveTab();
+  hideTermCtxMenu();
+  if (typeof exportTermScrollback === 'function') exportTermScrollback(t);
+});
+document.getElementById('term-ctx-save-workspace')?.addEventListener('click', () => {
+  const t = (typeof getTermCtxTarget === 'function' ? getTermCtxTarget() : null) || getActiveTab();
+  hideTermCtxMenu();
+  if (typeof saveTermScrollbackToWorkspace === 'function') saveTermScrollbackToWorkspace(t);
+});
 // Submenu toggle on click (TR-01: re-clamp after expansion so the added
 // ~280px can't push items off-screen under overflow clipping).
 document.querySelector('#term-ctx-menu .ctx-submenu-wrap > .ctx-item').addEventListener('click', e => {
@@ -1115,12 +1140,19 @@ function showCtxMenu(e, file) {
   // "Open in Tab" is offered for every file (the tab subsystem picks the viewer),
   // but not for directories — those have no panel view to dock.
   document.getElementById('ctx-open-tab').style.display = file.isDir ? 'none' : '';
+  const tailItem = document.getElementById('ctx-tail');
+  if (tailItem) tailItem.style.display = (!file.isDir && canOpenInEditor(file.path)) ? '' : 'none';
   document.getElementById('ctx-open-term').style.display = file.isDir ? '' : 'none';
   document.getElementById('ctx-paste').style.display = fsClipboard ? '' : 'none';
   document.getElementById('ctx-zip').style.display = '';
+  const targzItem = document.getElementById('ctx-targz');
+  if (targzItem) targzItem.style.display = '';
+  const symlinkItem = document.getElementById('ctx-symlink');
+  if (symlinkItem) symlinkItem.style.display = '';
   document.getElementById('ctx-props').style.display = '';
   document.getElementById('ctx-folder-size').style.display = file.isDir ? '' : 'none';
-  document.getElementById('ctx-extract').style.display = file.isDir ? 'none' : (file.ext === '.zip' ? '' : 'none');
+  const isArch = !file.isDir && /\.(zip|tar\.gz|tgz|tar)$/i.test(file.name || file.path || '');
+  document.getElementById('ctx-extract').style.display = isArch ? '' : 'none';
   const isMobile = window.innerWidth <= 768;
   if (isMobile) {
     if (typeof triggerHaptic === 'function') triggerHaptic('light');
@@ -1187,6 +1219,12 @@ document.getElementById('ctx-open-tab').onclick = () => {
   if (!canOpenInEditor(p) && !isImageFile(p) && !isDocFile(p)) { toast('Preview not supported for this file type — use Download', 'warning'); return; }
   openFileAsTab(p);
 };
+const _ctxTailEl = document.getElementById('ctx-tail');
+if (_ctxTailEl) _ctxTailEl.onclick = async () => {
+  if (!ctxTarget || ctxTarget.isDir) return;
+  await openFileEditor(ctxTarget.path);
+  if (typeof startLogTail === 'function') startLogTail();
+};
 document.getElementById('ctx-download').onclick = () => {
   if (selectedFiles.length > 0) { downloadSelected(); return; }
   if (ctxTarget) downloadFile(ctxTarget.path);
@@ -1198,8 +1236,18 @@ document.getElementById('ctx-zip').onclick = async () => {
   // on conflict); a lone file keeps the classic single-file zip.
   if (files.length > 1) { await zipSelected(files); clearSelection(); return; }
   const name = files[0].split(/[\\/]/).pop();
-  await zipFile(files[0], name);
+  await zipFile(files[0], name, 'zip');
   clearSelection();
+};
+const _ctxTarGzEl = document.getElementById('ctx-targz');
+if (_ctxTarGzEl) _ctxTarGzEl.onclick = async () => {
+  if (!ctxTarget) return;
+  await zipFile(ctxTarget.path, ctxTarget.name, 'tar.gz');
+};
+const _ctxSymlinkEl = document.getElementById('ctx-symlink');
+if (_ctxSymlinkEl) _ctxSymlinkEl.onclick = () => {
+  if (!ctxTarget) return;
+  openSymlinkModal(ctxTarget.path);
 };
 
 async function zipSelected(files) {
@@ -1479,37 +1527,39 @@ function resolveConflict(mode) {
   pasteFile(destDir, mode, resumeFrom).finally(() => { _conflictBusy = false; });
 }
 
-async function zipFile(path, name) {
+async function zipFile(path, name, format = 'zip') {
   // Zip streams on disk on the server: indeterminate progress + Stop, same
   // shape as copy/move jobs in the Transfer Center.
-  const job = txCreate('zip', 'Zip ' + (name || path.split(/[\\/]/).pop()), { filesTotal: 1 });
+  const isTar = format === 'tar.gz' || format === 'tgz';
+  const label = (isTar ? 'Compress ' : 'Zip ') + (name || path.split(/[\\/]/).pop());
+  const job = txCreate('zip', label, { filesTotal: 1 });
   const ctrl = new AbortController();
   job.abort = () => { try { ctrl.abort(); } catch {} };
   try {
     const r = await api('/api/files/zip', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path }),
+      body: JSON.stringify({ path, format }),
       signal: ctrl.signal,
     });
     job.abort = null;
     if (r && r.success) {
-      txFinish(job, 'done', r.name ? ('Zipped: ' + r.name) : 'Zipped');
-      toast('Zipped: ' + (r.name || name || ''), 'success');
+      txFinish(job, 'done', r.name ? ('Archived: ' + r.name) : 'Archived');
+      toast('Archived: ' + (r.name || name || ''), 'success');
       refreshFiles();
     } else {
-      txFinish(job, 'error', (r && r.error) || 'Zip failed');
-      toast((r && r.error) || 'Zip failed', 'error');
+      txFinish(job, 'error', (r && r.error) || 'Archive failed');
+      toast((r && r.error) || 'Archive failed', 'error');
     }
   } catch (e) {
     job.abort = null;
     if (e && (e.name === 'AbortError' || job.stopAfterCurrent)) {
       txFinish(job, 'cancelled');
-      toast('Zip cancelled', 'warning');
+      toast('Archive cancelled', 'warning');
       refreshFiles();
     } else {
-      txFinish(job, 'error', (e && e.message) || 'Zip failed');
-      toast('Zip failed', 'error');
+      txFinish(job, 'error', (e && e.message) || 'Archive failed');
+      toast('Archive failed', 'error');
     }
   }
 }
@@ -1693,7 +1743,7 @@ async function runContentSearch() {
       '<span class="cs-line">:' + escHtml(String(m.line)) + '</span>' +
       '<span class="cs-text">' + escHtml(String(m.content || '')) + '</span>';
     row.title = m.path + ':' + m.line;
-    row.addEventListener('click', () => { closeOverlay('content-search-overlay'); openFileEditor(m.path); });
+    row.addEventListener('click', () => { closeOverlay('content-search-overlay'); openFileEditor(m.path, { line: Number(m.line) || 1 }); });
     box.appendChild(row);
   });
 }
@@ -1911,9 +1961,70 @@ function updateFileSelectionUI() {
   const toggle = document.getElementById('file-select-toggle');
   toggle?.classList.toggle('active', selectMode);
   toggle?.setAttribute('aria-pressed', String(selectMode));
-  for (const id of ['select-delete-btn', 'select-download-btn']) {
+  for (const id of ['select-copy-btn', 'select-cut-btn', 'select-zip-btn', 'select-delete-btn', 'select-download-btn']) {
     const button = document.getElementById(id);
     if (button) button.disabled = count === 0;
+  }
+}
+
+function copySelected() {
+  if (!selectedFiles.length) return;
+  const files = selectedFiles.map(p => ({ path: p, name: p.split(/[\\/]/).pop() }));
+  fsClipboard = { action: 'copy', files };
+  updatePasteUI();
+  mirrorClipboard();
+  toast(`Copied ${files.length} item(s)`, 'success');
+  exitSelectMode();
+}
+
+function cutSelected() {
+  if (!selectedFiles.length) return;
+  const files = selectedFiles.map(p => ({ path: p, name: p.split(/[\\/]/).pop() }));
+  fsClipboard = { action: 'cut', files };
+  updatePasteUI();
+  mirrorClipboard();
+  toast(`Cut ${files.length} item(s)`, 'success');
+  exitSelectMode();
+}
+
+function openSymlinkModal(targetPath) {
+  clearFieldError('symlink-error');
+  const tIn = document.getElementById('symlink-target');
+  const pIn = document.getElementById('symlink-path');
+  if (tIn) tIn.value = targetPath || '';
+  if (pIn) {
+    const base = (targetPath || '').split(/[\\/]/).pop() || 'link';
+    pIn.value = joinPath(currentPath, base + '-link');
+  }
+  openOverlay('symlink-overlay');
+  setTimeout(() => { try { pIn?.focus(); pIn?.select(); } catch {} }, 80);
+}
+
+async function confirmCreateSymlink() {
+  const target = document.getElementById('symlink-target')?.value.trim();
+  const linkPath = document.getElementById('symlink-path')?.value.trim();
+  if (!target || !linkPath) {
+    showFieldError('symlink-error', 'Both target path and symlink path are required');
+    return;
+  }
+  clearFieldError('symlink-error');
+  const btn = document.getElementById('symlink-ok-btn');
+  setBtnBusy(btn, true);
+  try {
+    const r = await api('/api/files/symlink', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target, linkPath }),
+    });
+    if (r && r.success) {
+      toast('Symbolic link created', 'success');
+      closeOverlay('symlink-overlay');
+      refreshFiles();
+    } else {
+      showFieldError('symlink-error', (r && r.error) || 'Failed to create symlink');
+    }
+  } finally {
+    setBtnBusy(btn, false);
   }
 }
 
@@ -2111,6 +2222,7 @@ async function confirmNewFile() {
 
 // Upload
 function uploadFiles() { document.getElementById('upload-input').click(); }
+function uploadFolder() { document.getElementById('upload-folder-input')?.click(); }
 
 async function handleUploadInput() {
   const input = document.getElementById('upload-input');
@@ -2118,6 +2230,16 @@ async function handleUploadInput() {
   if (!files.length) return;
   input.value = '';
   try { await uploadFileList(files); } catch(e) { console.warn('Upload failed:', e); toast('Upload failed', 'error'); }
+}
+
+async function handleFolderUploadInput() {
+  const input = document.getElementById('upload-folder-input');
+  if (!input) return;
+  const rawFiles = [...(input.files || [])];
+  if (!rawFiles.length) return;
+  input.value = '';
+  const items = rawFiles.map(file => ({ file, path: file.webkitRelativePath || file.name }));
+  try { await uploadFileList(items); } catch(e) { console.warn('Folder upload failed:', e); toast('Folder upload failed', 'error'); }
 }
 // ═══════════════════════════════════════════════════════
 // DRAG & DROP
@@ -2248,6 +2370,18 @@ uiActions.register("click", {
   "toggle-select-mode": function (event) { return toggleSelectMode(); },
   "enter-path-edit": function (event) { return enterPathEdit(); },
   "select-all-files": function (event) { return selectAllFiles(); },
+  "copy-selected": function (event) { return copySelected(); },
+  "cut-selected": function (event) { return cutSelected(); },
+  "zip-selected": async function (event) {
+    if (!selectedFiles.length) return;
+    const files = [...selectedFiles];
+    if (files.length === 1) {
+      await zipFile(files[0], files[0].split(/[\\/]/).pop(), 'zip');
+    } else {
+      await zipSelected(files);
+    }
+    exitSelectMode();
+  },
   "delete-selected": function (event) { return deleteSelected(); },
   "download-selected": function (event) { return downloadSelected(); },
   "clear-selection": function (event) { return clearSelection(); },
@@ -2256,6 +2390,7 @@ uiActions.register("click", {
     document.getElementById('file-select-toggle')?.focus();
   },
   "upload-files": function (event) { return uploadFiles(); },
+  "upload-folder": function (event) { return uploadFolder(); },
   "new-folder": function (event) { return newFolder(); },
   "new-file": function (event) { return newFile(); },
   "paste-from-clipboard": function (event) { return pasteFromClipboard(currentPath); },
@@ -2275,6 +2410,8 @@ uiActions.register("click", {
   "confirm-rename": function (event) { return confirmRename(); },
   "confirm-new-folder": function (event) { return confirmNewFolder(); },
   "confirm-new-file": function (event) { return confirmNewFile(); },
+  "confirm-create-symlink": function (event) { return confirmCreateSymlink(); },
+  "close-overlay-symlink-overlay": function (event) { return closeOverlay('symlink-overlay'); },
   "resolve-conflict-replace": function (event) { return resolveConflict('replace'); },
   "resolve-conflict-merge": function (event) { return resolveConflict('merge'); },
   "resolve-conflict-keep-both": function (event) { return resolveConflict('keep_both'); },
@@ -2288,6 +2425,7 @@ uiActions.register("keydown", {
   "confirm-rename": function (event) { if(event.key==='Enter')confirmRename(); },
   "confirm-new-folder": function (event) { if(event.key==='Enter')confirmNewFolder(); },
   "confirm-new-file": function (event) { if(event.key==='Enter')confirmNewFile(); },
+  "confirm-create-symlink": function (event) { if(event.key==='Enter')confirmCreateSymlink(); },
   "run-content-search": function (event) { if(event.key==='Enter')runContentSearch(); },
   "save-props-mode": function (event) { if(event.key==='Enter')savePropsMode(); },
 });
@@ -2296,6 +2434,7 @@ uiActions.register("input", {
 });
 uiActions.register("change", {
   "handle-upload-input": function (event) { return handleUploadInput(); },
+  "handle-folder-upload-input": function (event) { return handleFolderUploadInput(); },
 });
 
 uiActions.register('click', {

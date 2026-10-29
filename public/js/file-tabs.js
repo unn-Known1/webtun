@@ -20,6 +20,7 @@ function findFileTab(path) { return tabs.find(t => t.type === 'file' && t.path =
 function fileTabCount() { return tabs.filter(t => t.type === 'file').length; }
 function fileTabViewerKind(path) {
   if (isImageFile(path)) return 'image';
+  if (typeof isMediaFile === 'function' && isMediaFile(path)) return 'media';
   if (isPdfFile(path)) return 'pdf';
   if (isEpubFile(path)) return 'epub';
   if (isOfficeFile(path)) return 'office';
@@ -296,6 +297,8 @@ async function mountFileTab(tab) {
       }
     } else if (tab.viewer === 'office') {
       await openOfficeViewer(tab.path);
+    } else if (tab.viewer === 'media') {
+      await openMediaViewer(tab.path);
     }
   } catch (e) { console.warn('File tab open failed:', e); }
   // Every opener sets panelState.path before its async work and bails out with a toast for
@@ -343,6 +346,15 @@ async function mountFileTab(tab) {
 
 function releaseFileTabResources(tab, { discard = tab?.closed } = {}) {
   if (!tab) return;
+  try {
+    const fb = document.getElementById('editor-find-bar');
+    const ev = document.getElementById('editor-view');
+    const ea = document.getElementById('editor-area');
+    if (fb && tab.wrapper && tab.wrapper.contains(fb) && ev && ea) {
+      fb.style.display = 'none';
+      ev.insertBefore(fb, ea);
+    }
+  } catch (_) {}
   // Destroy heavy viewer docs when this tab owned them.
   if (_dockedFileTabId === tab.id) { tab.mountedOnce = false; try { cleanupDocViewers(); } catch (_) {} }
   try { if (tab.imgUrl) { URL.revokeObjectURL(tab.imgUrl); tab.imgUrl = null; } } catch (_) {}
@@ -380,8 +392,25 @@ function buildTabEditorChrome(tab) {
   name.title = tab.path;
   const status = document.createElement('span');
   status.className = 'fte-status';
+  const cursorPos = document.createElement('span');
+  cursorPos.className = 'editor-cursor-pos';
+  cursorPos.textContent = 'Ln 1, Col 1';
+  cursorPos.title = 'Go to line (Ctrl+G)';
+  cursorPos.addEventListener('click', () => { activateTab(tab.id); toggleEditorFind(false, true); });
   const spacer = document.createElement('span');
   spacer.className = 'fte-spacer';
+  const findBtn = document.createElement('button');
+  findBtn.className = 'btn fte-btn';
+  findBtn.type = 'button';
+  findBtn.textContent = 'Find';
+  findBtn.title = 'Find / Replace in file (Ctrl+F)';
+  findBtn.addEventListener('click', () => { activateTab(tab.id); toggleEditorFind(); });
+  const histBtn = document.createElement('button');
+  histBtn.className = 'btn fte-btn';
+  histBtn.type = 'button';
+  histBtn.textContent = 'History';
+  histBtn.title = 'File Git History';
+  histBtn.addEventListener('click', () => { if (typeof openFileGitHistory === 'function') openFileGitHistory(tab.path); });
   const save = document.createElement('button');
   save.className = 'btn btn-primary fte-btn';
   save.type = 'button';
@@ -400,7 +429,8 @@ function buildTabEditorChrome(tab) {
   reload.textContent = 'Reload';
   reload.title = 'Discard edits and re-read the file from disk';
   reload.addEventListener('click', () => reloadTabFile(tab));
-  bar.append(dot, name, status, spacer, save, panel, reload);
+  bar.append(dot, name, status, cursorPos, spacer, findBtn, histBtn, save, panel, reload);
+  tab.fteCursor = cursorPos;
   // Markdown / HTML tabs get a Preview toggle (+ Full for HTML), mirroring
   // the panel. The renderers below reuse the panel's pure helpers
   // (toPreviewApiUrl, rewriteFullHtmlUrls, rewriteHtmlRelativeUrls) but keep
@@ -483,8 +513,15 @@ async function initializeTabEditor(tab, seed) {
         extraKeys: {
           'Ctrl-S': () => saveTabFile(tab),
           'Cmd-S': () => saveTabFile(tab),
-          // Esc is intentionally inert in a tile: there is no panel to close here.
-          'Esc': () => {},
+          'Ctrl-F': () => { activateTab(tab.id); toggleEditorFind(); },
+          'Cmd-F': () => { activateTab(tab.id); toggleEditorFind(); },
+          'Ctrl-H': () => { activateTab(tab.id); toggleEditorFind(true); },
+          'Ctrl-G': () => { activateTab(tab.id); toggleEditorFind(false, true); },
+          // Esc closes find bar if open, otherwise inert in a tile.
+          'Esc': () => {
+            const fb = document.getElementById('editor-find-bar');
+            if (fb && fb.style.display !== 'none') closeEditorFindBar();
+          },
         },
       }));
     } catch (e) {
@@ -518,6 +555,12 @@ async function initializeTabEditor(tab, seed) {
   if (data.cursor) { try { cm.setCursor(data.cursor); } catch {} }
   if (!cm.isFallback) {
     cm.on('change', () => { markTabDirty(tab); scheduleTabDraft(tab); scheduleTabPreview(tab); });
+    cm.on('cursorActivity', () => {
+      if (tab.fteCursor && typeof cm.getCursor === 'function') {
+        const cur = cm.getCursor();
+        tab.fteCursor.textContent = `Ln ${(cur.line || 0) + 1}, Col ${(cur.ch || 0) + 1}`;
+      }
+    });
   }
   markTabDirty(tab);
   if (buffer.extChanged) setTabExtChanged(tab, true, data.extMsg && /Deleted/.test(data.extMsg) ? data.extMsg : undefined);

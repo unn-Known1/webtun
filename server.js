@@ -311,6 +311,12 @@ const auth = createAuthService({
 });
 const { checkPin, requirePinSet, getSession, rawPinAllowed, isLoopbackReq, isLoopbackSocket, constantTimeEqual, describeChanger } = auth;
 
+const { createAuditAndSyncService } = require('./lib/server/audit');
+const auditSync = createAuditAndSyncService({
+  app, checkPin, rateLimiter, authRateLimiter, dataDir: DATA_DIR, describeChanger,
+});
+const { logAudit } = auditSync;
+
 // ── Commercial license (Pro / Team) ───────────────────────────────────
 // Offline Ed25519 keys (lib/license.js, no new deps). Caps stay dormant
 // until WEBTUN_LICENSE_PUBLIC_KEY is set, so current installs keep current
@@ -370,7 +376,9 @@ app.post('/api/license', authRateLimiter, checkPin, (req, res) => {
     const key = req.body && req.body.key;
     if (typeof key !== 'string' || !key.trim()) return res.status(400).json({ error: 'key required' });
     licenseLib.saveLicenseKey(key.trim());
-    try { console.log(`  License activated: plan=${licenseLib.status().plan}`); } catch {}
+    const st = licenseLib.status();
+    try { logAudit('license.activate', req, { plan: st.plan, seats: st.seats }); } catch {}
+    try { console.log(`  License activated: plan=${st.plan}`); } catch {}
     res.json(licenseStatusJson());
   } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
 });
@@ -378,6 +386,7 @@ app.post('/api/license', authRateLimiter, checkPin, (req, res) => {
 app.delete('/api/license', authRateLimiter, checkPin, (req, res) => {
   try {
     licenseLib.deleteLicense();
+    try { logAudit('license.remove', req, {}); } catch {}
     res.json(licenseStatusJson());
   } catch (e) { sendErr(res, e, 500); }
 });
@@ -391,6 +400,7 @@ app.delete('/api/license', authRateLimiter, checkPin, (req, res) => {
 // GET /api/billing/renewals (authed) for the admin to paste.
 const billing = require('./lib/server/billing').createBillingService({ license: licenseLib, statusJson: licenseStatusJson });
 app.post('/api/billing/checkout', authRateLimiter, checkPin, billing.checkout);
+app.post('/api/billing/portal', authRateLimiter, checkPin, billing.portal);
 app.get('/api/billing/claim', rateLimiter, billing.claim);
 app.get('/api/billing/renewals', checkPin, billing.renewals);
 app.post('/api/billing/renewals/claim', authRateLimiter, checkPin, billing.renewalClaim);
@@ -432,7 +442,7 @@ app.get('/api/system/network', rateLimiter, checkPin, async (req, res) => {
       } else if (os.platform() === 'darwin') {
         const route = execFileSync('sh', ['-c', "route -n get default 2>/dev/null | awk '/gateway:/{print $2}'"], { encoding: 'utf8', stdio: 'pipe' }).trim();
         gateway = route || null;
-        const resolv = execFileSync('sh', ['-c', "scutil --dns 2>/dev/null | awk '/nameserver\[0\]/{print $3}' | head -3"], { encoding: 'utf8', stdio: 'pipe' }).trim();
+        const resolv = execFileSync('sh', ['-c', "scutil --dns 2>/dev/null | awk '/nameserver\\[0\\]/{print $3}' | head -3"], { encoding: 'utf8', stdio: 'pipe' }).trim();
         dns = resolv.split('\n').filter(Boolean);
       } else {
         const route = execFileSync('sh', ['-c', "ip route | grep default | head -1 | awk '{print $3}'"], { encoding: 'utf8', stdio: 'pipe' }).trim();
@@ -644,11 +654,28 @@ app.get('/api/system', checkPin, async (req, res) => {
         };
       });
     } else {
-      const dfOut = await spawnRead('df', ['-h', '/']);
-      const lines = dfOut.trim().split('\n');
-      if (lines.length > 1) {
-        const parts = lines[1].split(/\s+/);
-        disk = [{ filesystem: parts[0], size: parts[1], used: parts[2], avail: parts[3], usePercent: parts[4], mounted: parts[5] }];
+      const dfOut = await spawnRead('df', ['-hP']);
+      const lines = dfOut.trim().split('\n').slice(1);
+      const seenFs = new Set();
+      for (const line of lines) {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length < 6) continue;
+        const fsName = parts[0];
+        const mounted = parts.slice(5).join(' ');
+        if (/^(tmpfs|devtmpfs|udev|none|squashfs|efivarfs|proc|sysfs|cgroup|shm|nsfs)$/i.test(fsName)) continue;
+        if (/^\/(proc|sys|dev|run|snap)(\/|$)/.test(mounted)) continue;
+        if (seenFs.has(fsName) && mounted !== '/') continue;
+        seenFs.add(fsName);
+        disk.push({ filesystem: fsName, size: parts[1], used: parts[2], avail: parts[3], usePercent: parts[4], mounted });
+      }
+      disk.sort((a, b) => (a.mounted === '/' ? -1 : b.mounted === '/' ? 1 : a.mounted.localeCompare(b.mounted)));
+      if (!disk.length) {
+        const dfRoot = await spawnRead('df', ['-h', '/']);
+        const rLines = dfRoot.trim().split('\n');
+        if (rLines.length > 1) {
+          const parts = rLines[1].split(/\s+/);
+          disk = [{ filesystem: parts[0], size: parts[1], used: parts[2], avail: parts[3], usePercent: parts[4], mounted: parts[5] }];
+        }
       }
     }
   } catch {}

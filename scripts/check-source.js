@@ -31,4 +31,18 @@ for (const src of localScripts) {
   const absolute='/'+src.replace(/^\//,'');
   if(!precache.includes("'"+absolute+"'")) throw new Error('Missing precache entry: '+absolute);
 }
+const registeredActions = new Set();
+for (const regMatch of frontend.matchAll(/uiActions\.register\s*\(\s*['"][a-z]+['"]\s*,\s*\{([\s\S]*?)\}\s*\)/g)) {
+  for (const keyMatch of regMatch[1].matchAll(/['"]([a-z0-9-]+)['"]\s*:/gi)) {
+    registeredActions.add(keyMatch[1]);
+  }
+}
+const htmlActions = new Set();
+for (const m of html.matchAll(/\bdata-(?:change-|input-|keydown-)?action="([^"]+)"/g)) {
+  htmlActions.add(m[1]);
+}
+const missingActions = [...htmlActions].filter(a => !registeredActions.has(a));
+if (missingActions.length > 0) {
+  throw new Error('Unregistered data-action(s) in public/index.html: ' + missingActions.join(', '));
+}
 console.log('Source check: '+checked+' files parse; frontend declarations and precache agree');

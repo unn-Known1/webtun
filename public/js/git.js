@@ -212,14 +212,19 @@ async function gitStash() {
   toast('Stashed', 'success');
   refreshGitPanel(currentPath);
 }
-async function gitStashPop(ref) {
+async function gitStashAction(action, ref) {
   if (!gitRoot) return;
-  const body = { path: gitRoot };
-  if (ref) body.ref = ref;
-  const r = await api('/api/git/stash/pop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  if (!r || r.error) { toast((r && r.error) || 'Pop failed', 'error'); return; }
-  toast('Stash restored', 'success');
+  if (action === 'drop') {
+    const ok = await confirmDialog({ title: 'Drop stash?', message: `Permanently delete ${ref || 'stash'}?`, okText: 'Drop', danger: true });
+    if (!ok) return;
+  }
+  const r = await api('/api/git/stash', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: gitRoot, action, ref }) });
+  if (!r || r.error) { toast((r && r.error) || (action + ' failed'), 'error'); return; }
+  toast(action === 'drop' ? 'Stash dropped' : action === 'apply' ? 'Stash applied' : 'Stash restored', 'success');
   refreshGitPanel(currentPath);
+}
+async function gitStashPop(ref) {
+  return gitStashAction('pop', ref);
 }
 async function refreshGitStash(myReq) {
   const box = document.getElementById('git-stash-list');
@@ -238,11 +243,22 @@ async function refreshGitStash(myReq) {
     m.className = 'git-stash-msg';
     m.textContent = s.message || s.ref || 'stash';
     d.appendChild(m);
+    const applyBtn = document.createElement('button');
+    applyBtn.textContent = 'Apply';
+    applyBtn.title = 'Apply ' + (s.ref || 'stash') + ' (keep stash)';
+    applyBtn.addEventListener('click', () => gitStashAction('apply', s.ref));
+    d.appendChild(applyBtn);
     const b = document.createElement('button');
     b.textContent = 'Pop';
     b.title = 'Restore ' + (s.ref || 'stash');
     b.addEventListener('click', () => gitStashPop(s.ref));
     d.appendChild(b);
+    const dropBtn = document.createElement('button');
+    dropBtn.textContent = 'Drop';
+    dropBtn.className = 'danger';
+    dropBtn.title = 'Delete ' + (s.ref || 'stash');
+    dropBtn.addEventListener('click', () => gitStashAction('drop', s.ref));
+    d.appendChild(dropBtn);
     box.appendChild(d);
   }
 }
@@ -797,6 +813,71 @@ document.getElementById('git-id-email').addEventListener('keydown', e => { if (e
 document.getElementById('git-id-name').addEventListener('keydown', e => { if (e.key === 'Enter') gitSaveIdentity(); });
 document.getElementById('git-reset-ref').addEventListener('keydown', e => { if (e.key === 'Enter') gitReset(); });
 
+async function openFileGitHistory(filePath) {
+  let targetPath = filePath;
+  if (!targetPath) {
+    try {
+      if (typeof _dockedFileTabId !== 'undefined' && _dockedFileTabId != null) {
+        const dt = tabs.find(t => t.id === _dockedFileTabId);
+        if (dt && dt.path) targetPath = dt.path;
+      }
+      if (!targetPath) {
+        const at = typeof getActiveTab === 'function' ? getActiveTab() : null;
+        if (at && at.type === 'file' && at.path) targetPath = at.path;
+      }
+      if (!targetPath && typeof panelState !== 'undefined' && panelState.path) {
+        targetPath = panelState.path;
+      }
+    } catch {}
+  }
+  if (!targetPath) { toast('Open a file first to inspect its Git history', 'info'); return; }
+  const dir = targetPath.replace(/[\\/][^\\/]+$/, '') || currentPath;
+  const fname = targetPath.split(/[\\/]/).pop() || targetPath;
+  const nameEl = document.getElementById('file-history-name');
+  const listEl = document.getElementById('file-history-list');
+  const diffEl = document.getElementById('file-history-diff');
+  if (nameEl) nameEl.textContent = fname;
+  if (listEl) listEl.innerHTML = '<div style="padding:12px;color:var(--fg3);font-size:12px">Loading commits…</div>';
+  if (diffEl) diffEl.textContent = 'Select a commit to view changes.';
+  openOverlay('file-history-overlay');
+  try {
+    const r = await api(`/api/git/file-log?path=${encodeURIComponent(dir)}&file=${encodeURIComponent(targetPath)}&limit=40`);
+    if (r.error) {
+      if (listEl) listEl.innerHTML = `<div style="padding:12px;color:var(--red);font-size:12px">${escHtml(r.error)}</div>`;
+      return;
+    }
+    const commits = Array.isArray(r.commits) ? r.commits : [];
+    if (!commits.length) {
+      if (listEl) listEl.innerHTML = '<div style="padding:12px;color:var(--fg3);font-size:12px">No Git commits found for this file.</div>';
+      return;
+    }
+    if (listEl) {
+      listEl.innerHTML = '';
+      const loadCommitDiff = async (c, rowEl) => {
+        listEl.querySelectorAll('.file-history-row').forEach(el => el.classList.remove('active'));
+        rowEl.classList.add('active');
+        if (diffEl) diffEl.textContent = 'Loading diff…';
+        try {
+          const sr = await api(`/api/git/show?path=${encodeURIComponent(r.root || dir)}&ref=${encodeURIComponent(c.hash)}&file=${encodeURIComponent(r.file || fname)}`);
+          if (diffEl) diffEl.textContent = sr.error ? sr.error : (sr.diff || '(No diff output)');
+        } catch (err) {
+          if (diffEl) diffEl.textContent = err.message || 'Failed to load diff';
+        }
+      };
+      commits.forEach((c, idx) => {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'file-history-row' + (idx === 0 ? ' active' : '');
+        row.innerHTML = `<div class="fh-top"><span class="fh-short">${escHtml(c.short)}</span><span class="fh-date">${escHtml(c.date)}</span></div><div class="fh-subj">${escHtml(c.subject)}</div><div class="fh-author">${escHtml(c.author)}</div>`;
+        row.addEventListener('click', () => loadCommitDiff(c, row));
+        listEl.appendChild(row);
+        if (idx === 0) loadCommitDiff(c, row);
+      });
+    }
+  } catch (e) {
+    if (listEl) listEl.innerHTML = `<div style="padding:12px;color:var(--red);font-size:12px">${escHtml(e.message || 'Failed to load history')}</div>`;
+  }
+}
 
 // Declarative controls owned by this feature.
 uiActions.register("click", {
@@ -820,6 +901,8 @@ uiActions.register("click", {
   "git-continue": function () { return gitWorkflow('continue', this); },
   "git-abort": function () { return gitWorkflow('abort', this); },
   "git-blame": function () { return gitBlame(this); },
+  "open-file-git-history": function () { return openFileGitHistory(); },
+  "close-overlay-file-history-overlay": function () { return closeOverlay('file-history-overlay'); },
 });
 uiActions.register("keydown", {
   "toggle-git-panel": function (event) { if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleGitPanel();}; },

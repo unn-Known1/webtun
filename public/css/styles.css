@@ -15,26 +15,24 @@
 .billing-renewal span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 :root {
   color-scheme: dark;
+  --bg0: #13141c;
   --bg: #1a1b26;
+  --bg1: #16161e;
   --bg2: #16161e;
   --bg3: #24283b;
   --bg4: #2a2d3e;
-  /* Amber is a Tokyo-Night-only literal that every other theme inherited,
-     landing at 1.63-2.07:1 in all three light themes (S-05). Aliasing it to
-     --yellow makes it resolve per theme from the inherited value; the light
-     themes override it below with a darker amber that clears AA. */
   --amber: var(--yellow);
-  /* Unsaved-edits and changed-on-disk are semantic states, not theme colors.
-     One token each, shared by the panel dot, the file-tab dot and the tab-strip
-     glyph, which previously drifted apart (S-06). */
   --dirty: var(--amber);
   --ext-changed: var(--cyan);
   --border: #3b3f52;
+  --fg0: #ffffff;
   --fg: #c0caf5;
+  --fg1: #c0caf5;
   --fg2: #9aa0c3;
   --fg3: #8b91b8;
   --accent: #7aa2f7;
   --accent2: #bb9af7;
+  --purple: #bb9af7;
   --green: #9ece6a;
   --red: #f7768e;
   --yellow: #e0af68;
@@ -4026,3 +4024,294 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
     -webkit-backdrop-filter: none;
   }
 }
+
+/* ═══════════════════════════════════════════════════════
+   EDITOR SUB-BARS, FIND/REPLACE, GIT CONFLICTS, LOG TAIL,
+   BROADCAST INPUT, TILE ZOOM, STICKY MOD HUD & CSV FILTER
+   ═══════════════════════════════════════════════════════ */
+.editor-cursor-pos {
+  font-family: var(--font);
+  font-size: 11px;
+  color: var(--fg3);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.editor-cursor-pos:hover {
+  background: var(--bg3);
+  color: var(--fg);
+}
+.editor-subbar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.editor-find-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.editor-find-row input[type="text"],
+.editor-find-row input[type="number"] {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font);
+}
+#editor-find-input, #editor-replace-input {
+  flex: 1 1 160px;
+  min-width: 120px;
+}
+#editor-goto-input {
+  width: 78px;
+}
+.editor-find-count {
+  font-family: var(--font);
+  font-size: 11px;
+  color: var(--fg3);
+  min-width: 58px;
+  text-align: center;
+}
+.editor-conflict-bar {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(224, 175, 104, 0.12);
+  border-bottom: 1px solid var(--yellow);
+  color: var(--yellow);
+  flex-wrap: wrap;
+}
+.editor-conflict-actions, .editor-tail-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.editor-tail-bar {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(125, 207, 255, 0.1);
+  border-bottom: 1px solid var(--cyan);
+  color: var(--cyan);
+}
+.tail-live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  margin-right: 6px;
+  box-shadow: 0 0 6px var(--green);
+}
+
+/* Broadcast Input Banner & Active Ring */
+.broadcast-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 5px 12px;
+  background: rgba(247, 118, 142, 0.14);
+  border-bottom: 1px solid var(--red);
+  color: var(--red);
+  font-size: 12px;
+  font-weight: 600;
+}
+#terminals.broadcast-active .term-wrapper {
+  box-shadow: inset 0 0 0 2px var(--red);
+}
+#broadcast-toggle-btn.active {
+  color: var(--red);
+  background: rgba(247, 118, 142, 0.16);
+}
+
+/* Tile Header Status Dot & Zoom Maximize */
+.tth-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--fg3);
+  flex-shrink: 0;
+}
+.tth-dot.connected {
+  background: var(--green);
+}
+.tth-zoom {
+  background: transparent;
+  border: none;
+  color: var(--fg2);
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 1;
+}
+.tth-zoom:hover {
+  background: var(--bg3);
+  color: var(--fg);
+}
+#terminals.tiles-mode.has-tile-zoom .term-wrapper:not(.tile-zoomed) {
+  display: none !important;
+}
+#terminals.tiles-mode.has-tile-zoom .term-wrapper.tile-zoomed {
+  grid-column: 1 / -1 !important;
+  grid-row: 1 / -1 !important;
+}
+
+/* Visible Resize Grip Pills */
+.sidebar-resize-handle::after,
+#editor-resize-handle::after {
+  content: '';
+  display: block;
+  border-radius: 999px;
+  background: var(--border);
+  opacity: 0.75;
+  transition: background 0.15s, opacity 0.15s;
+}
+.sidebar-resize-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sidebar-resize-handle::after {
+  width: 3px;
+  height: 28px;
+}
+#editor-resize-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#editor-resize-handle::after {
+  width: 32px;
+  height: 3px;
+}
+#editor-split-area.horizontal > #editor-resize-handle::after {
+  width: 3px;
+  height: 32px;
+}
+.sidebar-resize-handle:hover::after,
+#editor-resize-handle:hover::after {
+  background: var(--accent);
+  opacity: 1;
+}
+
+/* Mobile Sticky Modifier Pill HUD */
+#mkey-sticky-hud {
+  display: none;
+  position: fixed;
+  right: 12px;
+  bottom: calc(var(--mobilekey-h, 46px) + var(--kb-inset, 0px) + 8px);
+  z-index: 95;
+  background: var(--accent);
+  color: var(--bg);
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+}
+#mkey-sticky-hud.visible {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* File Git History Split Layout */
+.file-history-layout {
+  display: grid;
+  grid-template-columns: minmax(200px, 260px) 1fr;
+  gap: 12px;
+  min-height: 320px;
+  max-height: 62vh;
+  margin-block: 10px;
+}
+.file-history-list {
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg2);
+}
+.fh-commit-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--fg);
+  cursor: pointer;
+}
+.fh-commit-row:hover, .fh-commit-row.active {
+  background: var(--bg3);
+}
+.fh-commit-top {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--fg3);
+}
+.fh-hash {
+  font-family: var(--font);
+  color: var(--accent);
+}
+.fh-subject {
+  font-size: 12px;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fh-author {
+  font-size: 11px;
+  color: var(--fg2);
+}
+.file-history-diff {
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  padding: 8px;
+  font-family: var(--font);
+  font-size: 12px;
+}
+@media (max-width: 640px) {
+  .file-history-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Office / CSV Filter Bar */
+.office-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.office-filter-bar input {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+  background: var(--bg2);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  width: min(280px, 100%);
+}
+

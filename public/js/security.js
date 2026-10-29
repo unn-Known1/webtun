@@ -547,6 +547,8 @@ async function refreshLicense() {
     statusEl.textContent = 'Active (' + plan + (exp ? ', renews ' + exp : '') + ').';
   }
   refreshRenewals();
+  try { loadRuntimePolicy(); } catch {}
+  try { refreshAuditLog(); } catch {}
 }
 async function saveLicenseKey() {
   const input = document.getElementById('lic-key');
@@ -620,6 +622,163 @@ async function claimRenewal(button) {
   } finally { setBtnBusy(button, false); }
 }
 
+async function openBillingPortal() {
+  const btn = document.getElementById('billing-portal-btn');
+  if (btn && btn.disabled) return;
+  clearFieldError('billing-error');
+  if (btn) setBtnBusy(btn, true);
+  try {
+    const r = await api('/api/billing/portal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+    if (!r || !r.url) {
+      showFieldError('billing-error', (r && r.error) || 'Billing portal unavailable');
+      return;
+    }
+    const win = window.open(r.url, '_blank', 'noopener,noreferrer');
+    if (!win) {
+      const link = document.getElementById('billing-checkout-link');
+      if (link) { link.href = r.url; link.textContent = 'Open billing portal'; link.hidden = false; }
+    }
+  } finally {
+    if (btn) setBtnBusy(btn, false);
+  }
+}
+
+// ── Runtime Access Policy ──
+async function loadRuntimePolicy() {
+  if (!window._appUnlocked) return;
+  const originsEl = document.getElementById('policy-allowed-origins');
+  const portsEl = document.getElementById('policy-preview-ports');
+  if (!originsEl && !portsEl) return;
+  try {
+    const r = await api('/api/policy');
+    if (!r || r.error) return;
+    if (originsEl && r.allowedOrigins !== undefined) {
+      originsEl.value = Array.isArray(r.allowedOrigins) ? r.allowedOrigins.join(', ') : String(r.allowedOrigins || '');
+    }
+    if (portsEl && r.previewPorts !== undefined) {
+      portsEl.value = Array.isArray(r.previewPorts) ? r.previewPorts.join(', ') : String(r.previewPorts || '');
+    }
+  } catch {}
+}
+
+async function saveRuntimePolicy() {
+  const originsEl = document.getElementById('policy-allowed-origins');
+  const portsEl = document.getElementById('policy-preview-ports');
+  const btn = document.getElementById('policy-save-btn');
+  const allowedOrigins = originsEl ? originsEl.value : '';
+  const previewPorts = portsEl ? portsEl.value : '';
+  if (btn) setBtnBusy(btn, true);
+  try {
+    const r = await api('/api/policy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ allowedOrigins, previewPorts })
+    });
+    if (r && r.success) {
+      if (originsEl && r.allowedOrigins !== undefined) {
+        originsEl.value = Array.isArray(r.allowedOrigins) ? r.allowedOrigins.join(', ') : String(r.allowedOrigins || '');
+      }
+      if (portsEl && r.previewPorts !== undefined) {
+        portsEl.value = Array.isArray(r.previewPorts) ? r.previewPorts.join(', ') : String(r.previewPorts || '');
+      }
+      toast('Runtime access policy saved', 'success');
+    } else {
+      toast((r && r.error) || 'Failed to save policy', 'error');
+    }
+  } finally {
+    if (btn) setBtnBusy(btn, false);
+  }
+}
+
+// ── Security Audit Log ──
+let _auditEntriesCache = [];
+
+async function refreshAuditLog() {
+  const list = document.getElementById('audit-log-list');
+  if (!list || !window._appUnlocked) return;
+  try {
+    const r = await api('/api/audit?limit=200');
+    if (!r || !Array.isArray(r.entries)) {
+      setListMessage(list, (r && r.error) || 'Audit log unavailable.');
+      return;
+    }
+    _auditEntriesCache = r.entries;
+    renderAuditLog();
+  } catch {
+    setListMessage(list, 'Could not load audit log.');
+  }
+}
+
+function filterAuditLog() {
+  renderAuditLog();
+}
+
+function renderAuditLog() {
+  const list = document.getElementById('audit-log-list');
+  if (!list) return;
+  const q = (document.getElementById('audit-filter-input')?.value || '').trim().toLowerCase();
+  const entries = q
+    ? _auditEntriesCache.filter(e =>
+        String(e.action || '').toLowerCase().includes(q) ||
+        String(e.ip || '').toLowerCase().includes(q) ||
+        String(e.device || '').toLowerCase().includes(q) ||
+        String(e.detail || '').toLowerCase().includes(q)
+      )
+    : _auditEntriesCache;
+
+  list.innerHTML = '';
+  if (!entries.length) {
+    setListMessage(list, q ? 'No matching audit events.' : 'No audit events recorded yet.');
+    return;
+  }
+  for (const ev of entries.slice(0, 100)) {
+    const row = document.createElement('div');
+    row.className = 'settings-session';
+    row.style.cssText = 'padding:5px 8px;font-size:11px';
+    const info = document.createElement('div');
+    info.className = 'settings-session-info';
+    const title = document.createElement('div');
+    title.className = 'settings-session-title';
+    title.style.fontFamily = 'var(--font)';
+    title.textContent = `${ev.action || 'event'}${ev.detail ? ' — ' + ev.detail : ''}`;
+    const sub = document.createElement('div');
+    sub.className = 'settings-session-meta';
+    const ts = ev.at ? new Date(ev.at).toLocaleString() : '';
+    sub.textContent = `${ev.ip || 'local'}${ev.device ? ' · ' + ev.device : ''}${ts ? ' · ' + ts : ''}`;
+    info.appendChild(title);
+    info.appendChild(sub);
+    row.appendChild(info);
+    list.appendChild(row);
+  }
+}
+
+function exportAuditLog(format) {
+  const fmt = format === 'csv' ? 'csv' : 'json';
+  const a = document.createElement('a');
+  a.href = `/api/audit/export?format=${fmt}&token=${encodeURIComponent(authToken)}`;
+  a.download = `webtun-audit.${fmt}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+async function clearAuditLog() {
+  const ok = await confirmDialog({
+    title: 'Clear Audit Log?',
+    message: 'Remove all recorded security audit events from disk?',
+    okText: 'Clear Log',
+    danger: true
+  });
+  if (!ok) return;
+  const r = await api('/api/audit', { method: 'DELETE' });
+  if (r && r.success) {
+    _auditEntriesCache = [];
+    renderAuditLog();
+    toast('Audit log cleared', 'info');
+  } else {
+    toast((r && r.error) || 'Failed to clear audit log', 'error');
+  }
+}
 
 // Declarative controls owned by this feature.
 uiActions.register("click", {
@@ -630,8 +789,15 @@ uiActions.register("click", {
   "remove-license-key": function (event) { return removeLicenseKey(); },
   "start-checkout-pro": function (event) { return startCheckout('pro'); },
   "start-checkout": function () { return startCheckout(); },
+  "open-billing-portal": function () { return openBillingPortal(); },
   "refresh-renewals": function () { return refreshRenewals(); },
   "claim-renewal": function () { return claimRenewal(this); },
+  "save-runtime-policy": function () { return saveRuntimePolicy(); },
+  "load-runtime-policy": function () { return loadRuntimePolicy(); },
+  "refresh-audit-log": function () { return refreshAuditLog(); },
+  "export-audit-json": function () { return exportAuditLog('json'); },
+  "export-audit-csv": function () { return exportAuditLog('csv'); },
+  "clear-audit-log": function () { return clearAuditLog(); },
   "refresh-sessions": function (event) { return refreshSessions(); },
   "revoke-other-sessions": function (event) { return revokeOtherSessions(); },
   "create-tunnel": function (event) { return createTunnel(); },
@@ -641,4 +807,8 @@ uiActions.register("keydown", {
   "create-tunnel": function (event) { if(event.key==='Enter'){event.preventDefault();return createTunnel();} },
   "copy-text-ssh-once-cmd": function (event) { if(event.key==='Enter'||event.key===' '){event.preventDefault();copyText(document.getElementById('ssh-once-cmd').textContent)}; },
 });
+uiActions.register("input", {
+  "filter-audit-log": function () { return filterAuditLog(); },
+});
 uiActions.register('change', { 'sync-billing-seats': function () { return syncBillingSeats(); } });
+

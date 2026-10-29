@@ -63,4 +63,14 @@ test('history pages and bounded blame return real repository data', async t => {
   assert.equal(a.commits.some(x => b.commits.some(y => y.hash === x.hash)), false);
   const blame = await f.get('blame?file=alpha.txt&start=1&count=200');
   assert.equal(blame.status, 200); assert.match(blame.body.blame, /alpha on disk/);
+  const fileLog = await f.get('file-log?file=alpha.txt');
+  assert.equal(fileLog.status, 200); assert.ok(Array.isArray(fileLog.body.commits)); assert.ok(fileLog.body.commits.length >= 1);
+  await fs.writeFile(path.join(f.workspace, 'alpha.txt'), 'stash-me\n');
+  assert.equal((await f.post('stash', { action: 'push', message: 'wip-stash' })).body.success, true);
+  const stashes = (await f.get('stashes')).body.stashes;
+  assert.equal(stashes.length, 1);
+  assert.equal((await f.post('stash', { action: 'apply', index: 0 })).body.success, true);
+  assert.equal((await f.post('stash', { action: 'drop', index: 0 })).body.success, true);
+  assert.equal((await f.get('stashes')).body.stashes.length, 0);
 });
+

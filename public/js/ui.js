@@ -39,7 +39,11 @@ async function resetSettings() {
   document.getElementById('s-font').value = settings.font;
   document.getElementById('s-cursor').value = settings.cursor;
   document.getElementById('s-screensaver-min').value = settings.screensaverMin;
-  syncToggle('blink'); syncToggle('bell'); syncToggle('clipboardRead'); syncToggle('passCtrlK'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver'); syncToggle('termRightClick'); syncToggle('screensaver'); syncToggle('gitEnabled'); syncToggle('gitSimple'); syncToggle('sshEnabled'); syncToggle('autostart');
+  const tsEl = document.getElementById('s-tabsize');
+  if (tsEl) tsEl.value = String(settings.tabSize || 2);
+  syncToggle('blink'); syncToggle('bell'); syncToggle('clipboardRead'); syncToggle('passCtrlK'); syncToggle('mobilekeys'); syncToggle('confirmclose'); syncToggle('datasaver'); syncToggle('termRightClick'); syncToggle('screensaver'); syncToggle('gitEnabled'); syncToggle('gitSimple'); syncToggle('sshEnabled'); syncToggle('autostart'); syncToggle('editorWrap');
+  try { if (typeof applyEditorWrap === 'function') applyEditorWrap(settings.editorWrap, false); } catch {}
+  try { if (typeof applyTabSize === 'function') applyTabSize(settings.tabSize || 2, false); } catch {}
   try { if (typeof applySshEnabled === 'function') applySshEnabled(); } catch {}
   try { if (typeof syncSshEnabledToServer === 'function') syncSshEnabledToServer(); } catch {}
   // keepAwake is a header checkbox, not a settings toggle — resync it
@@ -92,6 +96,7 @@ function setupMoreMenuKeyboard() {
 // HELPERS
 // ═══════════════════════════════════════════════════════
 let lastFocusedElement = null;
+const _focusStack = [];
 let _focusTrapHandler = null;
 function syncOverlayBackground() {
   const app = document.getElementById('app');
@@ -103,6 +108,7 @@ function openShortcuts() {
 }
 function openOverlay(id) {
   lastFocusedElement = document.activeElement;
+  _focusStack.push(document.activeElement);
   const overlay = document.getElementById(id);
   if (!overlay) return;
   overlay.classList.add('open');
@@ -142,8 +148,8 @@ function closeOverlay(id) {
   const remaining = [...document.querySelectorAll('.overlay.open')].pop();
   if (remaining) installFocusTrap(remaining);
   // Capture before nulling: the timeout fires after this function returns.
-  const lf = lastFocusedElement;
-  lastFocusedElement = null;
+  const lf = _focusStack.pop() || lastFocusedElement;
+  lastFocusedElement = _focusStack[_focusStack.length - 1] || null;
   if (lf) setTimeout(() => { try { lf.focus(); } catch {} }, 50);
 }
 let _focusTrapContainer = null;
@@ -190,24 +196,30 @@ function removeFocusTrap() {
 
 let _confirmState = null;
 let _confirmQueue = [];
-function confirmDialog({ title = 'Confirm', message = '', okText = 'OK', cancelText = 'Cancel', danger = false } = {}) {
+function confirmDialog({ title = 'Confirm', message = '', okText = 'OK', cancelText = 'Cancel', danger = false, prompt = false, defaultValue = '', placeholder = '' } = {}) {
   return new Promise(resolve => {
     if (_confirmState) {
       // Queue second dialog until first settles (fixes race U51)
-      _confirmQueue.push({ title, message, okText, cancelText, danger, resolve });
+      _confirmQueue.push({ title, message, okText, cancelText, danger, prompt, defaultValue, placeholder, resolve });
       return;
     }
     const ov = document.getElementById('confirm-overlay');
-    if (!ov || !ov.parentNode) { resolve(false); return; }
+    if (!ov || !ov.parentNode) { resolve(prompt ? null : false); return; }
     const okBtn = document.getElementById('confirm-ok-btn');
     const cancelBtn = document.getElementById('confirm-cancel-btn');
-  const titleEl = document.getElementById('confirm-title');
-  const msgEl = document.getElementById('confirm-msg');
-  titleEl.textContent = title;
-  msgEl.textContent = message;
-  ov.setAttribute('role', 'dialog');
-  ov.setAttribute('aria-modal', 'true');
-  ov.setAttribute('aria-labelledby', 'confirm-title');
+    const titleEl = document.getElementById('confirm-title');
+    const msgEl = document.getElementById('confirm-msg');
+    const promptInput = document.getElementById('confirm-prompt-input');
+    titleEl.textContent = title;
+    msgEl.textContent = message;
+    if (promptInput) {
+      promptInput.style.display = prompt ? '' : 'none';
+      promptInput.value = prompt ? String(defaultValue ?? '') : '';
+      promptInput.placeholder = prompt ? String(placeholder || '') : '';
+    }
+    ov.setAttribute('role', 'dialog');
+    ov.setAttribute('aria-modal', 'true');
+    ov.setAttribute('aria-labelledby', 'confirm-title');
     okBtn.textContent = okText;
     cancelBtn.textContent = cancelText;
     okBtn.classList.toggle('btn-danger', !!danger);
@@ -216,14 +228,15 @@ function confirmDialog({ title = 'Confirm', message = '', okText = 'OK', cancelT
       if (settled) return;
       settled = true;
       _confirmState = null;
+      if (promptInput) promptInput.style.display = 'none';
       ov.classList.remove('open');
       syncOverlayBackground();
       ov.removeEventListener('keydown', onKey);
       removeFocusTrap();
       const remaining = [...document.querySelectorAll('.overlay.open')].pop();
       if (remaining) installFocusTrap(remaining);
-      const lf = lastFocusedElement;
-      lastFocusedElement = null;
+      const lf = _focusStack.pop() || lastFocusedElement;
+      lastFocusedElement = _focusStack[_focusStack.length - 1] || null;
       if (lf) setTimeout(() => { try { lf.focus(); } catch {} }, 50);
       // Dequeue next pending dialog
       if (_confirmQueue.length) {
@@ -231,21 +244,38 @@ function confirmDialog({ title = 'Confirm', message = '', okText = 'OK', cancelT
         setTimeout(() => confirmDialog(next).then(next.resolve), 80);
       }
     };
-    const finish = val => { const cb = _confirmState && _confirmState.resolve; cleanup(); if (cb) cb(val); };
+    const finish = ok => {
+      const cb = _confirmState && _confirmState.resolve;
+      const val = prompt ? (ok ? (promptInput ? promptInput.value : '') : null) : !!ok;
+      cleanup();
+      if (cb) cb(val);
+    };
     const onKey = e => {
       if (e.key === 'Escape') { e.stopPropagation(); finish(false); }
       else if (e.key === 'Enter' && !(e.target instanceof HTMLButtonElement)) { e.preventDefault(); finish(true); }
     };
     _confirmState = { resolve, cleanup };
     lastFocusedElement = document.activeElement;
+    _focusStack.push(document.activeElement);
     okBtn.onclick = () => finish(true);
     cancelBtn.onclick = () => finish(false);
     ov.addEventListener('keydown', onKey);
     ov.classList.add('open');
     syncOverlayBackground();
     installFocusTrap(ov);
-    setTimeout(() => okBtn.focus(), 50);
+    setTimeout(() => {
+      if (prompt && promptInput) {
+        promptInput.focus();
+        try { promptInput.select(); } catch {}
+      } else {
+        okBtn.focus();
+      }
+    }, 50);
   });
+}
+
+function promptDialog({ title = 'Input', message = '', defaultValue = '', placeholder = '', okText = 'Save', cancelText = 'Cancel' } = {}) {
+  return confirmDialog({ title, message, okText, cancelText, prompt: true, defaultValue, placeholder });
 }
 
 document.querySelectorAll('.overlay').forEach(o => {
@@ -1035,6 +1065,7 @@ function showPinScreen() {
   if (!window._appUnlocked && !tabs.length) return; // late 401 must not erase a typed PIN
   window._appUnlocked = false;
   lastFocusedElement = null;
+  if (typeof _focusStack !== 'undefined') _focusStack.length = 0;
   for (const pending of _confirmQueue.splice(0)) pending.resolve(false);
   if (_confirmState) { const state = _confirmState; state.cleanup(); state.resolve(false); }
   closeSystemStats();

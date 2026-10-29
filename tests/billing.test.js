@@ -82,3 +82,15 @@ test('a license copied after init is visible after the post-migration reload', a
   await fs.writeFile(path.join(f.root, 'license.json'), JSON.stringify({ key }));
   license.loadLicense(); assert.equal(license.status().plan, 'pro');
 });
+test('customer billing portal uses customer id persisted from checkout webhook', async t => {
+  const f = await fixture(t);
+  await f.event('checkout.session.completed', { id: 'cs_test_portal', customer: 'cus_test_123', payment_status: 'paid', subscription: f.sub('pro', false, 1) });
+  const res = f.response();
+  await f.service.portal({ body: {}, protocol: 'https', get: () => 'example.invalid' }, res);
+  assert.equal(res.code, 200);
+  assert.equal(res.body.url, 'https://checkout.stripe.com/dummy');
+  const portalCall = f.requests.find(r => r.url.includes('/v1/billing_portal/sessions'));
+  assert.ok(portalCall);
+  assert.equal(new URLSearchParams(portalCall.opts.body).get('customer'), 'cus_test_123');
+});
+

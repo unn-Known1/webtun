@@ -25,6 +25,8 @@ test('HTTP and WebSocket targets scrub only WebTun credentials, preserving upstr
   assert.equal(guard.stripQuery('/hmr?token=dummy-pin'), '/hmr');
 });
 test('the composed preview forwards original JSON, form, binary and multipart bytes', async t => {
+  const prevPreviewPorts = process.env.PREVIEW_PORTS;
+  delete process.env.PREVIEW_PORTS;
   process.env.PIN = 'preview-test-pin';
   const { app } = require('../server');
   const upstream = http.createServer((req, res) => {
@@ -34,7 +36,13 @@ test('the composed preview forwards original JSON, form, binary and multipart by
   const gateway = http.createServer(app);
   await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
   await new Promise(resolve => gateway.listen(0, '127.0.0.1', resolve));
-  t.after(async () => { gateway.closeAllConnections(); upstream.closeAllConnections(); await Promise.all([new Promise(r => gateway.close(r)), new Promise(r => upstream.close(r))]); delete process.env.PIN; });
+  t.after(async () => {
+    gateway.closeAllConnections(); upstream.closeAllConnections();
+    await Promise.all([new Promise(r => gateway.close(r)), new Promise(r => upstream.close(r))]);
+    delete process.env.PIN;
+    if (prevPreviewPorts === undefined) delete process.env.PREVIEW_PORTS;
+    else process.env.PREVIEW_PORTS = prevPreviewPorts;
+  });
   const url = 'http://127.0.0.1:' + gateway.address().port + '/api/preview/' + upstream.address().port + '/submit?token=foreign';
   for (const [type, text] of [['application/json', '{"message":"dummy"}'], ['application/x-www-form-urlencoded', 'message=dummy'], ['application/octet-stream', '\0\x01dummy'], ['multipart/form-data; boundary=fixture', '--fixture\r\nContent-Disposition: form-data; name="x"\r\n\r\ndummy\r\n--fixture--\r\n']]) {
     const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': type, 'x-pin-token': 'preview-test-pin' }, body: text });

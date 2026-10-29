@@ -233,6 +233,13 @@ See [the architecture guide](docs/SYSTEM_ARCHITECTURE_AND_DESIGN_PRINCIPLES.md) 
 
 ## Changelog
 
+### v2.3.7
+- **Code editor workflows** — in-editor Find, Replace, and Go-to-Line (`Ctrl+F` / `Ctrl+H` / `Ctrl+G`) with case and regex toggles across both the split panel and file tabs; cursor `Ln X, Col Y` indicator; Word Wrap and Tab Size (`2`–`8`) settings; and content search results jumping directly to the matched line.
+- **Git conflict resolution & file history** — automatic merge-conflict detection banner in the editor with 1-click **Accept Ours / Accept Theirs / Accept Both** actions, plus a per-file Git History modal showing commit log and per-commit diffs.
+- **Live log tail & CSV/TSV table viewer** — real-time SSE log streaming (`Live Tail`) with Pause/Resume and Clear for `.log`/`.out`/`.err`/`.txt` files, and interactive spreadsheet table preview with live row filtering for `.csv`, `.tsv`, and `.xlsx` files.
+- **Multi-terminal broadcast, tile zoom & snippets** — Broadcast Input mode to send keystrokes to all open terminals simultaneously; per-tile connection status dot and Maximize/Restore (`⤢`) toggle in Tiles Mode; parameterized command snippets (`{{var=default}}` and `<placeholder>`); and a non-blocking themed prompt modal replacing `window.prompt`.
+- **Preview & mobile ergonomics** — editable URL path bar, quick port switcher, and responsive viewport width presets (`100%`, `768px`, `375px`) in App Preview tabs; floating sticky modifier pill (`CTRL`/`ALT`/`SHIFT` latched) above the mobile key bar; stacked modal focus restoration; and static `data-action` verification in `npm run check`.
+
 ### v2.3.6
 - **Billing correctness** — checkout/renewal claim IDs, verified plan/seat/period entitlements, and webhook idempotency, plus plan/term/seat purchase and renewal activation UI.
 - **File safety** — shared copy/move guards against self-paste and descendant overwrites, conflict accounting, occupied-rename refusal, complete merge rollback, symlink-accurate metadata, aligned ZIP limits, byte-range downloads, preserved folder uploads, and rate-limit-aware upload retries.

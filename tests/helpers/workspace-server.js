@@ -12,6 +12,7 @@ const { registerFileRoutes } = require('../../lib/server/files');
 const { registerGitRoutes } = require('../../lib/server/git');
 const { createTerminalService } = require('../../lib/server/terminal');
 const { createTunnelService } = require('../../lib/server/tunnels');
+const { createAuditAndSyncService } = require('../../lib/server/audit');
 
 // The HTTP, file, Git, auth, and WS handlers are the real services. Only the
 // operating-system shell is substituted so tests cannot affect real sessions.
@@ -38,6 +39,10 @@ async function createWorkspaceServer(options = {}) {
       revoke: token => terminal?.pushSessionRevoked(token),
       invalidate: reason => terminal?.closeInvalidSockets(reason),
     },
+  });
+  createAuditAndSyncService({
+    app, checkPin: auth.checkPin, rateLimiter: pass, authRateLimiter: pass,
+    dataDir, describeChanger: auth.describeChanger,
   });
   const paths = createPathAccess({ workspaceRoot: workspace, allowFullFs: false });
   const shells = [];
