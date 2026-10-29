@@ -1469,9 +1469,7 @@ async function refreshSystemStats(showLoading) {
     document.getElementById('sys-disk-bar').style.width = '0%';
   }
 
-  if (showLoading) {
-    try { refreshSystemNetwork(); } catch {}
-  }
+  try { refreshSystemNetwork(false); } catch {}
 
   document.getElementById('sys-uptime-val').textContent = fmtUptime(data.uptime);
   document.getElementById('sys-uptime-sub').textContent = data.hostname + ' · ' + data.platform;
@@ -1536,43 +1534,121 @@ function updateSysSparklines(cpuPct, memPct) {
   renderSparklineSvg(document.getElementById('sys-mem-sparkline'), _sysMemHistory, 'var(--cyan)');
 }
 
-async function refreshSystemNetwork() {
+async function refreshSystemNetwork(manual) {
   const summaryEl = document.getElementById('sys-net-summary');
   const listEl = document.getElementById('sys-net-interfaces');
+  const btn = manual ? document.querySelector('[data-action="refresh-sys-network"]') : null;
   if (!summaryEl || !listEl) return;
+  if (btn) setBtnBusy(btn, true);
   try {
     const r = await api('/api/system/network');
     if (!r || r.error) {
       summaryEl.textContent = (r && r.error) || 'Network telemetry unavailable';
       return;
     }
-    const ifaces = Array.isArray(r.interfaces) ? r.interfaces : [];
+    const rawIfaces = Array.isArray(r.interfaces) ? r.interfaces : [];
     const stats = Array.isArray(r.stats) ? r.stats : [];
-    const ports = Array.isArray(r.listeningPorts) ? r.listeningPorts : [];
-    summaryEl.textContent = `${ifaces.length} interface${ifaces.length === 1 ? '' : 's'} · ${ports.length} listening port${ports.length === 1 ? '' : 's'}`;
+    const ports = Array.isArray(r.listeningPorts) ? r.listeningPorts : (Array.isArray(r.ports) ? r.ports : []);
+    const dnsList = Array.isArray(r.dns) ? r.dns.filter(Boolean) : [];
+    const gateway = r.gateway ? String(r.gateway).trim() : '';
+
+    // Normalize both grouped ({ name, addresses }) and flat ({ interface, address }) responses
+    const groupedMap = new Map();
+    rawIfaces.forEach(item => {
+      if (!item) return;
+      const name = item.name || item.interface || 'iface';
+      if (!groupedMap.has(name)) {
+        groupedMap.set(name, {
+          name,
+          internal: Boolean(item.internal),
+          mac: item.mac && item.mac !== '00:00:00:00:00:00' ? item.mac : '',
+          rxBytes: item.rxBytes != null ? item.rxBytes : null,
+          txBytes: item.txBytes != null ? item.txBytes : null,
+          addresses: [],
+        });
+      }
+      const entry = groupedMap.get(name);
+      if (!entry.mac && item.mac && item.mac !== '00:00:00:00:00:00') entry.mac = item.mac;
+      if (Array.isArray(item.addresses) && item.addresses.length) {
+        item.addresses.forEach(a => {
+          if (a && a.address && !entry.addresses.some(x => x.address === a.address)) {
+            entry.addresses.push(a);
+          }
+        });
+      } else if (item.address) {
+        if (!entry.addresses.some(x => x.address === item.address)) {
+          entry.addresses.push({
+            family: item.family,
+            address: item.address,
+            cidr: item.cidr,
+            netmask: item.netmask,
+            internal: item.internal,
+          });
+        }
+      }
+    });
+    const ifaces = Array.from(groupedMap.values());
+
+    const parts = [
+      `${ifaces.length} interface${ifaces.length === 1 ? '' : 's'}`,
+    ];
+    if (gateway) parts.push(`Gateway: ${gateway}`);
+    if (dnsList.length) parts.push(`DNS: ${dnsList.join(', ')}`);
+    parts.push(`${ports.length} listening port${ports.length === 1 ? '' : 's'}`);
+    summaryEl.textContent = parts.join(' · ');
+
     listEl.innerHTML = '';
     ifaces.forEach(iface => {
-      const st = stats.find(s => s.iface === iface.name);
+      const st = stats.find(s => s && s.iface === iface.name);
+      const rxBytes = st && st.rxBytes != null ? st.rxBytes : iface.rxBytes;
+      const txBytes = st && st.txBytes != null ? st.txBytes : iface.txBytes;
+
       const card = document.createElement('div');
-      card.style.cssText = 'padding:6px 8px;border:1px solid var(--border);border-radius:var(--radius);font-size:11px;background:var(--bg2)';
-      const title = document.createElement('div');
+      card.style.cssText = 'padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:11px;background:var(--bg2);display:flex;flex-direction:column;gap:3px';
+
+      const head = document.createElement('div');
+      head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:6px';
+      const title = document.createElement('span');
       title.style.cssText = 'font-weight:600;font-family:var(--font);color:var(--fg)';
       title.textContent = iface.name;
+      const badge = document.createElement('span');
+      badge.style.cssText = 'font-size:9.5px;padding:1px 5px;border-radius:4px;background:var(--bg3);color:' + (iface.internal ? 'var(--fg3)' : 'var(--cyan)') + ';font-family:var(--font)';
+      badge.textContent = iface.internal ? 'loopback' : (iface.mac || 'net');
+      head.appendChild(title);
+      head.appendChild(badge);
+      card.appendChild(head);
+
       const addrs = document.createElement('div');
-      addrs.style.cssText = 'color:var(--fg2);font-family:var(--font);font-size:10px;margin-top:2px';
-      addrs.textContent = (iface.addresses || []).map(a => a.address).join(', ') || 'No IP';
-      card.appendChild(title);
+      addrs.style.cssText = 'color:var(--fg2);font-family:var(--font);font-size:10px;display:flex;flex-wrap:wrap;gap:4px';
+      if (iface.addresses && iface.addresses.length) {
+        iface.addresses.forEach(a => {
+          const chip = document.createElement('button');
+          chip.type = 'button';
+          chip.style.cssText = 'background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-family:var(--font);font-size:10px;color:var(--fg2);cursor:pointer;text-align:left';
+          chip.textContent = a.cidr || a.address;
+          chip.title = 'Click to copy ' + a.address;
+          chip.addEventListener('click', () => {
+            copyCmdText(a.address);
+          });
+          addrs.appendChild(chip);
+        });
+      } else {
+        addrs.textContent = 'No IP';
+      }
       card.appendChild(addrs);
-      if (st) {
+
+      if (rxBytes != null || txBytes != null) {
         const rxTx = document.createElement('div');
-        rxTx.style.cssText = 'color:var(--fg3);font-family:var(--font);font-size:10px;margin-top:2px';
-        rxTx.textContent = `↓ ${formatSize(st.rxBytes || 0)} · ↑ ${formatSize(st.txBytes || 0)}`;
+        rxTx.style.cssText = 'color:var(--fg3);font-family:var(--font);font-size:10px;margin-top:1px';
+        rxTx.textContent = `↓ ${formatSize(rxBytes || 0)} · ↑ ${formatSize(txBytes || 0)}`;
         card.appendChild(rxTx);
       }
       listEl.appendChild(card);
     });
   } catch {
     summaryEl.textContent = 'Could not load network interfaces';
+  } finally {
+    if (btn) setBtnBusy(btn, false);
   }
 }
 
@@ -1894,7 +1970,7 @@ uiActions.register("click", {
   "sort-sys-processes-mem": function (event) { return sortSysProcesses('mem'); },
   "sort-sys-processes-cmd": function (event) { return sortSysProcesses('cmd'); },
   "refresh-system-stats": function (event) { return refreshSystemStats(true); },
-  "refresh-sys-network": function (event) { return refreshSystemNetwork(); },
+  "refresh-sys-network": function (event) { return refreshSystemNetwork(true); },
   "close-system-stats": function (event) { return closeSystemStats(); },
   "dismiss-install": function (event) { return dismissInstall(); },
   "install-pwa": function (event) { return installPWA(); },

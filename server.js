@@ -267,7 +267,7 @@ let _migrated = false;
 function migrateLegacyState() {
   if (_migrated) return;
   _migrated = true;
-  for (const _f of ['.env', '.cmdhist.json', '.tunnels.json', '.ssh-state.json', 'license.json', 'pending-licenses.json', 'tunnel-url.txt']) {
+  for (const _f of ['.env', '.cmdhist.json', '.tunnels.json', '.ssh-state.json', 'license.json', 'pending-licenses.json', 'tunnel-url.txt', 'audit-log.json', 'library.json', 'bookmarks.json', 'policy.json']) {
     try {
       const _dst = path.join(DATA_DIR, _f), _src = path.join(__dirname, _f);
       if (DATA_DIR !== __dirname && !fs.existsSync(_dst) && fs.existsSync(_src)) {
@@ -307,6 +307,7 @@ const auth = createAuthService({
     broadcast: event => terminal.broadcastClientEvent(event),
     revoke: token => terminal.pushSessionRevoked(token),
     invalidate: reason => terminal.closeInvalidSockets(reason),
+    audit: (action, req, details) => { try { logAudit(action, req, details); } catch {} },
   },
 });
 const { checkPin, requirePinSet, getSession, rawPinAllowed, isLoopbackReq, isLoopbackSocket, constantTimeEqual, describeChanger } = auth;
@@ -422,74 +423,221 @@ const { registerFileRoutes } = require('./lib/server/files');
 registerFileRoutes({ app, checkPin, rateLimiter, paths, auth, workspaceRoot: WORKSPACE_ROOT, allowFullFs: ALLOW_FULL_FS });
 
 // ── Network info ──────────────────────────────────────────────────────
+const NET_STATS_TTL_MS = 2000;
+let _netStatsCache = { at: 0, data: null };
 app.get('/api/system/network', rateLimiter, checkPin, async (req, res) => {
   try {
+    if (_netStatsCache.data && Date.now() - _netStatsCache.at < NET_STATS_TTL_MS) {
+      return res.json(_netStatsCache.data);
+    }
+    const plat = os.platform();
+    const statsMap = new Map();
+    try {
+      if (plat === 'linux') {
+        const devRaw = await fs.promises.readFile('/proc/net/dev', 'utf8');
+        for (const line of devRaw.split('\n').slice(2)) {
+          const idx = line.indexOf(':');
+          if (idx === -1) continue;
+          const ifaceName = line.slice(0, idx).trim();
+          const cols = line.slice(idx + 1).trim().split(/\s+/);
+          if (ifaceName && cols.length >= 9) {
+            statsMap.set(ifaceName, {
+              iface: ifaceName,
+              rxBytes: Number(cols[0]) || 0,
+              txBytes: Number(cols[8]) || 0,
+            });
+          }
+        }
+      } else if (plat === 'darwin') {
+        const netOut = await spawnRead('netstat', ['-ibn']);
+        for (const line of netOut.split('\n').slice(1)) {
+          if (!line.includes('<Link#')) continue;
+          const cols = line.trim().split(/\s+/);
+          if (cols.length >= 10) {
+            const ifaceName = cols[0];
+            const rxBytes = Number(cols[cols.length - 5]) || Number(cols[6]) || 0;
+            const txBytes = Number(cols[cols.length - 2]) || Number(cols[9]) || 0;
+            if (ifaceName && !statsMap.has(ifaceName)) {
+              statsMap.set(ifaceName, { iface: ifaceName, rxBytes, txBytes });
+            }
+          }
+        }
+      } else if (plat === 'win32') {
+        const psNet = await spawnRead('powershell.exe', ['-Command', 'Get-NetAdapterStatistics | Select-Object Name,ReceivedBytes,SentBytes | ConvertTo-Json']);
+        const parsed = JSON.parse(psNet);
+        const list = Array.isArray(parsed) ? parsed : (parsed ? [parsed] : []);
+        for (const item of list) {
+          if (item && item.Name) {
+            statsMap.set(item.Name, {
+              iface: item.Name,
+              rxBytes: Number(item.ReceivedBytes) || 0,
+              txBytes: Number(item.SentBytes) || 0,
+            });
+          }
+        }
+      }
+    } catch {}
+
     const interfaces = os.networkInterfaces();
     const result = [];
     for (const [name, addrs] of Object.entries(interfaces)) {
-      if (!addrs) continue;
-      for (const addr of addrs) {
-        result.push({ interface: name, family: addr.family, address: addr.address, netmask: addr.netmask, mac: addr.mac, internal: addr.internal, cidr: addr.cidr });
-      }
+      if (!addrs || !addrs.length) continue;
+      const primary = addrs.find(a => a.family === 'IPv4' || a.family === 4) || addrs[0];
+      const macAddr = (addrs.find(a => a.mac && a.mac !== '00:00:00:00:00:00') || primary || {}).mac || '';
+      const st = statsMap.get(name);
+      result.push({
+        name,
+        interface: name,
+        internal: addrs.every(a => a.internal),
+        mac: macAddr,
+        family: primary.family,
+        address: primary.address,
+        netmask: primary.netmask,
+        cidr: primary.cidr,
+        rxBytes: st ? st.rxBytes : null,
+        txBytes: st ? st.txBytes : null,
+        addresses: addrs.map(addr => ({
+          family: addr.family,
+          address: addr.address,
+          netmask: addr.netmask,
+          mac: addr.mac,
+          internal: addr.internal,
+          cidr: addr.cidr,
+        })),
+      });
     }
-    let gateway = null, dns = null, listenPorts = [];
+
+    let gateway = null;
+    const dnsSet = new Set();
     try {
-      if (os.platform() === 'win32') {
-        const route = execFileSync('powershell.exe', ['-Command', '(Get-NetRoute -DestinationPrefix "0.0.0.0/0").NextHop'], { encoding: 'utf8', stdio: 'pipe' }).trim();
-        gateway = route.split('\n')[0].trim() || null;
-        const dnsOut = execFileSync('powershell.exe', ['-Command', '(Get-DnsClientServerAddress -AddressFamily IPv4).ServerAddresses'], { encoding: 'utf8', stdio: 'pipe' }).trim();
-        dns = dnsOut.split('\n').filter(Boolean);
-      } else if (os.platform() === 'darwin') {
-        const route = execFileSync('sh', ['-c', "route -n get default 2>/dev/null | awk '/gateway:/{print $2}'"], { encoding: 'utf8', stdio: 'pipe' }).trim();
-        gateway = route || null;
-        const resolv = execFileSync('sh', ['-c', "scutil --dns 2>/dev/null | awk '/nameserver\\[0\\]/{print $3}' | head -3"], { encoding: 'utf8', stdio: 'pipe' }).trim();
-        dns = resolv.split('\n').filter(Boolean);
-      } else {
-        const route = execFileSync('sh', ['-c', "ip route | grep default | head -1 | awk '{print $3}'"], { encoding: 'utf8', stdio: 'pipe' }).trim();
-        gateway = route || null;
-        let resolv = '';
+      if (plat === 'win32') {
         try {
-          resolv = execFileSync('sh', ['-c', "grep nameserver /etc/resolv.conf | awk '{print $2}'"], { encoding: 'utf8', stdio: 'pipe' }).trim();
+          const route = (await spawnRead('powershell.exe', ['-Command', '(Get-NetRoute -DestinationPrefix "0.0.0.0/0" | Select-Object -First 1).NextHop'])).trim();
+          gateway = route.split(/\r?\n/)[0].trim() || null;
         } catch {}
-        if (!resolv) {
-          try { resolv = execFileSync('sh', ['-c', "resolvectl status 2>/dev/null | awk '/DNS Servers/{found=1; next} /^$/{found=0} found{print $1}' | head -3"], { encoding: 'utf8', stdio: 'pipe' }).trim(); } catch {}
+        try {
+          const dnsOut = (await spawnRead('powershell.exe', ['-Command', '(Get-DnsClientServerAddress -AddressFamily IPv4).ServerAddresses'])).trim();
+          dnsOut.split(/\r?\n/).map(s => s.trim()).filter(Boolean).forEach(s => dnsSet.add(s));
+        } catch {}
+      } else if (plat === 'darwin') {
+        try {
+          const route = await spawnRead('route', ['-n', 'get', 'default']);
+          const m = route.match(/gateway:\s*(\S+)/);
+          if (m) gateway = m[1];
+        } catch {}
+        try {
+          const scOut = await spawnRead('scutil', ['--dns']);
+          for (const m of scOut.matchAll(/nameserver\[\d+\]\s*:\s*(\S+)/g)) {
+            if (m[1]) dnsSet.add(m[1]);
+          }
+        } catch {}
+      } else {
+        try {
+          const routeOut = await spawnRead('ip', ['route', 'show', 'default']);
+          const m = routeOut.match(/default\s+via\s+(\S+)/);
+          if (m) gateway = m[1];
+        } catch {}
+        if (!gateway) {
+          try {
+            const procRoute = await fs.promises.readFile('/proc/net/route', 'utf8');
+            for (const line of procRoute.split('\n').slice(1)) {
+              const parts = line.trim().split(/\s+/);
+              if (parts.length >= 3 && parts[1] === '00000000' && /^[0-9A-Fa-f]{8}$/.test(parts[2])) {
+                const hex = parts[2];
+                const b = [
+                  parseInt(hex.slice(6, 8), 16),
+                  parseInt(hex.slice(4, 6), 16),
+                  parseInt(hex.slice(2, 4), 16),
+                  parseInt(hex.slice(0, 2), 16),
+                ];
+                if (b.some(x => x !== 0)) {
+                  gateway = b.join('.');
+                  break;
+                }
+              }
+            }
+          } catch {}
         }
-        dns = resolv.split('\n').filter(Boolean);
+        try {
+          const resolv = await fs.promises.readFile('/etc/resolv.conf', 'utf8');
+          for (const line of resolv.split('\n')) {
+            const m = line.trim().match(/^nameserver\s+(\S+)/);
+            if (m && m[1]) dnsSet.add(m[1]);
+          }
+        } catch {}
+        if (dnsSet.size === 0 || (dnsSet.size === 1 && dnsSet.has('127.0.0.53'))) {
+          try {
+            const rctl = await spawnRead('resolvectl', ['status']);
+            for (const m of rctl.matchAll(/DNS Servers:\s*([^\n]+)/g)) {
+              m[1].trim().split(/\s+/).filter(Boolean).forEach(s => dnsSet.add(s));
+            }
+          } catch {}
+        }
       }
     } catch {}
     try {
-      if (os.platform() === 'win32') {
-        const out = execFileSync('powershell.exe', ['-Command', 'netstat -ano | findstr LISTEN'], { encoding: 'utf8', stdio: 'pipe' }).trim();
-        listenPorts = out.split('\n').filter(Boolean).map(l => {
-          const m = l.match(/:(\d+)\s+/);
-          return m ? { port: parseInt(m[1]), process: l.split(/\s+/).pop() } : null;
-        }).filter(Boolean);
-      } else if (os.platform() === 'darwin') {
-        const out = execFileSync('lsof', ['-i', '-P', '-n', '-sTCP:LISTEN'], { encoding: 'utf8', stdio: 'pipe' }).trim();
-        const lines = out.split('\n').slice(1).filter(Boolean);
-        listenPorts = lines.map(l => {
-          const parts = l.split(/\s+/);
+      for (const s of dns.getServers()) {
+        if (s) dnsSet.add(s);
+      }
+    } catch {}
+    const dnsServers = Array.from(dnsSet).slice(0, 6);
+
+    let listenPorts = [];
+    try {
+      const seenPortKey = new Set();
+      const pushPort = (port, address, proc) => {
+        if (!Number.isInteger(port) || port < 1 || port > 65535) return;
+        const key = `${address || ''}:${port}`;
+        if (seenPortKey.has(key)) return;
+        seenPortKey.add(key);
+        listenPorts.push({ port, address: address || '', process: proc || '' });
+      };
+      if (plat === 'win32') {
+        const out = await spawnRead('netstat', ['-ano', '-p', 'tcp']);
+        for (const l of out.split(/\r?\n/)) {
+          const m = l.match(/TCP\s+(\S+):(\d+)\s+\S+\s+LISTENING\s+(\d+)/i);
+          if (m) pushPort(parseInt(m[2], 10), m[1], m[3]);
+        }
+      } else if (plat === 'darwin') {
+        const out = await spawnRead('lsof', ['-iTCP', '-sTCP:LISTEN', '-P', '-n']);
+        for (const l of out.split('\n').slice(1)) {
+          const parts = l.trim().split(/\s+/);
           const addr = parts[8] || '';
           const m = addr.match(/:(\d+)$/);
-          return m ? { port: parseInt(m[1]), address: addr, process: parts[0] || '' } : null;
-        }).filter(Boolean);
+          if (m) pushPort(parseInt(m[1], 10), addr, parts[0] || '');
+        }
       } else {
-        const out = execFileSync('sh', ['-c', "ss -tlnp 2>/dev/null | tail -n+2"], { encoding: 'utf8', stdio: 'pipe' }).trim();
-        listenPorts = out.split('\n').filter(Boolean).map(l => {
-          const parts = l.split(/\s+/);
+        let out = '';
+        try { out = await spawnRead('ss', ['-tlnp']); } catch {
+          try { out = await spawnRead('ss', ['-tln']); } catch {}
+        }
+        for (const l of out.split('\n').slice(1)) {
+          if (!l.trim()) continue;
+          const parts = l.trim().split(/\s+/);
           const addr = parts[3] || '';
-          const port = parseInt(addr.split(':').pop());
-          const proc = parts[5] || '';
-          const m = proc.match(/users:\(\("(.+?)"/);
-          return { port, address: addr, process: m ? m[1] : '' };
-        }).filter(p => !isNaN(p.port));
+          const port = parseInt(addr.split(':').pop(), 10);
+          const proc = parts.slice(5).join(' ');
+          const m = proc.match(/users:\(\("([^"]+)"/);
+          pushPort(port, addr, m ? m[1] : '');
+        }
       }
     } catch {}
-    res.json({ interfaces: result, gateway, dns, ports: listenPorts });
+
+    const payload = {
+      interfaces: result,
+      stats: Array.from(statsMap.values()),
+      gateway,
+      dns: dnsServers,
+      ports: listenPorts,
+      listeningPorts: listenPorts,
+    };
+    _netStatsCache = { at: Date.now(), data: payload };
+    res.json(payload);
   } catch (e) {
     sendErr(res, e);
   }
 });
+
 
 
 
@@ -804,6 +952,7 @@ app.post('/api/system/kill', checkPin, requirePinSet, async (req, res) => {
       // Give 1.5s then SIGKILL if still alive
       setTimeout(() => { try { process.kill(pid, 0); process.kill(pid, 'SIGKILL'); } catch {} }, 1500);
     }
+    try { logAudit('system.kill', req, { pid }); } catch {}
     res.json({ success: true, pid });
   } catch (e) {
     sendErr(res, e);
@@ -860,7 +1009,7 @@ app.post('/api/ssh/credentials', authRateLimiter, checkPin, requirePinSet, requi
     // The private key is returned ONCE and never stored — don't log it.
     console.log(`  SSH credential created: ${cred.id} (${cred.label})`);
     try {
-      broadcastClientEvent({
+      terminal.broadcastClientEvent({
         event: 'ssh-key-created',
         id: cred.id,
         label: cred.label,
@@ -869,6 +1018,7 @@ app.post('/api/ssh/credentials', authRateLimiter, checkPin, requirePinSet, requi
         at: Date.now(),
       });
     } catch {}
+    try { logAudit('ssh.key.create', req, { id: cred.id, label: cred.label }); } catch {}
     res.json(cred);
   } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
 });
@@ -878,13 +1028,14 @@ app.delete('/api/ssh/keys/:id', authRateLimiter, checkPin, requirePinSet, requir
     const out = sshLib.revokeCredential(DATA_DIR, req.params.id);
     try { console.log(`  SSH credential revoked: ${req.params.id} (${out.label || ''})`); } catch {}
     try {
-      broadcastClientEvent({
+      terminal.broadcastClientEvent({
         event: 'ssh-key-revoked',
         id: req.params.id,
         label: out.label || '',
         at: Date.now(),
       });
     } catch {}
+    try { logAudit('ssh.key.revoke', req, { id: req.params.id, label: out.label || '' }); } catch {}
     res.json(out);
   } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
 });
@@ -947,7 +1098,9 @@ app.post('/api/ssh/setup/:action', authRateLimiter, checkPin, requirePinSet, req
 app.post('/api/ssh/enabled', authRateLimiter, checkPin, requirePinSet, requirePro, async (req, res) => {
   try {
     const on = !!(req.body && req.body.on);
-    res.json(await sshSetup.setSshFeatureEnabled(DATA_DIR, on));
+    const out = await sshSetup.setSshFeatureEnabled(DATA_DIR, on);
+    try { logAudit('ssh.enabled', req, { enabled: on }); } catch {}
+    res.json(out);
   } catch (e) { sendErr(res, e, e && e.status ? e.status : 500); }
 });
 
@@ -1232,49 +1385,48 @@ app.all('{*splat}', (req, res, next) => {
 });
 
 // Loopback listeners for the preview address-bar autocomplete (best-effort).
-app.get('/api/ports', checkPin, (req, res) => {
+app.get('/api/ports', checkPin, async (req, res) => {
   const found = new Map();
   const add = (addr, port, proc) => {
     const p = Number(port);
     if (!Number.isInteger(p) || p < 1 || p > 65535) return;
-    if (addr && addr !== '127.0.0.1' && addr !== '::1' && addr !== '0.0.0.0' && addr !== '::') return;
+    const cleanAddr = addr ? String(addr).replace(/^\[|\]$/g, '') : '';
+    if (cleanAddr && cleanAddr !== '127.0.0.1' && cleanAddr !== '::1' && cleanAddr !== '0.0.0.0' && cleanAddr !== '::' && cleanAddr !== '*') return;
     if (!found.has(p)) found.set(p, { port: p, loopback: true });
     if (proc && !found.get(p).proc) found.get(p).proc = String(proc).slice(0, 64);
   };
   try {
-    let out = '';
     if (os.platform() === 'win32') {
-      out = execSync('netstat -ano -p tcp', { encoding: 'utf8', timeout: 5000 }).toString();
+      const out = await spawnRead('netstat', ['-ano', '-p', 'tcp'], 3000);
       for (const line of out.split('\n')) {
         const m = line.match(/TCP\s+(\S+):(\d+)\s+\S+\s+LISTENING\s+(\d+)/i) || line.match(/TCP\s+(\S+):(\d+)\s+\S+\s+LISTENING/i);
         if (m) add(m[1], m[2], m[3] ? 'pid ' + m[3] : null);
       }
     } else {
-      try {
-        // -p surfaces users:(("node",pid=123,fd=..)) so the picker can name the owner.
-        out = execSync('ss -tlnp', { encoding: 'utf8', timeout: 5000 }).toString();
+      let out = await spawnRead('ss', ['-tlnp'], 2500);
+      if (!out) out = await spawnRead('ss', ['-tln'], 2500);
+      if (out) {
         for (const line of out.split('\n')) {
           if (!/LISTEN/i.test(line)) continue;
-          const m = line.match(/(?:127\.0\.0\.1|::1|0\.0\.0\.0|\*):(\d+)/);
+          const m = line.match(/(?:127\.0\.0\.1|\[?::1\]?|0\.0\.0\.0|\[?::\]?|\*):(\d+)/);
           if (!m) continue;
           const pm = line.match(/users:\(\("([^"]+)",pid=(\d+)/);
           add('127.0.0.1', m[1], pm ? `${pm[1]}:${pm[2]}` : null);
         }
-      } catch {
-        out = execSync('ss -tln', { encoding: 'utf8', timeout: 5000 }).toString();
-        for (const line of out.split('\n')) {
-          const m = line.match(/(?:127\.0\.0\.1|::1|0\.0\.0\.0|\*):(\d+)/);
-          if (m && /LISTEN/i.test(line)) add('127.0.0.1', m[1]);
+      }
+      if (found.size === 0 && os.platform() === 'darwin') {
+        const lsofOut = await spawnRead('lsof', ['-iTCP', '-sTCP:LISTEN', '-P', '-n'], 2500);
+        for (const line of lsofOut.split('\n')) {
+          const m = line.match(/^(\S+)\s+(\d+)\s+.*?(127\.0\.0\.1|\[?::1\]?|0\.0\.0\.0|\[?::\]?|\*):(\d+)\s+\(LISTEN\)/i);
+          if (m) add('127.0.0.1', m[4], `${m[1]}:${m[2]}`);
         }
       }
       if (found.size === 0) {
-        try {
-          out = execSync('netstat -an -p tcp', { encoding: 'utf8', timeout: 5000 }).toString();
-          for (const line of out.split('\n')) {
-            const m = line.match(/(127\.0\.0\.1|0\.0\.0\.0)\.(\d+).*LISTEN/i) || line.match(/tcp\d?\s+\S+\s+(\S+)[.:](\d+).*LISTEN/i);
-            if (m) add(m[1] && m[1].includes('.') ? m[1] : '127.0.0.1', m[2]);
-          }
-        } catch {}
+        const netOut = await spawnRead('netstat', ['-an', '-p', 'tcp'], 2500);
+        for (const line of netOut.split('\n')) {
+          const m = line.match(/(127\.0\.0\.1|0\.0\.0\.0)\.(\d+).*LISTEN/i) || line.match(/tcp\d?\s+\S+\s+(\S+)[.:](\d+).*LISTEN/i);
+          if (m) add(m[1] && m[1].includes('.') ? m[1] : '127.0.0.1', m[2]);
+        }
       }
     }
   } catch {}
@@ -1384,6 +1536,7 @@ function startServer(opts = {}) {
   const host = opts.host || HOST;
 
   migrateLegacyState();
+  try { auditSync.loadPolicy(); } catch {}
   licenseLib.loadLicense();
   if (!_historyLoaded) { _historyLoaded = true; loadCmdHistory(); }
   tunnelService.loadTunnels();

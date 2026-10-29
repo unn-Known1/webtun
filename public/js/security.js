@@ -721,7 +721,7 @@ function renderAuditLog() {
     ? _auditEntriesCache.filter(e =>
         String(e.action || '').toLowerCase().includes(q) ||
         String(e.ip || '').toLowerCase().includes(q) ||
-        String(e.device || '').toLowerCase().includes(q) ||
+        String(e.device || e.actor || '').toLowerCase().includes(q) ||
         String(e.detail || '').toLowerCase().includes(q)
       )
     : _auditEntriesCache;
@@ -740,11 +740,13 @@ function renderAuditLog() {
     const title = document.createElement('div');
     title.className = 'settings-session-title';
     title.style.fontFamily = 'var(--font)';
-    title.textContent = `${ev.action || 'event'}${ev.detail ? ' — ' + ev.detail : ''}`;
+    const detailStr = typeof ev.detail === 'object' && ev.detail !== null ? JSON.stringify(ev.detail) : (ev.detail || '');
+    title.textContent = `${ev.action || 'event'}${detailStr ? ' — ' + detailStr : ''}`;
     const sub = document.createElement('div');
     sub.className = 'settings-session-meta';
     const ts = ev.at ? new Date(ev.at).toLocaleString() : '';
-    sub.textContent = `${ev.ip || 'local'}${ev.device ? ' · ' + ev.device : ''}${ts ? ' · ' + ts : ''}`;
+    const dev = ev.device || ev.actor || '';
+    sub.textContent = `${ev.ip || 'local'}${dev ? ' · ' + dev : ''}${ts ? ' · ' + ts : ''}`;
     info.appendChild(title);
     info.appendChild(sub);
     row.appendChild(info);

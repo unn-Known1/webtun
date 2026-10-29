@@ -504,7 +504,7 @@ footer a{color:var(--mut)}
       </section>
 
       <!-- ── RUN ── -->
-      <section id="run" data-title="Run server install setup CLI flags env port pin System Stats CPU memory disk uptime GPU processes filter sort refresh mobile">
+      <section id="run" data-title="Run server install setup CLI flags env port pin System Stats CPU memory disk uptime GPU network interfaces DNS gateway RX TX processes filter sort refresh mobile">
         <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--am)" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><path d="M6 6.5h.01M6 17.5h.01"/></svg></span>
           <div><h2>Run the server <a class="hash" href="#run" aria-label="Link to this section">#</a></h2></div>
         </div>
@@ -542,7 +542,7 @@ PIN=pick-a-strong-one
 WORKSPACE_ROOT=/home/you/projects</pre></div>
         <p class="body rv">The file browser starts at <code class="inl">WORKSPACE_ROOT</code>. Explicit environment values take priority over both .env locations, including <code class="inl">PREVIEW_PORTS</code>. Set <code class="inl">ALLOW_FULL_FS=false</code> to confine the File API; terminal shells remain unconfined.</p>
         <h3 id="system-stats">Watch the host <a class="hash" href="#system-stats" aria-label="Link to System Stats">#</a></h3>
-        <p class="body rv">The overflow menu → <b>System Stats</b> opens a live dashboard: CPU, memory, disk, uptime — and GPU cards with VRAM, utilization and temperature where detectors exist — plus the top processes by CPU, with a <b>Kill button</b> per row for runaways. Filter processes by PID, user or command, and select a column heading to sort in either direction. On phones, swipe the process table horizontally to reach every column and the Kill controls; the metric cards stay in a compact two-column layout. The footer shows the last update, with <b>Refresh</b> for an immediate update. It polls every five seconds and politely pauses when the tab is hidden or Data Saver is on.</p>
+        <p class="body rv">The overflow menu → <b>System Stats</b> opens a live dashboard: CPU, memory, disk, uptime — and GPU cards with VRAM, utilization and temperature where detectors exist — alongside <b>Network Interfaces &amp; DNS</b> (active interfaces with click-to-copy IP/CIDR addresses, MAC, RX/TX traffic counters, default gateway, DNS resolvers, and listening port counts) plus the top processes by CPU, with a <b>Kill button</b> per row for runaways. Filter processes by PID, user or command, and select a column heading to sort in either direction. On phones, swipe the process table horizontally to reach every column and the Kill controls; the metric cards stay in a compact two-column layout. The footer shows the last update, with <b>Refresh</b> for an immediate update. It polls every five seconds and politely pauses when the tab is hidden or Data Saver is on.</p>
       </section>
 
       <!-- ── HOME / LAUNCHPAD ── -->

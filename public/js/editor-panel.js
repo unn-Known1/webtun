@@ -234,6 +234,7 @@ function releasePanelSurface() {
   panelState.diskSize = null;
   setPanelExtChanged(false);
   panelState.buffer?.cancelDraft();
+  stopLogTail();
   clearPreviewLiveReload();
   mdPreviewActive = false;
   try { editor?.setValue(''); } catch {}
@@ -247,6 +248,12 @@ function releasePanelSurface() {
   if (toggleBtn) toggleBtn.style.display = 'none';
   const refreshBtn = document.getElementById('preview-refresh-btn');
   if (refreshBtn) refreshBtn.style.display = 'none';
+  const tailBtn = document.getElementById('editor-tail-btn');
+  if (tailBtn) tailBtn.style.display = 'none';
+  const csvBtn = document.getElementById('editor-csv-btn');
+  if (csvBtn) csvBtn.style.display = 'none';
+  const conflictBar = document.getElementById('editor-conflict-bar');
+  if (conflictBar) conflictBar.style.display = 'none';
   setFullBtnVisible(false);
   const iframe = document.getElementById('editor-preview-iframe');
   clearPreviewDoc(iframe);
@@ -256,6 +263,8 @@ function releasePanelSurface() {
   if (nameEl) nameEl.textContent = '—';
   const statusEl = document.getElementById('editor-status');
   if (statusEl) statusEl.textContent = '';
+  const posEl = document.getElementById('editor-cursor-pos');
+  if (posEl) posEl.textContent = 'Ln 1, Col 1';
   updateEditorDirty();
   requestAnimationFrame(() => { tabs.forEach(t => { try { fitTerm(t); } catch {} }); });
 }
@@ -886,12 +895,14 @@ function toggleEditorWrap() {
   }
 }
 
-function applyTabSize() {
+function applyTabSize(size, save = true) {
   const el = document.getElementById('s-tabsize');
-  const val = Math.min(8, Math.max(2, parseInt(el?.value || '2', 10) || 2));
+  const raw = size !== undefined ? size : (el?.value || '2');
+  const val = Math.min(8, Math.max(2, parseInt(String(raw), 10) || 2));
+  if (el && String(el.value) !== String(val)) el.value = String(val);
   if (typeof settings !== 'undefined') {
     settings.tabSize = val;
-    if (typeof saveSettings === 'function') saveSettings();
+    if (save && typeof saveSettings === 'function') saveSettings();
   }
   CM_BASE_OPTIONS.tabSize = val;
   CM_BASE_OPTIONS.indentUnit = val;
@@ -935,6 +946,10 @@ function toggleEditorFind(focusReplace = false, focusGoto = false) {
   const bar = mountFindBarToActiveSurface();
   if (!bar) return;
   const isHidden = bar.style.display === 'none' || !bar.style.display;
+  if (!isHidden && !focusReplace && !focusGoto) {
+    closeEditorFindBar();
+    return;
+  }
   bar.style.display = 'flex';
   const cm = getActiveEditorInstance();
   const sel = cm && typeof cm.getSelection === 'function' ? cm.getSelection() : '';
