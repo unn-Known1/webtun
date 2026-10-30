@@ -233,6 +233,11 @@ See [the architecture guide](docs/SYSTEM_ARCHITECTURE_AND_DESIGN_PRINCIPLES.md) 
 
 ## Changelog
 
+### v2.3.8
+- **Tiles Mode reliability** — zoom state reconciles on tab close/remove so the grid never blanks; file/preview tabs created mid-session get headers immediately; activating or opening a tab while zoomed auto-unzooms instead of hiding the active tile; entering tiles mounts text and image tabs in the background with no modal prompts — large files, differing drafts, and read errors show inline review/error cards with retry instead of destructive dialogs or vanishing tabs.
+- **Tile headers & layout** — live connection dot with disconnected/dirty/connected priority plus pin, color, activity, bell, and exit markers mirrored from the tab strip; tile order follows strip reorder and pin regrouping; one shared refit (terminals + CodeMirror + docked editor) with debounced resize handling; usable 220px row minimum with scroll instead of squished tiles; compact preview toolbar in tiles; active zoom button state.
+- **Tile controls & memory** — column picker (Auto / 1 / 2 / 3 / 4) in the overflow menu, `Alt+G` toggle, `Esc` un-zoom, arrow-key tile navigation, and Tile View (mode, columns, zoom target) remembered across reloads.
+
 ### v2.3.7
 - **Code editor workflows** — in-editor Find, Replace, and Go-to-Line (`Ctrl+F` / `Ctrl+H` / `Ctrl+G`) with case and regex toggles across both the split panel and file tabs; cursor `Ln X, Col Y` indicator; Word Wrap and Tab Size (`2`–`8`) settings; and content search results jumping directly to the matched line.
 - **Git conflict resolution & file history** — automatic merge-conflict detection banner in the editor with 1-click **Accept Ours / Accept Theirs / Accept Both** actions, plus a per-file Git History modal showing commit log and per-commit diffs.
