@@ -83,7 +83,7 @@
   "devDependencies": {
     "@playwright/test": "^1.64.0",
     "electron": "^44.4.5",
-    "electron-builder": "^26.16.1",
+    "electron-builder": "^26.18.0",
     "nodemon": "^3.1.14"
   },
   "overrides": {
