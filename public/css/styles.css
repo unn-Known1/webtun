@@ -4205,12 +4205,64 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
   .term-tile-header { height: 32px; }
   .term-tile-header .tth-close { width: 28px; height: 28px; }
   .term-tile-header .tth-zoom { padding: 6px 9px; }
+  .term-tile-header .tth-menu { padding: 6px 9px; }
   /* G8: narrow screens get one readable column, never a squeezed multi-grid. */
   #terminals.tiles-mode { grid-template-columns: 1fr; }
 }
 /* Enhancement: dim inactive tiles slightly so the focused tile stands out. */
 #terminals.tiles-mode .term-wrapper:not(.active) { opacity: 0.94; }
 #terminals.tiles-mode .term-wrapper:not(.active):hover { opacity: 1; }
+/* Per-tile ⋯ menu button + floating menu. */
+.term-tile-header .tth-menu {
+  background: transparent;
+  border: none;
+  color: var(--fg2);
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 1;
+}
+.term-tile-header .tth-menu:hover { background: var(--bg3); color: var(--fg); }
+.term-tile-header .tth-menu:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.term-tile-header .tth-nobc { font-size: 10px; line-height: 1; flex-shrink: 0; color: var(--amber); }
+#tile-menu {
+  position: fixed;
+  z-index: 100;
+  display: none;
+  min-width: 190px;
+  padding: 4px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 28px var(--shadow-color);
+}
+.tile-menu-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  background: none;
+  border: none;
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-family: var(--font-ui);
+  color: var(--fg);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.tile-menu-item:hover, .tile-menu-item:focus-visible { background: var(--bg3); outline: none; }
+.tile-menu-item.danger { color: var(--red); }
+/* Tile drag-reorder affordances. */
+#terminals.tiles-mode .term-wrapper.tile-dragging { opacity: 0.5; }
+#terminals.tiles-mode .term-wrapper.tile-drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+#terminals.tiles-mode .term-wrapper.tile-drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
+/* Merged file-tile chrome: text tabs carry zoom/close in the fte-bar while in
+   Tile View, so the separate tile header is hidden (see syncMergedTileChrome). */
+.fte-bar .fte-zoom, .fte-bar .fte-close { display: none; }
+#terminals.tiles-mode .fte-bar .fte-zoom, #terminals.tiles-mode .fte-bar .fte-close { display: inline-block; }
+.fte-bar .fte-zoom.active { background: var(--accent); color: var(--bg); }
+.fte-bar .fte-close:hover { color: var(--red); }
 #terminals.tiles-mode.has-tile-zoom .term-wrapper:not(.tile-zoomed) {
   display: none !important;
 }

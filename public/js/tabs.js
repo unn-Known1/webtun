@@ -447,6 +447,7 @@ function positionMenu(menu, x, y) {
 }
 
 function hideTabMenus() {
+  try { if (typeof closeTileMenu === 'function') closeTileMenu(); } catch {}
   try { document.getElementById('tab-ctx-menu').style.display = 'none'; } catch {}
   try { document.getElementById('new-tab-menu').style.display = 'none'; } catch {}
   try {
@@ -1664,6 +1665,27 @@ function refreshTileHeader(tab) {
       } else if (!tab.pinned && pinMark) pinMark.remove();
       if (tab.color) hdr.setAttribute('data-tab-color', tab.color);
       else hdr.removeAttribute('data-tab-color');
+      // Broadcast exclude marker (⊘) mirrors toggleBroadcastExclude state.
+      hdr.classList.toggle('no-broadcast', !!tab.broadcastExclude);
+      const nobc = hdr.querySelector('.tth-nobc');
+      if (tab.broadcastExclude && !nobc) {
+        const s = document.createElement('span');
+        s.className = 'tth-nobc';
+        s.textContent = '⊘';
+        s.title = 'Excluded from broadcast input';
+        s.setAttribute('aria-hidden', 'true');
+        hdr.insertBefore(s, hdr.querySelector('.tth-name'));
+      } else if (!tab.broadcastExclude && nobc) nobc.remove();
+    } catch {}
+    // Merged file-tile chrome: the fte-bar zoom button mirrors tile zoom state.
+    try {
+      const fz = tab.fteZoomBtn;
+      if (fz) {
+        const zoomed = tab.wrapper.classList.contains('tile-zoomed');
+        fz.classList.toggle('active', zoomed);
+        fz.setAttribute('aria-pressed', String(!!zoomed));
+        fz.setAttribute('aria-label', (zoomed ? 'Restore tile ' : 'Maximize tile ') + tab.title);
+      }
     } catch {}
     const dotEl = hdr.querySelector('.tth-dot');
     if (dotEl) {
@@ -1814,6 +1836,7 @@ function layoutTiles() {
     let hdr = tab.wrapper.querySelector('.term-tile-header');
     if (hdr) {
       try { refreshTileHeader(tab); } catch {}
+      try { syncMergedTileChrome(tab); } catch {}
       return;
     }
     hdr = document.createElement('div');
@@ -1850,14 +1873,23 @@ function layoutTiles() {
     tthClose.setAttribute('tabindex', '0');
     tthClose.innerHTML = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
     hdr.appendChild(tthClose);
+    const tthMenu = document.createElement('button');
+    tthMenu.className = 'tth-menu';
+    tthMenu.type = 'button';
+    tthMenu.title = 'Tile actions';
+    tthMenu.setAttribute('aria-label', 'Tile actions for ' + tab.title);
+    tthMenu.setAttribute('aria-haspopup', 'menu');
+    tthMenu.textContent = '⋯';
+    tthMenu.addEventListener('click', e => openTileMenu(e, tab.id));
+    hdr.insertBefore(tthMenu, tthClose);
     hdr.addEventListener('click', e => {
-      if (e.target.closest('.tth-close') || e.target.closest('.tth-zoom')) return;
+      if (e.target.closest('.tth-close') || e.target.closest('.tth-zoom') || e.target.closest('.tth-menu')) return;
       activateTab(tab.id);
       try { if (tab.type === 'term') tab.term?.focus(); else if (tab.cm) tab.cm.focus(); } catch {}
     });
     // G7: dblclick anywhere on the header (not just the name) zooms the tile.
     hdr.addEventListener('dblclick', e => {
-      if (e.target.closest('.tth-close') || e.target.closest('.tth-zoom')) return;
+      if (e.target.closest('.tth-close') || e.target.closest('.tth-zoom') || e.target.closest('.tth-menu')) return;
       e.preventDefault();
       toggleTileZoom(tab.id);
     });
@@ -1890,8 +1922,56 @@ function layoutTiles() {
       e.stopPropagation();
       closeTab(e, tab.id);
     });
+    // Tile drag-reorder: the header is the handle (terminals/editors keep
+    // native selection). Dropping on a tile reorders the strip + grid in sync.
+    try {
+      hdr.draggable = true;
+      hdr.addEventListener('dragstart', e => {
+        if (e.target.closest('button')) { e.preventDefault(); return; }
+        try {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData(TAB_DND_TYPE, String(tab.id));
+          e.dataTransfer.setData('text/plain', 'webtun-tab:' + tab.id);
+        } catch {}
+        try { tab.wrapper.classList.add('tile-dragging'); } catch {}
+      });
+      hdr.addEventListener('dragend', () => {
+        try { tab.wrapper.classList.remove('tile-dragging'); } catch {}
+        try { clearTileDropMarks(); } catch {}
+      });
+      tab.wrapper.addEventListener('dragover', e => {
+        try {
+          const types = e.dataTransfer && e.dataTransfer.types;
+          if (!types || Array.prototype.indexOf.call(types, TAB_DND_TYPE) === -1) return;
+        } catch { return; }
+        e.preventDefault();
+        try { e.dataTransfer.dropEffect = 'move'; } catch {}
+        try {
+          const r = tab.wrapper.getBoundingClientRect();
+          const after = (e.clientY - r.top) > r.height / 2;
+          tab.wrapper.classList.toggle('tile-drop-after', after);
+          tab.wrapper.classList.toggle('tile-drop-before', !after);
+        } catch {}
+      });
+      tab.wrapper.addEventListener('dragleave', () => {
+        try { tab.wrapper.classList.remove('tile-drop-before', 'tile-drop-after'); } catch {}
+      });
+      tab.wrapper.addEventListener('drop', e => {
+        let after = false;
+        try {
+          const r = tab.wrapper.getBoundingClientRect();
+          after = (e.clientY - r.top) > r.height / 2;
+        } catch {}
+        try { tab.wrapper.classList.remove('tile-drop-before', 'tile-drop-after'); } catch {}
+        const fromId = tabDndId(e.dataTransfer);
+        if (isNaN(fromId) || fromId === tab.id) return;
+        e.preventDefault();
+        reorderTabTo(fromId, tab.id, after);
+      });
+    } catch (e) { console.warn('tile DnD wiring failed:', e); }
     tab.wrapper.prepend(hdr);
     try { refreshTileHeader(tab); } catch {}
+    try { syncMergedTileChrome(tab); } catch {}
   });
   // B3: a new/activated non-zoomed tab while zoomed would be invisible —
   // drop zoom so the active tab shows instead of an empty-looking grid.
@@ -1983,6 +2063,114 @@ function unobserveTileMount(tab) {
 function disconnectTileMountObserver() {
   try { if (_tileMountObserver) _tileMountObserver.disconnect(); } catch {}
   _tileMountObserver = null;
+}
+// Per-tile broadcast exclude: opted-out terminals stay silent on broadcast.
+function toggleBroadcastExclude(id) {
+  const tab = getTabById(id);
+  if (!tab || tab.type !== 'term') return;
+  tab.broadcastExclude = !tab.broadcastExclude;
+  try { refreshTileHeader(tab); } catch {}
+  try { toast(tab.broadcastExclude ? `'${tab.title}' excluded from broadcast input` : `'${tab.title}' included in broadcast input`, 'info'); } catch {}
+}
+// Per-tile ⋯ menu: Rename, Restart session, Clear buffer, broadcast exclude
+// (terminals only), Close others.
+function openTileMenu(e, tabId) {
+  if (e) { try { e.stopPropagation(); e.preventDefault(); } catch {} }
+  closeTileMenu();
+  const tab = tabs.find(t => t.id === tabId);
+  if (!tab) return;
+  let menu = document.getElementById('tile-menu');
+  if (!menu) {
+    menu = document.createElement('div');
+    menu.id = 'tile-menu';
+    menu.setAttribute('role', 'menu');
+    document.body.appendChild(menu);
+  }
+  menu.innerHTML = '';
+  const items = [
+    { label: 'Rename', fn: () => { if (typeof promptTabRename === 'function') promptTabRename(tab.id); else if (typeof triggerTabRename === 'function') triggerTabRename(tab.id); } },
+    { label: 'Restart session', fn: () => restartTabSession(tab.id) },
+    { label: 'Clear buffer', fn: () => clearTabBuffer(tab.id) },
+    tab.type === 'term' ? { label: tab.broadcastExclude ? 'Include in broadcast' : 'Exclude from broadcast', fn: () => toggleBroadcastExclude(tab.id) } : null,
+    { label: 'Close other tabs', danger: true, fn: () => closeOtherTabs(tab.id) },
+  ].filter(Boolean);
+  items.forEach(it => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'tile-menu-item' + (it.danger ? ' danger' : '');
+    b.setAttribute('role', 'menuitem');
+    b.textContent = it.label;
+    b.addEventListener('click', ev => {
+      try { ev.stopPropagation(); } catch {}
+      closeTileMenu();
+      try { it.fn(); } catch (err) { console.warn('tile menu action failed:', err); }
+    });
+    menu.appendChild(b);
+  });
+  menu.style.display = 'block';
+  const mw = menu.offsetWidth || 180, mh = menu.offsetHeight || 150;
+  const cx = (e && e.clientX != null) ? e.clientX : (window.innerWidth - mw) / 2;
+  const cy = (e && e.clientY != null) ? e.clientY : (window.innerHeight - mh) / 2;
+  menu.style.left = Math.max(4, Math.min(cx, window.innerWidth - mw - 4)) + 'px';
+  menu.style.top = Math.max(4, Math.min(cy, window.innerHeight - mh - 4)) + 'px';
+  menu._tileMenuOutside = ev => { try { if (!menu.contains(ev.target)) closeTileMenu(); } catch {} };
+  setTimeout(() => { try { document.addEventListener('click', menu._tileMenuOutside); } catch {} }, 0);
+  menu._tileMenuKey = ev => {
+    if (ev.key === 'Escape') { try { ev.stopPropagation(); } catch {} closeTileMenu(); }
+  };
+  try { document.addEventListener('keydown', menu._tileMenuKey); } catch {}
+  try { menu.querySelector('.tile-menu-item')?.focus(); } catch {}
+}
+function closeTileMenu() {
+  try {
+    const menu = document.getElementById('tile-menu');
+    if (!menu) return;
+    menu.style.display = 'none';
+    if (menu._tileMenuOutside) { try { document.removeEventListener('click', menu._tileMenuOutside); } catch {} menu._tileMenuOutside = null; }
+    if (menu._tileMenuKey) { try { document.removeEventListener('keydown', menu._tileMenuKey); } catch {} menu._tileMenuKey = null; }
+  } catch {}
+}
+// Tile drag-reorder target: move one tab before/after another, keeping the
+// strip buttons and tile wrappers in `tabs` order.
+function reorderTabTo(fromId, targetId, after) {
+  if (fromId === targetId) return;
+  const fromIdx = tabs.findIndex(t => t.id === fromId);
+  if (fromIdx === -1) return;
+  const [moved] = tabs.splice(fromIdx, 1);
+  let targetIdx = tabs.findIndex(t => t.id === targetId);
+  if (targetIdx === -1) { tabs.splice(fromIdx, 0, moved); return; }
+  if (after) targetIdx++;
+  tabs.splice(targetIdx, 0, moved);
+  try {
+    const bar = document.getElementById('tab-scroll');
+    const targetTab = tabs.find(t => t.id === targetId);
+    if (bar && moved.el && moved.el.parentNode === bar && targetTab?.el?.parentNode === bar) {
+      bar.insertBefore(moved.el, after ? targetTab.el.nextSibling : targetTab.el);
+    }
+  } catch {}
+  try { syncTileWrapperOrder(); } catch {}
+  try { saveTabState(); } catch {}
+  try { updateTabOverflow(); } catch {}
+  try { refreshTileHeader(moved); } catch {}
+}
+function clearTileDropMarks() {
+  try {
+    document.querySelectorAll('#terminals .term-wrapper.tile-drop-before, #terminals .term-wrapper.tile-drop-after')
+      .forEach(el => el.classList.remove('tile-drop-before', 'tile-drop-after'));
+  } catch {}
+}
+// Merged file-tile chrome: a text tab's fte-bar carries zoom/close in tiles
+// mode, so the separate 24px tile header is redundant — hide it to save 24px
+// per tile. Only once the bar buttons exist; otherwise a failed mount would
+// leave the tile with no close affordance at all.
+function syncMergedTileChrome(tab) {
+  try {
+    if (!tab || !tab.wrapper) return;
+    const hdr = tab.wrapper.querySelector('.term-tile-header');
+    if (!hdr) return;
+    const merged = typeof tilesMode !== 'undefined' && tilesMode && tab.type === 'file' && tab.viewer === 'text' && !!tab.fteZoomBtn;
+    hdr.style.display = merged ? 'none' : '';
+  } catch {}
 }
 function moveTabToEnd(fromId) {
   if (isNaN(fromId)) return;

@@ -192,7 +192,7 @@ function preventDoubleTap(el, fn, delay = 1000) {
 function saveTabState() {
   const state = {
     activeTabId,
-    tabs: tabs.map(t => ({ id: t.id, sessionId: t.sessionId, title: t.title, type: t.type || 'term', port: t.port || null, path: t.type === 'file' ? t.path : (t.previewPath || '/'), auto: t.type === 'preview' && t.previewAutoReload ? 1 : 0, width: t.type === 'preview' ? (t.previewWidth || 'full') : undefined, color: t.color || undefined, pinned: t.pinned ? 1 : undefined, viewState: t.type === 'file' && t.viewState ? t.viewState : undefined })),
+    tabs: tabs.map(t => ({ id: t.id, sessionId: t.sessionId, title: t.title, type: t.type || 'term', port: t.port || null, path: t.type === 'file' ? t.path : (t.previewPath || '/'), auto: t.type === 'preview' && t.previewAutoReload ? 1 : 0, width: t.type === 'preview' ? (t.previewWidth || 'full') : undefined, color: t.color || undefined, pinned: t.pinned ? 1 : undefined, noBroadcast: t.broadcastExclude ? 1 : undefined, viewState: t.type === 'file' && t.viewState ? t.viewState : undefined })),
   };
   try { safeStorage.setItem('wt-tabs', JSON.stringify(state)); } catch(e) { console.warn('Failed to save tabs:', e); }
 }
@@ -636,7 +636,11 @@ async function unlockApp() {
             if (t && s.viewState && typeof s.viewState === 'object') t.viewState = s.viewState;
           }
           else t = newTab(s.title, s.sessionId, undefined, { color: s.color || '', pinned: !!s.pinned });
-          if (t) idMap.set(s.id, t.id);
+          if (t) {
+            idMap.set(s.id, t.id);
+            // Broadcast exclusions survive reloads like pins and colors.
+            if (s.noBroadcast) t.broadcastExclude = true;
+          }
         } catch (e) { console.warn('Tab restore failed:', e); }
       }
       // Land where the session ended (mapped id), else the last tab — parked

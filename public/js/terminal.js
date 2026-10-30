@@ -58,7 +58,8 @@ function sendTerminalInput(tab, text) {
   sendWsInput(tab.ws, text);
   if (broadcastInputMode && !isGenerated && tab && tab.id === activeTabId) {
     for (const other of tabs) {
-      if (other.id !== tab.id && (!other.type || other.type === 'term') && other.ws && other.ws.readyState === 1) {
+      // Per-tile broadcast exclude: a tile opted out in its ⋯ menu stays silent.
+      if (other.id !== tab.id && (!other.type || other.type === 'term') && !other.broadcastExclude && other.ws && other.ws.readyState === 1) {
         sendWsInput(other.ws, text);
       }
     }

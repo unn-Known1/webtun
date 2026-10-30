@@ -444,6 +444,26 @@ function buildTabEditorChrome(tab) {
   reload.title = 'Discard edits and re-read the file from disk';
   reload.addEventListener('click', () => reloadTabFile(tab));
   bar.append(dot, name, status, cursorPos, spacer, findBtn, histBtn, save, panel, reload);
+  // Merged tile chrome: in Tile View the separate 24px tile header is hidden
+  // for text tabs, so the fte-bar carries Maximize + Close instead (visible
+  // only under #terminals.tiles-mode via CSS).
+  const fteZoom = document.createElement('button');
+  fteZoom.className = 'btn fte-btn fte-zoom';
+  fteZoom.type = 'button';
+  fteZoom.textContent = '⤢';
+  fteZoom.title = 'Maximize / Restore tile (Tile View)';
+  fteZoom.setAttribute('aria-label', 'Maximize tile ' + fileTabName(tab.path));
+  fteZoom.setAttribute('aria-pressed', 'false');
+  fteZoom.addEventListener('click', () => { try { if (typeof toggleTileZoom === 'function') toggleTileZoom(tab.id); } catch (e) { console.warn(e); } });
+  const fteClose = document.createElement('button');
+  fteClose.className = 'btn fte-btn fte-close';
+  fteClose.type = 'button';
+  fteClose.textContent = '×';
+  fteClose.title = 'Close tab';
+  fteClose.setAttribute('aria-label', 'Close tab ' + fileTabName(tab.path));
+  fteClose.addEventListener('click', e => { try { if (typeof closeTab === 'function') closeTab(e, tab.id); } catch (err) { console.warn(err); } });
+  bar.append(fteZoom, fteClose);
+  tab.fteZoomBtn = fteZoom; tab.fteCloseBtn = fteClose;
   tab.fteCursor = cursorPos;
   // Markdown / HTML tabs get a Preview toggle (+ Full for HTML), mirroring
   // the panel. The renderers below reuse the panel's pure helpers
@@ -715,6 +735,10 @@ async function refreshTabDiskSnapshot(tab) {
 function showTabEditor(tab) {
   if (tab.bodyEl) tab.bodyEl.style.display = 'flex';
   if (tab.cardEl) tab.cardEl.hidden = true;
+  // Merged tile chrome needs a post-mount sync: the fte-bar buttons only
+  // exist once the editor is built.
+  try { if (typeof syncMergedTileChrome === 'function') syncMergedTileChrome(tab); } catch {}
+  try { if (typeof refreshTileHeader === 'function') refreshTileHeader(tab); } catch {}
   // A tile that was hidden has a stale viewport, so re-measure.
   requestAnimationFrame(() => { try { tab.cm?.refresh(); } catch {} });
 }
