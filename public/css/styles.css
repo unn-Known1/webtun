@@ -4205,7 +4205,12 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
   .term-tile-header { height: 32px; }
   .term-tile-header .tth-close { width: 28px; height: 28px; }
   .term-tile-header .tth-zoom { padding: 6px 9px; }
+  /* G8: narrow screens get one readable column, never a squeezed multi-grid. */
+  #terminals.tiles-mode { grid-template-columns: 1fr; }
 }
+/* Enhancement: dim inactive tiles slightly so the focused tile stands out. */
+#terminals.tiles-mode .term-wrapper:not(.active) { opacity: 0.94; }
+#terminals.tiles-mode .term-wrapper:not(.active):hover { opacity: 1; }
 #terminals.tiles-mode.has-tile-zoom .term-wrapper:not(.tile-zoomed) {
   display: none !important;
 }

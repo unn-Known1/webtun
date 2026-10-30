@@ -590,7 +590,11 @@ function setupTabEnhancements() {
   try {
     const scroll = document.getElementById('tab-scroll');
     scroll?.addEventListener('scroll', () => requestAnimationFrame(updateTabOverflow), { passive: true });
-    window.addEventListener('resize', () => requestAnimationFrame(updateTabOverflow));
+    window.addEventListener('resize', () => requestAnimationFrame(() => {
+      try { updateTabOverflow(); } catch {}
+      // Crossing the narrow breakpoint must re-assert the 1-column rule.
+      try { if (typeof applyTilesColumns === 'function') applyTilesColumns(); } catch {}
+    }));
     // Right-click or touch long-press the + button or empty tab-bar gutter for the new-tab menu.
     const newTabBtn = document.getElementById('new-tab-btn');
     if (newTabBtn) {
@@ -1693,7 +1697,10 @@ function applyTilesColumns() {
   try {
     const termWrap = document.getElementById('terminals');
     if (!termWrap) return;
-    if (!tilesMode || !tilesCols) termWrap.style.gridTemplateColumns = '';
+    // Narrow screens force a single readable column (G8): an explicit desktop
+    // column choice must not squeeze a phone grid.
+    const narrow = window.innerWidth <= 560;
+    if (!tilesMode || !tilesCols || narrow) termWrap.style.gridTemplateColumns = '';
     else termWrap.style.gridTemplateColumns = `repeat(${tilesCols}, minmax(0, 1fr))`;
   } catch {}
 }
@@ -1836,6 +1843,12 @@ function layoutTiles() {
       if (e.target.closest('.tth-close') || e.target.closest('.tth-zoom')) return;
       activateTab(tab.id);
       try { if (tab.type === 'term') tab.term?.focus(); else if (tab.cm) tab.cm.focus(); } catch {}
+    });
+    // G7: dblclick anywhere on the header (not just the name) zooms the tile.
+    hdr.addEventListener('dblclick', e => {
+      if (e.target.closest('.tth-close') || e.target.closest('.tth-zoom')) return;
+      e.preventDefault();
+      toggleTileZoom(tab.id);
     });
     tthName.addEventListener('click', e => { e.stopPropagation(); activateTab(tab.id); try { if (tab.type === 'term') tab.term?.focus(); else if (tab.cm) tab.cm.focus(); } catch {} });
     tthName.addEventListener('dblclick', e => { e.stopPropagation(); toggleTileZoom(tab.id); });
