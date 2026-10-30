@@ -27,8 +27,11 @@ if (/<[^>]*\son(?:click|change|input|keydown|keyup)\s*=/i.test(html + frontend))
   throw new Error('Inline UI handlers found; name an action and register it in the feature script');
 }
 const precache=fs.readFileSync(path.join(root,'public/sw.js'),'utf8');
+// Heavy viewers are lazy-loaded and runtime-cached, not precached.
+const lazyScripts = new Set(['/js/viewers.js']);
 for (const src of localScripts) {
   const absolute='/'+src.replace(/^\//,'');
+  if (lazyScripts.has(absolute)) continue;
   if(!precache.includes("'"+absolute+"'")) throw new Error('Missing precache entry: '+absolute);
 }
 const registeredActions = new Set();

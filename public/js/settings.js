@@ -56,7 +56,14 @@ function loadSettings() {
   }
 }
 
-function saveSettings() { safeStorage.setItem('wt-settings', JSON.stringify(settings)); }
+let _saveSettingsTimer = null;
+function saveSettings() {
+  if (_saveSettingsTimer) clearTimeout(_saveSettingsTimer);
+  _saveSettingsTimer = setTimeout(() => {
+    _saveSettingsTimer = null;
+    safeStorage.setItem('wt-settings', JSON.stringify(settings));
+  }, 150);
+}
 
 const DEFAULT_SETTINGS = {
   theme: 'light', fontSize: 14, font: "'JetBrains Mono', 'SF Mono', 'Fira Code', Consolas, monospace",

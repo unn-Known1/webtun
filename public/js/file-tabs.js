@@ -488,6 +488,24 @@ function buildTabEditorChrome(tab) {
 
 // `seed` ({content, original, history, cursor}) lets a buffer move from the panel into
 // the tab without a disk round-trip and without losing edits or undo history.
+// Release a tab's CodeMirror instance to free memory when it is no longer
+// visible. The buffer (content/undo history/cursor) is preserved via `seed`
+// so reactivation rebuilds the editor without a disk round-trip.
+function releaseTabEditor(tab) {
+  if (!tab || tab.type !== 'file' || tab.closed || !tab.cm) return;
+  try {
+    const content = tab.cm.getValue();
+    const history = (typeof tab.cm.getHistory === 'function') ? tab.cm.getHistory() : null;
+    const cursor = (typeof tab.cm.getCursor === 'function') ? tab.cm.getCursor() : null;
+    if (tab.document && tab.document.buffer) tab.document.buffer.setContent(content);
+    tab.seed = { content, original: tab.document.buffer ? tab.document.buffer.original : content, history, cursor, buffer: tab.document.buffer };
+  } catch {}
+  try { if (tab.fteHost) tab.fteHost.innerHTML = ''; } catch {}
+  tab.cm = null;
+  tab.editorReady = null;
+  try { tab.document.onChange = null; } catch {}
+}
+
 function ensureTabEditor(tab, seed) {
   if (tab.closed) return Promise.resolve(false);
   if (tab.cm) return Promise.resolve(true);

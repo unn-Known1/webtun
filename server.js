@@ -55,6 +55,7 @@ const { execSync, execFileSync, execFile } = require('child_process');
 const { resolveShell, spawnRead } = require('./lib/server/process');
 const https = require('https');
 const http = require('http');
+const zlib = require('zlib');
 
 const { mimeLookup } = require('./lib/server/file-types');
 
@@ -207,6 +208,46 @@ app.use((req, res, next) => {
   const limit = LARGE_JSON_ROUTES.has(p) ? JSON_LIMIT_LARGE : JSON_LIMIT_BASE;
   return express.json({ limit })(req, res, next);
 });
+// Optional gzip compression for text responses (built-in zlib; no extra deps).
+app.use((req, res, next) => {
+  const ae = req.headers['accept-encoding'] || '';
+  if (!/\\bgzip\\b/.test(ae)) return next();
+  const origWrite = res.write.bind(res);
+  const origEnd = res.end.bind(res);
+  let decided = false;
+  let compress = false;
+  let gzip = null;
+  function decide() {
+    if (decided) return;
+    decided = true;
+    const ct = String(res.getHeader('Content-Type') || '');
+    compress = /text|json|javascript|css|xml|svg|html|font|csv/.test(ct);
+    if (compress) {
+      res.setHeader('Content-Encoding', 'gzip');
+      try { res.append('Vary', 'Accept-Encoding'); } catch {}
+      res.removeHeader('Content-Length');
+      gzip = zlib.createGzip();
+      gzip.on('data', (c) => { try { origWrite(c); } catch {} });
+    }
+  }
+  res.write = function (chunk, encoding, cb) {
+    decide();
+    if (!compress) return origWrite(chunk, encoding, cb);
+    if (chunk) gzip.write(chunk, encoding);
+    if (cb) process.nextTick(cb, true);
+    return true;
+  };
+  res.end = function (chunk, encoding, cb) {
+    decide();
+    if (!compress) return origEnd(chunk, encoding, cb);
+    const finish = () => { try { origEnd(); } catch {} if (cb) try { cb(); } catch {} };
+    if (chunk) gzip.write(chunk, encoding);
+    gzip.end();
+    gzip.on('end', finish);
+  };
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // In-app user guide — single static page (public/docs.html, also published to GitHub Pages),
@@ -645,6 +686,7 @@ app.get('/api/system/network', rateLimiter, checkPin, async (req, res) => {
 const HISTORY_FILE = path.join(DATA_DIR, '.cmdhist.json');
 let cmdHistory = [];
 let cmdHistMax = 50;
+let _cmdHistSaveTimer = null;
 
 // Stored as { max, items }. The max used to live only in memory, so a changed
 // cap silently reverted to 50 on the next restart. A bare array (the old
@@ -662,12 +704,17 @@ function loadCmdHistory() {
   } catch { cmdHistory = []; }
 }
 function saveCmdHistory() {
-  try {
-    const tmp = HISTORY_FILE + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify({ max: cmdHistMax, items: cmdHistory }), { mode: 0o600 });
-    try { fs.chmodSync(tmp, 0o600); } catch {}
-    fs.renameSync(tmp, HISTORY_FILE);
-  } catch {}
+  if (_cmdHistSaveTimer) clearTimeout(_cmdHistSaveTimer);
+  _cmdHistSaveTimer = setTimeout(() => {
+    _cmdHistSaveTimer = null;
+    try {
+      const tmp = HISTORY_FILE + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify({ max: cmdHistMax, items: cmdHistory }), { mode: 0o600 });
+      try { fs.chmodSync(tmp, 0o600); } catch {}
+      fs.renameSync(tmp, HISTORY_FILE);
+    } catch {}
+  }, 300);
+  if (_cmdHistSaveTimer && _cmdHistSaveTimer.unref) _cmdHistSaveTimer.unref();
 }
 // NOTE: loaded in startServer() AFTER migrateLegacyState(), not at import —
 // the first boot after upgrade used to read the empty new-location file, then
@@ -743,6 +790,7 @@ registerGitRoutes({ app, checkPin, rateLimiter, paths, workspaceRoot: WORKSPACE_
 // and burns a 100 ms CPU sample. Serve a 2 s-old sample instead. (B-L6)
 const SYS_STATS_TTL_MS = 2000;
 let _sysStatsCache = { at: 0, data: null };
+let _sysStatsCpuPrev = null;
 app.get('/api/system', checkPin, async (req, res) => {
   if (_sysStatsCache.data && Date.now() - _sysStatsCache.at < SYS_STATS_TTL_MS) {
     return res.json(_sysStatsCache.data);
@@ -765,12 +813,15 @@ app.get('/api/system', checkPin, async (req, res) => {
       });
       return { idle: totalIdle / currentCpus.length, total: totalTick / currentCpus.length };
     };
-    const c1 = getCpuUsageFromCpus();
-    await new Promise(r => setTimeout(r, 100));
-    const c2 = getCpuUsageFromCpus();
-    const idleDiff = c2.idle - c1.idle;
-    const totalDiff = c2.total - c1.total;
-    cpuUsage = totalDiff > 0 ? Math.round((1 - idleDiff / totalDiff) * 100) : 0;
+    const nowSample = getCpuUsageFromCpus();
+    const prev = _sysStatsCpuPrev;
+    const nowMs = Date.now();
+    if (prev && (nowMs - prev.at) >= 50) {
+      const idleDiff = nowSample.idle - prev.sample.idle;
+      const totalDiff = nowSample.total - prev.sample.total;
+      cpuUsage = totalDiff > 0 ? Math.round((1 - idleDiff / totalDiff) * 100) : 0;
+    }
+    _sysStatsCpuPrev = { at: nowMs, sample: nowSample };
   } catch {}
 
   const totalMem = os.totalmem();
@@ -977,7 +1028,7 @@ app.post('/api/system/shutdown', checkPin, requirePinSet, (req, res) => {
 
 const { createTunnelService } = require('./lib/server/tunnels');
 const tunnelService = createTunnelService({ app, checkPin, dataDir: DATA_DIR, allowFullFs: ALLOW_FULL_FS, licenseStatus: () => licenseLib.status() });
-const { findCloudflared } = require('./lib/cloudflared');
+const findCloudflared = (...args) => require('./lib/cloudflared').findCloudflared(...args);
 
 // ── SSH access (on-demand credentials for external SSH clients) ────────
 // Optional, off by default: credentials exist only after an explicit
@@ -985,7 +1036,7 @@ const { findCloudflared } = require('./lib/cloudflared');
 // managed lines tagged `webtun:<id>` so revoke never touches foreign keys.
 // Creation/deletion require PIN protection (requirePinSet) so an open
 // instance can't mint shell access for anyone on the network.
-const sshLib = require('./lib/ssh');
+const sshLib = new Proxy({}, { get(_t, prop) { const m = require('./lib/ssh'); return m[prop]; } });
 
 app.get('/api/ssh/status', rateLimiter, checkPin, async (req, res) => {
   try {
@@ -1060,7 +1111,7 @@ app.post('/api/ssh/cleanup', authRateLimiter, checkPin, requirePinSet, requirePr
 // sudo -n only (never a password over the wire), and PIN-gated like the rest
 // of the SSH surface. Slow installs (apt, downloads) run async: the route
 // answers 202 and the outcome lands on the next GET.
-const sshSetup = require('./lib/ssh-setup');
+const sshSetup = new Proxy({}, { get(_t, prop) { const m = require('./lib/ssh-setup'); return m[prop]; } });
 
 app.get('/api/ssh/setup', rateLimiter, checkPin, async (req, res) => {
   try {

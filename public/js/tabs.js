@@ -1305,6 +1305,7 @@ async function refreshTerminalSessionsModal(silent = false) {
 }
 
 async function activateTab(id) {
+  const prevActiveId = activeTabId;
   activeTabId = id;
   try { if (navigator.vibrate && window.innerWidth <= 768) navigator.vibrate(12); } catch {}
   tabs.forEach(t => {
@@ -1338,6 +1339,16 @@ async function activateTab(id) {
   // active, and hand it back to its own split when any other tab takes over.
   // Awaited: a refused open abandons the tab and re-activates elsewhere, so
   // firing-and-forgetting let activation jump twice.
+  // Lazy CodeMirror (P-025): release the previous file tab's editor to free
+  // memory when switching away (unless tile view keeps all tabs live).
+  try {
+    if (typeof tilesMode === 'undefined' || !tilesMode) {
+      const prevTab = tabs.find(t => t.id === prevActiveId);
+      if (prevTab && prevTab.type === 'file' && prevTab.id !== id && typeof releaseTabEditor === 'function') {
+        releaseTabEditor(prevTab);
+      }
+    }
+  } catch {}
   if (tab && tab.type === 'file') { try { await mountFileTab(tab); } catch (e) { console.warn('mountFileTab failed:', e); } }
   else if (_dockedFileTabId != null) undockEditor();
   scrollActiveTabIntoView();

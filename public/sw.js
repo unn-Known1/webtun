@@ -25,7 +25,7 @@ const PRECACHE = [
   '/js/editor-panel.js',
   '/js/file-tabs.js',
   '/js/preview.js',
-  '/js/viewers.js',
+  // Viewers are lazy-loaded and runtime-cached on first use.
   '/js/launchpad.js',
   '/js/settings.js',
   '/js/security.js',

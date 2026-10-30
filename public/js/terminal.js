@@ -321,6 +321,11 @@ function connectWebSocket(tab, isReconnect = false) {
     else { try { chunk = tab._termDecoder.decode(data, { stream: true }); } catch { chunk = new TextDecoder().decode(data); } }
     const str = oscBuf + chunk;
     oscBuf = '';
+    // Fast path: no escape sequences to parse — hand the whole chunk to xterm.
+    if (!str.includes('\x1b')) {
+      tab.term.write(str);
+      return;
+    }
     let out = '';
     let i = 0;
     while (i < str.length) {

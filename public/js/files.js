@@ -261,6 +261,8 @@ async function _loadFilesInner(dir) {
             im = document.createElement('img');
             im.className = 'file-thumb';
             im.alt = '';
+            im.decoding = 'async';
+            im.loading = 'lazy';
             im.onload = () => im.classList.add('ld');
             im.onerror = () => im.remove();
             if (tileEl) tileEl.appendChild(im);
@@ -338,14 +340,17 @@ try {
 function saveFileSort() { try { safeStorage.setItem('wt-file-sort', JSON.stringify(fileSort)); } catch {} }
 function sortFiles(files) {
   const { key, dir } = fileSort;
-  const val = (f) => key === 'name' ? (f.name || '').toLowerCase() : key === 'size' ? (f.size || 0) : (f.modified ? new Date(f.modified).getTime() || 0 : 0);
-  return [...files].sort((a, b) => {
-    if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
-    const va = val(a), vb = val(b);
-    if (va < vb) return -1 * dir;
-    if (va > vb) return 1 * dir;
-    return (a.name || '').localeCompare(b.name || '');
-  });
+  // Precompute sort keys once instead of reparsing dates in the comparator.
+  const val = (f) => key === 'name' ? (f.name || '').toLowerCase()
+    : key === 'size' ? (f.size || 0)
+    : (f.modified ? (Date.parse(f.modified) || 0) : 0);
+  const keyed = files.map(f => ({ f, v: val(f), name: (f.name || '').toLowerCase() }));
+  return keyed.sort((a, b) => {
+    if (a.f.isDir !== b.f.isDir) return a.f.isDir ? -1 : 1;
+    if (a.v < b.v) return -1 * dir;
+    if (a.v > b.v) return 1 * dir;
+    return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+  }).map(x => x.f);
 }
 const _sortCycle = ['name', 'modified', 'size'];
 function cycleFileSort() {
@@ -383,19 +388,36 @@ function extKind(ext) {
   return EXT_KIND.get((ext || '').toLowerCase()) || 'file';
 }
 
+const _timeAgoCache = new Map();
 function timeAgo(ts) {
   if (!ts) return '';
+  const now = Date.now();
+  const cached = _timeAgoCache.get(ts);
+  if (cached && now - cached.at < 60000) return cached.text;
   const t = new Date(ts).getTime();
-  if (isNaN(t)) return '';
+  if (isNaN(t)) { _timeAgoCache.set(ts, { at: now, text: '' }); return ''; }
   const s = Math.max(0, (Date.now() - t) / 1000);
-  if (s < 60) return 'just now';
-  const m = s / 60;
-  if (m < 60) return Math.floor(m) + 'm ago';
-  const h = m / 60;
-  if (h < 24) return Math.floor(h) + 'h ago';
-  const d = h / 24;
-  if (d < 30) return Math.floor(d) + 'd ago';
-  return new Date(t).toLocaleDateString();
+  let text;
+  if (s < 60) text = 'just now';
+  else {
+    const m = s / 60;
+    if (m < 60) text = Math.floor(m) + 'm ago';
+    else {
+      const h = m / 60;
+      if (h < 24) text = Math.floor(h) + 'h ago';
+      else {
+        const d = h / 24;
+        if (d < 30) text = Math.floor(d) + 'd ago';
+        else text = new Date(t).toLocaleDateString();
+      }
+    }
+  }
+  _timeAgoCache.set(ts, { at: now, text });
+  if (_timeAgoCache.size > 500) {
+    const first = _timeAgoCache.keys().next().value;
+    _timeAgoCache.delete(first);
+  }
+  return text;
 }
 
 // Lazy image thumbnails inside file tiles (IntersectionObserver on the

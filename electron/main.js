@@ -193,7 +193,14 @@ function startServer() {
         try {
           // Slice the raw bytes before decoding: slicing a decoded JS string
           // can split a UTF-16 surrogate pair and corrupt the log.
-          const tail = fs.readFileSync(lp).slice(-262144).toString('utf8');
+          const size = fs.statSync(lp).size;
+          const start = Math.max(0, size - 262144);
+          const len = Math.min(size, 262144);
+          const buf = Buffer.alloc(len);
+          const fd = fs.openSync(lp, 'r');
+          fs.readSync(fd, buf, 0, len, start);
+          fs.closeSync(fd);
+          const tail = buf.toString('utf8');
           fs.writeFileSync(lp, tail);
           _logBytes = Buffer.byteLength(tail);
         } catch {}
