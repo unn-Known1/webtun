@@ -1757,6 +1757,15 @@ function toggleTiles(force) {
     termWrap.querySelectorAll('.term-wrapper.tile-zoomed').forEach(el => el.classList.remove('tile-zoomed'));
     termWrap.querySelectorAll('.term-tile-header').forEach(el => el.remove());
     try { termWrap.style.gridTemplateColumns = ''; } catch {}
+    // G6: entering tiles mounted up to 10 background CodeMirrors; release the
+    // non-active text editors on exit so memory drops back. Buffers (content,
+    // undo history, cursor) are kept in seeds, so reactivating a tab rebuilds
+    // without a disk round-trip — same as the P-025 lazy release on switch.
+    try {
+      tabs.forEach(t => {
+        if (t.type === 'file' && t.viewer === 'text' && t.cm && t.id !== activeTabId && typeof releaseTabEditor === 'function') releaseTabEditor(t);
+      });
+    } catch (e) { console.warn('exit-tiles release failed:', e); }
     // Every tile had tile geometry: refit all, not just the active tab, or
     // background terms keep tile sizes until visited.
     setTimeout(() => { try { refitTiles(); } catch (e) { console.warn(e); } }, 60);
