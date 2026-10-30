@@ -1075,6 +1075,7 @@ async function moveTabToPanel(tab) {
 function abandonFileTab(tab) {
   if (!tab) return;
   tab.closed = true;
+  try { if (typeof unobserveTileMount === 'function') unobserveTileMount(tab); } catch {}
   if (_dockedFileTabId === tab.id) undockEditor(false);
   try { if (tab.imgUrl) URL.revokeObjectURL(tab.imgUrl); } catch {}
   tab.el?.remove();

@@ -1558,6 +1558,7 @@ async function closeTab(e, id, opts = {}) {
   try { if (tab.iframe) tab.iframe.src = 'about:blank'; } catch {}
   tab.el?.remove();
   tab.wrapper?.remove();
+  try { if (typeof unobserveTileMount === 'function') unobserveTileMount(tab); } catch {}
   // Kill the backing session (tmux or in-memory) so it doesn't pile up (terminals only)
   if (!isPreview && !isFile && tab.sessionId) api(`/api/sessions/${tab.sessionId}`, { method: 'DELETE' });
   tabs = tabs.filter(t => t.id !== id);
@@ -1757,6 +1758,7 @@ function toggleTiles(force) {
     termWrap.querySelectorAll('.term-wrapper.tile-zoomed').forEach(el => el.classList.remove('tile-zoomed'));
     termWrap.querySelectorAll('.term-tile-header').forEach(el => el.remove());
     try { termWrap.style.gridTemplateColumns = ''; } catch {}
+    try { if (typeof disconnectTileMountObserver === 'function') disconnectTileMountObserver(); } catch {}
     // G6: entering tiles mounted up to 10 background CodeMirrors; release the
     // non-active text editors on exit so memory drops back. Buffers (content,
     // undo history, cursor) are kept in seeds, so reactivating a tab rebuilds
@@ -1908,18 +1910,79 @@ function layoutTiles() {
   // with retry instead of a modal or a vanishing tab.
   const refitAll = () => { try { refitTiles(); } catch (e) { console.warn(e); } };
   if (tilesMode) {
-    const pending = tabs
-      .filter(tab => tab.type === 'file' && !tab.closed && (tab.viewer === 'text' || tab.viewer === 'image') && !tab.cm && !tab.bodyEl?.dataset.mounted)
-      .map(tab => {
-        if (tab.viewer === 'image') return mountFileTab(tab, { background: true }).catch(e => console.warn('Tile mount failed:', e));
-        if (tab.cm) return Promise.resolve();
-        return mountFileTab(tab, { background: true }).catch(e => console.warn('Tile mount failed:', e));
+    // G6: lazy-mount — only tiles already in the viewport mount now; the rest
+    // mount when scrolled into view (200px prefetch). Entering tiles with 10
+    // unmounted files no longer fires 10 concurrent fetches + mode loads.
+    const mountOne = (tab) => {
+      try { unobserveTileMount(tab); } catch {}
+      if (tab.closed || tab.cm || tab.bodyEl?.dataset.mounted) return Promise.resolve();
+      return mountFileTab(tab, { background: true })
+        .catch(e => console.warn('Tile mount failed:', e))
+        .then(() => { try { scheduleRefitTiles(); } catch {} });
+    };
+    const candidates = tabs
+      .filter(tab => tab.type === 'file' && !tab.closed && (tab.viewer === 'text' || tab.viewer === 'image') && !tab.cm && !tab.bodyEl?.dataset.mounted);
+    let pending;
+    try {
+      const termRect = termWrap.getBoundingClientRect();
+      const visible = [], hidden = [];
+      candidates.forEach(tab => {
+        try {
+          const r = tab.wrapper?.getBoundingClientRect();
+          if (r && r.bottom > termRect.top && r.top < termRect.bottom) visible.push(tab);
+          else hidden.push(tab);
+        } catch { visible.push(tab); }
       });
+      pending = visible.map(mountOne);
+      hidden.forEach(tab => { try { observeTileMount(tab); } catch {} });
+    } catch {
+      pending = candidates.map(mountOne);
+    }
     // Refit after the mounts settle: a fixed 60ms fires before slow
     // fetch/mode-load finishes and leaves zero-size CodeMirror panes.
     Promise.allSettled(pending).then(() => requestAnimationFrame(refitAll));
+  } else {
+    try { disconnectTileMountObserver(); } catch {}
   }
   setTimeout(refitAll, 60);
+}
+// G6: offscreen tile mounts wait for scroll. One observer rooted at the tiles
+// scroll container; entries mount once with a 200px prefetch margin.
+let _tileMountObserver = null;
+function observeTileMount(tab) {
+  try {
+    if (!tab || !tab.wrapper || tab.closed) return;
+    if (typeof IntersectionObserver === 'undefined') {
+      mountFileTab(tab, { background: true }).catch(e => console.warn('Tile mount failed:', e));
+      return;
+    }
+    const termWrap = document.getElementById('terminals');
+    if (!_tileMountObserver) {
+      _tileMountObserver = new IntersectionObserver(entries => {
+        entries.forEach(en => {
+          if (!en.isIntersecting) return;
+          try {
+            const id = en.target?.dataset?.id;
+            const t = tabs.find(x => String(x.id) === String(id));
+            if (t && !t.closed && typeof tilesMode !== 'undefined' && tilesMode) {
+              mountFileTab(t, { background: true })
+                .catch(e => console.warn('Tile mount failed:', e))
+                .then(() => { try { scheduleRefitTiles(); } catch {} });
+            }
+          } catch {}
+          try { _tileMountObserver.unobserve(en.target); } catch {}
+        });
+      }, { root: termWrap, rootMargin: '200px' });
+    }
+    _tileMountObserver.observe(tab.wrapper);
+  } catch (e) { console.warn('observeTileMount failed:', e); }
+}
+function unobserveTileMount(tab) {
+  try { if (_tileMountObserver && tab?.wrapper) _tileMountObserver.unobserve(tab.wrapper); } catch {}
+}
+function disconnectTileMountObserver() {
+  try { if (_tileMountObserver) _tileMountObserver.disconnect(); } catch {}
+  _tileMountObserver = null;
 }
 function moveTabToEnd(fromId) {
   if (isNaN(fromId)) return;
