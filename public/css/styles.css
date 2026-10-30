@@ -495,8 +495,8 @@ svg { display: block; }
 .xterm-viewport { border-radius: 0; }
 .term-bell-flash { animation: bellFlash 0.15s ease-out; }
 @keyframes bellFlash { 0% { filter: brightness(1.8); } 100% { filter: brightness(1); } }
-#terminals.tiles-mode { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); grid-auto-rows: 1fr; gap: 4px; padding: 4px; position: relative; overflow: auto; min-height: 0; overscroll-behavior: none; }
-#terminals.tiles-mode .term-wrapper { position: relative; inset: unset; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; min-height: 150px; }
+#terminals.tiles-mode { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); grid-auto-rows: minmax(220px, 1fr); gap: 4px; padding: 4px; position: relative; overflow: auto; min-height: 0; overscroll-behavior: none; }
+#terminals.tiles-mode .term-wrapper { position: relative; inset: unset; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; min-height: 220px; }
 #terminals.tiles-mode .term-wrapper.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 #terminals.tiles-mode .term-wrapper.active .term-tile-header { background: var(--bg); color: var(--accent); }
 .term-tile-header { display: flex; align-items: center; height: 24px; padding: 0 8px; background: var(--bg3); border-bottom: 1px solid var(--border); font-size: var(--fs-meta); color: var(--fg2); flex-shrink: 0; gap: 6px; cursor: pointer; user-select: none; }
@@ -4138,6 +4138,8 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 }
 
 /* Tile Header Status Dot & Zoom Maximize */
+/* B4: dot priority is disconnected > dirty > connected — JS toggles all three
+   classes via refreshTileHeader, so each needs a rule. */
 .tth-dot {
   width: 7px;
   height: 7px;
@@ -4147,6 +4149,12 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 }
 .tth-dot.connected {
   background: var(--green);
+}
+.tth-dot.disconnected {
+  background: var(--red);
+}
+.tth-dot.dirty {
+  background: var(--dirty);
 }
 .tth-zoom {
   background: transparent;
@@ -4161,6 +4169,42 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 .tth-zoom:hover {
   background: var(--bg3);
   color: var(--fg);
+}
+/* B10: zoomed tile's button needs an active visual, not just :hover. */
+.tth-zoom.active {
+  background: var(--accent);
+  color: var(--bg);
+}
+.tth-zoom:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* G2: preview toolbar eats small tiles — compact override mirrors .fte-bar. */
+#terminals.tiles-mode .preview-bar { gap: 4px; padding: 4px 6px; }
+#terminals.tiles-mode .preview-bar .btn { height: 22px; padding: 0 6px; font-size: var(--fs-micro); }
+#terminals.tiles-mode .preview-bar input { height: 22px; font-size: var(--fs-micro); }
+#terminals.tiles-mode .preview-bar .preview-path-input { min-width: 40px; }
+#terminals.tiles-mode .preview-bar .preview-auto { font-size: var(--fs-micro); }
+#terminals.tiles-mode .preview-width { height: 22px; font-size: var(--fs-micro); }
+/* Enhancement (G3): strip badges mirrored onto tile headers. */
+.term-tile-header .tth-pin { font-size: 10px; line-height: 1; flex-shrink: 0; }
+.term-tile-header.has-activity .tth-dot { background: var(--green); box-shadow: 0 0 5px var(--green); }
+.term-tile-header.has-bell .tth-dot { background: var(--amber); box-shadow: 0 0 5px var(--amber); }
+.term-tile-header.is-exited .tth-name { opacity: 0.55; }
+.term-tile-header.is-exited .tth-dot { background: var(--red); }
+.term-tile-header.pinned { box-shadow: inset 0 -2px 0 var(--amber); }
+.term-tile-header[data-tab-color="blue"] { box-shadow: inset 2px 0 0 #38bdf8; }
+.term-tile-header[data-tab-color="green"] { box-shadow: inset 2px 0 0 var(--green); }
+.term-tile-header[data-tab-color="amber"] { box-shadow: inset 2px 0 0 var(--amber); }
+.term-tile-header[data-tab-color="red"] { box-shadow: inset 2px 0 0 var(--red); }
+.term-tile-header[data-tab-color="purple"] { box-shadow: inset 2px 0 0 #a855f7; }
+.term-tile-header[data-tab-color="cyan"] { box-shadow: inset 2px 0 0 var(--cyan, #22d3ee); }
+.term-tile-header.pinned[data-tab-color] { box-shadow: inset 2px 0 0 var(--accent), inset 0 -2px 0 var(--amber); }
+/* Narrow tiles: keep the header usable without crowding the title. */
+@media (max-width: 560px) {
+  .term-tile-header { height: 32px; }
+  .term-tile-header .tth-close { width: 28px; height: 28px; }
+  .term-tile-header .tth-zoom { padding: 6px 9px; }
 }
 #terminals.tiles-mode.has-tile-zoom .term-wrapper:not(.tile-zoomed) {
   display: none !important;

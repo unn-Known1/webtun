@@ -100,6 +100,8 @@ function newFileTab(path, opts = {}) {
   unpinLaunchpad();
   updateLaunchpad();
   if (opts.mount !== false) activateTab(id);
+  // B2: file tiles created while in tiles mode need headers right away.
+  try { if (typeof tilesMode !== 'undefined' && tilesMode && typeof layoutTiles === 'function') layoutTiles(); } catch {}
   return tab;
 }
 
@@ -251,8 +253,9 @@ async function mountImageIntoTab(tab) {
   }
 }
 
-async function mountFileTab(tab) {
+async function mountFileTab(tab, opts = {}) {
   if (!tab || tab.type !== 'file' || tab.closed) return;
+  const background = !!(opts && opts.background);
   if (tab.viewer === 'image') {
     try { await mountImageIntoTab(tab); } catch (e) { console.warn('Image tab failed:', e); }
     return;
@@ -260,9 +263,20 @@ async function mountFileTab(tab) {
   // Text tabs own a live CodeMirror, so there is nothing to re-mount or restore: just
   // reveal it (and re-measure, in case it was hidden).
   if (tab.viewer === 'text') {
-    const ok = await ensureTabEditor(tab, tab.seed);
+    const ok = await ensureTabEditor(tab, tab.seed, background ? { background: true } : undefined);
     tab.seed = null;
-    if (!ok || tab.closed) { abandonFileTab(tab); return; }
+    if (!ok || tab.closed) {
+      // B5: background tile entry never abandons — a failed/slow mount leaves
+      // an inline error card with retry; the tab survives.
+      if (background && !tab.closed) {
+        try { tab.editorReady = null; } catch {}
+        if (!tab.cm) showTileErrorCard(tab, 'Could not open this file in tile view.');
+        else showTabEditor(tab);
+        try { if (typeof refreshTileHeader === 'function') refreshTileHeader(tab); } catch {}
+        return;
+      }
+      abandonFileTab(tab); return;
+    }
     showTabEditor(tab);
     // A carried preview state (Panel→tab handoff) renders on mount.
     if (tab.previewOn && tabPreviewKind(tab)) {
@@ -506,15 +520,59 @@ function releaseTabEditor(tab) {
   try { tab.document.onChange = null; } catch {}
 }
 
-function ensureTabEditor(tab, seed) {
+function ensureTabEditor(tab, seed, opts = {}) {
   if (tab.closed) return Promise.resolve(false);
   if (tab.cm) return Promise.resolve(true);
-  if (!tab.editorReady) tab.editorReady = initializeTabEditor(tab, seed);
+  if (!tab.editorReady) tab.editorReady = initializeTabEditor(tab, seed, opts);
   return tab.editorReady;
 }
 
-async function initializeTabEditor(tab, seed) {
-  const data = seed || await readTextForEditor(tab.path);
+// B5: background tile mounts never abandon the tab. Failures render an inline
+// error card with retry; the parked card stays for heavy viewers, the text
+// body gets a retry card so the tab survives tile entry.
+function showTileErrorCard(tab, message) {
+  try {
+    const body = tab.bodyEl;
+    if (!body) return;
+    body.style.display = 'flex';
+    if (tab.cardEl) tab.cardEl.hidden = true;
+    body.innerHTML = '';
+    const card = document.createElement('div');
+    card.className = 'file-tab-card';
+    card.style.position = 'relative';
+    card.style.inset = 'auto';
+    const name = document.createElement('div');
+    name.className = 'ftc-name';
+    name.textContent = fileTabName(tab.path);
+    const hint = document.createElement('div');
+    hint.className = 'ftc-hint';
+    hint.textContent = message || 'Could not open this file.';
+    const retry = document.createElement('button');
+    retry.className = 'btn btn-primary ftc-open';
+    retry.type = 'button';
+    retry.textContent = 'Retry';
+    retry.addEventListener('click', () => {
+      try { tab.editorReady = null; } catch {}
+      mountFileTab(tab);
+    });
+    card.append(name, hint, retry);
+    body.appendChild(card);
+  } catch (e) { console.warn('showTileErrorCard failed:', e); }
+}
+
+async function initializeTabEditor(tab, seed, opts = {}) {
+  const background = !!(opts && opts.background);
+  const data = seed || await readTextForEditor(tab.path, background ? { background: true } : undefined);
+  if (data && data.error) {
+    if (background) {
+      if (!background || tab.closed) { /* fall through to card */ }
+      try { toast(data.error, 'error'); } catch {}
+      showTileErrorCard(tab, data.isBinary ? (data.error || 'Preview not supported for binary files — use Download') : (data.error || 'Could not open this file.'));
+      tab.editorReady = null;
+      return false;
+    }
+    if (!data || tab.closed) return false;
+  }
   if (!data || tab.closed) return false;
   buildTabEditorChrome(tab);
   if (!tab.fteHost) return false;
@@ -582,6 +640,12 @@ async function initializeTabEditor(tab, seed) {
   }
   markTabDirty(tab);
   if (buffer.extChanged) setTabExtChanged(tab, true, data.extMsg && /Deleted/.test(data.extMsg) ? data.extMsg : undefined);
+  // B5: background mounts keep disk content; surface deferred decisions inline
+  // instead of a modal — the draft stays stored until the user opens the tile.
+  try {
+    if (data && data.pendingDraft) flashTabStatus(tab, 'Draft kept — open tile to review');
+    else if (data && data.largeFile) flashTabStatus(tab, 'Large file — mounted in tile');
+  } catch {}
   try { cm.setOption('mode', await resolveCMmode(fileTabName(tab.path))); } catch (e) { console.warn('Mode resolve failed:', e); }
   return !tab.closed;
 }
@@ -913,6 +977,8 @@ function paintTabDirty(tab) {
     tab.fteDot.setAttribute('aria-label', tab.document.extChanged ? 'File changed on disk' : (dirty ? 'Unsaved changes' : 'No unsaved changes'));
   }
   tab.el?.classList.toggle('has-dirty', dirty);
+  // B6: headers mirror dirty state without waiting for the next layout.
+  try { if (typeof refreshTileHeader === 'function') refreshTileHeader(tab); } catch {}
 }
 function markTabDirty(tab) {
   if (tab?.cm) tab.document.buffer?.setContent(tab.cm.getValue());
@@ -1016,6 +1082,9 @@ function abandonFileTab(tab) {
   tabs = tabs.filter(t => t.id !== tab.id);
   releaseFileTabResources(tab);
   saveTabState();
+  // B1: dropping the zoomed wrapper must clear `has-tile-zoom` first, or the
+  // remaining tiles all match `:not(.tile-zoomed)` and the grid blanks.
+  try { if (typeof reconcileTileZoom === 'function') reconcileTileZoom(); } catch {}
   if (activeTabId === tab.id && tabs.length > 0) activateTab(tabs[tabs.length - 1].id);
   else if (tilesMode) layoutTiles();
   updateLaunchpad();
@@ -1054,6 +1123,8 @@ function openFileAsTab(path) {
   if (tab.seed?.buffer) tab.document.open(path, tab.seed, tab.seed.buffer);
   activateTab(tab.id);
   if (fromPanel && tab.viewer === 'text') releasePanelSurface();
+  // B2: tiles created via Open-in-Tab while in tiles mode need headers now.
+  try { if (typeof tilesMode !== 'undefined' && tilesMode && typeof layoutTiles === 'function') layoutTiles(); } catch {}
   return tab;
 }
 

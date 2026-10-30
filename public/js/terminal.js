@@ -240,6 +240,8 @@ function connectWebSocket(tab, isReconnect = false) {
     hideTermLoading(tab);
     try { if (typeof clearTabExited === 'function') clearTabExited(tab); } catch {}
     try { if (typeof refreshConnStatus === 'function') refreshConnStatus(); else updateConnStatus(true); } catch {}
+    // B6: tile dot follows WS state without waiting for the next layout.
+    try { if (typeof refreshTileHeader === 'function') refreshTileHeader(tab); } catch {}
     const banner = document.getElementById('reconnect-banner');
     if (banner) {
       banner.innerHTML = '<span class="reconnect-spinner"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></span> Reconnecting…';
@@ -548,6 +550,8 @@ function handleClientEvent(payload) {
       return;
     }
     try { if (typeof refreshConnStatus === 'function') refreshConnStatus(); else updateConnStatus(false); } catch {}
+    // B6: tile dot follows WS state without waiting for the next layout.
+    try { if (typeof refreshTileHeader === 'function') refreshTileHeader(tab); } catch {}
     const _attempt = retry.attempt;
     const _maxAttempts = policy.maxAttempts;
     const spinnerHtml = '<span class="reconnect-spinner"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></span>';
@@ -846,13 +850,17 @@ function initTerminal(tab) {
   });
 
   // Resize observer
+  // B8+G5: one shared debounced refit (terms + CM + docked editor) instead of
+  // N observers x N fits of terms only — CM tiles stayed wrong-sized and every
+  // layout event fanned out N^2 fits.
   tab.resizeObserver = new ResizeObserver(() => {
-    // In tile view every wrapper is visible, so background tiles must refit
-    // too — they used to stay at their old size forever.
-    if (tilesMode) {
-      tabs.forEach(t => { if (t.term && t.wrapper) { try { fitTerm(t); } catch {} } });
-      return;
-    }
+    try {
+      if (typeof tilesMode !== 'undefined' && tilesMode) {
+        if (typeof scheduleRefitTiles === 'function') scheduleRefitTiles();
+        else if (typeof refitTiles === 'function') refitTiles();
+        return;
+      }
+    } catch {}
     if (activeTabId === tab.id) { try { fitTerm(tab); } catch(e) { console.warn(e); } }
   });
   tab.resizeObserver.observe(tab.wrapper);

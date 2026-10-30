@@ -26,6 +26,7 @@ function applyTabMeta(tab) {
     const pinLbl = document.getElementById('tab-ctx-pin-label');
     if (pinLbl && _tabCtxId === tab.id) pinLbl.textContent = tab.pinned ? 'Unpin Tab' : 'Pin Tab';
   } catch {}
+  try { if (typeof refreshTileHeader === 'function') refreshTileHeader(tab); } catch {}
 }
 
 function setTabColor(id, color) {
@@ -56,6 +57,9 @@ function groupPinnedTab(tab) {
       else bar.appendChild(moved.el);
     }
   } catch {}
+  // Tiles grid follows wrapper DOM order, not the strip — keep both in sync
+  // or a pin regroup moves the strip button while the tile stays put (B7).
+  try { if (typeof syncTileWrapperOrder === 'function') syncTileWrapperOrder(); } catch {}
 }
 
 function togglePinTab(id) {
@@ -181,12 +185,14 @@ function notifyTabOutput(tab) {
     if (!tab || tab.closed || tab.id === activeTabId) return;
     if (tab.type !== 'term') return;
     tab.el?.classList.add('has-activity');
+    if (typeof refreshTileHeader === 'function') refreshTileHeader(tab);
   } catch {}
 }
 function notifyTabBell(tab) {
   try {
     if (!tab || tab.closed) return;
     if (tab.id !== activeTabId) { tab.el?.classList.add('has-bell'); tab.el?.classList.remove('has-activity'); }
+    if (typeof refreshTileHeader === 'function') refreshTileHeader(tab);
   } catch {}
 }
 function notifyTabExited(tab) {
@@ -194,13 +200,16 @@ function notifyTabExited(tab) {
     if (!tab || tab.closed) return;
     tab.el?.classList.add('is-exited');
     tab.el?.classList.remove('has-activity');
+    if (typeof refreshTileHeader === 'function') refreshTileHeader(tab);
   } catch {}
 }
 function clearTabExited(tab) {
   try { tab?.el?.classList.remove('is-exited'); } catch {}
+  try { if (typeof refreshTileHeader === 'function' && tab) refreshTileHeader(tab); } catch {}
 }
 function clearTabBadges(tab) {
   try { tab?.el?.classList.remove('has-activity', 'has-bell'); } catch {}
+  try { if (typeof refreshTileHeader === 'function' && tab) refreshTileHeader(tab); } catch {}
 }
 
 function clearTabBuffer(id) {
@@ -606,7 +615,99 @@ function setupTabEnhancements() {
     // the rename input existing aborts the menu).
     // (Per-tab touch wiring lives in createTabButton.)
   } catch {}
+  try { setupTilesShortcuts(); } catch {}
+  try { injectTilesColsMenu(); } catch {}
   updateTabOverflow();
+}
+
+// Enhancement: Alt+G toggles Tile View (shown on the More menu item via title),
+// Esc restores a zoomed tile. Guarded so typing in inputs is unaffected.
+function setupTilesShortcuts() {
+  if (window._tilesShortcutsWired) return;
+  window._tilesShortcutsWired = true;
+  try {
+    document.querySelectorAll('[data-more-item="tiles"]').forEach(el => {
+      try { el.title = 'Tiles Mode (Alt+G)'; } catch {}
+    });
+  } catch {}
+  document.addEventListener('keydown', e => {
+    try {
+      const tag = (e.target && e.target.tagName) || '';
+      const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(tag) || (e.target && e.target.isContentEditable);
+      if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && (e.key === 'g' || e.key === 'G')) {
+        if (typing) return;
+        e.preventDefault();
+        toggleTiles();
+        return;
+      }
+      if (e.key === 'Escape' && !typing) {
+        const termWrap = document.getElementById('terminals');
+        if (termWrap && termWrap.classList.contains('has-tile-zoom')) {
+          e.preventDefault();
+          clearTileZoom();
+          try { persistTilesState(); } catch {}
+          setTimeout(() => { try { refitTiles(); } catch {} }, 50);
+        }
+      }
+    } catch {}
+  });
+}
+
+// Enhancement: column picker row injected into the More menu (no index.html
+// change needed). Cycles Auto / 1 / 2 / 3 / 4.
+function injectTilesColsMenu() {
+  try {
+    const menu = document.getElementById('more-menu');
+    if (!menu || document.getElementById('tiles-cols-row')) return;
+    const btn = document.createElement('button');
+    btn.className = 'mm-item';
+    btn.id = 'tiles-cols-row';
+    btn.type = 'button';
+    btn.setAttribute('role', 'menuitem');
+    const label = document.createElement('span');
+    label.setAttribute('data-tiles-cols-label', '');
+    label.textContent = 'Columns: ' + (tilesCols ? tilesCols : 'Auto');
+    btn.appendChild(label);
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      cycleTilesColumns();
+    });
+    const tilesItem = menu.querySelector('[data-more-item="tiles"]');
+    if (tilesItem && tilesItem.nextSibling) menu.insertBefore(btn, tilesItem.nextSibling);
+    else menu.appendChild(btn);
+  } catch {}
+}
+
+// G10: restore persisted Tile View after the tab-restore block in core.js
+// finishes recreating wrappers (poll briefly — restores are staggered ~100ms).
+function restoreTilesState() {
+  try {
+    const raw = safeStorage.getItem('wt-tiles-mode');
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    if (!saved || !saved.on) return;
+    if (typeof saved.cols === 'number' && saved.cols >= 0 && saved.cols <= 4) tilesCols = saved.cols;
+    let tries = 0;
+    const attempt = () => {
+      tries++;
+      try {
+        if (!tabs.length || !tabs.some(t => t.wrapper)) {
+          if (tries < 40) setTimeout(attempt, 150);
+          return;
+        }
+        toggleTiles(true);
+        if (saved.zoomId != null) {
+          const ztab = tabs.find(t => String(t.id) === String(saved.zoomId));
+          if (ztab && ztab.wrapper) {
+            ztab.wrapper.classList.add('tile-zoomed');
+            document.getElementById('terminals')?.classList.add('has-tile-zoom');
+            try { refreshTileHeader(ztab); } catch {}
+          }
+        }
+      } catch (e) { console.warn('restoreTilesState failed:', e); }
+    };
+    setTimeout(attempt, 600);
+  } catch {}
 }
 
 
@@ -661,6 +762,7 @@ function setupTabDragDrop(tabEl, id) {
       const ref = after ? tabEl.nextSibling : tabEl;
       bar.insertBefore(moved.el, ref);
     }
+    try { if (typeof syncTileWrapperOrder === 'function') syncTileWrapperOrder(); } catch {}
     saveTabState();
     updateTabOverflow();
   };
@@ -720,6 +822,7 @@ function setupTabInlineRename(tabTitleSpan, tab) {
       // The replacement span is a fresh node: re-wire rename onto it, or the
       // renamed tab silently loses dblclick/long-press rename.
       try { setupTabInlineRename(newSpan, tab); } catch {}
+      try { if (typeof refreshTileHeader === 'function') refreshTileHeader(tab); } catch {}
       saveTabState();
     };
     input.addEventListener('blur', done);
@@ -1326,6 +1429,15 @@ async function activateTab(id) {
       }
     }
   });
+  // B3: activating any other tile while zoomed left the active tab hidden.
+  // Auto-unzoom unless the newly active tab is the zoomed one itself.
+  try {
+    if (typeof tilesMode !== 'undefined' && tilesMode) {
+      const termWrap = document.getElementById('terminals');
+      const zoomed = termWrap?.querySelector('.term-wrapper.tile-zoomed');
+      if (zoomed && zoomed.dataset.id != String(id) && typeof clearTileZoom === 'function') clearTileZoom();
+    }
+  } catch {}
   const tab = tabs.find(t => t.id === id);
   if (tab?.fitAddon) setTimeout(() => fitTerm(tab), 60);
   // Visiting a tab clears its unread/activity + bell badges.
@@ -1450,6 +1562,9 @@ async function closeTab(e, id, opts = {}) {
   if (activeTabId === id && tabs.length > 0) activateTab(tabs[tabs.length - 1].id);
   else updateTabOverflow();
   try { if (typeof refreshConnStatus === 'function') refreshConnStatus(); } catch {}
+  // B1: dropping the zoomed wrapper must clear `has-tile-zoom` before (or
+  // inside) layoutTiles, or the grid renders empty.
+  try { if (typeof reconcileTileZoom === 'function') reconcileTileZoom(); } catch {}
   if (tilesMode) layoutTiles();
   const termsEl = document.getElementById('terminals');
   if (termsEl) termsEl.style.marginBottom = '';
@@ -1458,8 +1573,167 @@ async function closeTab(e, id, opts = {}) {
 // ═══════════════════════════════════════════════════════
 // TILES MODE
 // ═══════════════════════════════════════════════════════
-function toggleTiles() {
-  tilesMode = !tilesMode;
+// B1: zoom state must follow the zoomed wrapper. When the zoomed tab is
+// closed/abandoned, `has-tile-zoom` alone hides every remaining tile.
+function clearTileZoom() {
+  try {
+    const termWrap = document.getElementById('terminals');
+    if (!termWrap) return;
+    termWrap.classList.remove('has-tile-zoom');
+    termWrap.querySelectorAll('.term-wrapper.tile-zoomed').forEach(el => el.classList.remove('tile-zoomed'));
+    termWrap.querySelectorAll('.tth-zoom.active').forEach(el => {
+      el.classList.remove('active');
+      el.setAttribute('aria-pressed', 'false');
+    });
+  } catch {}
+}
+// Reconcile after any add/remove: no zoomed wrapper left -> drop the zoom
+// container class so the grid renders again (B1).
+function reconcileTileZoom() {
+  try {
+    const termWrap = document.getElementById('terminals');
+    if (!termWrap) return;
+    const zoomed = termWrap.querySelector('.term-wrapper.tile-zoomed');
+    if (!zoomed) {
+      termWrap.classList.remove('has-tile-zoom');
+      termWrap.querySelectorAll('.tth-zoom.active').forEach(el => {
+        el.classList.remove('active');
+        el.setAttribute('aria-pressed', 'false');
+      });
+    } else {
+      termWrap.classList.add('has-tile-zoom');
+    }
+  } catch {}
+}
+// B7: the grid follows wrapper DOM order, the strip follows button order.
+// Keep both in `tabs` order or a strip DnD/pin regroup leaves tiles behind.
+function syncTileWrapperOrder() {
+  try {
+    const termWrap = document.getElementById('terminals');
+    if (!termWrap) return;
+    tabs.forEach(tab => {
+      if (tab.wrapper && tab.wrapper.parentNode === termWrap) termWrap.appendChild(tab.wrapper);
+    });
+  } catch {}
+}
+// B4+B6: single place that paints a tile header from live tab state.
+// Priority: disconnected > dirty > connected. Called from rename, dirty
+// paint, applyTabMeta, and WS transitions — not just layout.
+function refreshTileHeader(tab) {
+  try {
+    if (!tab || !tab.wrapper) return;
+    const hdr = tab.wrapper.querySelector('.term-tile-header');
+    if (!hdr) return;
+    const nameEl = hdr.querySelector('.tth-name');
+    if (nameEl) {
+      nameEl.textContent = tab.title;
+      nameEl.setAttribute('aria-label', 'Activate ' + tab.title);
+    }
+    hdr.setAttribute('aria-label', 'Tab ' + tab.title);
+    const zoomBtn = hdr.querySelector('.tth-zoom');
+    if (zoomBtn) {
+      const zoomed = tab.wrapper.classList.contains('tile-zoomed');
+      zoomBtn.setAttribute('aria-label', (zoomed ? 'Restore ' : 'Maximize ') + tab.title);
+      zoomBtn.classList.toggle('active', zoomed);
+      zoomBtn.setAttribute('aria-pressed', String(!!zoomed));
+    }
+    const closeBtn = hdr.querySelector('.tth-close');
+    if (closeBtn) closeBtn.setAttribute('aria-label', 'Close ' + tab.title);
+    // Enhancement: mirror strip badges onto the tile so a noisy/exited/pinned
+    // background tile is visible from the grid itself (report G3).
+    try {
+      const isExited = !!tab.el?.classList.contains('is-exited');
+      const hasBell = !!tab.el?.classList.contains('has-bell');
+      const hasActivity = !!tab.el?.classList.contains('has-activity');
+      hdr.classList.toggle('is-exited', isExited);
+      hdr.classList.toggle('has-bell', hasBell);
+      hdr.classList.toggle('has-activity', hasActivity && !hasBell);
+      hdr.classList.toggle('pinned', !!tab.pinned);
+      const pinMark = hdr.querySelector('.tth-pin');
+      if (tab.pinned && !pinMark) {
+        const s = document.createElement('span');
+        s.className = 'tth-pin';
+        s.textContent = '📌';
+        s.setAttribute('aria-hidden', 'true');
+        hdr.insertBefore(s, hdr.querySelector('.tth-name'));
+      } else if (!tab.pinned && pinMark) pinMark.remove();
+      if (tab.color) hdr.setAttribute('data-tab-color', tab.color);
+      else hdr.removeAttribute('data-tab-color');
+    } catch {}
+    const dotEl = hdr.querySelector('.tth-dot');
+    if (dotEl) {
+      const isDisc = tab.type === 'term' && (!tab.ws || tab.ws.readyState !== WebSocket.OPEN);
+      const isDirty = !!tab.dirty;
+      dotEl.classList.toggle('disconnected', isDisc);
+      dotEl.classList.toggle('dirty', !isDisc && isDirty);
+      dotEl.classList.toggle('connected', !isDisc && !isDirty);
+    }
+  } catch {}
+}
+// B8: one shared refit (terms + per-tab CM + docked editor) for every tiles
+// path — exit-tiles, zoom, layout, and the resize observer.
+function refitTiles() {
+  try { tabs.forEach(tab => { try { if (typeof fitTerm === 'function') fitTerm(tab); } catch (e) { console.warn(e); } }); } catch {}
+  try { if (typeof _dockedFileTabId !== 'undefined' && _dockedFileTabId != null && typeof editor !== 'undefined') editor?.refresh(); } catch (e) { console.warn(e); }
+  try { tabs.forEach(tab => { try { if (tab.cm) tab.cm.refresh(); } catch (e) { console.warn(e); } }); } catch {}
+}
+let _refitTilesTimer = null;
+function scheduleRefitTiles() {
+  try { clearTimeout(_refitTilesTimer); } catch {}
+  _refitTilesTimer = setTimeout(() => { try { refitTiles(); } catch (e) { console.warn(e); } }, 60);
+}
+// Enhancement: column picker (Auto / 1 / 2 / 3 / 4). `auto-fit` is unpredictable
+// with 3-5 tabs, so let the user pin the column count. Persisted in storage.
+let tilesCols = 0;
+try {
+  const _savedCols = parseInt((typeof safeStorage !== 'undefined' && safeStorage.getItem('wt-tiles-cols')) || '0', 10);
+  if (_savedCols >= 0 && _savedCols <= 4) tilesCols = _savedCols;
+} catch {}
+function applyTilesColumns() {
+  try {
+    const termWrap = document.getElementById('terminals');
+    if (!termWrap) return;
+    if (!tilesMode || !tilesCols) termWrap.style.gridTemplateColumns = '';
+    else termWrap.style.gridTemplateColumns = `repeat(${tilesCols}, minmax(0, 1fr))`;
+  } catch {}
+}
+function setTilesColumns(n) {
+  n = parseInt(n, 10) || 0;
+  if (n < 0 || n > 4) return;
+  tilesCols = n;
+  try { safeStorage.setItem('wt-tiles-cols', String(n)); } catch {}
+  try { applyTilesColumns(); } catch {}
+  try { updateTilesColsLabel(); } catch {}
+  try { if (tilesMode) scheduleRefitTiles(); } catch {}
+}
+function cycleTilesColumns() {
+  setTilesColumns((tilesCols + 1) % 5);
+  try { toast('Tile columns: ' + (tilesCols ? tilesCols : 'Auto'), 'info'); } catch {}
+}
+function updateTilesColsLabel() {
+  try {
+    document.querySelectorAll('[data-tiles-cols-label]').forEach(el => {
+      el.textContent = 'Columns: ' + (tilesCols ? tilesCols : 'Auto');
+    });
+  } catch {}
+}
+function persistTilesState() {
+  try {
+    if (!tilesMode) { safeStorage.removeItem('wt-tiles-mode'); return; }
+    const zoomed = document.querySelector('#terminals .term-wrapper.tile-zoomed');
+    safeStorage.setItem('wt-tiles-mode', JSON.stringify({
+      on: true, cols: tilesCols,
+      zoomId: zoomed ? zoomed.dataset.id : null,
+    }));
+  } catch {}
+}
+function toggleTiles(force) {
+  if (typeof force === 'boolean') tilesMode = force;
+  else tilesMode = !tilesMode;
+  // G9: degenerate single-tab toggle gets a hint instead of an empty grid.
+  if (tilesMode && tabs.filter(t => !t.closed).length < 2) {
+    try { toast('Tile View needs at least 2 tabs — open another tab first', 'info'); } catch {}
+  }
   // The header's tiles button is gone (D-01): the More menu is the home for
   // Tiles Mode, so reflect the active state there instead of on a removed node.
   document.querySelectorAll('[data-more-item="tiles"]').forEach(el => {
@@ -1468,16 +1742,19 @@ function toggleTiles() {
   });
   document.getElementById('terminals').classList.toggle('tiles-mode', tilesMode);
   if (tilesMode) {
+    try { applyTilesColumns(); } catch {}
     layoutTiles();
   } else {
     const termWrap = document.getElementById('terminals');
     termWrap.classList.remove('has-tile-zoom');
     termWrap.querySelectorAll('.term-wrapper.tile-zoomed').forEach(el => el.classList.remove('tile-zoomed'));
     termWrap.querySelectorAll('.term-tile-header').forEach(el => el.remove());
+    try { termWrap.style.gridTemplateColumns = ''; } catch {}
     // Every tile had tile geometry: refit all, not just the active tab, or
     // background terms keep tile sizes until visited.
-    setTimeout(() => { tabs.forEach(tab => { try { fitTerm(tab); } catch(e) { console.warn(e); } }); }, 60);
+    setTimeout(() => { try { refitTiles(); } catch (e) { console.warn(e); } }, 60);
   }
+  try { persistTilesState(); } catch {}
 }
 
 function toggleTileZoom(tabId) {
@@ -1496,27 +1773,29 @@ function toggleTileZoom(tabId) {
     const zBtn = tab.wrapper.querySelector('.tth-zoom');
     if (zBtn) { zBtn.classList.add('active'); zBtn.setAttribute('aria-pressed', 'true'); }
     activateTab(tab.id);
+    try { if (tab.type === 'term') tab.term?.focus(); else if (tab.cm) tab.cm.focus(); } catch {}
   } else {
     termWrap.classList.remove('has-tile-zoom');
+    try { if (tab.type === 'term') tab.term?.focus(); else if (tab.cm) tab.cm.focus(); } catch {}
   }
-  setTimeout(() => {
-    tabs.forEach(t => { try { fitTerm(t); } catch {} try { if (t.cm) t.cm.refresh(); } catch {} });
-  }, 50);
+  try { refreshTileHeader(tab); } catch {}
+  try { persistTilesState(); } catch {}
+  setTimeout(() => { try { refitTiles(); } catch (e) { console.warn(e); } }, 50);
 }
 
 function layoutTiles() {
   const termWrap = document.getElementById('terminals');
+  if (!termWrap) return;
+  try { applyTilesColumns(); } catch {}
+  // B7: grid follows wrapper order — re-assert `tabs` order first.
+  try { syncTileWrapperOrder(); } catch {}
+  // B1: a closed zoomed tab leaves `has-tile-zoom` with no zoomed wrapper.
+  try { reconcileTileZoom(); } catch {}
   tabs.forEach(tab => {
     if (!tab.wrapper) return;
     let hdr = tab.wrapper.querySelector('.term-tile-header');
     if (hdr) {
-      hdr.querySelector('.tth-name').textContent = tab.title;
-      const dotEl = hdr.querySelector('.tth-dot');
-      if (dotEl) {
-        const isDisc = tab.type === 'term' && (!tab.ws || tab.ws.readyState !== WebSocket.OPEN);
-        dotEl.classList.toggle('disconnected', isDisc);
-        dotEl.classList.toggle('dirty', !!tab.dirty);
-      }
+      try { refreshTileHeader(tab); } catch {}
       return;
     }
     hdr = document.createElement('div');
@@ -1525,8 +1804,10 @@ function layoutTiles() {
     hdr.setAttribute('aria-label', 'Tab ' + tab.title);
     const tthDot = document.createElement('span');
     tthDot.className = 'tth-dot';
-    if (tab.type === 'term' && (!tab.ws || tab.ws.readyState !== WebSocket.OPEN)) tthDot.classList.add('disconnected');
-    if (tab.dirty) tthDot.classList.add('dirty');
+    const _isDisc = tab.type === 'term' && (!tab.ws || tab.ws.readyState !== WebSocket.OPEN);
+    if (_isDisc) tthDot.classList.add('disconnected');
+    else if (tab.dirty) tthDot.classList.add('dirty');
+    else tthDot.classList.add('connected');
     hdr.appendChild(tthDot);
     const tthName = document.createElement('span');
     tthName.className = 'tth-name';
@@ -1554,12 +1835,28 @@ function layoutTiles() {
     hdr.addEventListener('click', e => {
       if (e.target.closest('.tth-close') || e.target.closest('.tth-zoom')) return;
       activateTab(tab.id);
+      try { if (tab.type === 'term') tab.term?.focus(); else if (tab.cm) tab.cm.focus(); } catch {}
     });
-    tthName.addEventListener('click', e => { e.stopPropagation(); activateTab(tab.id); });
+    tthName.addEventListener('click', e => { e.stopPropagation(); activateTab(tab.id); try { if (tab.type === 'term') tab.term?.focus(); else if (tab.cm) tab.cm.focus(); } catch {} });
     tthName.addEventListener('dblclick', e => { e.stopPropagation(); toggleTileZoom(tab.id); });
     tthName.addEventListener('keydown', e => {
       // Enter/Space on the name activates and focuses the terminal.
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activateTab(tab.id); tab.term?.focus(); }
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activateTab(tab.id); tab.term?.focus(); return; }
+      // Enhancement: arrow keys move between tiles in grid order.
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        try {
+          const live = tabs.filter(t => !t.closed && t.wrapper);
+          const i = live.findIndex(t => t.id === tab.id);
+          if (i === -1) return;
+          const d = (e.key === 'ArrowRight' || e.key === 'ArrowDown') ? 1 : -1;
+          const next = live[(i + d + live.length) % live.length];
+          if (next) {
+            activateTab(next.id);
+            next.wrapper.querySelector('.tth-name')?.focus();
+          }
+        } catch {}
+      }
     });
     tthZoom.addEventListener('click', e => {
       e.stopPropagation();
@@ -1570,20 +1867,32 @@ function layoutTiles() {
       closeTab(e, tab.id);
     });
     tab.wrapper.prepend(hdr);
+    try { refreshTileHeader(tab); } catch {}
   });
-  // Tile view shows every tile at once, so mount the text tabs' editors here. Heavy
-  // viewers are deliberately excluded: they stay single-live and show their parked
-  // card rather than holding several documents in memory.
-  const refitAll = () => {
-    tabs.forEach(tab => { try { fitTerm(tab); } catch(e) { console.warn(e); } });
-    // CodeMirror views have to re-measure: they just became tiles, or changed size.
-    try { if (_dockedFileTabId != null) editor?.refresh(); } catch(e) { console.warn(e); }
-    tabs.forEach(tab => { try { if (tab.cm) tab.cm.refresh(); } catch(e) { console.warn(e); } });
-  };
+  // B3: a new/activated non-zoomed tab while zoomed would be invisible —
+  // drop zoom so the active tab shows instead of an empty-looking grid.
+  try {
+    if (termWrap.classList.contains('has-tile-zoom')) {
+      const zoomed = termWrap.querySelector('.term-wrapper.tile-zoomed');
+      const active = tabs.find(t => t.id === activeTabId);
+      if (!zoomed || (active && active.wrapper && !active.wrapper.classList.contains('tile-zoomed'))) clearTileZoom();
+    }
+  } catch {}
+  // Tile view shows every tile at once, so mount the text tabs' editors here.
+  // B9: cheap stay-live image tabs mount too. Heavy viewers stay single-live
+  // and show their parked card rather than holding several docs in memory.
+  // B5: background mounts are prompt-free and never abandon the tab — a large
+  // file, differing draft, or failed read shows an inline review/error card
+  // with retry instead of a modal or a vanishing tab.
+  const refitAll = () => { try { refitTiles(); } catch (e) { console.warn(e); } };
   if (tilesMode) {
     const pending = tabs
-      .filter(tab => tab.type === 'file' && !tab.closed && tab.viewer === 'text' && !tab.cm)
-      .map(tab => mountFileTab(tab).catch(e => console.warn('Tile mount failed:', e)));
+      .filter(tab => tab.type === 'file' && !tab.closed && (tab.viewer === 'text' || tab.viewer === 'image') && !tab.cm && !tab.bodyEl?.dataset.mounted)
+      .map(tab => {
+        if (tab.viewer === 'image') return mountFileTab(tab, { background: true }).catch(e => console.warn('Tile mount failed:', e));
+        if (tab.cm) return Promise.resolve();
+        return mountFileTab(tab, { background: true }).catch(e => console.warn('Tile mount failed:', e));
+      });
     // Refit after the mounts settle: a fixed 60ms fires before slow
     // fetch/mode-load finishes and leaves zero-size CodeMirror panes.
     Promise.allSettled(pending).then(() => requestAnimationFrame(refitAll));
@@ -1598,6 +1907,7 @@ function moveTabToEnd(fromId) {
   tabs.push(moved);
   const bar = document.getElementById('tab-scroll');
   if (moved.el && moved.el.parentNode === bar) bar.appendChild(moved.el);
+  try { if (typeof syncTileWrapperOrder === 'function') syncTileWrapperOrder(); } catch {}
   saveTabState();
   updateTabOverflow();
 }

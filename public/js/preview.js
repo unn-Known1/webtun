@@ -255,6 +255,10 @@ function newPreviewTab(port, pth, opts = {}) {
   createTabButton(tab);
   createPreviewWrapper(tab);
   activateTab(id);
+  // B2: creation inside tiles mode must ensure a tile header immediately —
+  // otherwise the new tile has no title bar/zoom/close until next toggle.
+  // B3: layoutTiles auto-unzooms so the new active tile is visible.
+  try { if (typeof tilesMode !== 'undefined' && tilesMode && typeof layoutTiles === 'function') layoutTiles(); } catch {}
   previewNavigate(tab, initialPort, p);
   unpinLaunchpad();
   updateLaunchpad();

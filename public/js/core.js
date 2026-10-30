@@ -616,6 +616,8 @@ async function unlockApp() {
 
   // Restore tabs from last session, or open a fresh one
   const saved = loadTabState();
+  // G10: Tile View persists across reload (mode + columns + zoom target).
+  try { if (typeof restoreTilesState === 'function') restoreTilesState(); } catch {}
   if (saved.length > 0) {
     const savedActiveId = saved.activeTabId;
     (async () => {

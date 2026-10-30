@@ -179,46 +179,66 @@ async function resolveCMmode(fileName) {
 // crash-safety draft prompt. Shared by the panel (`openFileEditor`) and the per-tab
 // editors, so both offer exactly the same safeguards. Returns null when the file
 // cannot be shown or the user backs out.
-async function readTextForEditor(path) {
+// B5: background tile-entry mounts pass `{ background: true }` — no modals, no
+// destructive outcomes. Large files mount with disk content flagged
+// (`largeFile:true`); a differing draft is kept on disk untouched and flagged
+// (`pendingDraft:true`); read errors return `{ error }` instead of null so the
+// caller can show an inline error card with retry instead of abandoning the tab.
+async function readTextForEditor(path, opts = {}) {
+  const background = !!(opts && opts.background);
   // Stat first: byte size before the body, so a 500MB log is never fully
   // transferred just to ask "open anyway?". The byte size is also the disk
   // revision the watcher compares (chars-vs-bytes mismatches phantom-flagged).
   let statSize = null, statMtime = null;
+  let largeFile = false;
   try {
     const st = await api(`/api/files/stat?path=${encodeURIComponent(path)}&follow=1`);
     if (st && !st.error && typeof st.size === 'number') {
       statSize = st.size;
       statMtime = st.mtime != null ? String(st.mtime) : null;
       if (st.size > MAX_EDITOR_SIZE) {
-        const ok = await confirmDialog({ title: 'Large file', message: `File is ${(st.size / 1024 / 1024).toFixed(1)}MB. Open anyway?`, okText: 'Open', danger: true });
-        if (!ok) return null;
+        if (background) { largeFile = true; }
+        else {
+          const ok = await confirmDialog({ title: 'Large file', message: `File is ${(st.size / 1024 / 1024).toFixed(1)}MB. Open anyway?`, okText: 'Open', danger: true });
+          if (!ok) return null;
+        }
       }
     }
   } catch {}
   const r = await api(`/api/files/read?path=${encodeURIComponent(path)}`);
   if (r.error) {
+    if (background) return { error: r.error, isBinary: !!r.isBinary };
     if (r.isBinary) { toast(r.error || 'Preview not supported for binary files — use Download', 'warning'); return null; }
     toast(r.error, 'error'); return null;
   }
   if (statSize == null && r.length > MAX_EDITOR_SIZE) {
-    const ok = await confirmDialog({ title: 'Large file', message: `File is ${(r.length / 1024 / 1024).toFixed(1)}MB. Open anyway?`, okText: 'Open', danger: true });
-    if (!ok) return null;
+    if (background) { largeFile = true; }
+    else {
+      const ok = await confirmDialog({ title: 'Large file', message: `File is ${(r.length / 1024 / 1024).toFixed(1)}MB. Open anyway?`, okText: 'Open', danger: true });
+      if (!ok) return null;
+    }
   }
   // Restore an autosaved draft from a previous session (crash safety). Only when it
   // actually differs from what is on disk, and only after the user opts in.
+  // Background mounts never prompt and never delete: the disk content mounts and
+  // the draft stays stored until the user opens the tile and chooses.
   let content = r.content;
+  let pendingDraft = false;
   const draft = loadDraft(path);
   if (draft !== null && draft !== r.content) {
-    const restore = await confirmDialog({
-      title: 'Unsaved draft found',
-      message: 'A newer unsaved version of this file was found from a previous session. Restore it?',
-      okText: 'Restore draft',
-      cancelText: 'Discard draft',
-    });
-    if (restore) { content = draft; removeDraft(path); }
-    else removeDraft(path);
+    if (background) { pendingDraft = true; }
+    else {
+      const restore = await confirmDialog({
+        title: 'Unsaved draft found',
+        message: 'A newer unsaved version of this file was found from a previous session. Restore it?',
+        okText: 'Restore draft',
+        cancelText: 'Discard draft',
+      });
+      if (restore) { content = draft; removeDraft(path); }
+      else removeDraft(path);
+    }
   }
-  return { content, original: r.content, mtime: r.mtime != null ? String(r.mtime) : (statMtime), size: statSize != null ? statSize : (typeof r.length === 'number' ? r.length : null), extChanged: false };
+  return { content, original: r.content, mtime: r.mtime != null ? String(r.mtime) : (statMtime), size: statSize != null ? statSize : (typeof r.length === 'number' ? r.length : null), extChanged: false, largeFile, pendingDraft };
 }
 
 // Forget the panel's file without prompting. Used when a text buffer has been handed
