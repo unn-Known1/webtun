@@ -33,6 +33,7 @@ async function createWorkspaceServer(options = {}) {
   let terminal;
   const auth = createAuthService({
     app, pin: options.pin || '', port: options.port || 0, envPath: path.join(dataDir,'.env'),
+    dataDir,
     authRateLimiter: pass, licenseStatus, now: options.now, timers: options.timers,
     events: {
       broadcast: event => { events.push(event); terminal?.broadcastClientEvent(event); },

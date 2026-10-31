@@ -61,7 +61,7 @@ test('checkUpdate identifies available updates', async () => {
 test('executeUpgrade with dry-run returns success without executing npm', () => {
   const code = executeUpgrade({
     packageName: 'webtun',
-    targetVersion: '2.3.8',
+    targetVersion: '2.3.9',
     isGlobal: true,
     dryRun: true,
   });

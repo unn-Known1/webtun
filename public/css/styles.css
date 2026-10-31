@@ -1829,6 +1829,10 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 #offline-box .btn + .btn { margin-top: 8px; }
 #offline-last { font-family: var(--font); font-size: var(--fs-meta); color: var(--fg3); word-break: break-all; margin: -8px 0 16px; }
 .pin-hint { margin-top: 14px; font-size: var(--fs-micro); letter-spacing: 1px; text-transform: uppercase; color: var(--fg3); font-family: var(--font-ui); }
+.pin-remember-row { display: flex; align-items: center; justify-content: center; margin: 4px 0 10px; }
+.pin-remember-label { display: inline-flex; align-items: center; gap: 8px; font-size: var(--fs-ui); color: var(--fg2); cursor: pointer; user-select: none; }
+.pin-remember-label input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; margin: 0; }
+.pin-remember-label:hover { color: var(--fg); }
 
 /* ═══════════════════════════════════════════════════════
    EDITOR
@@ -2054,7 +2058,7 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 #settings-panel .settings-input-action input { flex: 1; }
 #settings-panel .settings-input-action .btn { flex-shrink: 0; }
 #settings-panel .field-error { padding: 0; line-height: 1.5; }
-#sessions-list { display: flex; flex-direction: column; gap: 6px; }
+#sessions-list, #trusted-browsers-list { display: flex; flex-direction: column; gap: 6px; }
 .settings-session { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: var(--fs-ui); }
 .settings-session-info { flex: 1 0 100%; min-width: 0; }
 .settings-session-title { color: var(--fg); line-height: 1.5; overflow-wrap: anywhere; }

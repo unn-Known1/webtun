@@ -1,0 +1,6 @@
+{
+  "summary":  "Detailed architectural implementation plan for saving browser info and marking browsers as safe/trusted so users are not asked for a PIN on subsequent visits, including persistent server-side device storage, PIN screen trust toggles, and Settings security management.",
+  "updatedAt":  "2026-10-31T10:37:53.411528309Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}

@@ -308,7 +308,7 @@ let _migrated = false;
 function migrateLegacyState() {
   if (_migrated) return;
   _migrated = true;
-  for (const _f of ['.env', '.cmdhist.json', '.tunnels.json', '.ssh-state.json', 'license.json', 'pending-licenses.json', 'tunnel-url.txt', 'audit-log.json', 'library.json', 'bookmarks.json', 'policy.json']) {
+  for (const _f of ['.env', '.cmdhist.json', '.tunnels.json', '.ssh-state.json', '.trusted-devices.json', 'license.json', 'pending-licenses.json', 'tunnel-url.txt', 'audit-log.json', 'library.json', 'bookmarks.json', 'policy.json']) {
     try {
       const _dst = path.join(DATA_DIR, _f), _src = path.join(__dirname, _f);
       if (DATA_DIR !== __dirname && !fs.existsSync(_dst) && fs.existsSync(_src)) {
@@ -342,7 +342,7 @@ const { resolvePath, realPath, pathContained } = paths;
 const fsPromises = fs.promises;
 const { createAuthService } = require('./lib/server/auth');
 const auth = createAuthService({
-  app, pin: process.env.PIN || '', port: PORT, envPath: ENV_PATH, authRateLimiter,
+  app, pin: process.env.PIN || '', port: PORT, envPath: ENV_PATH, dataDir: DATA_DIR, authRateLimiter,
   licenseStatus: () => licenseLib.status(),
   events: {
     broadcast: event => terminal.broadcastClientEvent(event),

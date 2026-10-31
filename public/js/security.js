@@ -146,6 +146,7 @@ function setListMessage(list, msg) {
 }
 async function refreshSessions() {
   try { updateSessionCupCount(); } catch {}
+  try { refreshTrustedBrowsers(); } catch {}
   const list = document.getElementById('sessions-list');
   const count = document.getElementById('sess-count');
   if (!list) return;
@@ -253,6 +254,87 @@ async function revokeOtherSessions() {
   if (failed) console.warn(`Failed to revoke ${failed} session(s)`);
   toast(failed ? `Signed out ${done} session(s), ${failed} failed` : `Signed out ${done} session(s)`, failed ? 'warning' : 'success');
   refreshSessions();
+}
+async function refreshTrustedBrowsers() {
+  const list = document.getElementById('trusted-browsers-list');
+  const count = document.getElementById('trusted-browsers-count');
+  if (!list) return;
+  const r = await api('/api/auth/safe-devices');
+  if (!r || !Array.isArray(r.devices)) {
+    setListMessage(list, 'Sign in to view trusted browsers.');
+    if (count) count.textContent = '';
+    return;
+  }
+  if (count) count.textContent = r.devices.length ? `(${r.devices.length})` : '';
+  list.innerHTML = '';
+  if (!r.devices.length) {
+    setListMessage(list, 'No trusted browsers remembered.');
+    return;
+  }
+  for (const dev of r.devices) {
+    const row = document.createElement('div');
+    row.className = 'settings-session';
+    const info = document.createElement('div');
+    info.className = 'settings-session-info';
+    const title = document.createElement('div');
+    title.className = 'settings-session-title';
+    title.textContent = (dev.device || 'Unknown browser') + (dev.current ? ' · this browser' : '');
+    const sub = document.createElement('div');
+    sub.className = 'settings-session-meta';
+    sub.textContent = `${dev.ip || 'unknown IP'} · active ${timeAgo(dev.lastSeen || dev.createdAt)}`;
+    info.appendChild(title);
+    info.appendChild(sub);
+    row.appendChild(info);
+
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-ghost';
+    btn.textContent = 'Revoke';
+    btn.setAttribute('data-action', 'revoke-safe-device');
+    btn.dataset.deviceId = dev.id;
+    btn.setAttribute('aria-label', 'Revoke safe browser ' + (dev.device || dev.ip || ''));
+    row.appendChild(btn);
+
+    list.appendChild(row);
+  }
+}
+async function revokeTrustedBrowser(id) {
+  if (!id) return;
+  const ok = await confirmDialog({
+    title: 'Revoke trusted browser?',
+    message: 'This browser will be required to enter the PIN next time.',
+    okText: 'Revoke',
+    danger: true
+  });
+  if (!ok) return;
+  const r = await api(`/api/auth/safe-devices/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (r && r.success) {
+    toast('Trusted browser revoked', 'success');
+    refreshTrustedBrowsers();
+    refreshSessions();
+  } else {
+    toast((r && r.error) || 'Revoke failed', 'error');
+  }
+}
+async function revokeOtherTrustedBrowsers() {
+  const r = await api('/api/auth/safe-devices');
+  if (!r || !Array.isArray(r.devices)) { toast('Could not list trusted browsers', 'error'); return; }
+  const others = r.devices.filter(d => !d.current);
+  if (!others.length) { toast('No other trusted browsers', 'info'); return; }
+  const ok = await confirmDialog({
+    title: 'Revoke other trusted browsers?',
+    message: `Remove trust from ${others.length} other browser(s)? They will need to re-enter the PIN.`,
+    okText: 'Revoke others',
+    danger: true
+  });
+  if (!ok) return;
+  const res = await api('/api/auth/safe-devices', { method: 'DELETE' });
+  if (res && res.success) {
+    toast(`Revoked ${res.revokedCount || others.length} trusted browser(s)`, 'success');
+    refreshTrustedBrowsers();
+    refreshSessions();
+  } else {
+    toast((res && res.error) || 'Revoke failed', 'error');
+  }
 }
 async function approvePinChange() {
   setBtnBusy(document.getElementById('pin-save-btn'), true);
@@ -802,6 +884,9 @@ uiActions.register("click", {
   "clear-audit-log": function () { return clearAuditLog(); },
   "refresh-sessions": function (event) { return refreshSessions(); },
   "revoke-other-sessions": function (event) { return revokeOtherSessions(); },
+  "refresh-trusted-browsers": function () { return refreshTrustedBrowsers(); },
+  "revoke-other-safe-devices": function () { return revokeOtherTrustedBrowsers(); },
+  "revoke-safe-device": function () { return revokeTrustedBrowser(this.dataset.deviceId); },
   "create-tunnel": function (event) { return createTunnel(); },
   "copy-text-ssh-once-cmd": function (event) { return copyText(document.getElementById('ssh-once-cmd').textContent); },
 });

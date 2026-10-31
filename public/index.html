@@ -62,6 +62,12 @@
     <h1 style="display:flex;align-items:center;justify-content:center;gap:6px"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="10" y2="8"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="6" y1="16" x2="8" y2="16"/><line x1="12" y1="8" x2="18" y2="8"/><line x1="12" y1="12" x2="18" y2="12"/><line x1="12" y1="16" x2="16" y2="16"/><line x1="10" y1="16" x2="10" y2="16"/></svg>WebTun</h1>
     <p>Enter PIN to continue</p>
     <input id="pin-input" type="password" placeholder="••••" autocomplete="off" maxlength="64" inputmode="text" aria-label="PIN code" data-keydown-action="submit-pin">
+    <div class="pin-remember-row">
+      <label class="pin-remember-label" for="pin-remember">
+        <input type="checkbox" id="pin-remember" checked>
+        <span>Remember this browser as safe</span>
+      </label>
+    </div>
     <div id="pin-error" role="alert"></div>
     <div style="margin-top:12px">
       <button class="btn btn-primary" id="pin-unlock-btn" data-action="submit-pin">Unlock</button>
@@ -782,6 +788,15 @@
             <button class="btn btn-ghost flex-fill" data-action="sign-out" title="End this session on this device">Sign out here</button>
           </div>
           <div class="settings-help">New logins alert every open tab. Revoking kicks that device immediately.</div>
+          <div class="setting-row settings-subheading" style="margin-top:14px">
+            <h4>Trusted safe browsers <span id="trusted-browsers-count"></span></h4>
+            <button class="btn btn-ghost" data-action="refresh-trusted-browsers" title="Refresh trusted browsers list" aria-label="Refresh trusted browsers list">Refresh</button>
+          </div>
+          <div id="trusted-browsers-list"></div>
+          <div class="settings-actions">
+            <button class="btn btn-ghost flex-fill" data-action="revoke-other-safe-devices">Revoke other trusted browsers</button>
+          </div>
+          <div class="settings-help">Browsers marked as safe skip the PIN prompt. Revoking removes saved trust.</div>
           <details class="billing-controls" id="runtime-policy-details" style="margin-top:12px">
             <summary>Network &amp; Preview Policy</summary>
             <div class="setting-row" style="margin-top:8px">

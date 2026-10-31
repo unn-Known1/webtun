@@ -358,21 +358,81 @@ function storeSessionToken(t) {
     else safeStorage.removeItem('wt-session-token');
   } catch {}
 }
-// Resume a trusted device: validate the stored session token without a PIN.
+function isSafeToken(t) {
+  return typeof t === 'string' && /^[0-9a-f]{64}$/.test(t);
+}
+function getOrCreateDeviceId() {
+  try {
+    let id = safeStorage.getItem('wt-device-id');
+    if (typeof id === 'string' && /^[0-9a-zA-Z_-]{16,64}$/.test(id)) return id;
+    id = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+      .map(b => b.toString(16).padStart(2, '0')).join('');
+    safeStorage.setItem('wt-device-id', id);
+    return id;
+  } catch {
+    return 'browser-' + Math.random().toString(36).slice(2, 10);
+  }
+}
+function storeSafeDevice(deviceId, safeToken) {
+  try {
+    if (deviceId) safeStorage.setItem('wt-device-id', deviceId);
+    if (isSafeToken(safeToken)) safeStorage.setItem('wt-safe-token', safeToken);
+    else safeStorage.removeItem('wt-safe-token');
+  } catch {}
+}
+function getSafeToken() {
+  try {
+    const t = safeStorage.getItem('wt-safe-token');
+    return isSafeToken(t) ? t : null;
+  } catch { return null; }
+}
+function clearSafeDevice() {
+  try { safeStorage.removeItem('wt-safe-token'); } catch {}
+}
+// Resume a trusted device: validate stored session token or remembered safe device without a PIN.
 async function tryResumeSession() {
   let t = null;
   try { t = safeStorage.getItem('wt-session-token'); } catch {}
-  if (!isSessionToken(t)) { try { safeStorage.removeItem('wt-session-token'); } catch {} return false; }
-  authToken = t;
-  try {
-    const r = await fetch('/api/auth/me', { headers: { 'x-pin-token': t } }).then(r => r.json());
-    if (r && r.ok && !r.pending) { unlockApp(); return true; }
-    // Stored session is pending approval (page reloaded mid-wait) — resume the wait
-    if (r && r.ok && r.pending) { enterWaitingRoom(t, r.expiresAt || 0); return true; }
-  } catch {}
-  // Stored session is dead (revoked/expired/rotated) — fall through to PIN
+  if (isSessionToken(t)) {
+    authToken = t;
+    try {
+      const r = await fetch('/api/auth/me', { headers: { 'x-pin-token': t } }).then(r => r.json());
+      if (r && r.ok && !r.pending) { unlockApp(); return true; }
+      // Stored session is pending approval (page reloaded mid-wait) — resume the wait
+      if (r && r.ok && r.pending) { enterWaitingRoom(t, r.expiresAt || 0); return true; }
+    } catch {}
+    // Stored session is dead (revoked/expired/rotated) — fall through to safe device check
+    authToken = '';
+    storeSessionToken('');
+  }
+
+  // Not resumed via session token. Check if this browser was remembered as safe!
+  const safeToken = getSafeToken();
+  const deviceId = getOrCreateDeviceId();
+  if (safeToken && deviceId) {
+    try {
+      const r = await fetch('/api/auth/resume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ safeToken, deviceId, device: clientDeviceLabel() })
+      }).then(res => res.json());
+
+      if (r && r.success && r.token) {
+        authToken = r.token;
+        storeSessionToken(r.token);
+        if (r.deviceId) {
+          try { safeStorage.setItem('wt-device-id', r.deviceId); } catch {}
+        }
+        unlockApp();
+        return true;
+      }
+      if (r && r.safeInvalid) {
+        clearSafeDevice();
+      }
+    } catch {}
+  }
+
   authToken = '';
-  storeSessionToken('');
   return false;
 }
 // Waiting room: this device is locked until a different active session
@@ -424,6 +484,7 @@ async function signOut() {
   const t = authToken;
   stopPendingPoll();
   storeSessionToken('');
+  clearSafeDevice();
   authToken = '';
   // Best-effort: revoke our own session server-side (fires before teardown)
   if (t && t !== 'open' && /^[0-9a-f]{64}$/.test(t)) {
@@ -451,16 +512,23 @@ async function submitPin() {
   pinBox.classList.remove('shake');
   stopPendingPoll();
   setBtnBusy(pinBtn, true);
+  const rememberCheckbox = document.getElementById('pin-remember');
+  const remember = rememberCheckbox ? !!rememberCheckbox.checked : true;
+  const deviceId = getOrCreateDeviceId();
   try {
     const r = await fetch('/api/auth', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pin, device: clientDeviceLabel() })
+      body: JSON.stringify({ pin, device: clientDeviceLabel(), deviceId, remember })
     }).then(r => r.json());
     if (r.success) {
       _pinFails = 0; _pinLockedUntil = 0;
       authToken = r.token;
-      // Persist session tokens (trusted device); 'open' needs nothing stored.
+      if (r.safeToken && r.deviceId) {
+        storeSafeDevice(r.deviceId, r.safeToken);
+      } else if (!remember) {
+        clearSafeDevice();
+      }
       // Fresh logins while others are active come back pending — wait it out.
       if (r.pending) {
         setBtnBusy(pinBtn, false);

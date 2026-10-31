@@ -218,6 +218,7 @@ See [the architecture guide](docs/SYSTEM_ARCHITECTURE_AND_DESIGN_PRINCIPLES.md) 
 - PIN authentication on all API endpoints (`x-pin-token` header or `?token=` query)
 - Change the PIN anytime from Settings → Security (applies instantly, saved to `.env`; fresh sessions need another session's approval while others are signed in)
 - New devices sign in with the PIN but stay locked until an existing session approves them — see active sessions in Settings → Security
+- **Remember safe browsers** — check "Remember this browser as safe" to bypass PIN entry on subsequent visits; view or revoke remembered devices in Settings → Security
 - CSP headers restrict script sources to CDN
 - WebSocket origin check prevents cross-site hijacking
 - Per-IP rate limiting on auth and search endpoints
@@ -240,6 +241,10 @@ See [the architecture guide](docs/SYSTEM_ARCHITECTURE_AND_DESIGN_PRINCIPLES.md) 
 ---
 
 ## Changelog
+
+### v2.3.9
+- **Remember safe browsers** — opt to mark trusted browsers as safe when signing in with a PIN; remembered browsers bypass PIN entry on subsequent visits; view active safe browsers and revoke individual or remote browsers anytime in Settings → Security; PIN rotation automatically purges all remembered browsers.
+- **Direct package upgrade CLI** — upgrade WebTun directly from the terminal via `webtun update` or `webtun upgrade` whenever a new version is available; check updates with `--check`, force reinstall with `--force`, specify custom tags with `--tag`, preview commands with `--dry-run`, and choose global (`-g`) or local (`-l`) upgrade targets.
 
 ### v2.3.8
 - **Tiles Mode reliability** — zoom state reconciles on tab close/remove so the grid never blanks; file/preview tabs created mid-session get headers immediately; activating or opening a tab while zoomed auto-unzooms instead of hiding the active tile; entering tiles mounts text and image tabs in the background with no modal prompts — large files, differing drafts, and read errors show inline review/error cards with retry instead of destructive dialogs or vanishing tabs.
