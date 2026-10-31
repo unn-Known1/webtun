@@ -43,6 +43,14 @@ npm install -g webtun
 webtun
 ```
 
+### Upgrade directly
+
+```bash
+webtun update                 # Check and upgrade to latest version
+webtun update --check         # Check if an update is available without installing
+webtun upgrade --force        # Force reinstall latest version
+```
+
 > **Recent npm note:** Install scripts are blocked by default. Allow them for `node-pty`:
 > ```bash
 > npm install -g --allow-scripts=webtun,node-pty webtun

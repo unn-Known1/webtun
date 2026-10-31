@@ -504,7 +504,7 @@ footer a{color:var(--mut)}
       </section>
 
       <!-- ── RUN ── -->
-      <section id="run" data-title="Run server install setup CLI flags env port pin System Stats CPU memory disk uptime GPU network interfaces DNS gateway RX TX processes filter sort refresh mobile">
+      <section id="run" data-title="Run server install setup CLI flags env port pin update upgrade package version System Stats CPU memory disk uptime GPU network interfaces DNS gateway RX TX processes filter sort refresh mobile">
         <div class="sec-head rv"><span class="sec-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="stroke:var(--am)" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="7" rx="2"/><rect x="2" y="14" width="20" height="7" rx="2"/><path d="M6 6.5h.01M6 17.5h.01"/></svg></span>
           <div><h2>Run the server <a class="hash" href="#run" aria-label="Link to this section">#</a></h2></div>
         </div>
@@ -523,11 +523,29 @@ footer a{color:var(--mut)}
               <tr><td><kbd>--host</kbd> <kbd>-h</kbd></td><td>Bind address (default all interfaces)</td></tr>
               <tr><td><kbd>--pin</kbd></td><td>PIN for this run</td></tr>
               <tr><td><kbd>--tunnel</kbd> <kbd>-t</kbd></td><td>Start with a public tunnel URL</td></tr>
+              <tr><td><kbd>--update</kbd> <kbd>--upgrade</kbd></td><td>Check for updates and upgrade package directly</td></tr>
             </tbody>
           </table>
         </div>
         <div class="code rv"><span class="lang">bash</span><button class="copy" data-copy="webtun --port 8080 --tunnel">Copy</button><pre>webtun --port 8080 --tunnel
 # server on :8080, reachable worldwide via HTTPS</pre></div>
+        <h3 id="upgrade">Upgrade WebTun <a class="hash" href="#upgrade" aria-label="Link to this section">#</a></h3>
+        <p class="body rv">Upgrade your WebTun package directly from the terminal whenever a new version is published:</p>
+        <div class="tblwrap rv">
+          <table>
+            <thead><tr><th>Command</th><th>Does</th></tr></thead>
+            <tbody>
+              <tr><td><kbd>webtun update</kbd> (or <kbd>upgrade</kbd>)</td><td>Check the npm registry and upgrade package directly to the latest version</td></tr>
+              <tr><td><kbd>webtun update --check</kbd></td><td>Check whether a newer version is available without installing</td></tr>
+              <tr><td><kbd>webtun update --force</kbd></td><td>Force reinstall or upgrade even if already on the latest release</td></tr>
+              <tr><td><kbd>webtun update --global</kbd></td><td>Force global package upgrade via npm (<code class="inl">npm install -g</code>)</td></tr>
+              <tr><td><kbd>webtun update --tag &lt;tag&gt;</kbd></td><td>Upgrade to a specific npm dist-tag or version (e.g. <code class="inl">next</code>)</td></tr>
+              <tr><td><kbd>webtun update --dry-run</kbd></td><td>Show the simulated upgrade command without making changes</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="code rv"><span class="lang">bash</span><button class="copy" data-copy="webtun update">Copy</button><pre>webtun update
+# Checks npm registry and upgrades WebTun directly</pre></div>
         <h3>Configure with .env <a class="hash" href="#run" aria-label="Link to this section">#</a></h3>
         <p class="body rv">Same knobs, persisted. The file lives next to the server (or <code class="inl">~/.config/webtun/.env</code> for global installs) alongside history and tunnel memory.</p>
         <div class="code rv"><span class="lang">env</span><button class="copy" data-copy="PORT=3000

@@ -4,12 +4,29 @@
 
 const args = process.argv.slice(2);
 
+const firstArg = args[0];
+if (firstArg === 'update' || firstArg === 'upgrade') {
+  const { runUpgradeCommand } = require('../lib/updater');
+  runUpgradeCommand(args.slice(1))
+    .then(code => process.exit(code ?? 0))
+    .catch(err => {
+      console.error('Error during upgrade:', err.message || err);
+      process.exit(1);
+    });
+  return;
+}
+
 function printHelp() {
   console.log(`
   WebTun — Web Terminal with Cloudflare Tunnel
 
   Usage:
     webtun [options]
+    webtun update [options]
+    webtun upgrade [options]
+
+  Commands:
+    update, upgrade       Check for updates and upgrade to the latest version
 
   Options:
     --port, -p <port>     Port to listen on (default: 3000 or $PORT; --port=8080 also works)
@@ -18,8 +35,9 @@ function printHelp() {
     --tunnel, -t          Start a Cloudflare Tunnel for remote access
     --ssh                 Enable SSH Access on startup
     --ssh-port <port>     Expected SSH port (default: 2222 or $SSH_PORT)
-    --help, -H              Show this help message
-    --version, -v           Show version number
+    --update, --upgrade   Check for updates and upgrade to the latest version
+    --help, -H            Show this help message
+    --version, -v         Show version number
     (note: -h means --host, not help)
 
   Environment Variables:
@@ -42,6 +60,8 @@ function printHelp() {
     webtun --pin secret123          Start with PIN protection
     webtun --tunnel                 Start with Cloudflare Tunnel
     webtun -p 4000 -t               Port 4000 + tunnel
+    webtun update                   Upgrade to latest version
+    webtun update --check           Check if an update is available without installing
     PORT=4000 webtun               Start on port 4000 via env var
 `);
 }
@@ -57,6 +77,16 @@ function parseArgs(argv) {
   };
   for (let i = 0; i < argv.length; i++) {
     const [arg, eqVal] = splitEq(argv[i]);
+    if (arg === 'update' || arg === 'upgrade' || arg === '--update' || arg === '--upgrade') {
+      const { runUpgradeCommand } = require('../lib/updater');
+      runUpgradeCommand(argv.slice(i + 1))
+        .then(code => process.exit(code ?? 0))
+        .catch(err => {
+          console.error('Error during upgrade:', err.message || err);
+          process.exit(1);
+        });
+      return null;
+    }
     if (arg === '--help' || arg === '-H') {
       printHelp();
       process.exit(0);
@@ -282,6 +312,7 @@ function waitForServer(port, host, timeoutMs = 5000) {
 }
 
 const opts = parseArgs(args);
+if (!opts) return;
 const { startServer, PORT } = require('../server');
 
 // PORT is already validated (1-65535) in server.js — an invalid $PORT used to
