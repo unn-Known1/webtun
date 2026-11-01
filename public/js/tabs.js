@@ -1014,7 +1014,19 @@ function createTerminalWrapper(tab) {
 }
 
 
+function terminalCap() {
+  const enforce = window.licenseEnforce === true;
+  const plan = window.licensePlan || 'free';
+  if (!enforce) return Infinity;
+  if (plan === 'free') return 3;
+  return Infinity;
+}
 function newTab(title, sessionId, dir, opts = {}) {
+  const termCount = tabs.filter(t => (t.type || 'term') === 'term').length;
+  if (termCount >= terminalCap()) {
+    try { toast('Free plan allows up to 3 terminals. Upgrade to Pro for unlimited.', 'warning'); } catch {}
+    return null;
+  }
   const id = ++tabCounter;
   const sid = sessionId || uuid();
   const tab = { id, type: 'term', sessionId: sid, title: title || `Term ${nextTermNumber()}`, term: null, fitAddon: null, ws: null, el: null, wrapper: null, closed: false, dataDisposable: null, resizeDisposable: null, resizeObserver: null, cwd: dir || currentPath, color: (opts && opts.color) || '', pinned: !!(opts && opts.pinned) };

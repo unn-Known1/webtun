@@ -45,6 +45,7 @@ function loadSettings() {
   try { if (typeof applyGitEnabled === 'function') applyGitEnabled(); } catch {}
   try { if (typeof applyGitSimple === 'function') applyGitSimple(); } catch {}
   try { if (typeof applySshEnabled === 'function') applySshEnabled(); } catch {}
+  try { updateThemeOptions(); } catch {}
   syncKeepAwakeUI();
   if (settings.keepAwake) { requestWakeLock().catch(() => {}); }
   if (isElectron) {
@@ -459,7 +460,15 @@ function filterSettings(q) {
   if (!q) { _preSearchSectionStates.clear(); _preSearchChildDisplay.clear(); }
   document.getElementById('settings-no-match').style.display = anyVisible ? 'none' : 'block';
 }
+const FREE_THEMES = ['system', 'light'];
 function applyTheme(theme, save = true) {
+  // Free plan (when caps are enforced) only gets system + light themes.
+  const enforce = window.licenseEnforce === true;
+  const plan = window.licensePlan || 'free';
+  if (enforce && plan === 'free' && !FREE_THEMES.includes(theme)) {
+    if (save) { try { toast('Additional themes require a Pro or Team license', 'warning'); } catch {} }
+    theme = FREE_THEMES.includes(settings.theme) ? settings.theme : 'light';
+  }
   let resolved = theme;
   if (theme === 'tokyo-night') resolved = 'tokyonight';
   if (theme === 'system') {
@@ -482,6 +491,35 @@ function applyTheme(theme, save = true) {
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta && themeColor) meta.content = themeColor;
   if (save) saveSettings();
+}
+
+function updateThemeOptions() {
+  const sel = document.getElementById('s-theme');
+  if (!sel) return;
+  const enforce = window.licenseEnforce === true;
+  const plan = window.licensePlan || 'free';
+  const gated = enforce && plan === 'free';
+  Array.from(sel.options).forEach(opt => {
+    const isFree = FREE_THEMES.includes(opt.value);
+    opt.disabled = gated && !isFree;
+    // manage (Pro) suffix
+    const base = opt.value === 'catppuccin-latte' ? 'Catppuccin Latte'
+      : opt.value === 'nord-light' ? 'Nord Light'
+      : opt.value === 'tokyonight' ? 'Tokyo Night'
+      : opt.value === 'solarized' ? 'Solarized Dark'
+      : opt.value === 'gruvbox' ? 'Gruvbox'
+      : opt.value === 'dracula' ? 'Dracula'
+      : opt.value === 'monokai' ? 'Monokai'
+      : opt.value === 'oled' ? 'Midnight OLED'
+      : opt.value.charAt(0).toUpperCase() + opt.value.slice(1);
+    opt.textContent = (gated && !isFree) ? base + ' (Pro)' : base;
+  });
+  // reset selection if current is gated
+  if (gated && !FREE_THEMES.includes(settings.theme)) {
+    settings.theme = 'light';
+    try { applyTheme('light', false); } catch {}
+    sel.value = 'light';
+  }
 }
 
 function applyFontSize(size) {

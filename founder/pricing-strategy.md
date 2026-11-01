@@ -35,7 +35,7 @@ Features:
 6. Community support via GitHub
 
 ### Pro (solo commercial)
-Monthly: $12 per server. Annual: $115 per year, 20 percent off, equals $9.58 per month.
+Monthly: $3 per server. Annual: $115 per year, 20 percent off, equals $9.58 per month.
 Justifies jump: commercial license plus SSH plus unlimited tunnels, because solo pros pay to reach the same box from laptop and phone.
 Gated feature: SSH credential routes plus managed sshd setup in lib/ssh-setup.js, because that surface already needs PIN, so one check gates it.
 Features:

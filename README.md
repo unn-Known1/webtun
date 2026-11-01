@@ -416,7 +416,7 @@ See [the architecture guide](docs/SYSTEM_ARCHITECTURE_AND_DESIGN_PRINCIPLES.md) 
 
 - Versions up to and including **v1.5.6**: MIT License.
 - **v1.5.7 and later**: [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) — free for noncommercial use (personal, research, education, charities, government).
-- **Commercial use** needs a Pro or Team key: **Community** (free, noncommercial, 2 tunnels, 3 devices), **Pro** ($12/server/month, unlimited tunnels, SSH keys), **Team** ($19/admin/month, up to 10 admins, audit export). Keys work offline — paste one in Settings → Security → License. See `/docs` → Plans & license. For manual invoicing instead of self-serve checkout, contact [ptelgm.yt@gmail.com](mailto:ptelgm.yt@gmail.com). See [LICENSE](LICENSE).
+- **Commercial use** needs a Pro or Team key: **Community** (free, noncommercial, 2 tunnels, 3 devices), **Pro** ($3/server/month, unlimited tunnels, SSH keys), **Team** ($19/admin/month, up to 10 admins, audit export). Keys work offline — paste one in Settings → Security → License. See `/docs` → Plans & license. For manual invoicing instead of self-serve checkout, contact [ptelgm.yt@gmail.com](mailto:ptelgm.yt@gmail.com). See [LICENSE](LICENSE).
 
 ---
 

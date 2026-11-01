@@ -301,6 +301,10 @@ function openLastServer() {
 }
 
 async function init() {
+  try {
+    const lr = await api('/api/license/status');
+    if (lr && !lr.error) { window.licensePlan = lr.plan || 'free'; window.licenseEnforce = !!lr.enforce; }
+  } catch {}
   loadSettings();
   applyTheme(settings.theme, false);
 

@@ -612,6 +612,9 @@ async function refreshLicense() {
   try { r = await api('/api/license/status'); } catch { return; }
   if (!r || r.error) { statusEl.textContent = 'License status unavailable.'; return; }
   const plan = r.plan || 'free';
+  window.licensePlan = plan;
+  window.licenseEnforce = !!r.enforce;
+  try { if (typeof updateThemeOptions === 'function') updateThemeOptions(); } catch {}
   const exp = r.expiry ? new Date(r.expiry).toLocaleDateString() : '';
   statusEl.style.color = '';
   planEl.textContent = plan === 'free' ? '— Free' : '— ' + plan.charAt(0).toUpperCase() + plan.slice(1);
@@ -739,7 +742,7 @@ async function requestLicenseEmail() {
   const planLabel = plan === 'team' ? 'Team' : 'Pro';
   const priceHint = plan === 'team'
     ? (annual ? '$182/seat/year' : '$19/seat/month')
-    : (annual ? '$115/year' : '$12/month');
+    : (annual ? '$115/year' : '$3/month');
   const serverUrl = (typeof location !== 'undefined' && location.origin) ? location.origin : '';
   const dateStr = new Date().toISOString().slice(0, 10);
   const subject = 'WebTun license request — ' + planLabel + ' (' + termLabel + ')';

@@ -55,7 +55,7 @@ Get both by trading launch Pro at $8 for a photo plus a bug report with written 
 Free versus Pro table, full tiers on pricing page:
 
 Community $0: noncommercial, 2 tunnels and 3 devices after 6 month grace, history 200 up from 50 today, community support. Caps marked new, file tabs at 10 as today.
-Pro $12 per server per month, $115 per year: commercial use, unlimited tunnels, 5 devices, SSH ed25519 keys, history 1000, email support.
+Pro $3 per server per month, $115 per year: commercial use, unlimited tunnels, 5 devices, SSH ed25519 keys, history 1000, email support.
 Team $19 per admin per month, $182 per year, 3 minimum equals $57 per month: up to 10 admins, shared library, audit CSV, policy UI, priority chat. SSO roadmap only, not shipped.
 
 Worth it line: one avoided late drive home pays for a year of Pro, because remote shell plus files beats fuel and time.
