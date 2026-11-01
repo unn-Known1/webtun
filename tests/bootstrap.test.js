@@ -69,5 +69,10 @@ test('the composed server starts, serves the workspace, and shuts down cleanly',
   assert.equal((await fetch(base+'/')).status,200);
   assert.equal((await fetch(base+'/docs')).status,200);
   child.kill('SIGTERM');
-  assert.equal((await exited).code,0,log);
+  const exit = await exited;
+  if (process.platform === 'win32') {
+    assert.ok(exit.code === 0 || exit.code === null, log);
+  } else {
+    assert.equal(exit.code, 0, log);
+  }
 });

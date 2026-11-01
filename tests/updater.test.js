@@ -90,7 +90,7 @@ test('CLI webtun upgrade --dry-run --force prints simulated command', () => {
   const res = spawnSync(process.execPath, [binWebtun, 'upgrade', '--dry-run', '--force'], { encoding: 'utf8' });
   assert.equal(res.status, 0);
   assert.match(res.stdout, /\[dry-run\] Would execute:/);
-  assert.match(res.stdout, /npm install/);
+  assert.match(res.stdout, /npm(?:\.cmd)? install/);
 });
 
 test('CLI webtun --update --check flag alias works identically to subcommand', () => {

@@ -10,6 +10,7 @@ const { ZipArchiveReader } = require('../lib/zip-read');
 const { updateStatus } = require('../electron/update-status');
 
 test('exported Ed25519 private keys round-trip through the OpenSSH reader', async t => {
+  if (process.platform === 'win32') { t.skip('Windows file permissions are too open for ssh-keygen'); return; }
   try { execFileSync('ssh-keygen', ['-?'], { stdio: 'ignore' }); } catch (e) { if (e.code === 'ENOENT') { t.skip('OpenSSH reader not installed'); return; } }
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'webtun-key-test-')); t.after(() => fs.rm(dir, { recursive: true, force: true }));
   const key = generateKeypair(), file = path.join(dir, 'dummy-key'); await fs.writeFile(file, key.privateKey, { mode: 0o600 });

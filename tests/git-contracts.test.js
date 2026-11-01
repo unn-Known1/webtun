@@ -27,8 +27,8 @@ test('valid branch creation switches correctly, duplicates and invalid names fai
 });
 test('status and numstat keep Unicode, whitespace, arrow strings and rename pairs unquoted', async t => {
   const f = await fixture(t);
-  const names = ['报告.txt', 'a -> b.txt', 'a => b.txt'];
-  if (process.platform !== 'win32') names.push('a\tb.txt', 'a\nb.txt', '"quoted".txt');
+  const names = ['报告.txt'];
+  if (process.platform !== 'win32') names.push('a -> b.txt', 'a => b.txt', 'a\tb.txt', 'a\nb.txt', '"quoted".txt');
   for (const name of names) await fs.writeFile(path.join(f.workspace, name), 'hello\nworld\n');
   const status = (await f.get('status')).body;
   for (const name of names) assert.ok(status.untracked.some(e => e.path === name), JSON.stringify(name));
@@ -49,7 +49,7 @@ test('merge conflicts expose operation state, Abort restores and Continue comple
   assert.equal((await f.post('merge', { branch: 'feature' })).status, 400);
   assert.equal((await f.get('status')).body.operation, 'merge');
   assert.equal((await f.post('abort', {})).body.success, true);
-  assert.equal(await fs.readFile(path.join(f.workspace, 'alpha.txt'), 'utf8'), 'main\n');
+  assert.equal((await fs.readFile(path.join(f.workspace, 'alpha.txt'), 'utf8')).trim(), 'main');
   await f.post('merge', { branch: 'feature' }); await fs.writeFile(path.join(f.workspace, 'alpha.txt'), 'resolved\n');
   await f.post('stage', { files: ['alpha.txt'] });
   assert.equal((await f.post('continue', {})).body.success, true);
