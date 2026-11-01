@@ -540,11 +540,40 @@ function releaseTabEditor(tab) {
   try { tab.document.onChange = null; } catch {}
 }
 
-function ensureTabEditor(tab, seed, opts = {}) {
-  if (tab.closed) return Promise.resolve(false);
-  if (tab.cm) return Promise.resolve(true);
-  if (!tab.editorReady) tab.editorReady = initializeTabEditor(tab, seed, opts);
-  return tab.editorReady;
+async function ensureTabEditor(tab, seed, opts = {}) {
+  if (tab.closed) return false;
+  if (!tab.cm) {
+    if (!tab.editorReady) tab.editorReady = initializeTabEditor(tab, seed, opts);
+    if (!await tab.editorReady) return false;
+  }
+  if (!opts.background) await reviewTabDraft(tab);
+  return !tab.closed;
+}
+
+async function reviewTabDraft(tab) {
+  const buffer = tab?.document.buffer;
+  if (!buffer || buffer.pendingDraft == null || tab.closed) return;
+  if (tab.draftReview) return tab.draftReview;
+  tab.draftReview = (async () => {
+    const restore = await confirmDialog({
+      title: 'Unsaved draft found',
+      message: 'A newer unsaved version of this file was found from a previous session. Restore it?',
+      okText: 'Restore draft', cancelText: 'Discard draft',
+    });
+    // Closing/locking while the decision is pending keeps the stored draft.
+    if (tab.closed || tab.document.buffer !== buffer || buffer.released) return;
+    const draft = buffer.pendingDraft;
+    buffer.pendingDraft = null;
+    if (restore) {
+      buffer.setContent(draft);
+      tab.cm.setValue(draft);
+    } else removeDraft(buffer.path);
+    buffer.flushDraft();
+    tab.cm.setOption('readOnly', false);
+    markTabDirty(tab);
+    flashTabStatus(tab, restore ? 'Draft restored' : 'Draft discarded');
+  })();
+  try { await tab.draftReview; } finally { tab.draftReview = null; }
 }
 
 // B5: background tile mounts never abandon the tab. Failures render an inline
@@ -636,7 +665,7 @@ async function initializeTabEditor(tab, seed, opts = {}) {
       setValue: (v) => { ta.value = v; },
       focus: () => ta.focus(),
       refresh: () => {},
-      setOption: () => {},
+      setOption: (name, value) => { if (name === 'readOnly') ta.readOnly = !!value; },
       on: (ev, fn) => { if (ev === 'change') ta.addEventListener('input', fn); },
       getHistory: () => null,
       setHistory: () => {},
@@ -647,6 +676,8 @@ async function initializeTabEditor(tab, seed, opts = {}) {
   }
 
   tab.cm = cm;
+  cm.setOption('readOnly', buffer.pendingDraft != null);
+  buffer.flushDraft();
   if (data.history) { try { cm.setHistory(data.history); } catch (e) { console.warn('Undo history restore failed:', e); } }
   if (data.cursor) { try { cm.setCursor(data.cursor); } catch {} }
   if (!cm.isFallback) {
@@ -663,7 +694,7 @@ async function initializeTabEditor(tab, seed, opts = {}) {
   // B5: background mounts keep disk content; surface deferred decisions inline
   // instead of a modal — the draft stays stored until the user opens the tile.
   try {
-    if (data && data.pendingDraft) flashTabStatus(tab, 'Draft kept — open tile to review');
+    if (buffer.pendingDraft != null) flashTabStatus(tab, 'Draft kept — open tile to review');
     else if (data && data.largeFile) flashTabStatus(tab, 'Large file — mounted in tile');
   } catch {}
   try { cm.setOption('mode', await resolveCMmode(fileTabName(tab.path))); } catch (e) { console.warn('Mode resolve failed:', e); }
@@ -1019,6 +1050,7 @@ function scheduleTabDraft(tab) {
 }
 
 async function saveTabFile(tab) {
+  await reviewTabDraft(tab);
   const buffer = tab?.document.buffer;
   if (!buffer || !tab.cm || tab.closed) return;
   buffer.setContent(tab.cm.getValue());
@@ -1038,6 +1070,7 @@ async function saveTabFile(tab) {
 }
 
 async function reloadTabFile(tab) {
+  await reviewTabDraft(tab);
   const buffer = tab?.document.buffer;
   if (!buffer || !tab.cm || tab.closed || buffer.saving) return;
   buffer.setContent(tab.cm.getValue());
@@ -1064,6 +1097,8 @@ async function reloadTabFile(tab) {
 // lost and no discard dialog is needed.
 async function moveTabToPanel(tab) {
   if (!tab || tab.type !== 'file') return;
+  await reviewTabDraft(tab);
+  if (tab.closed) return;
   const path = tab.path;
   const content = tab.cm ? tab.cm.getValue() : '';
   const original = tab.document.original != null ? tab.document.original : content;

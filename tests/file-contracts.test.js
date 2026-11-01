@@ -147,3 +147,41 @@ test('tar.gz creation and extraction round-trip and audit/sync endpoints persist
   assert.ok(auditRes.body.entries.length >= 1);
 });
 
+
+
+test('copy and move reject ancestor replacement before removing any source data', async t => {
+  const f = await fixture(t);
+  for (const route of ['copy', 'move']) {
+    const destination = path.join(f.workspace, route), source = path.join(destination, 'inner');
+    assert.equal(path.relative(f.workspace, source).startsWith('..'), false);
+    await fs.mkdir(source, { recursive: true });
+    await fs.writeFile(path.join(source, 'keep.txt'), 'source survives');
+    const r = await f.request('/api/files/' + route, { method: 'POST', body: { source, destination, conflict: 'replace' } });
+    assert.equal(r.status, 400);
+    assert.equal(await fs.readFile(path.join(source, 'keep.txt'), 'utf8'), 'source survives');
+  }
+  const source = path.join(f.workspace, 'outer', 'inner', 'outer');
+  await fs.mkdir(source, { recursive: true });
+  await fs.writeFile(path.join(source, 'keep.txt'), 'clipboard survives');
+  await f.request('/api/clipboard', { method: 'POST', body: { sources: [source], action: 'cut' } });
+  const pasted = await f.request('/api/clipboard/paste', { method: 'POST', body: { destination: f.workspace, conflict: 'replace' } });
+  assert.equal(pasted.body.failed, 1);
+  assert.equal(await fs.readFile(path.join(source, 'keep.txt'), 'utf8'), 'clipboard survives');
+});
+
+test('skip conflict policy still copies and moves files without a destination conflict', async t => {
+  const f = await fixture(t), destination = path.join(f.workspace, 'target');
+  await fs.mkdir(destination);
+  await fs.writeFile(path.join(destination, 'alpha.txt'), 'existing');
+  const sources = ['alpha.txt', 'beta.txt'].map(n => path.join(f.workspace, n));
+  const r = await f.request('/api/files/batch-copy', { method: 'POST', body: { sources, destination, conflict: 'skip' } });
+  assert.equal(r.body.results[0].skipped, true);
+  assert.equal(r.body.results[1].success, true);
+  assert.equal(r.body.results[1].skipped, undefined);
+  assert.equal(await fs.readFile(path.join(destination, 'alpha.txt'), 'utf8'), 'existing');
+  assert.equal(await fs.readFile(path.join(destination, 'beta.txt'), 'utf8'), 'beta on disk\n');
+  const moved = path.join(destination, 'moved.txt');
+  assert.equal((await f.request('/api/files/move', { method: 'POST', body: { source: sources[1], destination: moved, conflict: 'skip' } })).body.success, true);
+  assert.equal(await fs.readFile(moved, 'utf8'), 'beta on disk\n');
+  await assert.rejects(fs.stat(sources[1]), { code: 'ENOENT' });
+});

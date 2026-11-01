@@ -74,3 +74,54 @@ test('history pages and bounded blame return real repository data', async t => {
   assert.equal((await f.get('stashes')).body.stashes.length, 0);
 });
 
+
+
+test('Git selections treat wildcard filenames literally for stage, unstage and discard', async t => {
+  const f = await fixture(t), literal = '[ab].txt', other = 'a.txt';
+  f.git('config', 'core.autocrlf', 'false');
+  for (const name of [literal, other]) await fs.writeFile(path.join(f.workspace, name), 'original\n');
+  f.git('--literal-pathspecs', 'add', '--', literal, other); f.git('commit', '-m', 'literal files');
+  for (const name of [literal, other]) await fs.writeFile(path.join(f.workspace, name), 'changed\n');
+  assert.equal((await f.post('stage', { files: [literal] })).body.success, true);
+  assert.equal(f.git('diff', '--cached', '--name-only').trim(), literal);
+  f.git('add', '--', other);
+  assert.equal((await f.post('unstage', { files: [literal] })).body.success, true);
+  assert.equal(f.git('diff', '--cached', '--name-only').trim(), other);
+  assert.equal((await f.post('discard', { files: [literal] })).body.success, true);
+  assert.equal(await fs.readFile(path.join(f.workspace, literal), 'utf8'), 'original\n');
+  assert.equal(await fs.readFile(path.join(f.workspace, other), 'utf8'), 'changed\n');
+});
+
+test('unstage works before the initial commit without deleting the worktree file', async t => {
+  const f = await createWorkspaceServer(); t.after(() => f.close());
+  const git = (...args) => execFileSync('git', ['-C', f.workspace, ...args], { encoding: 'utf8' });
+  git('init'); git('add', '--', 'alpha.txt');
+  const r = await f.request('/api/git/unstage', { method: 'POST', body: { path: f.workspace, files: ['alpha.txt'] } });
+  assert.equal(r.body.success, true);
+  assert.equal(git('ls-files').trim(), '');
+  assert.equal(await fs.readFile(path.join(f.workspace, 'alpha.txt'), 'utf8'), 'alpha on disk\n');
+});
+
+test('unstaging a rename restores both original and destination index paths', async t => {
+  const f = await fixture(t);
+  f.git('mv', 'alpha.txt', 'renamed.txt');
+  assert.equal((await f.post('unstage', { files: ['renamed.txt'] })).body.success, true);
+  assert.equal(f.git('diff', '--cached', '--name-only').trim(), '');
+  assert.equal(f.git('ls-files').trim(), 'alpha.txt');
+  assert.equal(await fs.readFile(path.join(f.workspace, 'renamed.txt'), 'utf8'), 'alpha on disk\n');
+});
+
+test('non-final hunks stage and unstage independently with valid patch terminators', async t => {
+  const f = await fixture(t); f.git('config', 'core.autocrlf', 'false');
+  const original = Array.from({ length: 40 }, (_, i) => 'line ' + i);
+  await fs.writeFile(path.join(f.workspace, 'alpha.txt'), original.join('\n') + '\n');
+  f.git('add', 'alpha.txt'); f.git('commit', '-m', 'many lines');
+  const changed = original.slice(); changed[2] = 'first edit'; changed[32] = 'second edit';
+  await fs.writeFile(path.join(f.workspace, 'alpha.txt'), changed.join('\n') + '\n');
+  assert.equal((await f.get('hunks?file=alpha.txt')).body.hunks.length, 2);
+  assert.equal((await f.post('stage-hunk', { file: 'alpha.txt', index: 0 })).body.success, true);
+  let staged = f.git('show', ':alpha.txt'); assert.match(staged, /first edit/); assert.doesNotMatch(staged, /second edit/);
+  f.git('add', 'alpha.txt');
+  assert.equal((await f.post('unstage-hunk', { file: 'alpha.txt', index: 0 })).body.success, true);
+  staged = f.git('show', ':alpha.txt'); assert.doesNotMatch(staged, /first edit/); assert.match(staged, /second edit/);
+});

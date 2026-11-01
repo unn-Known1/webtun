@@ -136,3 +136,12 @@ test('Git stage, commit, diff, and unstage operate on the requested repository',
   assert.equal((await post('unstage',{ files:['alpha.txt'] })).body.success,true);
   assert.equal(execFileSync('git',['-C',f.workspace,'diff','--cached'],{ encoding:'utf8' }),'');
 });
+
+
+test('an incorrect current PIN is a validation error and preserves the active session', async t => {
+  const f = await fixture(t, { pin: 'owner-pin' }), owner = await login(f, 'owner');
+  const r = await f.request('/api/pin', { token: owner.token, method: 'POST', body: { currentPin: 'typo', newPin: 'replacement' } });
+  assert.equal(r.status, 400); assert.match(r.body.error, /Current PIN is incorrect/);
+  assert.equal((await f.request('/api/auth/me', { token: owner.token })).status, 200);
+  assert.equal(f.auth.pin, 'owner-pin');
+});

@@ -36,6 +36,7 @@
         mtime: seed.mtime != null ? String(seed.mtime) : null,
         size: typeof seed.size === 'number' ? seed.size : null,
         extChanged: !!seed.extChanged, missing: !!seed.missing,
+        pendingDraft: typeof seed.pendingDraft === 'string' ? seed.pendingDraft : null,
         revision: 0, saving: 0, released: false,
         get dirty() { return this.content !== this.original; },
         subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
@@ -49,7 +50,7 @@
         cancelDraft() { cancel(draftTimer); draftTimer = null; },
         flushDraft() {
           this.cancelDraft();
-          if (this.released) return;
+          if (this.released || this.pendingDraft != null) return;
           try {
             if (this.dirty) storage.setItem(key(this.path), this.content);
             else removeDraft(this.path);
@@ -60,6 +61,7 @@
           if (!this.released) draftTimer = schedule(() => this.flushDraft(), delay);
         },
         save(write) {
+          if (this.pendingDraft != null) return Promise.reject(new Error('Review the recovery draft before saving'));
           if (reserved(this.path)) return Promise.reject(new Error('Wait for the rename to finish before saving'));
           const snapshot = { path: this.path, content: this.content };
           this.saving++;
@@ -78,7 +80,7 @@
           return operation;
         },
         acceptDisk(data, expectedRevision = this.revision) {
-          if (this.released || this.saving || this.revision !== expectedRevision) return false;
+          if (this.released || this.saving || this.pendingDraft != null || this.revision !== expectedRevision) return false;
           this.content = this.original = data.content;
           this.revision++;
           if (data.mtime != null) this.mtime = String(data.mtime);
@@ -89,7 +91,7 @@
           return true;
         },
         release({ discard = false } = {}) {
-          if (discard) { this.cancelDraft(); removeDraft(this.path); }
+          if (discard && this.pendingDraft == null) { this.cancelDraft(); removeDraft(this.path); }
           else this.flushDraft();
           this.released = true;
           this.owner = null;

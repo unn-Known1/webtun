@@ -418,6 +418,7 @@ footer a{color:var(--mut)}
       <a href="#editor"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>Editor &amp; previews</a>
       <a href="#editing-safely"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Keep edits safe</a>
       <a href="#reliability">Recovery &amp; operation limits</a>
+      <a href="#safe-operations">Safe file &amp; session operations</a>
       <a href="#files"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>File manager</a>
       <a href="#git"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>Git panel</a>
       <a href="#commands"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>History &amp; commands</a>
@@ -667,6 +668,18 @@ WORKSPACE_ROOT=/home/you/projects</pre></div>
           <li><b>Editing still works if the editor library cannot load.</b> A plain text area supports edits, saves, drafts, and moving files between panel and tab. Syntax highlighting returns when the library is available.</li>
         </ul>
         <p>Unexpected action failures show an error toast and stay in the Notification center.</p>
+      </section>
+
+      <section id="safe-operations" data-title="Safe operations startup desktop Windows npm upgrade PIN typo trusted session license status terminal tab restore draft recovery background tile read only switch mode loading copy move ancestor replace skip Git literal wildcard filename rename unstage initial commit hunk tunnel exit">
+        <div class="sec-head rv"><div><h2>Safe file &amp; session operations <a class="hash" href="#safe-operations" aria-label="Link to safe operations">#</a></h2></div></div>
+        <ul class="tight rv">
+          <li><b>Recovery drafts stay recoverable.</b> Restoring a draft keeps its saved recovery copy until you save or explicitly discard it. A background text tile with a recovery draft stays read-only until you activate it and choose Restore or Discard. Closing it before review keeps the draft for next time.</li>
+          <li><b>Switching files keeps Save pointed at the displayed text.</b> Syntax modes may finish loading later; edits and saves made during that wait belong to the newly opened file.</li>
+          <li><b>Copy/move protects nested sources.</b> A folder cannot replace a parent that contains it. Skip applies only to existing destinations; other selected files still transfer.</li>
+          <li><b>Git selections use literal filenames.</b> Characters such as brackets and asterisks do not select other files. Unstage works before the first commit and handles both sides of a staged rename. Individual hunks can be staged or unstaged independently.</li>
+          <li><b>Sign-in happens before license loading.</b> Reload resumes a valid session before checking limits and restoring tabs. A temporarily unavailable license status does not shorten your saved workspace. Mistyping the current PIN during a PIN change shows a validation error and keeps you signed in.</li>
+          <li><b>Startup and tunnel failures are reported.</b> The desktop app starts its local server before opening the window. Windows CLI upgrades invoke npm through Node. A tunnel that exits during its readiness check is reported as failed so you can retry.</li>
+        </ul>
       </section>
 
       <section id="reliability" data-title="Recovery limits exit Restart pinch wake lock Data Saver sign out revocation rename directory descendants occupied destination draft preview stale authorization PDF EPUB Office download upload Stop Retry-After ZIP archive 50000 merge rollback range symlink regex worker SSE tail rotation">

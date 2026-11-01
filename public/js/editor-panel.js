@@ -223,10 +223,10 @@ async function readTextForEditor(path, opts = {}) {
   // Background mounts never prompt and never delete: the disk content mounts and
   // the draft stays stored until the user opens the tile and chooses.
   let content = r.content;
-  let pendingDraft = false;
+  let pendingDraft = null;
   const draft = loadDraft(path);
   if (draft !== null && draft !== r.content) {
-    if (background) { pendingDraft = true; }
+    if (background) { pendingDraft = draft; }
     else {
       const restore = await confirmDialog({
         title: 'Unsaved draft found',
@@ -234,7 +234,7 @@ async function readTextForEditor(path, opts = {}) {
         okText: 'Restore draft',
         cancelText: 'Discard draft',
       });
-      if (restore) { content = draft; removeDraft(path); }
+      if (restore) content = draft;
       else removeDraft(path);
     }
   }
@@ -356,7 +356,10 @@ async function showTextInPanel(path, content, original, history, mtime, size, in
     paintEditorDirty();
     if (!buffer.extChanged) setPanelExtChanged(false);
   };
-  const openContent = content;
+  // Install the matching text synchronously: Save and handover can run during
+  // either lazy CodeMirror or mode loading, and must never see the old file.
+  installPanelContent(buffer.content);
+  buffer.flushDraft();
   const sep = path.includes('\\') ? '\\' : '/';
   const fileName = path.split(sep).pop() || path;
   const isMd = /\.md$/i.test(fileName);
@@ -368,10 +371,7 @@ async function showTextInPanel(path, content, original, history, mtime, size, in
   const cm = await initCodeMirror();
   if (myGen !== _panelGen || panelState.buffer !== buffer) return;
   if (cm) {
-    const mode = await resolveCMmode(fileName);
-    if (myGen !== _panelGen || panelState.buffer !== buffer) return;
-    cm.setOption('mode', mode);
-    cm.setValue(openContent);
+    cm.setValue(buffer.content);
     if (history) {
       try { cm.setHistory(history); } catch (e) { console.warn('Undo history restore failed:', e); }
     } else cm.clearHistory();
@@ -382,7 +382,7 @@ async function showTextInPanel(path, content, original, history, mtime, size, in
   } else {
     const ta = document.getElementById('editor-textarea');
     if (ta) {
-      ta.value = openContent;
+      ta.value = buffer.content;
       ta.readOnly = false;
       ta.style.display = 'block';
       ta.classList.add('editor-fallback');
@@ -390,6 +390,11 @@ async function showTextInPanel(path, content, original, history, mtime, size, in
     }
   }
   updateEditorDirty();
+  if (cm) {
+    const mode = await resolveCMmode(fileName);
+    if (myGen !== _panelGen || panelState.buffer !== buffer) return;
+    cm.setOption('mode', mode);
+  }
 
   const preview = document.getElementById('editor-preview');
   const toggleBtn = document.getElementById('md-preview-toggle');
@@ -713,7 +718,7 @@ async function checkOneOpenFile(target) {
     else return; // transient error — retry next round, never flag
   } catch { return; }
   const watchedBuffer = target.kind === 'panel' ? panelState.buffer : target.tab?.document?.buffer;
-  if (watchedBuffer?.saving) return;
+  if (watchedBuffer?.saving || watchedBuffer?.pendingDraft != null) return;
   const mtime = String(st.mtime);
   if (target.kind === 'panel') {
     if (panelState.path !== target.path) return; // user moved on mid-flight

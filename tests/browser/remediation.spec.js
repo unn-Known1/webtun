@@ -54,14 +54,15 @@ test('cancelling a synthesized tab swipe restores its styles and leaves the tab 
   });
   expect(state.moved).not.toBe(''); expect(state.transform).toBe(''); expect(state.opacity).toBe(''); expect(state.exists).toBe(true);
 });
-test('billing plan, annual term, seats and renewal controls fit the drawer', async ({ page }) => {
+test('billing plan, annual term, seats and email request controls fit the drawer', async ({ page }) => {
   await ready(page); await page.locator('#settings-btn').click(); await page.locator('#settings-search').fill('security');
-  await page.locator('.billing-controls summary').click(); await page.locator('#billing-plan').selectOption('team');
+  await page.getByText('Purchase or renew a license', { exact: true }).click(); await page.locator('#billing-plan').selectOption('team');
   await expect(page.locator('#billing-seats')).toBeVisible(); await page.locator('#billing-term').selectOption('yearly'); await page.locator('#billing-seats').fill('6');
-  let sent;
-  await page.route('**/api/billing/checkout', route => { sent = route.request().postDataJSON(); return route.fulfill({ json: { error: 'Fixture billing is not configured' }, status: 501 }); });
-  await page.locator('#billing-checkout-btn').click(); await expect(page.locator('#billing-error')).toContainText('not configured');
-  expect(sent).toEqual({ plan: 'team', annual: true, seats: 6 });
+  await page.locator('#billing-request-btn').click();
+  const request = page.locator('#billing-email-body');
+  await expect(request).toBeVisible();
+  await expect(request).toHaveValue(/Plan: Team[\s\S]*Term: Yearly[\s\S]*Seats: 6/);
+  await expect(page.locator('#billing-email-mailto')).toHaveAttribute('href', /^mailto:ptelgm\.yt@gmail\.com\?/);
   expect(await page.locator('.settings-panel-body').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
   if (process.env.WEBTUN_TEST_EVIDENCE) await page.screenshot({ path:process.env.WEBTUN_TEST_EVIDENCE + '/billing-' + test.info().project.name + '.png', animations:'disabled' });
 });

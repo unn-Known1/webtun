@@ -81,3 +81,31 @@ test('locking releases vanished file owners without discarding drafts or erasing
   assert.equal(store.find('/a.txt'), null); assert.equal(drafts.get('wt-draft:/a.txt'), 'draft');
   el.value = '123'; context.showPinScreen(); assert.equal(el.value, '123');
 });
+
+test('panel Save uses the installed file while its CodeMirror language mode is still pending', async () => {
+  let text = 'contents of A', releaseMode, enteredMode;
+  const modeEntered = new Promise(resolve => { enteredMode = resolve; });
+  const drafts = new Map(), writes = [];
+  const store = createStore({ storage: { getItem: k => drafts.get(k) ?? null, setItem: (k, v) => drafts.set(k, v), removeItem: k => drafts.delete(k) } });
+  const panelState = store.createSurface('panel'); panelState.open('/A.txt', { content: text });
+  const cm = { getValue: () => text, setValue: v => { text = v; }, setOption() {}, clearHistory() {}, refresh() {}, focus() {} };
+  const node = { style: {}, classList: { add() {}, remove() {} }, focus() {} };
+  const context = { _panelGen: 0, panelState, editor: cm, mdPreviewActive: false, window: { innerWidth: 500 }, tabs: [], console,
+    document: { getElementById: () => node, querySelector: () => node }, initCodeMirror: async () => cm,
+    resolveCMmode: () => { enteredMode(); return new Promise(resolve => { releaseMode = resolve; }); },
+    paintEditorDirty() {}, setPanelExtChanged() {}, cleanupDocViewers() {}, clearPreviewDoc() {}, clearPreviewLiveReload() {},
+    setFullBtnVisible() {}, stopLogTail() {}, updateEditorCursorStatus() {}, checkEditorConflicts() {}, requestAnimationFrame() {},
+    setBtnBusy() {}, toast() {}, flashPanelStatus() {}, fileTabName: v => v,
+    updateEditorDirty: () => panelState.buffer?.setContent(text), saveEditorBuffer: buffer => buffer.save(async snapshot => { writes.push(snapshot); return { success: true }; }),
+  };
+  context.panelContent = clientFunction('public/js/editor-panel.js', 'panelContent', context);
+  context.installPanelContent = clientFunction('public/js/editor-panel.js', 'installPanelContent', context);
+  const open = clientFunction('public/js/editor-panel.js', 'showTextInPanel', context);
+  const save = clientFunction('public/js/editor-panel.js', 'saveFile', context);
+  const pending = open('/B.py', 'contents of B', 'contents of B');
+  await modeEntered; await save();
+  assert.equal(writes.length, 1); assert.equal(writes[0].path, '/B.py'); assert.equal(writes[0].content, 'contents of B');
+  text = 'typed while loading'; context.updateEditorDirty();
+  releaseMode('python'); await pending;
+  assert.equal(text, 'typed while loading'); assert.equal(panelState.buffer.dirty, true);
+});

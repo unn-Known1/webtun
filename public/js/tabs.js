@@ -1017,10 +1017,8 @@ function createTerminalWrapper(tab) {
 function terminalCap() {
   const plan = window.licensePlan || 'free';
   if (plan !== 'free') return Infinity;
-  // Free plan is capped at 3 terminal tabs. Caps are dormant only when the
-  // server explicitly reports enforcement disabled (unconfigured install);
-  // an unset flag (e.g. tests / pre-init) still applies the free-plan limit.
-  if (window.licenseEnforce === false) return Infinity;
+  // A failed status request must never truncate a saved terminal workspace.
+  if (window.licenseEnforce !== true) return Infinity;
   return 3;
 }
 function newTab(title, sessionId, dir, opts = {}) {

@@ -189,3 +189,14 @@ test('renaming a buffer moves the draft and later saves use the new path', async
   await buffer.save(snapshot => { path=snapshot.path; return { success: true }; });
   assert.equal(path, '/new');
 });
+
+
+test('an unreviewed background draft survives clean release, disk refresh and attempted save', async () => {
+  const f = fixture(); f.drafts.set('wt-draft:/draft', 'recover me');
+  const buffer = f.tab.open('/draft', { content: 'disk', pendingDraft: 'recover me' });
+  buffer.flushDraft(); assert.equal(f.drafts.get('wt-draft:/draft'), 'recover me');
+  assert.equal(buffer.acceptDisk({ content: 'new disk' }), false);
+  await assert.rejects(buffer.save(async () => ({ success: true })), /Review/);
+  f.tab.clear({ discard: true });
+  assert.equal(f.drafts.get('wt-draft:/draft'), 'recover me');
+});

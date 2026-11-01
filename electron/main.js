@@ -359,7 +359,7 @@ function stopServerProcess() {
 }
 
 app.whenReady().then(async () => {
-  if (!gotLock) return; // second instance — quitting, don't boot another server
+  if (!gotTheLock) return; // second instance — quitting, don't boot another server
   try {
     // Auto-pick a free port (3000 → 3001 → …) so an occupied default port
     // boots the app instead of failing. startServer()/createWindow() read PORT.

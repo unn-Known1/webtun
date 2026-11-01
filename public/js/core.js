@@ -301,10 +301,6 @@ function openLastServer() {
 }
 
 async function init() {
-  try {
-    const lr = await api('/api/license/status');
-    if (lr && !lr.error) { window.licensePlan = lr.plan || 'free'; window.licenseEnforce = !!lr.enforce; }
-  } catch {}
   loadSettings();
   applyTheme(settings.theme, false);
 
@@ -590,6 +586,18 @@ async function unlockApp() {
 
   const info = await api('/api/home');
   if (!window._appUnlocked || info.error) return;
+  // Protected state must load after resume/login and before restoring tabs.
+  const license = await api('/api/license/status');
+  if (!window._appUnlocked) return;
+  if (license && !license.error) {
+    window.licensePlan = license.plan || 'free';
+    window.licenseEnforce = !!license.enforce;
+  } else {
+    delete window.licensePlan;
+    delete window.licenseEnforce;
+  }
+  applyTheme(settings.theme, false);
+  try { updateThemeOptions(); } catch {}
   homeDir = info.defaultDirectory || info.workspace || info.home;
   serverPlatform = info.platform || '';
   const hostname = info.hostname || '—';
