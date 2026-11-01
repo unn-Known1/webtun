@@ -768,13 +768,21 @@
               <label for="billing-seats">Team seats</label>
               <input id="billing-seats" type="number" min="3" max="10" step="1" value="3" aria-describedby="billing-help">
             </div>
-            <p id="billing-help" class="settings-help">Team needs 3–10 seats, billed per seat. The checkout page confirms your total. Billing must be configured by the server owner.</p>
+            <p id="billing-help" class="settings-help">Team needs 3–10 seats, billed per seat. At this stage, request a license by email — we reply with your key and payment details.</p>
             <div class="field-error" id="billing-error" role="alert"></div>
             <div class="settings-actions">
-              <button id="billing-checkout-btn" class="btn btn-primary" data-action="start-checkout">Open secure checkout</button>
-              <button id="billing-portal-btn" class="btn btn-ghost" data-action="open-billing-portal">Manage Subscription</button>
+              <button id="billing-request-btn" class="btn btn-primary flex-fill" data-action="request-license-email">Request license by email</button>
             </div>
-            <a id="billing-checkout-link" class="settings-help" target="_blank" rel="noopener noreferrer" hidden>Open your checkout (pop-up was blocked)</a>
+            <a id="billing-checkout-link" class="btn btn-primary flex-fill" target="_blank" rel="noopener noreferrer" hidden style="text-align:center;text-decoration:none;margin-top:8px">Open checkout (pop-up was blocked)</a>
+            <div id="billing-email-template" class="billing-email-template" hidden>
+              <div class="setting-row settings-subheading"><h4>Send this email to request your license</h4></div>
+              <textarea id="billing-email-body" readonly rows="12" aria-label="License request email template"></textarea>
+              <div class="settings-actions">
+                <button id="billing-copy-email-btn" class="btn btn-primary flex-fill" data-action="copy-license-email">Copy email</button>
+                <a id="billing-email-mailto" class="btn btn-ghost flex-fill" target="_blank" rel="noopener noreferrer">Open in email app</a>
+              </div>
+              <div class="settings-help">Send to <b>ptelgm.yt@gmail.com</b>. You'll receive your license key and payment instructions by reply. Then paste the key above and press Activate.</div>
+            </div>
             <div class="setting-row settings-subheading"><h4>Available renewals</h4><button class="btn btn-ghost" data-action="refresh-renewals">Refresh</button></div>
             <div id="billing-renewals" role="status" class="settings-help">Refresh to check for paid renewals.</div>
           </details>

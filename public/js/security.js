@@ -727,6 +727,56 @@ async function openBillingPortal() {
   }
 }
 
+async function requestLicenseEmail() {
+  const planSel = document.getElementById('billing-plan');
+  const termSel = document.getElementById('billing-term');
+  const seatsInput = document.getElementById('billing-seats');
+  const plan = planSel ? planSel.value : 'pro';
+  const annual = termSel ? termSel.value === 'yearly' : false;
+  const termLabel = annual ? 'Yearly' : 'Monthly';
+  const seats = plan === 'team' ? Number(seatsInput ? seatsInput.value : 3) : 1;
+  if (plan === 'team' && (!Number.isInteger(seats) || seats < 3 || seats > 10)) { showFieldError('billing-error', 'Choose 3–10 Team seats'); return; }
+  const planLabel = plan === 'team' ? 'Team' : 'Pro';
+  const priceHint = plan === 'team'
+    ? (annual ? '$182/seat/year' : '$19/seat/month')
+    : (annual ? '$115/year' : '$12/month');
+  const serverUrl = (typeof location !== 'undefined' && location.origin) ? location.origin : '';
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const subject = 'WebTun license request — ' + planLabel + ' (' + termLabel + ')';
+  const body =
+    'Hi,\n\n' +
+    'I would like to purchase a WebTun license. Here are my details:\n\n' +
+    '• Plan: ' + planLabel + '\n' +
+    '• Term: ' + termLabel + '\n' +
+    '• Seats: ' + seats + '\n' +
+    '• Indicative price: ' + priceHint + '\n' +
+    '• Server URL: ' + serverUrl + '\n' +
+    '• Requested on: ' + dateStr + '\n\n' +
+    'Please reply with the license key and payment instructions (accepted payment methods, invoice).\n\n' +
+    'My contact email: [your email]\n' +
+    'Name / company: [your name]\n\n' +
+    'Thank you';
+  const template = 'To: ptelgm.yt@gmail.com\nSubject: ' + subject + '\n\n' + body;
+  const ta = document.getElementById('billing-email-body');
+  if (ta) ta.value = template;
+  const panel = document.getElementById('billing-email-template');
+  if (panel) panel.hidden = false;
+  const mailto = document.getElementById('billing-email-mailto');
+  if (mailto) {
+    mailto.href = 'mailto:ptelgm.yt@gmail.com?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+  }
+  clearFieldError('billing-error');
+  try { toast('Email template ready — send it to ptelgm.yt@gmail.com', 'info'); } catch {}
+}
+async function copyLicenseEmail() {
+  const ta = document.getElementById('billing-email-body');
+  const text = ta ? ta.value : '';
+  try {
+    if (navigator.clipboard && text) { await navigator.clipboard.writeText(text); toast('Email template copied', 'success'); return; }
+  } catch {}
+  try { if (ta) { ta.select(); document.execCommand('copy'); toast('Email template copied', 'success'); } } catch {}
+}
+
 // ── Runtime Access Policy ──
 async function loadRuntimePolicy() {
   if (!window._appUnlocked) return;
@@ -875,6 +925,8 @@ uiActions.register("click", {
   "remove-license-key": function (event) { return removeLicenseKey(); },
   "start-checkout-pro": function (event) { return startCheckout('pro'); },
   "start-checkout": function () { return startCheckout(); },
+  "request-license-email": function () { return requestLicenseEmail(); },
+  "copy-license-email": function () { return copyLicenseEmail(); },
   "open-billing-portal": function () { return openBillingPortal(); },
   "refresh-renewals": function () { return refreshRenewals(); },
   "claim-renewal": function () { return claimRenewal(this); },

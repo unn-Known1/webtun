@@ -242,6 +242,10 @@ See [the architecture guide](docs/SYSTEM_ARCHITECTURE_AND_DESIGN_PRINCIPLES.md) 
 
 ## Changelog
 
+### v2.4.0
+- **Email-based license requests** — at this stage, buying a plan generates a ready-made email to ptelgm.yt@gmail.com with plan, term, seats, server URL and date pre-filled; copy or open directly in your email app, then paste the received key to activate. The Stripe checkout button is hidden by default.
+- **Billing UI polish** — fixed the "open checkout (pop-up was blocked)" fallback to render as a clear full-width button.
+
 ### v2.3.9
 - **Remember safe browsers** — opt to mark trusted browsers as safe when signing in with a PIN; remembered browsers bypass PIN entry on subsequent visits; view active safe browsers and revoke individual or remote browsers anytime in Settings → Security; PIN rotation automatically purges all remembered browsers.
 - **Direct package upgrade CLI** — upgrade WebTun directly from the terminal via `webtun update` or `webtun upgrade` whenever a new version is available; check updates with `--check`, force reinstall with `--force`, specify custom tags with `--tag`, preview commands with `--dry-run`, and choose global (`-g`) or local (`-l`) upgrade targets.
