@@ -624,8 +624,8 @@ async function refreshLicense() {
       : 'Active (' + plan + (exp ? ', renews ' + exp : '') + ').';
   } else if (plan === 'free') {
     statusEl.textContent = r.expired
-      ? 'Expired — Free limits apply (2 tunnels, 3 devices). Renew to lift them.'
-      : 'Free plan — 2 tunnels, 3 devices, 200 history. Pro allows unlimited tunnels, 5 devices and 1,000 history.';
+      ? 'Expired — Free limits apply (2 tunnels, 3 devices, 3 terminals). Renew to lift them.'
+      : 'Free plan — 2 tunnels, 3 devices, 200 history, 3 terminals. Pro allows unlimited tunnels, 5 devices, 1,000 history and unlimited terminals.';
   } else if (r.grace) {
     statusEl.textContent = 'Active (' + plan + ') — grace until ' + new Date(r.expiry + 7 * 86400000).toLocaleDateString() + '. Renew soon.';
     try { statusEl.style.color = 'var(--amber, #e5a50a)'; } catch {}
