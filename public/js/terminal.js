@@ -450,6 +450,7 @@ function handleClientEvent(payload) {
   } else if (ev.event === 'session-revoked') {
     toast('This session was signed out remotely', 'error');
     storeSessionToken('');
+    clearSafeDevice();
     authToken = '';
     // Stop the reconnect loop or tabs keep dialling with a dead token
     // behind the lock screen.

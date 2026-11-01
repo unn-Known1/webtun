@@ -165,3 +165,98 @@ test('PIN change invalidates all remembered safe devices', async t => {
   assert.equal(resumeRes.status, 401);
   assert.equal(resumeRes.body.safeInvalid, true);
 });
+
+test('secondary device pending login receives safeToken upon approval and can resume', async t => {
+  const f = await fixture(t, { pin: 'my-pin' });
+  // Primary device
+  const d1 = await f.request('/api/auth', {
+    method: 'POST',
+    body: { pin: 'my-pin', device: 'Desktop 1', deviceId: 'desktop-safe-1', remember: true },
+    remote: false,
+  });
+  assert.equal(d1.body.pending, undefined);
+
+  // Secondary device logs in with remember: true (becomes pending)
+  const d2 = await f.request('/api/auth', {
+    method: 'POST',
+    body: { pin: 'my-pin', device: 'Phone 2', deviceId: 'phone-safe-2', remember: true },
+    remote: true,
+  });
+  assert.equal(d2.body.pending, true);
+  assert.equal(d2.body.safeToken, undefined);
+
+  // Primary device approves secondary device
+  const approveRes = await f.request(`/api/auth/sessions/${d2.body.token}/approve`, {
+    method: 'POST',
+    token: d1.body.token,
+  });
+  assert.equal(approveRes.status, 200);
+  assert.equal(approveRes.body.success, true);
+
+  // Secondary device polls /api/auth/me and receives safeToken
+  const meRes = await f.request('/api/auth/me', { token: d2.body.token });
+  assert.equal(meRes.status, 200);
+  assert.equal(meRes.body.ok, true);
+  assert.match(meRes.body.safeToken, /^[0-9a-f]{64}$/);
+  assert.equal(meRes.body.deviceId, 'phone-safe-2');
+
+  // Verify secondary device can resume later with safeToken
+  const resumeRes = await f.request('/api/auth/resume', {
+    method: 'POST',
+    body: { safeToken: meRes.body.safeToken, deviceId: 'phone-safe-2' },
+    remote: true,
+  });
+  assert.equal(resumeRes.status, 200);
+  assert.equal(resumeRes.body.success, true);
+  assert.equal(resumeRes.body.safe, true);
+});
+
+test('revoking a session removes safe device trust to prevent instant resumption', async t => {
+  const f = await fixture(t, { pin: 'my-pin' });
+  const loginRes = await f.request('/api/auth', {
+    method: 'POST',
+    body: { pin: 'my-pin', device: 'Kicked Device', deviceId: 'kicked-device-01', remember: true },
+    remote: false,
+  });
+  const { safeToken, deviceId, token } = loginRes.body;
+
+  // Revoke session
+  const revokeRes = await f.request(`/api/auth/sessions/${token}`, {
+    method: 'DELETE',
+    token,
+  });
+  assert.equal(revokeRes.status, 200);
+
+  // Resume must now fail because safe trust was revoked with session
+  const resumeRes = await f.request('/api/auth/resume', {
+    method: 'POST',
+    body: { safeToken, deviceId },
+    remote: true,
+  });
+  assert.equal(resumeRes.status, 401);
+  assert.equal(resumeRes.body.safeInvalid, true);
+});
+
+test('signing in with remember: false removes any existing safe device trust', async t => {
+  const f = await fixture(t, { pin: 'my-pin' });
+  // First login with remember
+  const login1 = await f.request('/api/auth', {
+    method: 'POST',
+    body: { pin: 'my-pin', device: 'Device A', deviceId: 'device-unremember-01', remember: true },
+    remote: false,
+  });
+  assert.ok(login1.body.safeToken);
+  assert.ok(f.auth.trustedDevices.has('device-unremember-01'));
+
+  // Close session
+  await f.request(`/api/auth/sessions/${login1.body.token}`, { method: 'DELETE', token: login1.body.token });
+
+  // Re-login with remember: false
+  const login2 = await f.request('/api/auth', {
+    method: 'POST',
+    body: { pin: 'my-pin', device: 'Device A', deviceId: 'device-unremember-01', remember: false },
+    remote: false,
+  });
+  assert.equal(login2.body.safeToken, undefined);
+  assert.equal(f.auth.trustedDevices.has('device-unremember-01'), false);
+});

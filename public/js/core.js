@@ -364,7 +364,7 @@ function isSafeToken(t) {
 function getOrCreateDeviceId() {
   try {
     let id = safeStorage.getItem('wt-device-id');
-    if (typeof id === 'string' && /^[0-9a-zA-Z_-]{16,64}$/.test(id)) return id;
+    if (typeof id === 'string' && /^[0-9a-zA-Z_-]{8,64}$/.test(id)) return id;
     id = Array.from(crypto.getRandomValues(new Uint8Array(16)))
       .map(b => b.toString(16).padStart(2, '0')).join('');
     safeStorage.setItem('wt-device-id', id);
@@ -426,7 +426,7 @@ async function tryResumeSession() {
         unlockApp();
         return true;
       }
-      if (r && r.safeInvalid) {
+      if (r && (r.safeInvalid || r.error)) {
         clearSafeDevice();
       }
     } catch {}
@@ -455,6 +455,7 @@ function enterWaitingRoom(token, expiresAt) {
       if (pinError) pinError.textContent = 'Approval expired — no active session approved in time. Try again.';
       authToken = '';
       storeSessionToken('');
+      clearSafeDevice();
       return;
     }
     try {
@@ -462,6 +463,9 @@ function enterWaitingRoom(token, expiresAt) {
       if (r && r.ok && !r.pending) {
         stopPendingPoll();
         if (pinError) pinError.textContent = '';
+        if (r.safeToken && r.deviceId) {
+          storeSafeDevice(r.deviceId, r.safeToken);
+        }
         unlockApp();
       } else if (!r || !r.ok) {
         // 401 (denied/revoked) — me returns {error}, not ok
@@ -469,6 +473,7 @@ function enterWaitingRoom(token, expiresAt) {
         if (pinError) pinError.textContent = 'Access denied by another device.';
         authToken = '';
         storeSessionToken('');
+        clearSafeDevice();
       } else {
         if (pinError) pinError.textContent = 'Waiting for approval from another signed-in device…';
       }

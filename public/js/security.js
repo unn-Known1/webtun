@@ -327,7 +327,9 @@ async function revokeOtherTrustedBrowsers() {
     danger: true
   });
   if (!ok) return;
-  const res = await api('/api/auth/safe-devices', { method: 'DELETE' });
+  const myDevId = typeof getOrCreateDeviceId === 'function' ? getOrCreateDeviceId() : '';
+  const url = myDevId ? ('/api/auth/safe-devices?exceptDeviceId=' + encodeURIComponent(myDevId)) : '/api/auth/safe-devices';
+  const res = await api(url, { method: 'DELETE' });
   if (res && res.success) {
     toast(`Revoked ${res.revokedCount || others.length} trusted browser(s)`, 'success');
     refreshTrustedBrowsers();
