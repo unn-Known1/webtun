@@ -824,10 +824,16 @@ function initTerminal(tab) {
     }
   });
 
-  // Title updates from OSC
+  // Title updates from OSC. Shells (PowerShell/cmd) often push their full
+  // executable path as the title; collapse that to the basename so the tab
+  // strip stays readable. Full path remains available via the tab tooltip.
   term.onTitleChange(title => {
-    tab.title = title || `Term ${tab.id}`;
-    tab.el.querySelector('.tab-title').textContent = tab.title;
+    tab.title = typeof displayTabTitle === 'function' ? displayTabTitle(title || `Term ${tab.id}`) : (title || `Term ${tab.id}`);
+    if (tab.el) {
+      const el = tab.el.querySelector('.tab-title');
+      if (el) el.textContent = tab.title;
+      if (title && title !== tab.title) tab.el.title = title;
+    }
   });
 
   // Bell: visual flash + desktop notification for background tabs (also flash parent for WebGL)

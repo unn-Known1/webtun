@@ -266,7 +266,7 @@ async function bulkCloseTabs(targetIds, label) {
   // crash-safety draft instead of calling them clean.
   const dirtyFile = closable.some(t => {
     if (t.type !== 'file') return false;
-    if (t.cm) return t.cm.getValue() !== t.document.original;
+    if (t.cm && t.document?.buffer) { t.document.buffer.setContent(t.cm.getValue()); return t.document.buffer.dirty; }
     try { return typeof loadDraft === 'function' && loadDraft(t.path) != null; } catch { return false; }
   });
   if (dirtyFile) {
@@ -910,6 +910,16 @@ function setupTabSwipeGesture(tabEl, id) {
   tabEl.addEventListener('touchcancel', reset, { passive: true });
 }
 
+// Shells report their executable path as the terminal title
+// (C:\Windows\...\powershell.exe, /usr/bin/bash). Show only the basename in
+// the strip; the full title stays on the tab as a tooltip.
+function displayTabTitle(title) {
+  const t = String(title || '');
+  if (!/[\\/]/.test(t)) return t;
+  const parts = t.split(/[\\/]/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : t;
+}
+
 function createTabButton(tab) {
   const id = tab.id;
   const tabEl = document.createElement('div');
@@ -946,7 +956,8 @@ function createTabButton(tab) {
 
   const titleSpan = document.createElement('span');
   titleSpan.className = 'tab-title';
-  titleSpan.textContent = tab.title;
+  titleSpan.textContent = (tab.type || 'term') === 'term' ? displayTabTitle(tab.title) : tab.title;
+  if (titleSpan.textContent !== tab.title) tabEl.title = tab.title;
   tabEl.appendChild(titleSpan);
 
   const closeBtn = document.createElement('button');
@@ -1511,6 +1522,9 @@ async function closeTab(e, id, opts = {}) {
   const editorOpen = !!evEl && evEl.classList.contains('open');
   const currentContent = editor ? editor.getValue() : '';
   const isDocPreview = !!(_pdfDoc || _epubBook || _officePath);
+  // Sync the panel buffer before reading its (line-ending normalized) dirty
+  // flag below, so the check sees the latest keystrokes, not a stale snapshot.
+  if (panelState.buffer && editor) panelState.buffer.setContent(currentContent);
   if (closing && closing.type === 'file' && closing.viewer === 'text') {
     // Text tabs own their buffer, so this is their own editor — not the panel's.
     // A parked tab (restored, never mounted) has cm == null: its draft is the
@@ -1526,13 +1540,13 @@ async function closeTab(e, id, opts = {}) {
       // Explicit discard: drop the crash-safety draft so it is not offered again.
       if (closing.path) removeDraft(closing.path);
     }
-  } else if (_dockedFileTabId != null && closing && closing.id === _dockedFileTabId && !isDocPreview && currentContent !== panelState.original) {
+  } else if (_dockedFileTabId != null && closing && closing.id === _dockedFileTabId && !isDocPreview && panelState.buffer?.dirty) {
     // The closing tab owns the live panel buffer: discarding the tab discards
     // those edits. Unrelated terminal/preview tabs never prompt for the panel.
     const ok = await confirmDialog({ title: 'Unsaved changes', message: 'You have unsaved changes. Close anyway?', okText: 'Discard', cancelText: 'Keep Editing', danger: true });
     if (!ok) return;
     if (closing.path) removeDraft(closing.path);
-  } else if (_dockedFileTabId == null && editorOpen && !isDocPreview && currentContent !== panelState.original && closing && (closing.type !== 'term' && closing.type !== 'preview')) {
+  } else if (_dockedFileTabId == null && editorOpen && !isDocPreview && panelState.buffer?.dirty && closing && (closing.type !== 'term' && closing.type !== 'preview')) {
     // Panel mode (nothing docked): only a file-tab close can discard the
     // panel buffer. Closing an unrelated terminal/preview tab leaves it alone.
     const ok = await confirmDialog({ title: 'Unsaved changes', message: 'You have unsaved changes. Close anyway?', okText: 'Close', cancelText: 'Cancel', danger: true });

@@ -107,8 +107,16 @@ async function updateSessionCupCount() {
       try {
         const label = num.parentElement?.closest('label');
         if (label) {
-          label.dataset.sessSuffix = n === 1 ? ' — 1 active login session (open Security to review)' : ` — ${n} active login sessions (open Security to review)`;
+          label.dataset.sessSuffix = n === 1 ? ' — 1 active login session' : ` — ${n} active login sessions`;
           label.title = (settings.keepAwake ? 'Keep Screen Awake — ON (screen stays on)' : 'Keep Screen Awake') + label.dataset.sessSuffix;
+        }
+        // The number itself is the Security-review affordance (click opens it):
+        // give it its own tooltip instead of bloating the toggle's.
+        const svg = num.parentElement;
+        if (svg) {
+          let t = svg.querySelector('title');
+          if (!t) { t = document.createElementNS('http://www.w3.org/2000/svg', 'title'); svg.insertBefore(t, svg.firstChild); }
+          t.textContent = n === 1 ? '1 active login session — open Security to review' : `${n} active login sessions — open Security to review`;
         }
       } catch {}
     } else {
@@ -414,9 +422,14 @@ function openSecurityReview() {
   // Expand the Security section even when collapsed, then scroll to it
     const sec = panel.querySelector('[data-sec="security"]');
     if (sec) {
-      sec.classList.add('open');
-      const h3 = sec.querySelector('h3');
-      if (h3) h3.setAttribute('aria-expanded', 'true');
+      // Go through the section's own setter: adding .open alone left the body
+      // inert/aria-hidden, so the "expanded" section was still unusable.
+      if (typeof sec._secSetOpen === 'function') sec._secSetOpen(true);
+      else {
+        sec.classList.add('open');
+        const h3 = sec.querySelector('h3');
+        if (h3) h3.setAttribute('aria-expanded', 'true');
+      }
       try { safeStorage.setItem('wt-settings-sec-security', 'true'); } catch {}
       if (sec.scrollIntoView) sec.scrollIntoView({ block: 'start' });
     }

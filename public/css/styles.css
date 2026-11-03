@@ -2283,6 +2283,8 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 .git-group-label { font-size: var(--fs-micro); color: var(--fg2); text-transform: uppercase; letter-spacing: 0.3px; padding: 4px 8px 1px; }
 .git-file { display: flex; align-items: center; gap: 4px; padding: 1px 6px 1px 10px; font-size: var(--fs-meta); font-family: var(--font); }
 .git-file:hover { background: var(--bg3); }
+.git-file { cursor: pointer; }
+.git-file.selected { background: var(--bg3); box-shadow: inset 2px 0 0 var(--accent); }
 .git-file .git-xy { width: 18px; flex-shrink: 0; font-weight: 700; }
 .git-file .git-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .git-file.staged .git-xy { color: var(--green); }
@@ -2769,6 +2771,9 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
    MOBILE NAVIGATION & BOTTOM APP BAR
    ═══════════════════════════════════════════════════════ */
 #mobile-nav-bar { display: none; }
+.mm-group-label { font-size: var(--fs-micro); font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--fg3); padding: 8px 10px 3px; }
+.mm-group-label:first-child { padding-top: 4px; }
+#install-banner > .btn { pointer-events: auto; }
 .drawer-backdrop {
   position: fixed; inset: 0; background: transparent;
   backdrop-filter: none; -webkit-backdrop-filter: none;

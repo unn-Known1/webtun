@@ -38,7 +38,11 @@
         extChanged: !!seed.extChanged, missing: !!seed.missing,
         pendingDraft: typeof seed.pendingDraft === 'string' ? seed.pendingDraft : null,
         revision: 0, saving: 0, released: false,
-        get dirty() { return this.content !== this.original; },
+        // CodeMirror normalizes CRLF/CR to LF on load, so a Windows file would
+        // read dirty the moment it opened (and spawn a phantom draft) if the
+        // comparison were byte-exact. Compare with line endings normalized;
+        // any real edit still differs beyond EOL and marks the buffer dirty.
+        get dirty() { return String(this.content).replace(/\r\n?/g, '\n') !== String(this.original).replace(/\r\n?/g, '\n'); },
         subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
         notify() { for (const fn of listeners) fn(this); },
         setContent(content) {

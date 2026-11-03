@@ -276,9 +276,7 @@ function openSettings() {
     setPanelInert('settings-panel', true);
     removeFocusTrap();
     document.removeEventListener('click', closeSettingsOnClickOutside, true);
-    if (!document.getElementById('sidebar')?.classList.contains('mobile-open')) {
-      document.getElementById('drawer-backdrop')?.classList.remove('active', 'desktop-modal');
-    }
+    document.getElementById('drawer-backdrop')?.classList.remove('active', 'desktop-modal');
   }
 }
 function closeSettings() {
@@ -362,12 +360,17 @@ function setupSettingsSections() {
     h3.setAttribute('role', 'button');
     h3.setAttribute('tabindex', '0');
     let open = false;
-    try { open = safeStorage.getItem('wt-settings-sec-' + slug) === 'true'; } catch {}
+    try {
+      const stored = safeStorage.getItem('wt-settings-sec-' + slug);
+      if (stored === null && slug === 'security') open = true;
+      else open = stored === 'true';
+    } catch {}
     const paint = (v) => {
       paintSettingsSection(sec, v);
     };
     const apply = () => paint(open);
     sec._secApply = apply;
+    sec._secSetOpen = (v) => { open = !!v; apply(); };
     const toggle = () => {
       if (sec._secPeeked) {
         // Click while peeked: pin it open instead of closing
@@ -1080,7 +1083,9 @@ function syncKeepAwakeUI() {
     const base = settings.keepAwake ? 'Keep Screen Awake — ON (screen stays on)' : 'Keep Screen Awake';
     let suffix = '';
     try { suffix = label.dataset.sessSuffix || ''; } catch {}
-    label.title = base + suffix;
+    // Keep the toggle's own tooltip about the toggle; the session-count hint
+    // lives on the cup number itself (it is the part that opens Security).
+    label.title = suffix ? base + ' · ' + suffix.replace(/^ — /, '').replace(/ \(open Security to review\)$/, '') : base;
   }
 }
 

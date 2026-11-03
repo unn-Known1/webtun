@@ -253,9 +253,18 @@ function doFinderSearch() {
         if (r.isDir) loadFiles(r.path);
         else openFileEditor(r.path);
       });
-      div.addEventListener('mouseenter', () => { document.querySelectorAll('.finder-item.selected').forEach(el => el.classList.remove('selected')); div.classList.add('selected'); finderIdx = i; });
+      div.addEventListener('mouseenter', () => { document.querySelectorAll('.finder-item.selected').forEach(el => el.classList.remove('selected')); div.classList.add('selected'); finderIdx = [...results.querySelectorAll('.finder-item')].indexOf(div); });
       results.appendChild(div);
     });
+    // Show the count and pre-select the first hit so Enter/click-through works
+    // without a preliminary arrow-key or hover, and the match is in view.
+    const allItems = results.querySelectorAll('.finder-item');
+    if (allItems.length) {
+      empty.textContent = allItems.length + ' result' + (allItems.length === 1 ? '' : 's');
+      finderIdx = 0;
+      allItems[0].classList.add('selected');
+      allItems[0].scrollIntoView({ block: 'nearest' });
+    }
   }, 200);
 }
 
@@ -1928,15 +1937,15 @@ function refreshVersion() {
 // Warn before closing if there are unsaved changes or active terminals
 window.addEventListener('beforeunload', e => {
   const editorOpen = document.getElementById('editor-view').classList.contains('open');
-  const currentContent = editor ? editor.getValue() : '';
-  const editorDirty = editorOpen && currentContent !== panelState.original;
-  // File tabs own their buffers (tab.cm vs tab.original); parked tabs hold a
-  // crash-safety draft. The panel check alone missed all of them.
+  const editorDirty = editorOpen && !!panelState.buffer?.dirty;
+  // File tabs own their buffers; parked tabs hold a crash-safety draft. The
+  // panel check alone missed all of them. Buffer dirty is line-ending
+  // normalized, so a just-opened CRLF file does not warn.
   let fileDirty = false;
   try {
     fileDirty = tabs.some(t => {
       if (!t || t.type !== 'file' || t.closed) return false;
-      if (t.cm) return t.cm.getValue() !== t.original;
+      if (t.cm && t.document?.buffer) { t.document.buffer.setContent(t.cm.getValue()); return t.document.buffer.dirty; }
       try { return typeof loadDraft === 'function' && loadDraft(t.path) != null; } catch { return false; }
     });
   } catch {}

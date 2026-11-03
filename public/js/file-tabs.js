@@ -1107,8 +1107,10 @@ async function moveTabToPanel(tab) {
   tab.document.buffer?.cancelDraft();
   clearTimeout(tab.previewTimer);
   // Crash-safety net for the handover: if the tab goes away but the panel never opens,
-  // the draft still holds the text.
-  if (content !== original) safeStorage.setItem('wt-draft:' + path, content);
+  // the draft still holds the text. Buffer dirty is line-ending normalized, so a
+  // just-opened CRLF file does not leave a phantom draft behind.
+  if (tab.document.buffer) tab.document.buffer.setContent(content);
+  if (tab.document.buffer?.dirty ?? (content !== original)) safeStorage.setItem('wt-draft:' + path, content);
   const diskMtime = tab.document.diskMtime, diskSize = tab.document.diskSize, wasExt = tab.document.extChanged;
   const wasExtMsg = tab.fteStatus && tab.fteStatus.classList.contains('ext') ? tab.fteStatus.textContent : null;
   const wasPreview = !!tab.previewOn, wasFull = !!tab.htmlFull;

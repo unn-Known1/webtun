@@ -38,6 +38,18 @@ test('rename preflight rejects occupied descendant editors without modifying eit
   assert.equal(f.panel.path, '/a'); assert.equal(f.tab.path, '/b/child');
 });
 
+test('CRLF disk content opened through an LF-normalizing editor is not dirty', () => {
+  const f = fixture();
+  const buffer = f.panel.open('/a', { content: 'one\r\ntwo\r\n', original: 'one\r\ntwo\r\n' });
+  // CodeMirror setValue/getValue round-trips CRLF to LF on load.
+  buffer.setContent('one\ntwo\n');
+  assert.equal(buffer.dirty, false);
+  buffer.flushDraft();
+  assert.equal(f.store.readDraft('/a'), null);
+  buffer.setContent('one\ntwo changed\n');
+  assert.equal(buffer.dirty, true);
+});
+
 test('handover preserves one buffer, dirty state, disk revision, and draft', () => {
   const f = fixture();
   const buffer = f.panel.open('/a', { content: 'disk', mtime: '42', size: 4 });

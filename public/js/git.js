@@ -407,6 +407,15 @@ function gitFileRow(e, cls) {
     addBtn('Stage', 'git add resolved file', () => gitStageOp('stage', [e.path]));
     addBtn('Hunks', 'per-hunk stage', b => toggleHunks(b, e.path, false));
   }
+  // The row itself is the diff affordance (buttons stopPropagation above), so
+  // reviewing a change does not require aiming at the small Diff label.
+  row.title = cls === 'untracked' ? 'Click to view file' : 'Click to view diff';
+  row.addEventListener('click', () => {
+    if (cls === 'untracked') gitViewUntracked(e.path);
+    else if (cls === 'staged') openGitDiff(e.path, true);
+    else if (cls === 'unmerged') openGitDiff(e.path, false, true);
+    else openGitDiff(e.path, false);
+  });
   return row;
 }
 function renderGitFiles(st) {
@@ -419,6 +428,7 @@ function renderGitFiles(st) {
     ['Untracked', st.untracked, 'untracked'],
   ];
   let any = false;
+  let firstRow = null;
   for (const [label, list, cls] of groups) {
     if (!list || !list.length) continue;
     any = true;
@@ -443,8 +453,11 @@ function renderGitFiles(st) {
       h.appendChild(w);
     }
     box.appendChild(h);
-    for (const e of list) box.appendChild(gitFileRow(e, cls));
+    for (const e of list) { const r = gitFileRow(e, cls); if (!firstRow) firstRow = r; box.appendChild(r); }
   }
+  // Pre-select the first change so the panel opens with an obvious current
+  // file (its diff is one click on the row away) instead of an unranked list.
+  if (firstRow) firstRow.classList.add('selected');
   if (!any) {
     const d = document.createElement('div');
     d.className = 'git-empty';

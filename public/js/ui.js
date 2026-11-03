@@ -607,6 +607,10 @@ function updateNotifBadge() {
   if (succEl) succEl.textContent = counts.success;
 }
 
+// Paint the restored unread count on boot; otherwise the bell badge stayed
+// hidden until the next notification arrived, however many were unread.
+updateNotifBadge();
+
 function setNotifFilterType(type) {
   _notifFilterType = type;
   document.querySelectorAll('.notif-chip').forEach(btn => {
@@ -808,6 +812,13 @@ function closeNotifPanel() {
   if (panel && typeof setPanelInert === 'function') setPanelInert('notif-panel', true);
   document.getElementById('notif-btn')?.setAttribute('aria-expanded', 'false');
   document.removeEventListener('click', closeNotifOnClickOutside, true);
+  // This close path previously left the scrim active: an invisible fixed
+  // overlay kept eating every click (Settings included) until page reload.
+  // Release it unless another drawer is still using it.
+  if (!document.getElementById('settings-panel')?.classList.contains('open') &&
+      !document.getElementById('sidebar')?.classList.contains('mobile-open')) {
+    document.getElementById('drawer-backdrop')?.classList.remove('active', 'desktop-modal');
+  }
 }
 function closeNotifOnClickOutside(e) {
   const panel = document.getElementById('notif-panel');

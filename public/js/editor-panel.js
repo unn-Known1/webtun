@@ -536,8 +536,10 @@ async function closeEditor() {
   }
   const isDocPreview = !!(_pdfDoc || _epubBook || _officePath);
   if (!isDocPreview) {
-    const currentContent = panelContent();
-    if (panelState.buffer && currentContent !== panelState.original) {
+    // Use the buffer's dirty flag (line-ending normalized) rather than a
+    // byte-exact compare: CodeMirror rewrites CRLF to LF on load, which made
+    // every Windows file prompt "Unsaved changes" the moment it was opened.
+    if (panelState.buffer?.dirty) {
       const ok = await confirmDialog({ title: 'Unsaved changes', message: 'You have unsaved changes. Close anyway?', okText: 'Discard', cancelText: 'Keep Editing', danger: true });
       if (!ok) return;
       // Explicit discard: drop the crash-safety draft too, so it is not offered again.

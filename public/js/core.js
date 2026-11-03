@@ -852,6 +852,13 @@ function escHtml(str) {
 uiActions.register("keydown", {
   "submit-pin": function (event) { if(event.key==='Enter'){event.preventDefault();return submitPin();} },
 });
+uiActions.register("input", {
+  "clear-pin-error": function () { const e = document.getElementById('pin-error'); if (e) e.textContent = ''; },
+});
+// A real form submit (password-manager autofill, mobile Go key) unlocks too.
+// The click/Enter paths run first and setBtnBusy disables Unlock synchronously,
+// so the submit that follows a button click returns early in submitPin().
+document.getElementById('pin-box')?.addEventListener('submit', e => { e.preventDefault(); submitPin(); });
 uiActions.register("click", {
   "submit-pin": function (event) { return submitPin(); },
   "retry-server-now": function (event) { return retryServerNow(); },
