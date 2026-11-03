@@ -242,6 +242,11 @@ See [the architecture guide](docs/SYSTEM_ARCHITECTURE_AND_DESIGN_PRINCIPLES.md) 
 
 ## Changelog
 
+### v2.4.1
+- **Search worker lifecycle management** — added idle timeout termination and explicit worker shutdown for multi-file regex searches, preventing lingering background threads.
+- **Safe browser device ID compatibility** — relaxed browser device identifier validation to support 8–64 character device identifiers across authentication and security settings.
+- **Cross-platform verification & updater stability** — hardened Windows platform contract tests, package update workflows, and terminal session cap policy checks.
+
 ### v2.4.0
 - **Email-based license requests** — at this stage, buying a plan generates a ready-made email to ptelgm.yt@gmail.com with plan, term, seats, server URL and date pre-filled; copy or open directly in your email app, then paste the received key to activate. The Stripe checkout button is hidden by default.
 - **Billing UI polish** — fixed the "open checkout (pop-up was blocked)" fallback to render as a clear full-width button.
