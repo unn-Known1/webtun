@@ -35,7 +35,7 @@ function updateLaunchpad() {
   }
 }
 // Idle dashboard screensaver: auto-show the launchpad after N idle minutes.
-// Visual only (not a lock) — any activity dismisses it. Opt-in via settings.
+// Watcher disabled to prevent background window takeovers and global input listener overhead.
 let lpAuto = false;
 let _lastActivity = Date.now();
 let _ssTimer = null;
@@ -44,18 +44,11 @@ function pokeScreensaver() {
   if (lpAuto) unpinLaunchpad();
 }
 function startScreensaverWatch() {
-  if (_ssTimer) return;
-  ['mousemove', 'mousedown', 'keydown', 'touchstart', 'wheel'].forEach(ev =>
-    document.addEventListener(ev, pokeScreensaver, { passive: true }));
-  _ssTimer = setInterval(() => {
-    if (!settings.screensaver || document.hidden) return;
-    if (tabs.length === 0 || lpPinned || lpAuto) return;
-    if (document.querySelector('.overlay.open')) return;
-    if (Date.now() - _lastActivity >= (settings.screensaverMin || 5) * 60000) {
-      lpAuto = true;
-      updateLaunchpad();
-    }
-  }, 5000);
+  // Disabled: no background document event listeners or idle interval timers.
+  if (_ssTimer) {
+    clearInterval(_ssTimer);
+    _ssTimer = null;
+  }
 }
 // Pinned dashboard: Home button shows the launchpad over live terminals.
 // Picking/creating a tab unpins; closing tabs never unpins.

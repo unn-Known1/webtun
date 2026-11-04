@@ -242,6 +242,10 @@ See [the architecture guide](docs/SYSTEM_ARCHITECTURE_AND_DESIGN_PRINCIPLES.md) 
 
 ## Changelog
 
+### v2.4.2
+- **Screensaver background watcher disabled** — deactivated the idle screensaver timer and document-level mouse/keyboard listeners in Launchpad, avoiding unexpected tab switches and reducing runtime event overhead.
+- **Package bloat cleanup** — stripped legacy video media, unused high-resolution promotional screenshots, and redundant Bun lockfiles from the repository to optimize clone size and release tarballs.
+
 ### v2.4.1
 - **Search worker lifecycle management** — added idle timeout termination and explicit worker shutdown for multi-file regex searches, preventing lingering background threads.
 - **Safe browser device ID compatibility** — relaxed browser device identifier validation to support 8–64 character device identifiers across authentication and security settings.
