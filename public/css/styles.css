@@ -4426,8 +4426,13 @@ kbd { display: inline-block; padding: 1px 6px; font-family: var(--font); font-si
 }
 
 
-/* Perf: skip layout/paint for off-screen file rows */
+/* Perf: skip layout/paint for off-screen rows in large lists and overlays */
 .file-item { content-visibility: auto; contain-intrinsic-size: 0 48px; }
+.cmd-hist-item { content-visibility: auto; contain-intrinsic-size: 0 38px; }
+.notif-item { content-visibility: auto; contain-intrinsic-size: 0 54px; }
+.settings-session { content-visibility: auto; contain-intrinsic-size: 0 42px; }
+.git-file { content-visibility: auto; contain-intrinsic-size: 0 32px; }
+.git-log-item { content-visibility: auto; contain-intrinsic-size: 0 36px; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; backdrop-filter: none !important; }

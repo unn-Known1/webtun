@@ -108,31 +108,19 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Cache-First for static assets with background revalidation. There is no
-  // TTL eviction: entries live until the versioned cache name changes.
+  // Cache-First for static assets. There is no TTL eviction: entries live
+  // until the versioned cache name changes on release update.
   // CDN resources are fetched from network (not precached) to avoid opaque response failures
   e.respondWith(
     caches.match(e.request).then(cached => {
-      if (cached) {
-        // Background revalidate without blocking. extendLifetime keeps the
-        // worker alive for the put — respondWith alone does not cover work
-        // issued after the cached response is returned.
-        e.waitUntil(fetch(e.request).then(res => {
-          if (res && res.status === 200 && res.type !== 'opaque') {
-            const clone = res.clone();
-            return caches.open(CACHE).then(c => c.put(e.request, clone).catch(() => {}));
-          }
-        }).catch(() => {}));
-        return cached;
-      }
+      if (cached) return cached;
       return fetch(e.request).then(res => {
         if (res && res.status === 200 && res.type !== 'opaque') {
           const clone = res.clone();
-          // Use waitUntil equivalent via open+put
           caches.open(CACHE).then(c => { try { c.put(e.request, clone); } catch {} });
         }
         return res;
-      }).catch(() => cached || offlineFallback(e.request));
+      }).catch(() => offlineFallback(e.request));
     })
   );
 });

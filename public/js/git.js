@@ -539,9 +539,11 @@ function gitFetch() { gitPushPull('fetch'); }
 function gitIdentityError(msg) {
   return /identity|user\.name|user\.email|Author identity|empty ident/i.test(msg || '');
 }
+let _gitIdentCheckedRoot = null;
 async function refreshGitIdentity(force, myReq) {
   const row = document.getElementById('git-identity-row');
   if (!row || !gitRoot) return;
+  if (!force && _gitIdentCheckedRoot === gitRoot && row.style.display === 'none') return;
   const r = await api(`/api/git/identity?path=${encodeURIComponent(gitRoot)}`);
   if (myReq !== undefined && myReq !== _gitReq) return;
   const missing = !r || r.error || !r.name || !r.email;
@@ -555,6 +557,7 @@ async function refreshGitIdentity(force, myReq) {
     }
   } else {
     row.style.display = 'none';
+    _gitIdentCheckedRoot = gitRoot;
   }
 }
 async function gitSaveIdentity() {
@@ -566,6 +569,7 @@ async function gitSaveIdentity() {
   const r = await api('/api/git/identity', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: gitRoot, name, email }) });
   if (!r || r.error) { showFieldError('git-identity-error', (r && r.error) || 'Save failed'); return; }
   document.getElementById('git-identity-row').style.display = 'none';
+  _gitIdentCheckedRoot = gitRoot;
   toast('Author identity saved', 'success');
 }
 async function gitAmend() {
@@ -606,6 +610,8 @@ async function gitReset() {
 async function refreshGitTags(myReq) {
   const box = document.getElementById('git-tags-list');
   if (!box || !gitRoot) return;
+  const panel = document.getElementById('git-panel');
+  if (panel && panel.classList.contains('git-simple') && !panel.classList.contains('show-rare')) return;
   const r = await api(`/api/git/tags?path=${encodeURIComponent(gitRoot)}`);
   if (myReq !== undefined && myReq !== _gitReq) return;
   box.innerHTML = '';

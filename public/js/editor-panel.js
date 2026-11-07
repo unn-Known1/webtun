@@ -674,9 +674,20 @@ let openFileWatchTimer = null;
 function startOpenFileWatcher() {
   if (openFileWatchTimer) return;
   const tick = () => { try { checkOpenFiles(); } catch (e) { console.warn(e); } };
-  openFileWatchTimer = setInterval(tick, 10000);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
+  const onVisibility = () => {
+    if (document.hidden) {
+      if (openFileWatchTimer) { clearInterval(openFileWatchTimer); openFileWatchTimer = null; }
+    } else {
+      tick();
+      if (!openFileWatchTimer) openFileWatchTimer = setInterval(tick, 10000);
+    }
+  };
+  document.addEventListener('visibilitychange', onVisibility, { passive: true });
   window.addEventListener('focus', tick);
+  window.addEventListener('pagehide', () => {
+    if (openFileWatchTimer) { clearInterval(openFileWatchTimer); openFileWatchTimer = null; }
+  }, { passive: true });
+  openFileWatchTimer = setInterval(tick, 10000);
 }
 
 let _extToastAt = 0;

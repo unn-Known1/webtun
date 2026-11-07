@@ -1372,7 +1372,11 @@ function stopSysIconPulse() {
   if (_sysIconTimer) { clearInterval(_sysIconTimer); _sysIconTimer = null; }
 }
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && window._appUnlocked && !settings.datasaver) { try { updateSysIcon(); } catch {} }
+  if (document.hidden) {
+    stopSysIconPulse();
+  } else if (window._appUnlocked && !settings.datasaver) {
+    startSysIconPulse();
+  }
 });
 
 function openSystemStats() {

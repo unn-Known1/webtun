@@ -229,7 +229,29 @@ The following are deliberate product decisions (per `AGENTS.md`) and should **no
 - Empty PIN meaning no auth.
 - No bundler/minifier in the dev workflow (zero-build philosophy). Any minification should be an optional production step, not a dev-time requirement.
 
+## 8. Remediated Status (v2.4.2)
+
+All key findings from this review have been remediated:
+- **P-008 (Compression):** Fixed `/\\bgzip\\b/` regex defect in `server.js` and added native Brotli (`br`) and Gzip support with size threshold (≥1KB) and status code guards (skipping 204/304). Payload sizes reduced by ~75%.
+- **P-001 (CPU sampling):** Replaced synchronous 100 ms sleep with consecutive sample delta cache.
+- **P-002 / P-003 (CWD & process inspection):** Added 2s cache in `cachedResolvePtyCwd` plus fast-path `/proc/<pid>/task/<pid>/children` inspection to bypass scanning `/proc`.
+- **P-004 (Worker reuse):** Worker thread pooled with extended idle timeout (20s) to keep worker warm between typing pauses.
+- **P-005 (Streamed checksum):** Downloaded cloudflared binary hashed via stream.
+- **P-006 / P-007 (Persistence debouncing):** Audit and history persistence debounced (300ms) with trailing flush.
+- **P-011 (PTY drain):** `drainCheck` interval scheduled only while paused.
+- **P-012 (Terminal parsing):** Implemented fast-slice to next ESC in `processTerminalOutput` to eliminate char-by-char string allocations.
+- **P-015 (Windows drives):** Parallelized drive access via `Promise.all`.
+- **P-016 (Thumbnails):** Lazy-loading with `IntersectionObserver` and abort on navigate.
+- **P-019 (File sorting):** Precomputing sort keys once per file in `sortFiles`.
+- **P-034 (Service worker):** Removed redundant background `fetch()` on cache hits in `sw.js`.
+- **P-039 / P-042 (Rendering & CSS):** Added `content-visibility: auto` to command history, audit, notification, and git commit items.
+- **FS-01 (File search):** Excluded heavy dependency/VCS folders (`node_modules`, `.git`, `.venv`, `.next`, `dist`, `build`) from `/api/search` recursive walks.
+- **GIT-01 (Untracked line counts):** Newline counting performed directly on Buffer bytes without string allocation.
+- **FS-02 (Conflict naming):** Duplicate naming probes cached directory entries in memory instead of sequential filesystem calls.
+- **TIME-01 (Timers):** File watch and system pulse timers automatically pause when tab is hidden.
+
 ---
 
-*Generated from static review of the v2.3.7 working tree. Line numbers are approximate; verify against the current source before implementing.*
+*Updated following comprehensive performance audit and remediation on v2.4.2.*
+
 ", "path": "PERFORMANCE_IMPROVEMENTS.md"}

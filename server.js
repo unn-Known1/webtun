@@ -208,43 +208,60 @@ app.use((req, res, next) => {
   const limit = LARGE_JSON_ROUTES.has(p) ? JSON_LIMIT_LARGE : JSON_LIMIT_BASE;
   return express.json({ limit })(req, res, next);
 });
-// Optional gzip compression for text responses (built-in zlib; no extra deps).
+// Response compression for text responses (built-in zlib; supports brotli and gzip).
 app.use((req, res, next) => {
+  if (req.method === 'HEAD') return next();
   const ae = req.headers['accept-encoding'] || '';
-  if (!/\\bgzip\\b/.test(ae)) return next();
+  const useBr = /\bbr\b/i.test(ae);
+  const useGzip = /\bgzip\b/i.test(ae);
+  if (!useBr && !useGzip) return next();
+
   const origWrite = res.write.bind(res);
   const origEnd = res.end.bind(res);
   let decided = false;
   let compress = false;
-  let gzip = null;
-  function decide() {
+  let stream = null;
+
+  function decide(chunk) {
     if (decided) return;
     decided = true;
+    if (res.statusCode === 204 || res.statusCode === 304 || res.headersSent) return;
+    if (res.getHeader('Content-Encoding')) return;
+
+    const cl = Number(res.getHeader('Content-Length'));
+    if (cl > 0 && cl < 1024) return;
+    if (!cl && chunk && Buffer.isBuffer(chunk) && chunk.length < 512) return;
+
     const ct = String(res.getHeader('Content-Type') || '');
     compress = /text|json|javascript|css|xml|svg|html|font|csv/.test(ct);
     if (compress) {
-      res.setHeader('Content-Encoding', 'gzip');
+      const encoding = useBr ? 'br' : 'gzip';
+      res.setHeader('Content-Encoding', encoding);
       try { res.append('Vary', 'Accept-Encoding'); } catch {}
       res.removeHeader('Content-Length');
-      gzip = zlib.createGzip();
-      gzip.on('data', (c) => { try { origWrite(c); } catch {} });
+      stream = useBr ? zlib.createBrotliCompress() : zlib.createGzip();
+      stream.on('data', (c) => { try { origWrite(c); } catch {} });
+      stream.on('error', () => { try { origEnd(); } catch {} });
     }
   }
+
   res.write = function (chunk, encoding, cb) {
-    decide();
-    if (!compress) return origWrite(chunk, encoding, cb);
-    if (chunk) gzip.write(chunk, encoding);
+    decide(chunk);
+    if (!compress || !stream) return origWrite(chunk, encoding, cb);
+    if (chunk) stream.write(chunk, encoding);
     if (cb) process.nextTick(cb, true);
     return true;
   };
+
   res.end = function (chunk, encoding, cb) {
-    decide();
-    if (!compress) return origEnd(chunk, encoding, cb);
+    decide(chunk);
+    if (!compress || !stream) return origEnd(chunk, encoding, cb);
     const finish = () => { try { origEnd(); } catch {} if (cb) try { cb(); } catch {} };
-    if (chunk) gzip.write(chunk, encoding);
-    gzip.end();
-    gzip.on('end', finish);
+    if (chunk) stream.write(chunk, encoding);
+    stream.end();
+    stream.on('end', finish);
   };
+
   next();
 });
 

@@ -332,6 +332,17 @@ function connectWebSocket(tab, isReconnect = false) {
     let out = '';
     let i = 0;
     while (i < str.length) {
+      // Fast skip to next ESC if current char is not ESC
+      if (str[i] !== '\x1b') {
+        const nextEsc = str.indexOf('\x1b', i);
+        if (nextEsc === -1) {
+          out += str.slice(i);
+          break;
+        }
+        out += str.slice(i, nextEsc);
+        i = nextEsc;
+      }
+
       // If trailing char is bare ESC, buffer it for next chunk to avoid splitting introducer
       if (i === str.length - 1 && str[i] === '\x1b') {
         oscBuf = '\x1b';
