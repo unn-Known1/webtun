@@ -82,7 +82,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.64.0",
-    "electron": "^45.1.0",
+    "electron": "^45.2.3",
     "electron-builder": "^26.16.1",
     "nodemon": "^3.1.14"
   },
