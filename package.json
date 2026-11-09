@@ -75,7 +75,7 @@
     "electron-updater": "^6.8.9",
     "express": "^5.2.1",
     "multer": "^2.4.0",
-    "ws": "^8.21.3"
+    "ws": "^8.22.1"
   },
   "optionalDependencies": {
     "node-pty": "^1.1.0"
