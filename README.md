@@ -242,6 +242,10 @@ See [the architecture guide](docs/SYSTEM_ARCHITECTURE_AND_DESIGN_PRINCIPLES.md) 
 
 ## Changelog
 
+### v2.4.3
+- **Dependency & security updates** — updated runtime and build dependencies (`express` 5.3.0, `multer` 2.5.0, `ws` 8.23.0, `electron-updater` 6.8.11, `electron` 45.3.3, `electron-builder` 26.18.0, `@playwright/test` 1.65.1) and transitive overrides (`qs` 6.17.1, `body-parser` 2.4.0, `@electron/asar` 4.3.2), clearing all `npm audit --omit=dev` advisories.
+- **CI release action update** — updated `softprops/action-gh-release` to `v3.0.4` in the release workflow.
+
 ### v2.4.2
 - **Screensaver background watcher disabled** — deactivated the idle screensaver timer and document-level mouse/keyboard listeners in Launchpad, avoiding unexpected tab switches and reducing runtime event overhead.
 - **Package bloat cleanup** — stripped legacy video media, unused high-resolution promotional screenshots, and redundant Bun lockfiles from the repository to optimize clone size and release tarballs.
