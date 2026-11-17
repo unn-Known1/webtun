@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=1920, height=1080, initial-scale=1.0" />
+  <title>WebTun — Launch Video</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <style>
+    :root {
+      --bg0: #13141c;
+      --bg: #1a1b26;
+      --bg1: #16161e;
+      --bg3: #24283b;
+      --bg4: #2a2d3e;
+      --border: #3b3f52;
+      --fg0: #ffffff;
+      --fg1: #d5dcf9;
+      --fg2: #a9b1d6;
+      --accent: #7aa2f7;
+      --purple: #bb9af7;
+      --green: #9ece6a;
+      --cyan: #7dcfff;
+      --yellow: #e0af68;
+      --red: #f7768e;
+      --font-ui: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      background: var(--bg0);
+      color: var(--fg0);
+      font-family: var(--font-ui);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    #root {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      background: radial-gradient(circle at 50% 18%, #1f2544 0%, #13141c 70%);
+    }
+
+    .bg-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(to right, rgba(122, 162, 247, 0.06) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(122, 162, 247, 0.06) 1px, transparent 1px);
+      background-size: 64px 64px;
+      pointer-events: none;
+    }
+
+    #ambient-glow {
+      position: absolute;
+      width: 1100px;
+      height: 600px;
+      left: 410px;
+      top: 180px;
+      background: radial-gradient(circle, rgba(122, 162, 247, 0.22) 0%, rgba(187, 154, 247, 0.08) 45%, transparent 72%);
+      pointer-events: none;
+    }
+
+    .clip {
+      position: absolute;
+      inset: 0;
+      width: 1920px;
+      height: 1080px;
+    }
+
+    /* ── SCENE 1: HOOK (0.0s - 3.52s) ── */
+    #scene-1 {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 80px 140px;
+      gap: 36px;
+      z-index: 2;
+    }
+
+    .eyebrow-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 22px;
+      background: #1e2336;
+      border: 1px solid #455073;
+      border-radius: 999px;
+      font-family: var(--font-mono);
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--cyan);
+      letter-spacing: 0.03em;
+    }
+
+    .dot-live {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 12px var(--green);
+    }
+
+    .hook-terminal {
+      width: 1180px;
+      background: #16161e;
+      border: 2px solid #455073;
+      border-radius: 16px;
+      box-shadow: 0 28px 80px rgba(0, 0, 0, 0.65);
+      overflow: hidden;
+    }
+
+    .hook-term-bar {
+      height: 52px;
+      background: #1f2335;
+      border-bottom: 1px solid #3b3f52;
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      gap: 12px;
+    }
+
+    .win-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+    }
+    .win-dot.r { background: #f7768e; }
+    .win-dot.y { background: #e0af68; }
+    .win-dot.g { background: #9ece6a; }
+
+    .hook-term-title {
+      margin-left: 16px;
+      font-family: var(--font-mono);
+      font-size: 18px;
+      color: var(--fg1);
+      font-weight: 500;
+    }
+
+    .hook-term-body {
+      padding: 36px 44px;
+      font-family: var(--font-mono);
+      font-size: 36px;
+      line-height: 1.55;
+      color: var(--fg0);
+    }
+
+    .cmd-line {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-weight: 700;
+    }
+
+    .prompt-sign {
+      color: var(--green);
+    }
+
+    .cmd-flag {
+      color: var(--cyan);
+    }
+
+    .boot-lines {
+      margin-top: 20px;
+      font-size: 24px;
+      color: var(--fg1);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .boot-ok {
+      color: var(--green);
+      font-weight: 600;
+    }
+
+    .boot-url {
+      color: var(--cyan);
+      font-weight: 600;
+    }
+
+    .hook-headline {
+      font-size: 68px;
+      font-weight: 700;
+      color: var(--fg0);
+      letter-spacing: -0.02em;
+      text-align: center;
+      line-height: 1.15;
+    }
+
+    .hook-headline .accent-text {
+      color: var(--accent);
+    }
+
+    /* ── SCENE 2: LIVE WORKSPACE (3.52s - 9.02s) ── */
+    #scene-2 {
+      display: flex;
+      flex-direction: column;
+      padding: 44px 64px;
+      gap: 24px;
+      z-index: 3;
+    }
+
+    .scene-top-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 64px;
+    }
+
+    .scene-top-title {
+      font-size: 40px;
+      font-weight: 700;
+      color: var(--fg0);
+      letter-spacing: -0.015em;
+    }
+
+    .scene-top-badges {
+      display: flex;
+      gap: 16px;
+    }
+
+    .spec-badge {
+      padding: 10px 20px;
+      background: #1f2335;
+      border: 1px solid #455073;
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 19px;
+      font-weight: 600;
+      color: var(--fg1);
+    }
+
+    .workspace-frame {
+      flex: 1;
+      background: var(--bg);
+      border: 2px solid #455073;
+      border-radius: 14px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 24px 72px rgba(0, 0, 0, 0.65);
+    }
+
+    .wt-header {
+      height: 60px;
+      background: var(--bg1);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      gap: 16px;
+    }
+
+    .wt-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 22px;
+      color: var(--fg0);
+      margin-right: 12px;
+    }
+
+    .wt-tab-bar {
+      display: flex;
+      align-items: flex-end;
+      height: 100%;
+      gap: 6px;
+      flex: 1;
+      padding-top: 10px;
+    }
+
+    .wt-tab {
+      height: 50px;
+      padding: 0 22px;
+      background: #1d202f;
+      border: 1px solid var(--border);
+      border-bottom: none;
+      border-radius: 8px 8px 0 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--font-mono);
+      font-size: 17px;
+      color: var(--fg1);
+      font-weight: 500;
+    }
+
+    .wt-tab.active {
+      background: var(--bg);
+      color: var(--fg0);
+      box-shadow: inset 0 3px 0 var(--accent);
+      font-weight: 600;
+    }
+
+    .wt-dirty-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--yellow);
+    }
+
+    .wt-header-actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    .wt-btn {
+      padding: 8px 16px;
+      background: var(--bg3);
+      border: 1px solid #455073;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--fg0);
+    }
+
+    .wt-btn.primary {
+      background: #283b66;
+      border-color: var(--accent);
+      color: #ffffff;
+    }
+
+    .wt-body {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 380px 1fr 620px;
+      min-height: 0;
+    }
+
+    .wt-sidebar {
+      background: var(--bg1);
+      border-right: 1px solid var(--border);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .wt-path-bar {
+      padding: 10px 14px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-family: var(--font-mono);
+      font-size: 16px;
+      color: var(--cyan);
+      font-weight: 600;
+    }
+
+    .wt-file-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .wt-file-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      background: #1c1f2e;
+      border-radius: 6px;
+      font-family: var(--font-mono);
+      font-size: 17px;
+      color: var(--fg0);
+    }
+
+    .wt-file-row.selected {
+      background: #263152;
+      border: 1px solid var(--accent);
+    }
+
+    .wt-file-meta {
+      font-size: 15px;
+      color: var(--fg1);
+    }
+
+    .wt-git-box {
+      margin-top: auto;
+      background: #1d2133;
+      border: 1px solid #455073;
+      border-radius: 8px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .wt-git-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: var(--font-mono);
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--fg0);
+    }
+
+    .git-stat-add { color: var(--green); font-weight: 700; }
+    .git-stat-del { color: var(--red); font-weight: 700; }
+
+    .wt-term-pane {
+      background: var(--bg);
+      padding: 24px 28px;
+      font-family: var(--font-mono);
+      font-size: 20px;
+      line-height: 1.6;
+      color: var(--fg0);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .wt-editor-pane {
+      background: #161822;
+      border-left: 2px solid var(--accent);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .wt-editor-header {
+      height: 48px;
+      background: #1f2335;
+      border-bottom: 1px solid var(--border);
+      padding: 0 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 17px;
+      color: var(--fg0);
+      font-weight: 600;
+    }
+
+    .wt-code-lines {
+      padding: 22px 24px;
+      font-family: var(--font-mono);
+      font-size: 18px;
+      line-height: 1.65;
+      color: var(--fg1);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .kw { color: var(--purple); font-weight: 600; }
+    .fn { color: var(--accent); font-weight: 600; }
+    .str { color: var(--green); }
+    .num { color: var(--yellow); }
+
+    /* ── SCENE 3: 3 CAPABILITY CARDS (9.02s - 16.02s) ── */
+    #scene-3 {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 64px 80px;
+      gap: 40px;
+      z-index: 4;
+    }
+
+    .scene-3-header {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .scene-3-eyebrow {
+      font-family: var(--font-mono);
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--cyan);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .scene-3-title {
+      font-size: 54px;
+      font-weight: 700;
+      color: var(--fg0);
+      letter-spacing: -0.02em;
+    }
+
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 32px;
+      height: 620px;
+    }
+
+    .feat-card {
+      background: #181b28;
+      border: 2px solid #414868;
+      border-radius: 16px;
+      padding: 36px 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    }
+
+    .feat-card.highlight-card {
+      border-color: var(--accent);
+      background: linear-gradient(180deg, #1d243b 0%, #161824 100%);
+    }
+
+    .feat-badge {
+      display: inline-flex;
+      align-self: flex-start;
+      padding: 8px 16px;
+      background: #242b45;
+      border: 1px solid #56638a;
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--cyan);
+    }
+
+    .feat-title {
+      font-size: 34px;
+      font-weight: 700;
+      color: var(--fg0);
+      line-height: 1.2;
+    }
+
+    .feat-desc {
+      font-size: 21px;
+      line-height: 1.5;
+      color: var(--fg1);
+    }
+
+    .feat-mock {
+      margin-top: auto;
+      background: #12131c;
+      border: 1px solid #3b3f52;
+      border-radius: 12px;
+      padding: 20px;
+      font-family: var(--font-mono);
+      font-size: 17px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .tunnel-status-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .tunnel-live-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      background: #1d3528;
+      border: 1px solid var(--green);
+      border-radius: 999px;
+      color: var(--green);
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .tunnel-url-box {
+      padding: 12px 14px;
+      background: #1a1e2e;
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      color: var(--cyan);
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .tile-mini-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .tile-mini-pane {
+      background: #1a1d2b;
+      border: 1px solid #414868;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 15px;
+      color: var(--fg0);
+    }
+
+    .keybar-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .key-cap {
+      flex: 1;
+      text-align: center;
+      padding: 10px 0;
+      background: #24283b;
+      border: 1px solid #455073;
+      border-radius: 6px;
+      color: var(--fg0);
+      font-weight: 700;
+      font-size: 16px;
+    }
+
+    /* ── SCENE 4: OUTRO (16.02s - 20.0s) ── */
+    #scene-4 {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 80px 120px;
+      gap: 32px;
+      z-index: 5;
+      text-align: center;
+    }
+
+    .outro-logo-wrap {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .outro-icon {
+      width: 96px;
+      height: 96px;
+      border-radius: 22px;
+      background: #1f2544;
+      border: 2px solid var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 16px 48px rgba(122, 162, 247, 0.3);
+    }
+
+    .outro-brand {
+      font-size: 96px;
+      font-weight: 700;
+      color: var(--fg0);
+      letter-spacing: -0.03em;
+    }
+
+    .outro-tagline {
+      font-size: 34px;
+      font-weight: 500;
+      color: var(--fg1);
+      max-width: 1200px;
+      line-height: 1.4;
+    }
+
+    .outro-cta-box {
+      margin-top: 12px;
+      padding: 26px 56px;
+      background: #161824;
+      border: 2px solid var(--green);
+      border-radius: 16px;
+      font-family: var(--font-mono);
+      font-size: 48px;
+      font-weight: 700;
+      color: var(--fg0);
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      box-shadow: 0 24px 64px rgba(158, 206, 106, 0.2);
+    }
+
+    .outro-sub {
+      font-family: var(--font-mono);
+      font-size: 22px;
+      color: var(--cyan);
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div id="root" data-composition-id="root" data-width="1920" data-height="1080" data-start="0" data-duration="20">
+    <div class="bg-grid"></div>
+    <div id="ambient-glow"></div>
+
+    <!-- SCENE 1: THE COMMAND HOOK (0.0s - 3.52s) -->
+    <div id="scene-1" class="clip" data-start="0" data-duration="3.52" data-track-index="1">
+      <div id="s1-eyebrow" class="eyebrow-pill">
+        <span class="dot-live"></span>
+        <span>SELF-HOSTED WEB TERMINAL &amp; CLOUDFLARE TUNNEL</span>
+      </div>
+
+      <div id="s1-term" class="hook-terminal">
+        <div class="hook-term-bar">
+          <span class="win-dot r"></span>
+          <span class="win-dot y"></span>
+          <span class="win-dot g"></span>
+          <span class="hook-term-title">bash — 80×24</span>
+        </div>
+        <div class="hook-term-body">
+          <div class="cmd-line">
+            <span class="prompt-sign">$</span>
+            <span id="s1-cmd-text">npx webtun <span class="cmd-flag">--tunnel</span></span>
+          </div>
+          <div id="s1-boot" class="boot-lines">
+            <div><span class="boot-ok">✓</span> WebTun v2.4.2 listening on <span class="boot-url">http://localhost:3000</span></div>
+            <div><span class="boot-ok">✓</span> PTY shell · File Explorer · Git · Cloudflare Tunnel ready</div>
+          </div>
+        </div>
+      </div>
+
+      <h1 id="s1-headline" class="hook-headline">
+        No VPN. No SSH client. <span class="accent-text">Just your browser.</span>
+      </h1>
+    </div>
+
+    <!-- SCENE 2: LIVE WORKSPACE (3.52s - 9.02s) -->
+    <div id="scene-2" class="clip" data-start="3.52" data-duration="5.5" data-track-index="1">
+      <div id="s2-banner" class="scene-top-banner">
+        <div class="scene-top-title">Your entire server workspace in one tab</div>
+        <div class="scene-top-badges">
+          <span class="spec-badge">xterm.js + node-pty</span>
+          <span class="spec-badge">Full File Explorer</span>
+          <span class="spec-badge">Split CodeMirror</span>
+        </div>
+      </div>
+
+      <div id="s2-workspace" class="workspace-frame">
+        <div class="wt-header">
+          <span class="dot-live"></span>
+          <div class="wt-logo">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7aa2f7" stroke-width="2.2">
+              <rect x="2" y="4" width="20" height="16" rx="2"/>
+              <line x1="6" y1="8" x2="10" y2="8"/>
+              <line x1="6" y1="12" x2="10" y2="12"/>
+              <line x1="12" y1="8" x2="18" y2="8"/>
+              <line x1="12" y1="12" x2="18" y2="12"/>
+            </svg>
+            <span>WebTun</span>
+          </div>
+          <div class="wt-tab-bar">
+            <div class="wt-tab active"><span>1: bash — webtun</span></div>
+            <div class="wt-tab"><span>2: htop — monitor</span></div>
+            <div class="wt-tab"><span class="wt-dirty-dot"></span><span>server.js</span></div>
+          </div>
+          <div class="wt-header-actions">
+            <span class="wt-btn primary">● 2 Tunnels Live</span>
+            <span class="wt-btn">Tile View</span>
+            <span class="wt-btn">SSH Keys</span>
+          </div>
+        </div>
+
+        <div class="wt-body">
+          <div id="s2-sidebar" class="wt-sidebar">
+            <div class="wt-path-bar">/home/dev/webtun</div>
+            <div class="wt-file-list">
+              <div class="wt-file-row"><span>📁 lib/</span><span class="wt-file-meta">Folder</span></div>
+              <div class="wt-file-row"><span>📁 public/</span><span class="wt-file-meta">Folder</span></div>
+              <div class="wt-file-row selected"><span>📄 server.js</span><span class="wt-file-meta">78.6 KB</span></div>
+              <div class="wt-file-row"><span>📄 package.json</span><span class="wt-file-meta">3.5 KB</span></div>
+              <div class="wt-file-row"><span>📄 README.md</span><span class="wt-file-meta">33.0 KB</span></div>
+            </div>
+            <div class="wt-git-box">
+              <div class="wt-git-header">
+                <span>⎇ main ↑1</span>
+                <span><span class="git-stat-add">+142</span> <span class="git-stat-del">-18</span></span>
+              </div>
+              <div class="wt-file-meta">3 staged · Brotli &amp; Gzip enabled</div>
+            </div>
+          </div>
+
+          <div id="s2-term" class="wt-term-pane">
+            <div><span class="prompt-sign">dev@server:~/webtun$</span> npm test</div>
+            <div class="boot-ok">✓ Source check: 82 files parse; precache agree</div>
+            <div class="boot-ok">✓ 98 unit &amp; PTY session persistence tests pass</div>
+            <div style="margin-top: 12px;"><span class="prompt-sign">dev@server:~/webtun$</span> tmux ls</div>
+            <div style="color: var(--cyan);">wt-webtun-3000-1: 2 windows (attached)</div>
+            <div style="color: var(--fg1);">CPU: 14% · RAM: 1.8 / 8.0 GB · Compression: br/gzip</div>
+          </div>
+
+          <div id="s2-editor" class="wt-editor-pane">
+            <div class="wt-editor-header">
+              <span>server.js — CodeMirror</span>
+              <span style="color: var(--green);">● Saved · Ctrl+S</span>
+            </div>
+            <div class="wt-code-lines">
+              <div><span class="kw">const</span> express = <span class="fn">require</span>(<span class="str">'express'</span>);</div>
+              <div><span class="kw">const</span> zlib = <span class="fn">require</span>(<span class="str">'zlib'</span>);</div>
+              <div><span class="kw">const</span> { registerFileRoutes } = <span class="fn">require</span>(<span class="str">'./lib/server/files'</span>);</div>
+              <div><span class="kw">const</span> { registerGitRoutes } = <span class="fn">require</span>(<span class="str">'./lib/server/git'</span>);</div>
+              <div>&nbsp;</div>
+              <div>app.<span class="fn">get</span>(<span class="str">'/api/system'</span>, checkPin, <span class="kw">async</span> (req, res) =&gt; {</div>
+              <div>&nbsp;&nbsp;<span class="kw">return</span> res.<span class="fn">json</span>(_sysStatsCache.data);</div>
+              <div>});</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCENE 3: TUNNELS, TILES & MOBILE PWA (9.02s - 16.02s) -->
+    <div id="scene-3" class="clip" data-start="9.02" data-duration="7.0" data-track-index="1">
+      <div class="scene-3-header">
+        <div class="scene-3-eyebrow">BUILT FOR REAL INFRASTRUCTURE</div>
+        <h2 class="scene-3-title">Tunnels, multi-file tiles, and mobile-ready controls</h2>
+      </div>
+
+      <div class="cards-grid">
+        <div id="s3-card-1" class="feat-card highlight-card">
+          <span class="feat-badge">01 · CLOUDFLARE TUNNEL</span>
+          <h3 class="feat-title">1-Click Public URLs</h3>
+          <p class="feat-desc">Spawn HTTPS Cloudflare tunnels right from the UI. Zero CLI flags, built-in health checks, persistent across restarts.</p>
+          <div class="feat-mock">
+            <div class="tunnel-status-row">
+              <span style="color: var(--fg0); font-weight: 600;">Port 3000 → Public Edge</span>
+              <span id="s3-tunnel-pill" class="tunnel-live-pill">● LIVE</span>
+            </div>
+            <div class="tunnel-url-box">https://swift-fox.trycloudflare.com</div>
+          </div>
+        </div>
+
+        <div id="s3-card-2" class="feat-card">
+          <span class="feat-badge">02 · TILE VIEW &amp; GIT</span>
+          <h3 class="feat-title">Multi-File Code Tiles</h3>
+          <p class="feat-desc">Open up to 10 files side-by-side with live CodeMirror buffers, auto-draft recovery, and inline Git hunk staging.</p>
+          <div class="feat-mock">
+            <div class="tile-mini-grid">
+              <div class="tile-mini-pane">
+                <div style="color: var(--accent); font-weight: 700; margin-bottom: 6px;">server.js</div>
+                <div>stream = zlib.createBrotli()</div>
+              </div>
+              <div class="tile-mini-pane">
+                <div style="color: var(--purple); font-weight: 700; margin-bottom: 6px;">git diff</div>
+                <div class="git-stat-add">+142 staged · 0 errors</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="s3-card-3" class="feat-card">
+          <span class="feat-badge">03 · MOBILE PWA &amp; TMUX</span>
+          <h3 class="feat-title">Pocket Server Deck</h3>
+          <p class="feat-desc">Installable PWA with tactile mobile keybar, 2-device login approval, Ed25519 SSH keys, and persistent tmux sessions.</p>
+          <div class="feat-mock">
+            <div class="keybar-row">
+              <span class="key-cap">ESC</span>
+              <span class="key-cap">TAB</span>
+              <span class="key-cap">CTRL</span>
+              <span class="key-cap">↑</span>
+              <span class="key-cap">↓</span>
+            </div>
+            <div style="color: var(--green); font-weight: 600;">✓ Session resumed · PIN + Safe Device verified</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SCENE 4: OUTRO & CTA (16.02s - 20.0s) -->
+    <div id="scene-4" class="clip" data-start="16.02" data-duration="3.98" data-track-index="1">
+      <div id="s4-lockup" class="outro-logo-wrap">
+        <div class="outro-icon">
+          <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#7aa2f7" stroke-width="2.2">
+            <rect x="2" y="4" width="20" height="16" rx="2"/>
+            <line x1="6" y1="8" x2="10" y2="8"/>
+            <line x1="6" y1="12" x2="10" y2="12"/>
+            <line x1="6" y1="16" x2="8" y2="16"/>
+            <line x1="12" y1="8" x2="18" y2="8"/>
+            <line x1="12" y1="12" x2="18" y2="12"/>
+            <line x1="12" y1="16" x2="16" y2="16"/>
+          </svg>
+        </div>
+        <div class="outro-brand">WebTun</div>
+      </div>
+
+      <p id="s4-tagline" class="outro-tagline">
+        Self-hosted web terminal with Cloudflare Tunnel, file explorer, and PWA support
+      </p>
+
+      <div id="s4-cta" class="outro-cta-box">
+        <span class="prompt-sign">$</span>
+        <span>npx webtun</span>
+      </div>
+
+      <div id="s4-sub" class="outro-sub">
+        Open http://localhost:3000 — No VPN, no SSH client, no installing anything.
+      </div>
+    </div>
+
+    <!-- AUDIO LAYER: Music bed + non-overlapping SFX tracks -->
+    <audio id="bg-music" data-start="0" data-duration="20" data-track-index="10" data-volume="0.35" data-fade-in="0.3" data-fade-out="1.5" src="assets/music/happy-beats-business-moves-vol-1-by-ende-dot-app.mp3"></audio>
+
+    <audio id="sfx-key-1" data-start="0.35" data-duration="0.12" data-track-index="11" data-volume="0.65" src="assets/sfx/keyboard/keypress-001.wav"></audio>
+    <audio id="sfx-key-2" data-start="0.50" data-duration="0.12" data-track-index="12" data-volume="0.65" src="assets/sfx/keyboard/keypress-002.wav"></audio>
+    <audio id="sfx-key-3" data-start="0.65" data-duration="0.12" data-track-index="13" data-volume="0.65" src="assets/sfx/keyboard/keypress-003.wav"></audio>
+    <audio id="sfx-key-4" data-start="0.80" data-duration="0.12" data-track-index="14" data-volume="0.65" src="assets/sfx/keyboard/keypress-004.wav"></audio>
+    <audio id="sfx-key-5" data-start="0.95" data-duration="0.12" data-track-index="15" data-volume="0.65" src="assets/sfx/keyboard/keypress-005.wav"></audio>
+
+    <audio id="sfx-hook-hit" data-start="1.45" data-duration="0.25" data-track-index="16" data-volume="0.75" src="assets/sfx/impact/impactSoft_medium_001.ogg"></audio>
+    <audio id="sfx-s2-reveal" data-start="3.52" data-duration="0.25" data-track-index="17" data-volume="0.75" src="assets/sfx/impact/impactSoft_medium_004.ogg"></audio>
+    <audio id="sfx-s2-slide" data-start="5.03" data-duration="0.35" data-track-index="18" data-volume="0.70" src="assets/sfx/casino/card-slide-1.ogg"></audio>
+
+    <audio id="sfx-card-1" data-start="9.52" data-duration="0.15" data-track-index="19" data-volume="0.70" src="assets/sfx/interface/click_003.ogg"></audio>
+    <audio id="sfx-card-2" data-start="10.52" data-duration="0.15" data-track-index="20" data-volume="0.70" src="assets/sfx/interface/click_002.ogg"></audio>
+    <audio id="sfx-card-3" data-start="11.52" data-duration="0.15" data-track-index="21" data-volume="0.70" src="assets/sfx/interface/click_005.ogg"></audio>
+    <audio id="sfx-tunnel-live" data-start="12.52" data-duration="0.25" data-track-index="22" data-volume="0.75" src="assets/sfx/interface/bong_001.ogg"></audio>
+
+    <audio id="sfx-outro-in" data-start="16.02" data-duration="0.25" data-track-index="23" data-volume="0.75" src="assets/sfx/impact/impactSoft_medium_002.ogg"></audio>
+    <audio id="sfx-cta-bell" data-start="17.02" data-duration="0.80" data-track-index="24" data-volume="0.80" src="assets/sfx/impact/impactBell_heavy_000.ogg"></audio>
+  </div>
+
+  <script>
+    const tl = gsap.timeline({ paused: true });
+
+    // Audio-reactive ambient glow pulse aligned to 120.19 BPM (0.5s beat interval)
+    for (let t = 0; t < 20; t += 1.0) {
+      tl.fromTo("#ambient-glow",
+        { scale: 0.96, opacity: 0.72 },
+        { scale: 1.06, opacity: 1, duration: 0.5, ease: "sine.inOut" },
+        t
+      );
+      tl.to("#ambient-glow",
+        { scale: 0.96, opacity: 0.72, duration: 0.5, ease: "sine.inOut" },
+        t + 0.5
+      );
+    }
+
+    // ── SCENE 1: HOOK (0.0s - 3.52s) ──
+    tl.fromTo("#s1-eyebrow",
+      { opacity: 0, y: -24 },
+      { opacity: 1, y: 0, duration: 0.35, ease: "power3.out" },
+      0.05
+    );
+    tl.fromTo("#s1-term",
+      { opacity: 0, scale: 0.94, y: 24 },
+      { opacity: 1, scale: 1, y: 0, duration: 0.4, ease: "power3.out" },
+      0.15
+    );
+    tl.fromTo("#s1-cmd-text",
+      { opacity: 0, x: -16 },
+      { opacity: 1, x: 0, duration: 0.45, ease: "power2.out" },
+      0.35
+    );
+    tl.fromTo("#s1-boot",
+      { opacity: 0, y: 12 },
+      { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" },
+      1.05
+    );
+    tl.fromTo("#s1-headline",
+      { opacity: 0, y: 28, scale: 0.96 },
+      { opacity: 1, y: 0, scale: 1, duration: 0.4, ease: "back.out(1.4)" },
+      1.45
+    );
+
+    // ── SCENE 2: LIVE WORKSPACE (3.52s - 9.02s) ──
+    // beat-locked: 3.52s
+    tl.fromTo("#s2-banner",
+      { opacity: 0, y: -20 },
+      { opacity: 1, y: 0, duration: 0.35, ease: "power3.out" },
+      3.52
+    );
+    tl.fromTo("#s2-workspace",
+      { opacity: 0, scale: 0.96, y: 28 },
+      { opacity: 1, scale: 1, y: 0, duration: 0.45, ease: "power3.out" },
+      3.62
+    );
+    tl.fromTo("#s2-sidebar",
+      { opacity: 0, x: -24 },
+      { opacity: 1, x: 0, duration: 0.4, ease: "power2.out" },
+      4.02
+    );
+    tl.fromTo("#s2-term",
+      { opacity: 0 },
+      { opacity: 1, duration: 0.35, ease: "power2.out" },
+      4.35
+    );
+    // beat-grid: split editor docks open at 5.03s
+    tl.fromTo("#s2-editor",
+      { opacity: 0, x: 40 },
+      { opacity: 1, x: 0, duration: 0.45, ease: "power3.out" },
+      5.03
+    );
+
+    // ── SCENE 3: 3 CAPABILITY CARDS (9.02s - 16.02s) ──
+    // beat-grid: card 1 at 9.52s, card 2 at 10.52s, card 3 at 11.52s (every other beat for comfortable reading)
+    tl.fromTo("#s3-card-1",
+      { opacity: 0, y: 36, scale: 0.96 },
+      { opacity: 1, y: 0, scale: 1, duration: 0.4, ease: "power3.out" },
+      9.52
+    );
+    tl.fromTo("#s3-card-2",
+      { opacity: 0, y: 36, scale: 0.96 },
+      { opacity: 1, y: 0, scale: 1, duration: 0.4, ease: "power3.out" },
+      10.52
+    );
+    tl.fromTo("#s3-card-3",
+      { opacity: 0, y: 36, scale: 0.96 },
+      { opacity: 1, y: 0, scale: 1, duration: 0.4, ease: "power3.out" },
+      11.52
+    );
+    tl.fromTo("#s3-tunnel-pill",
+      { scale: 0.85 },
+      { scale: 1.08, duration: 0.25, yoyo: true, repeat: 1, ease: "back.out(2)" },
+      12.52
+    );
+
+    // ── SCENE 4: OUTRO & CTA (16.02s - 20.0s) ──
+    // beat-locked: 16.02s (strong cue)
+    tl.fromTo("#s4-lockup",
+      { opacity: 0, scale: 0.9, y: 24 },
+      { opacity: 1, scale: 1, y: 0, duration: 0.45, ease: "power3.out" },
+      16.02
+    );
+    tl.fromTo("#s4-tagline",
+      { opacity: 0, y: 18 },
+      { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" },
+      16.35
+    );
+    // beat-locked: 17.02s (strong cue)
+    tl.fromTo("#s4-cta",
+      { opacity: 0, scale: 0.88, y: 24 },
+      { opacity: 1, scale: 1, y: 0, duration: 0.45, ease: "back.out(1.6)" },
+      17.02
+    );
+    tl.fromTo("#s4-sub",
+      { opacity: 0, y: 14 },
+      { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" },
+      17.45
+    );
+
+    window.__timelines = window.__timelines || {};
+    window.__timelines["root"] = tl;
+  </script>
+</body>
+</html>
