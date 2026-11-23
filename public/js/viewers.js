@@ -710,6 +710,8 @@ async function openMediaViewer(path) {
   const ta = document.getElementById('editor-textarea');
   if (ta) ta.style.display = 'none';
   document.getElementById('editor-preview').classList.remove('active');
+  mdPreviewActive = false;
+  clearPreviewLiveReload();
   const mv = document.getElementById('media-viewer');
   if (mv) { mv.classList.add('active'); mv.style.display = 'flex'; }
   const titleEl = document.getElementById('media-title');
@@ -1069,7 +1071,6 @@ function toggleHtmlPreview() {
     // hide doc viewers when entering html preview
     document.getElementById('pdf-viewer').classList.remove('active');
     document.getElementById('epub-viewer').classList.remove('active');
-    renderHtmlPreview();
     if (cmWrapper) cmWrapper.style.display = 'none';
     if (!editor && textarea) textarea.style.display = 'none';
     preview.classList.add('active');
@@ -1078,6 +1079,7 @@ function toggleHtmlPreview() {
     setFullBtnVisible(true);
     mdPreviewActive = true;
     startPreviewLiveReload();
+    return renderHtmlPreview();
   }
 }
 
@@ -1502,8 +1504,7 @@ function refreshPreview() {
 
 function toggleMdPreview() {
   if (/\.html?$/i.test(panelState.path)) {
-    toggleHtmlPreview();
-    return;
+    return toggleHtmlPreview();
   }
   const cmWrapper = document.querySelector('#editor-area .CodeMirror');
   const textarea = document.getElementById('editor-textarea');
@@ -1513,13 +1514,13 @@ function toggleMdPreview() {
   if (mdPreviewActive) {
     document.getElementById('pdf-viewer').classList.remove('active');
     document.getElementById('epub-viewer').classList.remove('active');
-    renderMdPreview();
     if (cmWrapper) cmWrapper.style.display = 'none';
     if (!editor && textarea) textarea.style.display = 'none';
     preview.classList.add('active');
     setPreviewToggleState(true);
     if (refreshBtn) refreshBtn.style.display = '';
     startPreviewLiveReload();
+    return renderMdPreview();
   } else {
     if (cmWrapper) cmWrapper.style.display = '';
     if (!editor && textarea) textarea.style.display = '';

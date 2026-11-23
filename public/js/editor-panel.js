@@ -17,7 +17,10 @@ function setFullBtnVisible(v) {
   const b = document.getElementById('html-full-toggle');
   if (!b) return;
   b.style.display = v ? '' : 'none';
-  if (!v) { htmlFullPreview = false; b.classList.remove('btn-primary'); b.classList.add('btn-ghost'); b.setAttribute('aria-pressed', 'false'); }
+  if (!v) htmlFullPreview = false;
+  b.classList.toggle('btn-primary', !!htmlFullPreview);
+  b.classList.toggle('btn-ghost', !htmlFullPreview);
+  b.setAttribute('aria-pressed', String(!!htmlFullPreview));
 }
 
 // Shared by the panel editor and every per-tab editor, so options can't drift apart.
@@ -362,7 +365,7 @@ async function showTextInPanel(path, content, original, history, mtime, size, in
   buffer.flushDraft();
   const sep = path.includes('\\') ? '\\' : '/';
   const fileName = path.split(sep).pop() || path;
-  const isMd = /\.md$/i.test(fileName);
+  const isMd = /\.(md|markdown|mdown)$/i.test(fileName);
   const isHtml = /\.html?$/i.test(fileName);
   // hide doc viewers when opening text file
   cleanupDocViewers();

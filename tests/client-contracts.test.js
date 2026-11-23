@@ -109,3 +109,79 @@ test('panel Save uses the installed file while its CodeMirror language mode is s
   releaseMode('python'); await pending;
   assert.equal(text, 'typed while loading'); assert.equal(panelState.buffer.dirty, true);
 });
+
+test('toggling panel Markdown and HTML preview renders content without cancelling its own generation', async () => {
+  const source = fs.readFileSync('public/js/viewers.js', 'utf8');
+  const makeClassList = () => {
+    const set = new Set();
+    return { add: c => set.add(c), remove: c => set.delete(c), contains: c => set.has(c), toggle: (c, f) => (f === undefined ? (set.has(c) ? set.delete(c) : set.add(c)) : (f ? set.add(c) : set.delete(c))) };
+  };
+  const mdEl = { style: {}, innerHTML: '', textContent: '' };
+  let lastDoc = '';
+  const iframeEl = { style: {}, removeAttribute() {}, set srcdoc(v) { lastDoc = v; }, set src(v) { lastDoc = v; } };
+  const previewEl = { classList: makeClassList() };
+  const cmEl = { style: {} };
+  const nodes = {
+    'editor-preview': previewEl,
+    'md-preview-content': mdEl,
+    'editor-preview-iframe': iframeEl,
+    'editor-textarea': { style: {}, focus() {} },
+    'preview-refresh-btn': { style: {} },
+    'pdf-viewer': { classList: makeClassList() },
+    'epub-viewer': { classList: makeClassList() },
+  };
+  let content = '# Hello World';
+  const buffer = {};
+  const context = {
+    panelState: { path: '/dummy/README.md', buffer },
+    panelContent: () => content,
+    editor: { focus() {}, getValue: () => content },
+    mdPreviewActive: false,
+    htmlFullPreview: false,
+    _panelGen: 1,
+    document: {
+      documentElement: {},
+      getElementById: id => nodes[id] || null,
+      querySelector: sel => (sel === '#editor-area .CodeMirror' ? cmEl : null),
+    },
+    getComputedStyle: () => ({ getPropertyValue: () => '#111111' }),
+    setPreviewToggleState() {},
+    setFullBtnVisible() {},
+    getHtmlBaseDir: () => '/dummy',
+    mintPreviewFileToken: async () => null,
+    ensurePreviewLibs: async () => true,
+    rewriteHtmlRelativeUrls: v => v,
+    rewriteFullHtmlUrls: v => v,
+    marked: { parse: v => '<h1>' + v.replace(/^#\s*/, '') + '</h1>' },
+    DOMPurify: { sanitize: v => v },
+    escHtml: v => v,
+    toast() {},
+    setTimeout,
+    clearTimeout,
+    console,
+    Blob: undefined,
+    URL: undefined,
+  };
+  vm.createContext(context);
+  vm.runInContext(source.slice(source.indexOf('function toggleHtmlPreview()'), source.indexOf('function toggleFullHtmlPreview()')), context);
+  vm.runInContext(source.slice(source.indexOf('let _previewDocUrl = null;'), source.indexOf('// Declarative controls owned by this feature.')), context);
+
+  // Markdown preview toggle
+  await context.toggleMdPreview();
+  assert.equal(previewEl.classList.contains('active'), true);
+  assert.equal(mdEl.style.display, 'block');
+  assert.match(mdEl.innerHTML, /<h1>Hello World<\/h1>/);
+
+  // Toggle back to edit
+  context.toggleMdPreview();
+  assert.equal(previewEl.classList.contains('active'), false);
+
+  // HTML preview toggle
+  context.panelState.path = '/dummy/page.html';
+  content = '<p>Hello HTML</p>';
+  await context.toggleMdPreview();
+  assert.equal(previewEl.classList.contains('active'), true);
+  assert.equal(iframeEl.style.display, 'block');
+  assert.match(lastDoc, /<p>Hello HTML<\/p>/);
+});
+
